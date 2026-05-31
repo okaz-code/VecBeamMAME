@@ -66,6 +66,22 @@ public:
 	uint32_t update_screen_textures(uint32_t view, render_primitive *starting_prim, osd_window& window);
 	uint32_t process_screen_chains(uint32_t view, osd_window& window);
 
+	// inject a GPU-rendered FBO as "screen0" for vector game chain processing.
+	// Must be called before process_screen_chains() each frame.
+	// vec_fb_w/h are the supersample FBO dimensions (typically 2x window).
+	void inject_vector_screen(bgfx::TextureHandle color_tex, uint16_t width, uint16_t height,
+		uint16_t vec_fb_w, uint16_t vec_fb_h);
+
+	// query a chain slider's current value by name. Returns default_value if not found
+	// (e.g. before chain is loaded). Used by drawbgfx/vector.cpp for CPU-side sliders defined in
+	// vector-starwars.json's sliders section.
+	float slider_value(uint32_t screen, const std::string& name, float default_value);
+
+	// inject a uniform override into a chain entry by entry name. Returns true on
+	// success. Used for u_mglow_amount which is computed CPU-side each frame.
+	bool inject_entry_uniform(uint32_t screen, const std::string& entry_name,
+		const std::string& uniform_name, const float* vals, int count = 4);
+
 	// Getters
 	running_machine& machine() const { return m_machine; }
 	const osd_options& options() const { return m_options; }
@@ -96,19 +112,26 @@ private:
 		chain_desc &operator=(const chain_desc &) = default;
 		chain_desc &operator=(chain_desc &&) = default;
 
-		chain_desc(std::string &&name, std::string &&path)
+		chain_desc(std::string &&name, std::string &&path, bool is_vector = false)
 			: m_name(std::move(name))
 			, m_path(std::move(path))
+			, m_is_vector(is_vector)
 		{
 		}
 
 		std::string m_name;
 		std::string m_path;
+		bool        m_is_vector = false;  // chain JSON の "screen_type": "vector" タグ由来
 	};
 
 	void load_chains();
 	void destroy_chains();
 	void reload_chains();
+
+	// m_is_vector_game に応じて m_compat_chain_indices を再構築。
+	void rebuild_compat_chain_indices();
+	// ゲームタイプを machine から検出 (constructor で一度だけ呼ぶ)
+	void detect_vector_game();
 
 	void init_texture_converters();
 
@@ -154,6 +177,19 @@ private:
 	std::vector<uint8_t>        m_palette_temp;
 
 	static inline constexpr uint32_t CHAIN_NONE = 0;
+
+	// dimensions from last inject_vector_screen call, used to avoid redundant target recreation
+	uint16_t m_vec_win_w = 0;
+	uint16_t m_vec_win_h = 0;
+	uint16_t m_vec_fb_w  = 0;
+	uint16_t m_vec_fb_h  = 0;
+
+	// ゲームタイプ判定 (constructor で初期化)
+	bool m_is_vector_game = false;
+	// 現在のゲームタイプと互換な m_available_chains の絶対 index リスト。
+	// UI selection slider の選択肢を screen_type で絞り込むのに使う。
+	// CHAIN_NONE (0) は常に含まれる。
+	std::vector<size_t> m_compat_chain_indices;
 };
 
 #endif // MAME_RENDER_BGFX_CHAINMANAGER_H

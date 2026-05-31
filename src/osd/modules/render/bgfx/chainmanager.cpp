@@ -14,8 +14,10 @@
 #include <bx/readerwriter.h>
 #include <bx/file.h>
 
+#include "emu.h"
 #include "emucore.h"
 #include "render.h"
+#include "screen.h"
 #include "../frontend/mame/ui/slider.h"
 
 #include "modules/lib/osdobj_common.h"
@@ -27,7 +29,9 @@
 #include "bgfxutil.h"
 
 #include "chain.h"
+#include "chainentry.h"
 #include "chainreader.h"
+#include "fbotextureprovider.h"
 #include "slider.h"
 #include "target.h"
 #include "texture.h"
@@ -84,9 +88,39 @@ chain_manager::chain_manager(
 	, m_default_chain_index(-1)
 {
 	m_converters.clear();
+	// ゲームタイプ (vector vs raster) を constructor で一度だけ判定してキャッシュ
+	detect_vector_game();
 	refresh_available_chains();
 	parse_chain_selections(options.bgfx_screen_chains());
 	init_texture_converters();
+}
+
+// machine の screen device 群を走査し、SCREEN_TYPE_VECTOR が一つでもあれば
+// vector game とみなす。
+void chain_manager::detect_vector_game()
+{
+	m_is_vector_game = false;
+	screen_device_enumerator screens(m_machine.root_device());
+	for (screen_device& s : screens)
+	{
+		if (s.screen_type() == SCREEN_TYPE_VECTOR)
+		{
+			m_is_vector_game = true;
+			break;
+		}
+	}
+}
+
+// m_available_chains を走査し、現在のゲームタイプ (m_is_vector_game) と
+// 互換な絶対 index リストを構築。CHAIN_NONE (0) は常に含まれる。
+void chain_manager::rebuild_compat_chain_indices()
+{
+	m_compat_chain_indices.clear();
+	for (size_t i = 0; i < m_available_chains.size(); i++)
+	{
+		if (i == CHAIN_NONE || m_available_chains[i].m_is_vector == m_is_vector_game)
+			m_compat_chain_indices.push_back(i);
+	}
 }
 
 chain_manager::~chain_manager()
@@ -114,7 +148,9 @@ void chain_manager::get_default_chain_info(std::string &out_chain_name, int32_t 
 	}
 
 	out_chain_index = m_default_chain_index;
-	out_chain_name = "default";
+	// m_default_chain_index は vector game では最初の vector chain の絶対 index。
+	// 正しい名前を m_available_chains から取得する (旧コードはハードコード "default" を返していた)。
+	out_chain_name = m_available_chains[m_default_chain_index].m_name;
 	return;
 }
 
@@ -145,14 +181,33 @@ void chain_manager::refresh_available_chains()
 
 	if (m_default_chain_index == -1)
 	{
-		for (size_t i = 0; i < m_available_chains.size(); i++)
+		if (m_is_vector_game)
 		{
-			if (m_available_chains[i].m_name == "default")
+			// vector game では "default" raster chain は使えないので、最初の
+			// vector chain を default にする (見つからなければ -1 のまま = CHAIN_NONE)
+			for (size_t i = 0; i < m_available_chains.size(); i++)
 			{
-				m_default_chain_index = int32_t(i);
+				if (m_available_chains[i].m_is_vector)
+				{
+					m_default_chain_index = int32_t(i);
+					break;
+				}
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < m_available_chains.size(); i++)
+			{
+				if (m_available_chains[i].m_name == "default")
+				{
+					m_default_chain_index = int32_t(i);
+				}
 			}
 		}
 	}
+
+	// rebuild compat index list (refresh のたびに index がズレるため)
+	rebuild_compat_chain_indices();
 
 	destroy_unloaded_chains();
 }
@@ -200,7 +255,40 @@ void chain_manager::find_available_chains(std::string_view root, std::string_vie
 					// Does it end in .json?
 					if (test_segment == extension)
 					{
-						m_available_chains.emplace_back(std::string(name.substr(0, start)), std::string(path));
+						// JSON 軽量プリスキャンで "screen_type" タグを抽出
+						std::string chain_name(name.substr(0, start));
+						std::string chain_subdir(path);
+						bool is_vector = false;
+						{
+							std::string full_relpath = chain_subdir.empty()
+								? (chain_name + ".json")
+								: util::path_concat(chain_subdir, chain_name + ".json");
+							std::string full_abspath = util::path_concat(std::string(root), full_relpath);
+							bx::FileReader rdr;
+							if (bx::open(&rdr, full_abspath.c_str()))
+							{
+								int32_t sz = bx::getSize(&rdr);
+								if (sz > 0)
+								{
+									std::unique_ptr<char[]> buf(new (std::nothrow) char[sz + 1]);
+									if (buf)
+									{
+										bx::ErrorAssert err;
+										bx::read(&rdr, buf.get(), sz, &err);
+										buf[sz] = 0;
+										Document doc;
+										doc.Parse<kParseCommentsFlag>(buf.get());
+										if (!doc.HasParseError() && doc.HasMember("screen_type") && doc["screen_type"].IsString())
+										{
+											if (std::string_view(doc["screen_type"].GetString()) == "vector")
+												is_vector = true;
+										}
+									}
+								}
+								bx::close(&rdr);
+							}
+						}
+						m_available_chains.emplace_back(std::move(chain_name), std::move(chain_subdir), is_vector);
 					}
 				}
 			}
@@ -296,6 +384,25 @@ void chain_manager::parse_chain_selections(std::string_view chain_str)
 
 		if (chain_index < m_available_chains.size())
 		{
+			// screen_type 互換性検証。非互換ならフォールバック。
+			const bool compat = (chain_index == CHAIN_NONE) ||
+				(m_available_chains[chain_index].m_is_vector == m_is_vector_game);
+			if (!compat)
+			{
+				osd_printf_warning("BGFX: chain '%s' is not compatible with %s game; using fallback\n",
+					std::string(chain_names[index]).c_str(),
+					m_is_vector_game ? "vector" : "raster");
+				// 最初の互換 chain (CHAIN_NONE 以外) を選ぶ。なければ CHAIN_NONE のまま。
+				chain_index = CHAIN_NONE;
+				for (size_t i : m_compat_chain_indices)
+				{
+					if (i != CHAIN_NONE)
+					{
+						chain_index = i;
+						break;
+					}
+				}
+			}
 			m_current_chain[index] = chain_index;
 			m_chain_names[index] = m_available_chains[chain_index].m_name;
 		}
@@ -406,6 +513,161 @@ void chain_manager::process_screen_quad(uint32_t view, uint32_t screen, screen_p
 	view += chain->applicable_passes();
 }
 
+// inject a GPU-rendered FBO as "screen0" for vector game chain processing.
+// Call this once per frame before process_screen_chains() when rendering a vector game.
+//
+// Design notes:
+//   - update_target_sizes() is called BEFORE update_screen_count() so that the
+//     "output0" target (if ever created) would have correct dimensions.
+//   - m_targets.update_screen_count() is intentionally NOT called here.
+//     This leaves "output0" absent from target_manager, so chainentry::setup_view()
+//     falls back to BGFX_INVALID_HANDLE (= real backbuffer) for the final pass.
+//     No post-chain blit is therefore needed.
+//   - prim.m_prim is set to nullptr.  This is safe as long as the chain JSON does not
+//     set apply_tint=true on any entry (misc/blit does not).
+void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
+	uint16_t width, uint16_t height, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	// (1) Set native dims first so any TARGET_STYLE_NATIVE targets get correct sizes.
+	m_targets.update_target_sizes(0, width, height, TARGET_STYLE_NATIVE,
+		m_user_prescale, m_max_prescale_size);
+
+	// (2) Register FBO color attachment as "screen0" in the chain texture manager.
+	m_textures.remove_provider("screen0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("screen0", std::move(prov));
+
+	// (3) Build synthetic screen_prim from window dimensions.
+	screen_prim prim;
+	prim.m_prim           = nullptr; // safe: chain does not use apply_tint
+	prim.m_screen_width   = width;
+	prim.m_screen_height  = height;
+	prim.m_quad_width     = width;
+	prim.m_quad_height    = height;
+	prim.m_tex_width      = float(vec_fb_w);
+	prim.m_tex_height     = float(vec_fb_h);
+	prim.m_rowpixels      = vec_fb_w;
+	prim.m_palette_length = 0;
+	prim.m_flags          = 0;
+
+	if (m_screen_prims.empty())
+		m_screen_prims.push_back(prim);
+	else
+		m_screen_prims[0] = prim;
+
+	// (4) Trigger chain loading on first call (no-op on subsequent frames).
+	update_screen_count(1);
+
+	// (5) : 現在の chain が vector 非互換ならば最初の vector chain にスワップ。
+	//     旧コードは "vector-starwars" 文字列をハードコードしていたが、screen_type タグ
+	//     ベースの判定に置き換え。chain JSON 側で "screen_type": "vector" タグを持てば
+	//     任意の vector chain が候補になる。
+	if (!m_screen_chains.empty() && m_current_chain[0] != CHAIN_NONE)
+	{
+		const size_t cur = size_t(m_current_chain[0]);
+		if (cur < m_available_chains.size() && !m_available_chains[cur].m_is_vector)
+		{
+			// 最初の vector chain にスワップ
+			for (size_t i = 0; i < m_available_chains.size(); i++)
+			{
+				if (m_available_chains[i].m_is_vector)
+				{
+					if (m_screen_chains[0] != nullptr)
+					{
+						delete m_screen_chains[0];
+						m_screen_chains[0] = nullptr;
+					}
+					m_current_chain[0] = int32_t(i);
+					m_chain_names[0] = m_available_chains[i].m_name;
+					load_chains();
+					break;
+				}
+			}
+		}
+	}
+
+	// (6) Create/recreate intermediate targets when dimensions change.
+	if (width != m_vec_win_w || height != m_vec_win_h || vec_fb_w != m_vec_fb_w || vec_fb_h != m_vec_fb_h)
+	{
+		m_vec_win_w = width;
+		m_vec_win_h = height;
+		m_vec_fb_w  = vec_fb_w;
+		m_vec_fb_h  = vec_fb_h;
+
+
+		// MAME HLSL bloom.fx 方式の 8 段 mip bloom。
+		// lvl0 (window/2) .. lvl7 (window/256) を 2x downsample chain で作成し、
+		// 各レベルを bilinear 拡大サンプルで重み付き ADD する (chain の ds_bloom* / add_bloom* pass)。
+		const uint16_t bloom_lvl_w[8] = {
+			std::max(uint16_t(1), uint16_t(width /   2)),
+			std::max(uint16_t(1), uint16_t(width /   4)),
+			std::max(uint16_t(1), uint16_t(width /   8)),
+			std::max(uint16_t(1), uint16_t(width /  16)),
+			std::max(uint16_t(1), uint16_t(width /  32)),
+			std::max(uint16_t(1), uint16_t(width /  64)),
+			std::max(uint16_t(1), uint16_t(width / 128)),
+			std::max(uint16_t(1), uint16_t(width / 256)),
+		};
+		const uint16_t bloom_lvl_h[8] = {
+			std::max(uint16_t(1), uint16_t(height /   2)),
+			std::max(uint16_t(1), uint16_t(height /   4)),
+			std::max(uint16_t(1), uint16_t(height /   8)),
+			std::max(uint16_t(1), uint16_t(height /  16)),
+			std::max(uint16_t(1), uint16_t(height /  32)),
+			std::max(uint16_t(1), uint16_t(height /  64)),
+			std::max(uint16_t(1), uint16_t(height / 128)),
+			std::max(uint16_t(1), uint16_t(height / 256)),
+		};
+		const char* bloom_names[8] = { "bloom_lvl0", "bloom_lvl1", "bloom_lvl2", "bloom_lvl3",
+		                               "bloom_lvl4", "bloom_lvl5", "bloom_lvl6", "bloom_lvl7" };
+		for (int i = 0; i < 8; i++)
+		{
+			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::BGRA8,
+				bloom_lvl_w[i], bloom_lvl_h[i], 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
+		}
+		// halo_smoothness 用の bloom_sum smoothing blur 中間 target。bloom_sum と同じ
+		// window サイズ・RGBA16F で bloom_sum → bloom_smooth_tmp (h-blur) → bloom_sum (v-blur)。
+		m_targets.create_target("bloom_smooth_tmp", bgfx::TextureFormat::RGBA16F,
+			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
+	}
+
+}
+// downsample/blur の uniform は chain JSON の auto-bind + per-pass uniforms で解決する。
+
+// UI slider のうち CPU 側で参照されるものは chain JSON (vector-*.json) の
+// sliders セクションに定義され、本 API で値を取得する。chain 未ロード時は default を返す。
+float chain_manager::slider_value(uint32_t screen, const std::string& name, float default_value)
+{
+	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
+		return default_value;
+	// slider_reader が float slider を name + "0" として登録するため、"0" 付きで比較する。
+	const std::string suffixed = name + "0";
+	for (bgfx_slider* slider : m_screen_chains[screen]->sliders())
+	{
+		if (slider->name() == suffixed)
+			return slider->value();
+	}
+	return default_value;
+}
+
+// chain entry の名前で uniform 上書きを注入する。m_monitor_glow_amount のような
+// CPU 集計値を毎フレーム GPU に渡すのに使う。
+bool chain_manager::inject_entry_uniform(uint32_t screen, const std::string& entry_name,
+	const std::string& uniform_name, const float* vals, int count)
+{
+	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
+		return false;
+	for (bgfx_chain_entry* entry : m_screen_chains[screen]->entries())
+	{
+		if (entry->name() == entry_name)
+		{
+			entry->set_uniform(uniform_name, vals, count);
+			return true;
+		}
+	}
+	return false;
+}
+
 uint32_t chain_manager::count_screens(render_primitive* prim)
 {
 	uint32_t screen_count = 0;
@@ -478,17 +740,24 @@ void chain_manager::set_current_chain(uint32_t screen, int32_t chain_index)
 	}
 }
 
+// chain selection slider は m_compat_chain_indices の中の index で動く。
+// newval / 戻り値はすべて compat list index。内部状態 m_current_chain[id] は絶対 index で保持。
 int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 {
 	if (newval != SLIDER_NOCHANGE)
 	{
-		set_current_chain(id, newval);
+		// compat list index を絶対 chain index に変換
+		if (newval >= 0 && size_t(newval) < m_compat_chain_indices.size())
+		{
+			int32_t abs_idx = int32_t(m_compat_chain_indices[newval]);
+			set_current_chain(id, abs_idx);
 
-		std::vector<std::vector<float>> settings = slider_settings();
-		reload_chains();
-		restore_slider_settings(id, settings);
+			std::vector<std::vector<float>> settings = slider_settings();
+			reload_chains();
+			restore_slider_settings(id, settings);
 
-		m_slider_notifier.set_sliders_dirty();
+			m_slider_notifier.set_sliders_dirty();
+		}
 	}
 
 	if (str != nullptr)
@@ -496,7 +765,13 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 		*str = m_available_chains[m_current_chain[id]].m_name;
 	}
 
-	return m_current_chain[id];
+	// 戻り値も compat list index に変換 (UI 側はこの index で表示)
+	for (size_t i = 0; i < m_compat_chain_indices.size(); i++)
+	{
+		if (int32_t(m_compat_chain_indices[i]) == m_current_chain[id])
+			return int32_t(i);
+	}
+	return 0;
 }
 
 void chain_manager::create_selection_slider(uint32_t screen_index)
@@ -506,9 +781,19 @@ void chain_manager::create_selection_slider(uint32_t screen_index)
 		return;
 	}
 
+	// slider 値は m_compat_chain_indices 内の index。
+	// 絶対 index (m_current_chain[screen_index]) を compat list 内の位置に変換して defval に。
 	int32_t minval = 0;
-	int32_t defval = m_current_chain[screen_index];
-	int32_t maxval = m_available_chains.size() - 1;
+	int32_t maxval = m_compat_chain_indices.empty() ? 0 : int32_t(m_compat_chain_indices.size()) - 1;
+	int32_t defval = 0;
+	for (size_t i = 0; i < m_compat_chain_indices.size(); i++)
+	{
+		if (int32_t(m_compat_chain_indices[i]) == m_current_chain[screen_index])
+		{
+			defval = int32_t(i);
+			break;
+		}
+	}
 	int32_t incval = 1;
 
 	using namespace std::placeholders;
@@ -760,7 +1045,15 @@ void chain_manager::load_config(util::xml::data_node const &windownode)
 					if (m_available_chains.end() != found)
 					{
 						auto const chainnum = found - m_available_chains.begin();
-						if (chainnum != m_current_chain[index])
+						// screen_type 互換性検証。非互換 cfg は無視。
+						const bool compat = (size_t(chainnum) == CHAIN_NONE) ||
+							(m_available_chains[chainnum].m_is_vector == m_is_vector_game);
+						if (!compat)
+						{
+							osd_printf_warning("BGFX: config chain '%s' not compatible with %s game; ignoring\n",
+								chainname, m_is_vector_game ? "vector" : "raster");
+						}
+						else if (chainnum != m_current_chain[index])
 						{
 							m_current_chain[index] = chainnum;
 							changed = true;

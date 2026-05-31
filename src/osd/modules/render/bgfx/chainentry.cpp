@@ -13,6 +13,7 @@
 
 #include <bgfx/bgfx.h>
 #include <bx/math.h>
+#include <algorithm>
 #include <cmath>
 
 #include "chainentry.h"
@@ -102,6 +103,12 @@ void bgfx_chain_entry::submit(int view, chain_manager::screen_prim &prim, textur
 		}
 	}
 
+	for (auto& [uname, uvals] : m_uniform_overrides)
+	{
+		bgfx_uniform* u = m_effect->uniform(uname);
+		if (u) u->set(const_cast<float*>(uvals.data()), sizeof(float) * 4);
+	}
+
 	m_effect->submit(view);
 
 	if (m_targets.target(screen, m_output) != nullptr)
@@ -154,8 +161,12 @@ void bgfx_chain_entry::setup_screensize_uniforms(texture_manager& textures, uint
 	if (m_inputs.size() > 0)
 	{
 		std::string name = m_inputs[0]->texture() + std::to_string(screen);
-		width = float(textures.provider(name)->width());
-		height = float(textures.provider(name)->height());
+		bgfx_texture_handle_provider* prov = textures.provider(name);
+		if (prov != nullptr)
+		{
+			width = float(prov->width());
+			height = float(prov->height());
+		}
 	}
 
 	bgfx_uniform* screen_dims = m_effect->uniform("u_screen_dims");
@@ -306,7 +317,10 @@ bool bgfx_chain_entry::setup_view(texture_manager &textures, int view, uint16_t 
 	const bgfx::Caps* caps = bgfx::getCaps();
 
 	std::string name = m_inputs[0]->texture() + std::to_string(screen);
-	const float right_ratio = float(textures.provider(name)->width()) / textures.provider(name)->rowpixels();
+	bgfx_texture_handle_provider* first_prov = textures.provider(name);
+	if (first_prov == nullptr)
+		return false;
+	const float right_ratio = float(first_prov->width()) / first_prov->rowpixels();
 
 	float projMat[16];
 	bx::mtxOrtho(projMat, 0.0f, right_ratio, 1.0f, 0.0f, 0.0f, 100.0f, 0.0f, caps->homogeneousDepth);
@@ -382,6 +396,13 @@ void bgfx_chain_entry::put_screen_buffer(uint16_t screen_width, uint16_t screen_
 	vertex[5].m_rgba = screen_tint;
 	vertex[5].m_u = u[0];
 	vertex[5].m_v = v[0];
+}
+
+void bgfx_chain_entry::set_uniform(const std::string& uname, const float* vals, int count)
+{
+	auto& arr = m_uniform_overrides[uname];
+	arr.fill(0.0f);
+	std::copy_n(vals, std::min(count, 4), arr.begin());
 }
 
 bool bgfx_chain_entry::skip()

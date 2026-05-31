@@ -61,7 +61,11 @@ void bgfx_ortho_view::setup_matrices() {
 	const bgfx::Caps* caps = bgfx::getCaps();
 
 	bx::mtxIdentity(view);
-	bx::mtxOrtho(proj, 0.0f, m_view_width, m_view_height, 0.0f, m_z_near, m_z_far, 0.0f, caps->homogeneousDepth);
+	// projection は等倍 (2x supersample にしない)。set_bounds(W*2, H*2) と組み合わせると
+	// MAME UI の glyph 位置に sub-pixel shift が生じ、atlas POINT サンプリングで隣セル ("|" 等)
+	// を読み込んでしまうため。vector 線の supersample は vec_fb (= 2x window) のラスタライザ解像度に任せる。
+	bx::mtxOrtho(proj, 0.0f, m_view_width, m_view_height, 0.0f,
+		m_z_near, m_z_far, 0.0f, caps->homogeneousDepth);
 
 	bgfx::setViewTransform(m_index, view, proj);
 }

@@ -16,7 +16,9 @@
 
 #include <bgfx/bgfx.h>
 
+#include <array>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "inputpair.h"
@@ -45,6 +47,8 @@ public:
 	std::string name() const { return m_name; }
 	std::vector<bgfx_input_pair*>& inputs() { return m_inputs; }
 	bool skip();
+
+	void set_uniform(const std::string& name, const float* vals, int count = 4);
 
 private:
 	void setup_auto_uniforms(chain_manager::screen_prim &prim, texture_manager& textures, uint16_t screen_count, uint16_t view_width, uint16_t view_height,
@@ -76,6 +80,7 @@ private:
 	target_manager&                     m_targets;
 	std::string                         m_output;
 	bool                                m_apply_tint;
+	std::unordered_map<std::string, std::array<float, 4>> m_uniform_overrides;
 };
 
 #endif // __DRAWBGFX_CHAIN_ENTRY__

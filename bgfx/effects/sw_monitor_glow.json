@@ -1,0 +1,26 @@
+// license:BSD-3-Clause
+// Monitor Glow - フルスクリーン放射状加算合成
+// uniforms:
+//   u_mglow_amount:    CPU 集計値（毎フレーム drawbgfx.cpp から inject）
+//   u_mglow_brightness: 全体輝度乗算 slider (default 0.5)
+//   u_mglow_edge_diff:  中央→端の輝度差 slider (default 0.5)
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "1",
+		"srcAlpha": "1",
+		"dstAlpha": "1"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "fs_sw_monitor_glow",
+	"uniforms": [
+		{ "name": "u_mglow_amount",     "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_mglow_brightness", "type": "vec4", "values": [ 0.5, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_mglow_edge_diff",  "type": "vec4", "values": [ 0.5, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims",    "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

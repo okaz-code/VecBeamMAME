@@ -39,6 +39,24 @@ bgfx_target* target_reader::read_from_value(
 	uint32_t mode = uint32_t(get_enum_from_value(value, "mode", TARGET_STYLE_NATIVE, STYLE_NAMES, STYLE_COUNT));
 	bool bilinear = get_bool(value, "bilinear", true);
 	bool double_buffer = get_bool(value, "doublebuffer", true);
+
+	// chain JSON で target format を指定可能に。
+	// HLSL D3D 互換 bloom の bloom_sum target で RGBA16F が必要 (1.0 clamp 回避)。
+	// 未指定時は従来通り BGRA8。
+	bgfx::TextureFormat::Enum format = bgfx::TextureFormat::BGRA8;
+	if (value.HasMember("format") && value["format"].IsString())
+	{
+		std::string fmt_str = value["format"].GetString();
+		if      (fmt_str == "RGBA16F") format = bgfx::TextureFormat::RGBA16F;
+		else if (fmt_str == "RGBA32F") format = bgfx::TextureFormat::RGBA32F;
+		else if (fmt_str == "RGBA16")  format = bgfx::TextureFormat::RGBA16;
+		else if (fmt_str == "RGBA8")   format = bgfx::TextureFormat::RGBA8;
+		else if (fmt_str == "BGRA8")   format = bgfx::TextureFormat::BGRA8;
+		else
+		{
+			READER_WARN(false, "%sTarget '%s': unknown format '%s', falling back to BGRA8\n", prefix, target_name, fmt_str);
+		}
+	}
 	int scale = 1;
 	if (value.HasMember("scale"))
 	{
@@ -87,7 +105,7 @@ bgfx_target* target_reader::read_from_value(
 			break;
 	}
 
-	return chains.targets().create_target(std::move(target_name), bgfx::TextureFormat::BGRA8, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index);
+	return chains.targets().create_target(std::move(target_name), format, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index);
 }
 
 bool target_reader::validate_parameters(const Value& value, const std::string &prefix)

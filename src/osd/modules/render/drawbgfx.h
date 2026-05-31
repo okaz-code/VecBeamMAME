@@ -8,6 +8,7 @@
 #include "binpacker.h"
 #include "bgfx/chain.h"
 #include "bgfx/chainmanager.h"
+#include "bgfx/slider.h"
 #include "bgfx/vertex.h"
 #include "sliderdirtynotifier.h"
 
@@ -37,6 +38,10 @@ class avi_write;
 class renderer_bgfx : public osd_renderer, public slider_dirty_notifier
 {
 public:
+	// ベクター描画のスーパーサンプル倍率（render_target bounds と
+	// FBO 解像度の両方に使う）。view.cpp 等から参照されるため public で公開する。
+	static constexpr uint16_t VEC_SUPERSAMPLE = 2;
+
 	class parent_module;
 
 	renderer_bgfx(osd_window &window, parent_module &parent_module);
@@ -103,6 +108,11 @@ private:
 	void put_polygon(const float* coords, uint32_t num_coords, float r, uint32_t rgba, ScreenVertex* vertex);
 	void put_line(float x0, float y0, float x1, float y1, float r, uint32_t rgba, ScreenVertex* vertex, float fth = 1.0f);
 
+	// AA 無しソリッド線（FBO 経由のベクター描画用）
+	// 6 頂点で線を1つのソリッドクワッドとして描画する。put_packed_line とは違って
+	// 透明縁が無いので、線の太さと角度に関係なく均一な輝度を持つ。
+	void put_solid_line(render_primitive *prim, ScreenVertex* vertex);
+
 	void set_bgfx_state(uint32_t blend);
 
 	static uint32_t u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
@@ -132,6 +142,20 @@ private:
 	bgfx_effect *m_gui_effect[4];
 	bgfx_effect *m_screen_effect[4];
 	std::vector<uint32_t> m_seen_views;
+
+	// BGFXサンプル方式のベクター描画用 FBO（chain_managerを経由しない）
+	// G : VEC_SUPERSAMPLE は public セクションに移動
+	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
+	uint16_t m_vec_fb_w = 0;
+	uint16_t m_vec_fb_h = 0;
+	bool m_vectors_in_fbo = false;  // 今フレーム、ベクター LINE は FBO に描画済みか
+
+	// 解析的 AA ベクター線エフェクト (fs_sw_line)。ベクター LINE を m_vec_fb に描画する。
+	// 以降の phosphor / bloom / shadow mask / distortion は全て chain (JSON) 側が処理する。
+	bgfx_effect* m_line_effect = nullptr;
+
+	// UI slider は chain JSON の sliders セクションで定義し、CPU 側で使う値は
+	// m_chains->slider_value(0, name, default) で取得する。
 
 	std::map<uint32_t, rectangle_packer::packed_rectangle> m_hash_to_entry;
 	std::vector<rectangle_packer::packable_rectangle> m_texinfo;

@@ -55,7 +55,11 @@ void avgdvg_device_base::apply_flipping(int &x, int &y) const
 
 void avgdvg_device_base::vg_flush()
 {
-	int cx0 = 0, cy0 = 0, cx1 = 0x5000000, cy1 = 0x5000000;
+	// 原 MAME との差分: デフォルトクリップ窓の下限を 0 から -0x5000000 に変え、原点対称にした。
+	// 原版は下限 0 で左/上の画面外ビーム (負座標) を捨て、右/下のみ 0x5000000 まで通す非対称だった。
+	// 実機は中心 0 の符号付き座標を走査するため、対称窓にして overscan zoom で左/上も表示できるようにする。
+	// zoom 1.0 では描画側が画面端でクリップするので見た目は不変。
+	int cx0 = -0x5000000, cy0 = -0x5000000, cx1 = 0x5000000, cy1 = 0x5000000;
 	int i = 0;
 
 	while (m_vectbuf[i].status == VGCLIP)
@@ -122,8 +126,18 @@ void avgdvg_device_base::vg_flush()
 				y1 = cy1;
 			}
 
-			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0);
-			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity);
+			// raw_score (STAR WARS) があれば専用パス、それ以外は既存
+			const uint16_t rs = m_vectbuf[i].raw_score;
+			if (rs > 0)
+			{
+				m_vector->add_point_sw(x0, y0, m_vectbuf[i].color, 0, 0);
+				m_vector->add_point_sw(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, rs);
+			}
+			else
+			{
+				m_vector->add_point(x0, y0, m_vectbuf[i].color, 0);
+				m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity);
+			}
 		}
 
 		if (m_vectbuf[i].status == VGCLIP)
@@ -152,6 +166,22 @@ void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensi
 		m_vectbuf[m_nvect].y = y;
 		m_vectbuf[m_nvect].color = color;
 		m_vectbuf[m_nvect].intensity = intensity;
+		m_vectbuf[m_nvect].raw_score = 0;  // 通常パス
+		m_nvect++;
+	}
+}
+
+// STAR WARS 専用、raw_score (VCTR_x * STAT_intensity) も保存
+void avgdvg_device_base::vg_add_point_buf_sw(int x, int y, rgb_t color, int intensity, uint16_t raw_score)
+{
+	if (m_nvect < MAXVECT)
+	{
+		m_vectbuf[m_nvect].status = VGVECTOR;
+		m_vectbuf[m_nvect].x = x;
+		m_vectbuf[m_nvect].y = y;
+		m_vectbuf[m_nvect].color = color;
+		m_vectbuf[m_nvect].intensity = intensity;
+		m_vectbuf[m_nvect].raw_score = raw_score;
 		m_nvect++;
 	}
 }
@@ -923,11 +953,32 @@ int avg_starwars_device::handler_7() // starwars_strobe3
 
 	if (!OP0() && !OP2())
 	{
-		vg_add_point_buf(
+		// STAR WARS 専用パスへ。
+		// VCTR Intensity (上位 3 bit) の固定テーブル値 × STAT Intensity (8 bit) を生スコアとして渡す。
+		// vector.cpp::screen_update で sigmoid + 閾値分割 + 太さ計算を行う (renderer の slider 経由)。
+		// VCTR x table (bit -> x): 000=0.00, 001=1.00, 010=1.96, 011=2.96, 100=3.91, 101=4.91, 110=5.87, 111=6.87
+		static constexpr float kVctrX[8] = {
+			0.00f, 1.00f, 1.96f, 2.96f, 3.91f, 4.91f, 5.87f, 6.87f
+		};
+		const int vctr_idx = (m_int_latch >> 1) & 0x07;
+		const float vctr_x = kVctrX[vctr_idx];
+		const float raw_f = vctr_x * float(m_intensity);  // 0..1751.85
+		const uint16_t raw_score = uint16_t(std::clamp(raw_f, 0.0f, 1751.85f) + 0.5f);
+
+		// fix: STAT (m_intensity) = 0 のとき draw_intensity も 0 にする。
+		// 旧コードは int_latch >> 1 != 1 の時 m_intensity を使わず m_int_latch のビット
+		// から定数を作るため、STAT が 0 でも draw_intensity が高い値になり、文字が消える
+		// 最終フレームで明るい線が 1 フレーム描画されて flash を起こしていた。
+		// vector.cpp は intensity == 0 で線を skip するので、ここで 0 にすれば解消。
+		const int draw_intensity = (m_intensity == 0) ? 0 :
+			((((m_int_latch >> 1) == 1) ? m_intensity : (m_int_latch & 0xe)) << 4);
+
+		vg_add_point_buf_sw(
 				m_xpos,
 				m_ypos,
 				vector_device::color111(m_color),
-				((m_int_latch >> 1) * m_intensity) >> 3);
+				draw_intensity,
+				raw_score);
 	}
 
 	return cycles;

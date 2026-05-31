@@ -1,0 +1,33 @@
+// license:BSD-3-Clause
+// カラーベクター用 shadow mask 効果。
+// 入力テクスチャ (color_out) に shadow mask テクスチャを掛けて RGB ストライプ模様を表現。
+// 実機のカラーベクター CRT (STAR WARS, Tempest 等) は shadow mask を備えていたため
+// 物理的に正確な再現になる。
+//
+// uniforms (各 vec4 の .x のみ使用、per-pass 1 slider バインド制約のため):
+//   u_shadow_mask_strength.x:    strength    (0.0 = mask 無効、1.0 = full mask)
+//   u_shadow_mask_brightboost.x: brightboost (mask 暗化を補正、0.0..2.0)
+//   u_shadow_mask_scale.x:       scale       (mask タイルの pixel サイズ、1.0 = 最細)
+//   u_target_dims:               chain 自動設定 (出力ターゲットの幅高)
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "fs_sw_shadow_mask",
+	"uniforms": [
+		{ "name": "s_tex",                     "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_mask",                    "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_shadow_mask_strength",    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_brightboost", "type": "vec4", "values": [ 0.4, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_scale",       "type": "vec4", "values": [ 2.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_target_dims",             "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

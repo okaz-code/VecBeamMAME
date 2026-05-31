@@ -38,6 +38,10 @@ public:
 	void set_index(uint32_t index) { m_index = index; }
 	uint32_t get_index() const { return m_index; }
 
+	// UI view を blit 後の late index に置くため、
+	// backbuffer をクリアしないオプションを提供
+	void disable_color_clear() { m_do_clear_color = false; m_do_clear_depth = false; }
+
 	virtual void setup() = 0;
 	virtual void setup_matrices() = 0;
 

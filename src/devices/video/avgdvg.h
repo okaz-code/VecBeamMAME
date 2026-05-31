@@ -43,6 +43,9 @@ protected:
 		int intensity;
 		int arg1; int arg2;
 		int status;
+		// STAR WARS 用、VCTR_x * STAT_intensity 由来の生スコア (0..1752)。
+		// 0 で通常パス、>0 で STAR WARS 専用計算パス。
+		uint16_t raw_score;
 	};
 
 	avgdvg_device_base(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock);
@@ -74,6 +77,8 @@ protected:
 
 	void vg_flush();
 	void vg_add_point_buf(int x, int y, rgb_t color, int intensity);
+	// STAR WARS 専用、raw_score も格納
+	void vg_add_point_buf_sw(int x, int y, rgb_t color, int intensity, uint16_t raw_score);
 	void vg_add_clip(int xmin, int ymin, int xmax, int ymax);
 
 	required_device<vector_device> m_vector;
