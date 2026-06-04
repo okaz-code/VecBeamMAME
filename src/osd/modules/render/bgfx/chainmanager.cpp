@@ -602,6 +602,50 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 		}
 	}
 
+	// (6) Create/recreate the dynamically-sized bloom mip targets when dimensions change.
+	// These are sized relative to the window (window/2 .. window/256), so they cannot be declared
+	// with fixed sizes in the chain JSON; the CRT chains (vector-color / vector-monochrome) read
+	// bloom_lvl0..7 and bloom_smooth_tmp by name.
+	if (width != m_vec_win_w || height != m_vec_win_h || vec_fb_w != m_vec_fb_w || vec_fb_h != m_vec_fb_h)
+	{
+		m_vec_win_w = width;
+		m_vec_win_h = height;
+		m_vec_fb_w  = vec_fb_w;
+		m_vec_fb_h  = vec_fb_h;
+
+		// 8-level mip bloom in the style of MAME's HLSL bloom.fx: lvl0 (window/2) .. lvl7 (window/256).
+		const uint16_t bloom_lvl_w[8] = {
+			std::max(uint16_t(1), uint16_t(width /   2)),
+			std::max(uint16_t(1), uint16_t(width /   4)),
+			std::max(uint16_t(1), uint16_t(width /   8)),
+			std::max(uint16_t(1), uint16_t(width /  16)),
+			std::max(uint16_t(1), uint16_t(width /  32)),
+			std::max(uint16_t(1), uint16_t(width /  64)),
+			std::max(uint16_t(1), uint16_t(width / 128)),
+			std::max(uint16_t(1), uint16_t(width / 256)),
+		};
+		const uint16_t bloom_lvl_h[8] = {
+			std::max(uint16_t(1), uint16_t(height /   2)),
+			std::max(uint16_t(1), uint16_t(height /   4)),
+			std::max(uint16_t(1), uint16_t(height /   8)),
+			std::max(uint16_t(1), uint16_t(height /  16)),
+			std::max(uint16_t(1), uint16_t(height /  32)),
+			std::max(uint16_t(1), uint16_t(height /  64)),
+			std::max(uint16_t(1), uint16_t(height / 128)),
+			std::max(uint16_t(1), uint16_t(height / 256)),
+		};
+		const char* bloom_names[8] = { "bloom_lvl0", "bloom_lvl1", "bloom_lvl2", "bloom_lvl3",
+									   "bloom_lvl4", "bloom_lvl5", "bloom_lvl6", "bloom_lvl7" };
+		for (int i = 0; i < 8; i++)
+		{
+			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::BGRA8,
+				bloom_lvl_w[i], bloom_lvl_h[i], 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
+		}
+		// bloom_sum smoothing-blur intermediate (RGBA16F, window size) used by halo_smoothness:
+		// bloom_sum -> bloom_smooth_tmp (h-blur) -> bloom_sum (v-blur).
+		m_targets.create_target("bloom_smooth_tmp", bgfx::TextureFormat::RGBA16F,
+			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
+	}
 }
 
 uint32_t chain_manager::count_screens(render_primitive* prim)

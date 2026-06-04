@@ -168,6 +168,13 @@ private:
 
 	static inline constexpr uint32_t CHAIN_NONE = 0;
 
+	// Window/FBO dimensions from the last inject_vector_screen() call; used to recreate the
+	// dynamically-sized bloom mip targets only when the size changes.
+	uint16_t m_vec_win_w = 0;
+	uint16_t m_vec_win_h = 0;
+	uint16_t m_vec_fb_w  = 0;
+	uint16_t m_vec_fb_h  = 0;
+
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;
 	// Absolute indices into m_available_chains that are compatible with the current game type,

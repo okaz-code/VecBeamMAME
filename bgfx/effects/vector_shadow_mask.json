@@ -1,0 +1,34 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Shadow-mask effect for color vectors.
+// Multiplies the input texture (color_out) by a shadow-mask texture to produce RGB stripes.
+// Real color vector CRTs (STAR WARS, Tempest, etc.) had a shadow mask, so this is a physically
+// accurate reproduction.
+//
+// uniforms (only .x of each vec4 is used, due to the one-slider-per-pass bind constraint):
+//   u_shadow_mask_strength.x:    strength    (0.0 = mask off, 1.0 = full mask)
+//   u_shadow_mask_brightboost.x: brightboost (compensates the mask's darkening, 0.0..2.0)
+//   u_shadow_mask_scale.x:       scale       (mask tile pixel size, 1.0 = finest)
+//   u_target_dims:               set automatically by the chain (output target width/height)
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "fs_vector_shadow_mask",
+	"uniforms": [
+		{ "name": "s_tex",                     "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_mask",                    "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_shadow_mask_strength",    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_brightboost", "type": "vec4", "values": [ 0.4, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_scale",       "type": "vec4", "values": [ 2.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_target_dims",             "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
