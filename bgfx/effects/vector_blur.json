@@ -1,0 +1,23 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Separable Gaussian blur effect for the vector glow.
+// uniforms:
+//   u_inv_screen_dims: reciprocal of the input texture size (set automatically by the chain system)
+//   u_blur_dir:        direction vector. horizontal = (1, 0, 0, 0), vertical = (0, 1, 0, 0).
+//                      Overridden by per-pass uniforms in the chain JSON.
+//   u_blur_width:      Halo Width slider (default 1.0). Tap-spacing multiplier.
+//   u_blur_strength:   Halo Strength slider (default 1.5). Output intensity multiply.
+{
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "fs_vector_blur",
+	"uniforms": [
+		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_blur_dir",        "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_blur_width",      "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_blur_strength",   "type": "vec4", "values": [ 1.5, 1.5, 1.5, 0.0 ] }
+	]
+}
