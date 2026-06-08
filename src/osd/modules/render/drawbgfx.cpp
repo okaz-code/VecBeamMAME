@@ -810,6 +810,7 @@ int renderer_bgfx::create()
 		// define them (coefficient defaults to 0) accumulates nothing.
 		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
 		{
+			m_vector_device = &vec;  // for the CRT-flicker stale-frame query
 			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; });
 			m_mglow_line_sub = vec.add_overload_line_notifier(
 				[this] (float x0, float y0, float x1, float y1, float overload)
@@ -1412,8 +1413,10 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
 		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
 	}
+	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering).
+	length_factor *= m_crt_flicker_factor;
 
-	// Pack the line color: hue from the primitive (× length fade), alpha = computed display intensity.
+	// Pack the line color: hue from the primitive (× length fade × flicker), alpha = display intensity.
 	const uint32_t rgba = u32Color(
 		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
 		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
@@ -1702,6 +1705,12 @@ int renderer_bgfx::draw(int update)
 					// fill vertex data (put_solid_line builds the AA-free quad + rounded fans)
 					int vertices = 0;
 					ScreenVertex* vptr = reinterpret_cast<ScreenVertex*>(tvb.data);
+
+					// CRT flicker: dim the whole frame when the beam list was not refreshed this frame.
+					// Renderer-side (bgfx only); the amount comes from the chain's vector_crt_flicker slider.
+					m_crt_flicker_factor = (m_vector_device != nullptr && m_vector_device->beam_list_stale())
+						? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
+						: 1.0f;
 
 					render_primitive *vprim = window().m_primlist->first();
 					while (vprim != nullptr)

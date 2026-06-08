@@ -33,6 +33,7 @@ class bgfx_target;
 class bgfx_view;
 class osd_options;
 class avi_write;
+class vector_device;
 
 /* renderer_bgfx is the information about BGFX for the current screen */
 class renderer_bgfx : public osd_renderer, public slider_dirty_notifier
@@ -178,6 +179,11 @@ private:
 	float m_mglow_amount = 0.0f;
 	util::notifier_subscription m_mglow_line_sub;
 	util::notifier_subscription m_mglow_frame_sub;
+
+	// CRT flicker: the vector device (if any) whose stale-frame flag is read, and the per-frame dim
+	// factor (1.0 = none) computed from it and the chain's vector_crt_flicker slider.
+	vector_device *m_vector_device = nullptr;
+	float m_crt_flicker_factor = 1.0f;
 
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;

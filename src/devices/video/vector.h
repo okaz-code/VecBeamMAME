@@ -52,6 +52,10 @@ public:
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void clear_list();
 
+	// True when the beam list was not refreshed since the previous frame (the CPU did not start a
+	// new list). A renderer can use this to reproduce CRT flicker; the emulation does not act on it.
+	bool beam_list_stale() const { return m_beam_list_stale; }
+
 	// overload is the normalized (0..1) raw beam energy for renderer overdrive effects.
 	// Pass < 0 (the default) when the device has no raw beam-energy signal; the display
 	// intensity is then used as the normalized value instead. The displayed intensity is
@@ -105,6 +109,11 @@ private:
 	int m_vector_index;
 	int m_min_intensity;
 	int m_max_intensity;
+	// Generation counters for CRT-flicker detection: clear_list() bumps m_list_generation when the
+	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
+	uint32_t m_list_generation;
+	uint32_t m_last_drawn_generation;
+	bool m_beam_list_stale;
 
 	// notify interested parties about vector-drawing activities
 	util::notifier<> m_frame_begin_notifier;
