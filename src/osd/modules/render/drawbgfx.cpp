@@ -1398,11 +1398,26 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	}
 	if (width < 0.5f) width = 0.5f;
 
-	// Pack the line color: hue from the primitive, alpha = computed display intensity.
+	// Length fade (port of the HLSL vector.fx length modulation): longer segments lose intensity,
+	// reproducing the electron-beam current load. Folded into the line colour here.
+	//   norm_len = pixel_len / max(window_w, window_h)
+	//   length_factor = lerp(1, 1 - clamp(norm_len / ratio, 0, 1), scale)
+	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
+	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
+	float length_factor = 1.0f;
+	if (vls_scale > 0.0001f && vls_ratio > 0.0001f)
+	{
+		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
+		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
+		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
+		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
+	}
+
+	// Pack the line color: hue from the primitive (× length fade), alpha = computed display intensity.
 	const uint32_t rgba = u32Color(
-		uint32_t(prim->color.r * 255.0f + 0.5f),
-		uint32_t(prim->color.g * 255.0f + 0.5f),
-		uint32_t(prim->color.b * 255.0f + 0.5f),
+		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
+		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
+		uint32_t(prim->color.b * length_factor * 255.0f + 0.5f),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
 	if (seg_len > 0.0001f)
@@ -1438,10 +1453,10 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	uint32_t cap_center_rgba = rgba;
 	if (cap_bright > 1.0001f)
 	{
-		const uint32_t r8 = std::min<uint32_t>(uint32_t(prim->color.r * cap_bright * 255.0f + 0.5f), 255);
-		const uint32_t g8 = std::min<uint32_t>(uint32_t(prim->color.g * cap_bright * 255.0f + 0.5f), 255);
-		const uint32_t b8 = std::min<uint32_t>(uint32_t(prim->color.b * cap_bright * 255.0f + 0.5f), 255);
-		const uint32_t a8 = std::min<uint32_t>(uint32_t(prim->color.a * 255.0f + 0.5f), 255);
+		const uint32_t r8 = std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t g8 = std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t b8 = std::min<uint32_t>(uint32_t(prim->color.b * length_factor * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t a8 = std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255);
 		cap_center_rgba = u32Color(r8, g8, b8, a8);
 	}
 
