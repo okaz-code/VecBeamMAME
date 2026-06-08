@@ -13,6 +13,7 @@
 
 #include <bgfx/bgfx.h>
 #include <bx/math.h>
+#include <algorithm>
 #include <cmath>
 
 #include "chainentry.h"
@@ -102,6 +103,13 @@ void bgfx_chain_entry::submit(int view, chain_manager::screen_prim &prim, textur
 		}
 	}
 
+	// Apply any runtime uniform overrides (e.g. a per-frame CPU-computed value) on top.
+	for (auto& [uname, uvals] : m_uniform_overrides)
+	{
+		bgfx_uniform* u = m_effect->uniform(uname);
+		if (u) u->set(const_cast<float*>(uvals.data()), sizeof(float) * 4);
+	}
+
 	m_effect->submit(view);
 
 	if (m_targets.target(screen, m_output) != nullptr)
@@ -185,6 +193,13 @@ void bgfx_chain_entry::setup_screenscale_uniforms(float screen_scale_x, float sc
 		float values[2] = { screen_scale_x, screen_scale_y };
 		screen_scale->set(values, sizeof(float) * 2);
 	}
+}
+
+void bgfx_chain_entry::set_uniform(const std::string& uname, const float* vals, int count)
+{
+	auto& arr = m_uniform_overrides[uname];
+	arr.fill(0.0f);
+	std::copy_n(vals, std::min(count, 4), arr.begin());
 }
 
 void bgfx_chain_entry::setup_screenoffset_uniforms(float screen_offset_x, float screen_offset_y)

@@ -17,6 +17,11 @@
 		{ "type": "float", "name": "overload_width_curve_high", "text": "Overload Width Curve High", "default": 0.0,  "min": -1.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_width_max",        "text": "Overload Max Width",        "default": 5.0,  "min": 1.0,  "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_softness",         "text": "Overload Softness",         "default": 2.0,  "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_threshold",           "text": "Monitor Glow Threshold",        "default": 0.7,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_min_distance",        "text": "Monitor Glow Off-screen Dist",  "default": 0.30, "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_coefficient",         "text": "Monitor Glow Coefficient",      "default": 0.3,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_brightness",          "text": "Monitor Glow Brightness",       "default": 0.5,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_center_edge_diff",    "text": "Monitor Glow Center-Edge Diff", "default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_min",            "text": "Beam Width Minimum",        "default": 1.0,  "min": 1.0,  "max": 5.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_max",            "text": "Beam Width Maximum",        "default": 1.5,  "min": 1.0,  "max": 10.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_dot_size_min",         "text": "Beam Dot Size Min",         "default": 0.1,  "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.2f", "screen": "vector" },
@@ -353,6 +358,15 @@
 			{ "uniform": "u_bloom_overdrive",   "slider":    "bloom_overdrive" },
 			{ "uniform": "u_bloom_channel_gain","slider":    "bloom_channel_gain" },
 			{ "uniform": "u_time",              "parameter": "time" }
+		  ],
+		  "output": "post_bloom" },
+
+		{ "effect": "vector_monitor_glow", "name": "add_mglow", "clear": {},
+		  "_comment": "monitor glow composited after Bloom Apply (self-RW of post_bloom, safe since it is point-sampled). u_mglow_amount is a per-frame value injected by the renderer.",
+		  "input": [ { "sampler": "s_tex", "target": "post_bloom" } ],
+		  "uniforms": [
+			{ "uniform": "u_mglow_brightness", "slider": "mglow_brightness" },
+			{ "uniform": "u_mglow_edge_diff",  "slider": "mglow_center_edge_diff" }
 		  ],
 		  "output": "post_bloom" },
 

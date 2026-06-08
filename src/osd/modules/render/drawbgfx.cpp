@@ -32,6 +32,7 @@
 #include "emu.h"
 #include "config.h"
 #include "render.h"
+#include "video/vector.h"
 #include "rendutil.h"
 
 // complete slider_state type (for core->description access)
@@ -801,6 +802,33 @@ int renderer_bgfx::create()
 	if (window().index() == 0)
 	{
 		m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector_line");
+
+		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
+		// frame_begin resets the per-frame accumulator; the overload-line notifier accumulates
+		// off-screen overload energy weighted by how far the beam runs past the screen edge. The
+		// thresholds/coefficient come from the active chain's sliders, so a chain that does not
+		// define them (coefficient defaults to 0) accumulates nothing.
+		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
+		{
+			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; });
+			m_mglow_line_sub = vec.add_overload_line_notifier(
+				[this] (float x0, float y0, float x1, float y1, float overload)
+				{
+					const float coeff = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
+					const float thr   = m_chains->slider_value(0, "mglow_threshold", 0.7f);
+					if (coeff <= 0.0f || overload <= thr)
+						return;
+					const float mind = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
+					auto outside = [] (float x, float y) {
+						const float dx = (x < 0.0f) ? -x : (x > 1.0f) ? (x - 1.0f) : 0.0f;
+						const float dy = (y < 0.0f) ? -y : (y > 1.0f) ? (y - 1.0f) : 0.0f;
+						return std::max(dx, dy);
+					};
+					if (std::max(outside(x0, y0), outside(x1, y1)) > mind)
+						m_mglow_amount += (overload - thr) * coeff;
+				});
+			break;
+		}
 	}
 
 	return 0;
@@ -1747,6 +1775,11 @@ int renderer_bgfx::draw(int update)
 			// Guard against null chain (e.g. chain change from menu, or failed load).
 			if (m_chains->has_applicable_chain(0))
 			{
+				// Feed the per-frame monitor-glow accumulation into the chain's glow pass.
+				// No-op when the active chain has no "add_mglow" pass.
+				const float mglow_vals[4] = { m_mglow_amount, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
+
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
 			}
