@@ -111,6 +111,11 @@ util::notifier_subscription vector_device::add_line_notifier(line_delegate &&n)
 	return m_line_notifier.subscribe(std::move(n));
 }
 
+util::notifier_subscription vector_device::add_overload_line_notifier(overload_line_delegate &&n)
+{
+	return m_overload_line_notifier.subscribe(std::move(n));
+}
+
 
 //-------------------------------------------------
 // www.dinodini.wordpress.com/2010/04/05/normalized-tunable-sigmoid-functions/
@@ -234,6 +239,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					flags,
 					curpoint->overload);
 			m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
+			// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
+			m_overload_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->overload);
 		}
 		else
 		{
