@@ -82,6 +82,10 @@ public:
 	uint32_t window_index() const { return m_window_index; }
 	uint32_t screen_count() const { return m_screen_count; }
 	bgfx_chain* screen_chain(uint32_t screen);
+	// Look up the current value of a named float slider in a screen's active chain.
+	// Returns default_value when the chain or slider is absent, so a renderer can read
+	// optional per-chain parameters by name without the chain having to define them.
+	float slider_value(uint32_t screen, const std::string& name, float default_value);
 	std::unique_ptr<bgfx_chain> load_chain(std::string name, uint32_t screen_index);
 	bool has_applicable_chain(uint32_t screen);
 	std::vector<ui::menu_item> get_slider_list();
