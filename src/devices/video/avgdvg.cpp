@@ -123,7 +123,7 @@ void avgdvg_device_base::vg_flush()
 			}
 
 			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0);
-			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity);
+			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].overload);
 		}
 
 		if (m_vectbuf[i].status == VGCLIP)
@@ -143,7 +143,7 @@ void avgdvg_device_base::vg_flush()
 	m_nvect = 0;
 }
 
-void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity)
+void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float overload)
 {
 	if (m_nvect < MAXVECT)
 	{
@@ -152,6 +152,7 @@ void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensi
 		m_vectbuf[m_nvect].y = y;
 		m_vectbuf[m_nvect].color = color;
 		m_vectbuf[m_nvect].intensity = intensity;
+		m_vectbuf[m_nvect].overload = overload;
 		m_nvect++;
 	}
 }
@@ -923,11 +924,21 @@ int avg_starwars_device::handler_7() // starwars_strobe3
 
 	if (!OP0() && !OP2())
 	{
+		// Raw beam energy of the Quadrascan generator: the VCTR intensity (top 3 bits, mapped through
+		// the beam-current table below) times the STAT intensity (8 bits). This can exceed the value a
+		// display can show, which is what drives the overdrive/glow effect. Star Wars is the only avgdvg
+		// title that varies this. Normalized to 0..1 here; the display intensity (4th argument) is the
+		// stock value and is left unchanged, so non-bgfx output is identical to stock.
+		static constexpr float VCTR_X[8] = { 0.00f, 1.00f, 1.96f, 2.96f, 3.91f, 4.91f, 5.87f, 6.87f };
+		const float raw_beam = VCTR_X[(m_int_latch >> 1) & 0x07] * float(m_intensity); // 0 .. 1751.85
+		const float overload = raw_beam / 1751.85f;                                    // normalized 0..1
+
 		vg_add_point_buf(
 				m_xpos,
 				m_ypos,
 				vector_device::color111(m_color),
-				((m_int_latch >> 1) * m_intensity) >> 3);
+				((m_int_latch >> 1) * m_intensity) >> 3,
+				overload);
 	}
 
 	return cycles;

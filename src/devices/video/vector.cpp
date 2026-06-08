@@ -128,7 +128,7 @@ float vector_device::normalized_sigmoid(float n, float k)
 // needs to call this.
 //-------------------------------------------------
 
-void vector_device::add_point(int x, int y, rgb_t color, int intensity)
+void vector_device::add_point(int x, int y, rgb_t color, int intensity, float overload)
 {
 	point *newpoint;
 
@@ -151,6 +151,12 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity)
 	newpoint->y = y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
+	// Normalized (0..1) beam energy carried on the primitive for renderer overdrive effects.
+	// When the device supplies a raw beam-energy value (overload >= 0) it is used as-is; otherwise
+	// the displayed intensity is used as the normalized value. This is pure data: the displayed
+	// intensity above is unchanged, so renderers that ignore it produce stock output.
+	newpoint->overload = (overload >= 0.0f) ? std::clamp(overload, 0.0f, 1.0f)
+											: float(intensity) / 255.0f;
 
 	m_vector_index++;
 	if (m_vector_index >= MAX_POINTS)
@@ -225,7 +231,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					coords.x0, coords.y0, coords.x1, coords.y1,
 					beam_width,
 					(curpoint->intensity << 24) | (curpoint->col & 0xffffff),
-					flags);
+					flags,
+					curpoint->overload);
 			m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
 		}
 		else

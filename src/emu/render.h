@@ -238,6 +238,7 @@ public:
 	render_color        color;              // RGBA values
 	u32                 flags = 0U;         // flags
 	float               width = 0.0F;       // width (for line primitives)
+	float               overload = 0.0F;    // normalized (0..1) beam energy for renderer overload/overdrive effects (0 = none; ignored by stock renderers)
 	render_texinfo      texture;            // texture info (for quad primitives)
 	render_quad_texuv   texcoords;          // texture coordinates (for quad primitives)
 	render_container *  container = nullptr;// the render container we belong to
@@ -418,7 +419,7 @@ public:
 	void empty() { m_item_allocator.reclaim_all(m_itemlist); }
 
 	// add items to the list
-	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags);
+	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float overload = 0.0f);
 	void add_quad(float x0, float y0, float x1, float y1, rgb_t argb, render_texture *texture, u32 flags);
 	void add_char(float x0, float y0, float height, float aspect, rgb_t argb, render_font &font, u16 ch);
 	void add_point(float x0, float y0, float diameter, rgb_t argb, u32 flags) { add_line(x0, y0, x0, y0, diameter, argb, flags); }
@@ -438,7 +439,7 @@ private:
 		friend class simple_list<item>;
 
 	public:
-		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_texture(nullptr) { }
+		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_overload(0), m_texture(nullptr) { }
 
 		// getters
 		item *next() const { return m_next; }
@@ -448,6 +449,7 @@ private:
 		u32 flags() const { return m_flags; }
 		u32 internal() const { return m_internal; }
 		float width() const { return m_width; }
+		float overload() const { return m_overload; }
 		render_texture *texture() const { return m_texture; }
 
 	private:
@@ -459,6 +461,7 @@ private:
 		u32                 m_flags;            // option flags
 		u32                 m_internal;         // internal flags
 		float               m_width;            // width of the line (lines only)
+		float               m_overload;         // normalized (0..1) beam energy for renderer overload effects (lines only; 0 = none)
 		render_texture *    m_texture;          // pointer to the source texture (quads only)
 	};
 
