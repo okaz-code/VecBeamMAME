@@ -43,6 +43,7 @@ protected:
 		int intensity;
 		int arg1; int arg2;
 		int status;
+		float overload;     // normalized (0..1) raw beam energy, or < 0 when the device has none
 	};
 
 	avgdvg_device_base(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock);
@@ -73,7 +74,7 @@ protected:
 	void vg_set_halt(int dummy);
 
 	void vg_flush();
-	void vg_add_point_buf(int x, int y, rgb_t color, int intensity);
+	void vg_add_point_buf(int x, int y, rgb_t color, int intensity, float overload = -1.0f);
 	void vg_add_clip(int xmin, int ymin, int xmax, int ymax);
 
 	required_device<vector_device> m_vector;

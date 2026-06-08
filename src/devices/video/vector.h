@@ -45,7 +45,11 @@ public:
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void clear_list();
 
-	void add_point(int x, int y, rgb_t color, int intensity);
+	// overload is the normalized (0..1) raw beam energy for renderer overdrive effects.
+	// Pass < 0 (the default) when the device has no raw beam-energy signal; the display
+	// intensity is then used as the normalized value instead. The displayed intensity is
+	// unaffected either way, so non-bgfx output is identical to stock.
+	void add_point(int x, int y, rgb_t color, int intensity, float overload = -1.0f);
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
@@ -77,11 +81,12 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), col(0), intensity(0) { }
+		point() : x(0), y(0), col(0), intensity(0), overload(0.0f) { }
 
 		int x; int y;
 		rgb_t col;
 		int intensity;
+		float overload;     // normalized (0..1) beam energy passed through to the render primitive
 	};
 
 	std::unique_ptr<point[]> m_vector_list;
