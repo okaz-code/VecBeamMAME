@@ -15,6 +15,7 @@
 	"vertex": "vs_gui",
 	"fragment": "fs_vector_line",
 	"uniforms": [
-		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_line_params",   "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] }
 	]
 }

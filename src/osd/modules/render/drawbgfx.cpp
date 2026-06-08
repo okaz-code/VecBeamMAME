@@ -1284,28 +1284,99 @@ static constexpr int   LINE_VERTICES_PER_LINE = 6 + 2 * LINE_CAP_SEGMENTS * 3;
 static constexpr float LINE_CAP_SIZE_PX       = 4.0f;  // cap radius (px at a 1920px-wide window)
 static constexpr float LINE_POINT_THRESHOLD   = 2.0f;  // segments shorter than this are drawn as points
 
+// Normalized tunable sigmoid (Dino Dini's curve, n and k in [-1, 1]); k=0 is linear.
+// Used by the renderer-side overload model to shape the display/width response.
+static float vector_overload_sigmoid(float n, float k)
+{
+	return (n - n * k) / (k - fabsf(n) * 2.0f * k + 1.0f);
+}
+
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 {
-	float width = prim->width < 0.5f ? 0.5f : prim->width;
 	float x0 = prim->bounds.x0;
 	float y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1;
 	float y1 = prim->bounds.y1;
 
-	// Pack the line color as-is.
+	float dx = x1 - x0;
+	float dy = y1 - y0;
+	const float seg_len = sqrtf(dx * dx + dy * dy);
+
+	// Renderer-side overload model. Consumes prim->overload (normalized 0..1 beam energy supplied
+	// by the vector device) and the chain's overload sliders to derive the display intensity, the
+	// beam width and the overload amount. This is the math the emulation core used to do; keeping it
+	// here leaves the device renderer-agnostic. Chains without an "overload_threshold" slider opt out
+	// (overload_chain == false) and keep the stock width/intensity, so CRT chains that do not define
+	// these sliders are unaffected.
+	const float ov_threshold = m_chains->slider_value(0, "overload_threshold", -1.0f);
+	const bool  overload_chain = (ov_threshold >= 0.0f);
+	const float point_threshold = m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD);
+	// Point-treatment test: short segments (add_point gives x0==x1,y0==y1 -> seg_len 0) are drawn as a
+	// single circle so the two half-circle caps do not overlap into a double-bright distorted blob.
+	const bool as_point = (seg_len <= point_threshold);
+
+	float width;
+	float display_a;    // line display intensity (0..1), written to the vertex alpha
+	float ovld = 0.0f;  // overload amount (0..1) handed to fs_vector_line via m_u for the defocus
+
+	if (overload_chain)
+	{
+		const float src = std::clamp(prim->overload, 0.0f, 1.0f);
+		const float k   = m_chains->slider_value(0, "overload_sigmoid_k", 0.0f);
+		const float thr = std::clamp(ov_threshold, 0.001f, 1.0f);
+		const float out = std::clamp(vector_overload_sigmoid(src, k), 0.0f, 1.0f);
+		const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
+		const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
+		const float ow_max = m_chains->slider_value(0, "overload_width_max", 5.0f);
+
+		float beam_units;
+		if (out <= thr)
+		{
+			// below the threshold: ramp display 0..1 and width min..max via the low curve
+			const float t = out / thr;
+			display_a = t;
+			const float w = std::clamp(vector_overload_sigmoid(t,
+				m_chains->slider_value(0, "overload_width_curve_low", 0.0f)), 0.0f, 1.0f);
+			beam_units = bw_min + w * (bw_max - bw_min);
+		}
+		else
+		{
+			// above the threshold: display clips to full, width grows max..overload_max, beam overloads
+			display_a = 1.0f;
+			const float span = std::max(0.001f, 1.0f - thr);
+			ovld = std::clamp((out - thr) / span, 0.0f, 1.0f);
+			const float w = std::clamp(vector_overload_sigmoid(ovld,
+				m_chains->slider_value(0, "overload_width_curve_high", 0.0f)), 0.0f, 1.0f);
+			beam_units = bw_max + w * (ow_max - bw_max);
+		}
+
+		// points use a dedicated dot size interpolated by the source value (independent of width)
+		if (as_point)
+		{
+			const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
+			const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
+			const float w = std::clamp(vector_overload_sigmoid(src,
+				m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
+			beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
+		}
+
+		// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
+		width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+	}
+	else
+	{
+		width = prim->width;
+		display_a = prim->color.a;
+	}
+	if (width < 0.5f) width = 0.5f;
+
+	// Pack the line color: hue from the primitive, alpha = computed display intensity.
 	const uint32_t rgba = u32Color(
 		uint32_t(prim->color.r * 255.0f + 0.5f),
 		uint32_t(prim->color.g * 255.0f + 0.5f),
 		uint32_t(prim->color.b * 255.0f + 0.5f),
-		uint32_t(prim->color.a * 255.0f + 0.5f));
+		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
-	float dx = x1 - x0;
-	float dy = y1 - y0;
-	const float seg_len = sqrtf(dx * dx + dy * dy);
-	// Point-treatment test (seg_len <= threshold -> skip the body and draw a single circle).
-	// MAME's add_point yields x0=x1, y0=y1, so seg_len=0.
-	// Drawn in normal mode, the two half-circle caps overlap at the same center -> double intensity + shape distortion.
-	const bool as_point = (seg_len <= m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD));
 	if (seg_len > 0.0001f)
 	{
 		const float inv = 1.0f / seg_len;
@@ -1351,7 +1422,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		vertex[i].m_y = y;
 		vertex[i].m_z = 0.0f;
 		vertex[i].m_rgba = (vrgba == 0) ? rgba : vrgba;
-		vertex[i].m_u = 0.0f;     // reserved (sharp analytic-AA fade)
+		vertex[i].m_u = ovld;     // per-line overload amount (fs_vector_line blends parabola<->Gaussian)
 		vertex[i].m_v = v_value;  // across the line width [0..1], 0.5 = center
 	};
 
@@ -1635,6 +1706,14 @@ int renderer_bgfx::draw(int update)
 							float values[2] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]) };
 							inv->set(values, sizeof(float) * 2);
 							inv->upload();
+						}
+						// u_line_params.x = Overload Softness (higher = the beam defocuses sooner as it overloads)
+						bgfx_uniform* lp = line_eff->uniform("u_line_params");
+						if (lp)
+						{
+							float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 0.0f, 0.0f };
+							lp->set(vals, sizeof(float) * 4);
+							lp->upload();
 						}
 						line_eff->submit(fbo_view);
 						m_vectors_in_fbo = true;
