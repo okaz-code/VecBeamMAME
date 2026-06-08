@@ -34,6 +34,11 @@ public:
 	using frame_end_delegate = delegate<void ()>;
 	using move_delegate = delegate<void (int, int, uint32_t, int, int)>;
 	using line_delegate = delegate<void (int, int, int, int, uint32_t, int, int, int)>;
+	// Per-line notifier carrying the line endpoints in normalized screen space (0..1 inside the
+	// visible area, < 0 or > 1 when off-screen) plus the normalized (0..1) beam energy, for renderers
+	// that reproduce off-screen beam effects (e.g. monitor glow). Separate from line_delegate so the
+	// existing notifier's signature (part of the Lua API) is left untouched.
+	using overload_line_delegate = delegate<void (float, float, float, float, float)>;
 
 	template <typename T> static constexpr rgb_t color111(T c) { return rgb_t(pal1bit(c >> 2), pal1bit(c >> 1), pal1bit(c >> 0)); }
 	template <typename T> static constexpr rgb_t color222(T c) { return rgb_t(pal2bit(c >> 4), pal2bit(c >> 2), pal2bit(c >> 0)); }
@@ -75,6 +80,11 @@ public:
 	util::notifier_subscription add_line_notifier(T &&n)
 	{ return add_line_notifier(line_delegate(std::forward<T>(n))); }
 
+	util::notifier_subscription add_overload_line_notifier(overload_line_delegate &&n);
+	template <typename T>
+	util::notifier_subscription add_overload_line_notifier(T &&n)
+	{ return add_overload_line_notifier(overload_line_delegate(std::forward<T>(n))); }
+
 private:
 	float normalized_sigmoid(float n, float k);
 
@@ -99,6 +109,7 @@ private:
 	util::notifier<> m_frame_end_notifier;
 	util::notifier<int, int, uint32_t, int, int> m_move_notifier;
 	util::notifier<int, int, int, int, uint32_t, int, int, int> m_line_notifier;
+	util::notifier<float, float, float, float, float> m_overload_line_notifier;
 };
 
 // device type definition

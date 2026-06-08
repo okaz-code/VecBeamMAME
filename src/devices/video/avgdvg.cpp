@@ -55,7 +55,12 @@ void avgdvg_device_base::apply_flipping(int &x, int &y) const
 
 void avgdvg_device_base::vg_flush()
 {
-	int cx0 = 0, cy0 = 0, cx1 = 0x5000000, cy1 = 0x5000000;
+	// The default clip window is symmetric about the origin (lower bound -0x5000000 instead of
+	// stock's 0). The Quadrascan hardware scans signed coordinates centred on 0; a symmetric window
+	// keeps the left/top off-screen beams in the buffer instead of discarding them, so a renderer can
+	// pick them up (off-screen beam effects) via the overload line notifier. On-screen output is
+	// unchanged: the draw side is still clipped at the screen edge downstream.
+	int cx0 = -0x5000000, cy0 = -0x5000000, cx1 = 0x5000000, cy1 = 0x5000000;
 	int i = 0;
 
 	while (m_vectbuf[i].status == VGCLIP)
