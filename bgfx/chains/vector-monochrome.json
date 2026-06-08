@@ -16,6 +16,7 @@
 		{ "type": "float", "name": "line_cap_brightness",      "text": "Line Cap Brightness",      "default": 1.0,  "min": 1.0, "max": 3.0,  "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_length_scale",      "text": "Vector Length Fade Scale",  "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_length_ratio",      "text": "Vector Length Fade Ratio",  "default": 0.5,  "min": 0.05, "max": 1.5,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vector_crt_flicker",      "text": "Vector CRT Flicker",        "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold",     "text": "Line Point Threshold",     "default": 2.0,  "min": 0.0, "max": 10.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
 		{ "type": "float", "name": "bloom_scale",          "text": "Bloom Scale",                       "default": 1.20, "max": 2.00, "min": 0.00, "step": 0.001, "format": "%1.3f", "screen": "vector" },

@@ -61,7 +61,10 @@ vector_device::vector_device(const machine_config &mconfig, const char *tag, dev
 		device_video_interface(mconfig, *this),
 		m_vector_list(nullptr),
 		m_min_intensity(255),
-		m_max_intensity(0)
+		m_max_intensity(0),
+		m_list_generation(0),
+		m_last_drawn_generation(~uint32_t(0)),
+		m_beam_list_stale(false)
 {
 }
 
@@ -184,6 +187,8 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float ov
 void vector_device::clear_list()
 {
 	m_vector_index = 0;
+	// A new beam list is starting; bump the generation so screen_update can tell this frame redrew.
+	m_list_generation++;
 }
 
 //-------------------------------------------------
@@ -209,6 +214,11 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	screen.container().add_rect(0.0f, 0.0f, 1.0f, 1.0f, rgb_t(0xff,0x00,0x00,0x00), PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA) | PRIMFLAG_VECTORBUF(1));
 
 	m_frame_begin_notifier();
+
+	// CRT-flicker detection: stale = the beam list was not refreshed since the last draw. A renderer
+	// reads this via beam_list_stale(); the emulated output here is unchanged.
+	m_beam_list_stale = (m_list_generation == m_last_drawn_generation);
+	m_last_drawn_generation = m_list_generation;
 
 	for (int i = 0; i < m_vector_index; i++)
 	{
