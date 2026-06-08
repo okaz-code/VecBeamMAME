@@ -139,6 +139,8 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_BEAM_DOT_SIZE,                              "1.0",       core_options::option_type::FLOAT,      "set vector beam size for dots" },
 	{ OPTION_BEAM_INTENSITY_WEIGHT,                      "0",         core_options::option_type::FLOAT,      "set vector beam intensity weight " },
 	{ OPTION_FLICKER,                                    "0",         core_options::option_type::FLOAT,      "set vector flicker effect" },
+	{ OPTION_OVERSCAN_X,                                 "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (X), < 1.0 reveals off-screen beams" },
+	{ OPTION_OVERSCAN_Y,                                 "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },

@@ -39,6 +39,8 @@ float vector_options::s_beam_width_min = 0.0f;
 float vector_options::s_beam_width_max = 0.0f;
 float vector_options::s_beam_dot_size = 0.0f;
 float vector_options::s_beam_intensity_weight = 0.0f;
+float vector_options::s_overscan_x = 1.0f;
+float vector_options::s_overscan_y = 1.0f;
 
 void vector_options::init(emu_options &options)
 {
@@ -47,6 +49,8 @@ void vector_options::init(emu_options &options)
 	s_beam_dot_size = options.beam_dot_size();
 	s_beam_intensity_weight = options.beam_intensity_weight();
 	s_flicker = options.flicker();
+	s_overscan_x = options.overscan_x();
+	s_overscan_y = options.overscan_y();
 }
 
 // device type definition
@@ -229,6 +233,16 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		coords.y0 = (float(lasty) - yoffs) * yscale;
 		coords.x1 = (float(curpoint->x) - xoffs) * xscale;
 		coords.y1 = (float(curpoint->y) - yoffs) * yscale;
+
+		// Overscan zoom about the 0.5 screen centre (1.0 = none). < 1.0 shrinks the image, revealing
+		// the off-screen beams kept by the symmetric clip window; the renderer clips at the edge.
+		if (vector_options::s_overscan_x != 1.0f || vector_options::s_overscan_y != 1.0f)
+		{
+			coords.x0 = (coords.x0 - 0.5f) * vector_options::s_overscan_x + 0.5f;
+			coords.y0 = (coords.y0 - 0.5f) * vector_options::s_overscan_y + 0.5f;
+			coords.x1 = (coords.x1 - 0.5f) * vector_options::s_overscan_x + 0.5f;
+			coords.y1 = (coords.y1 - 0.5f) * vector_options::s_overscan_y + 0.5f;
+		}
 
 		if (curpoint->intensity != 0)
 		{
