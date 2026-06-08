@@ -1305,7 +1305,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// Point-treatment test (seg_len <= threshold -> skip the body and draw a single circle).
 	// MAME's add_point yields x0=x1, y0=y1, so seg_len=0.
 	// Drawn in normal mode, the two half-circle caps overlap at the same center -> double intensity + shape distortion.
-	const bool as_point = (seg_len <= LINE_POINT_THRESHOLD);
+	const bool as_point = (seg_len <= m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD));
 	if (seg_len > 0.0001f)
 	{
 		const float inv = 1.0f / seg_len;
@@ -1333,8 +1333,18 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float qy[4] = { y0 + ny * r, y1 + ny * r, y1 - ny * r, y0 - ny * r };
 	const float qv[4] = { 0.0f,        0.0f,        1.0f,        1.0f        };
 
-	// The cap center vertex uses the same color as the line body.
-	const uint32_t cap_center_rgba = rgba;
+	// Cap center vertex color. The Line Cap Brightness slider (1..3x, clamped to 255) lets the cap
+	// glow brighter than the body; default 1.0 keeps it identical to the body.
+	const float cap_bright = std::max(1.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
+	uint32_t cap_center_rgba = rgba;
+	if (cap_bright > 1.0001f)
+	{
+		const uint32_t r8 = std::min<uint32_t>(uint32_t(prim->color.r * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t g8 = std::min<uint32_t>(uint32_t(prim->color.g * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t b8 = std::min<uint32_t>(uint32_t(prim->color.b * cap_bright * 255.0f + 0.5f), 255);
+		const uint32_t a8 = std::min<uint32_t>(uint32_t(prim->color.a * 255.0f + 0.5f), 255);
+		cap_center_rgba = u32Color(r8, g8, b8, a8);
+	}
 
 	auto setv = [&](int i, float x, float y, float v_value, uint32_t vrgba = 0) {
 		vertex[i].m_x = x;
@@ -1348,8 +1358,15 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// Cap radius in pixels, scaled to resolution against a 1920px-wide base so the on-screen cap
 	// size stays constant across window resolutions. The cap only expands the line when it exceeds
 	// the line-body radius r; thicker lines (r >= cap radius) get a plain rounded end.
-	const float cap_res_scale    = float(s_width[window().index()]) / 1920.0f;
-	const float fixed_cap_radius = std::max(0.0f, LINE_CAP_SIZE_PX * cap_res_scale);
+	const float cap_res_scale = float(s_width[window().index()]) / 1920.0f;
+	// Cap radius interpolates line_cap_min_size..line_cap_size by line intensity (prim->color.a) via
+	// the Line Cap Intensity Curve (pow exponent); curve 0 (default) keeps the full size for every line.
+	const float cap_full   = m_chains->slider_value(0, "line_cap_size", LINE_CAP_SIZE_PX) * cap_res_scale;
+	const float cap_min_px = m_chains->slider_value(0, "line_cap_min_size", 0.0f) * cap_res_scale;
+	const float cap_curve  = m_chains->slider_value(0, "line_cap_intensity_curve", 0.0f);
+	const float cap_bi     = std::clamp(prim->color.a, 0.0f, 1.0f);
+	const float cap_f      = (cap_curve <= 0.0001f) ? 1.0f : powf(cap_bi, cap_curve);
+	const float fixed_cap_radius = std::max(0.0f, cap_min_px + (cap_full - cap_min_px) * cap_f);
 	const float cap_extent       = std::max(0.0f, fixed_cap_radius - r);
 
 	int vi = 6;

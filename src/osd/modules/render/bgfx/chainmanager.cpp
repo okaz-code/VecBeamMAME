@@ -1144,6 +1144,20 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 		windownode->delete_node();
 }
 
+float chain_manager::slider_value(uint32_t screen, const std::string& name, float default_value)
+{
+	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
+		return default_value;
+	// slider_reader registers a float slider under name + "0", so match the "0"-suffixed name.
+	const std::string suffixed = name + "0";
+	for (bgfx_slider* slider : m_screen_chains[screen]->sliders())
+	{
+		if (slider->name() == suffixed)
+			return slider->value();
+	}
+	return default_value;
+}
+
 std::vector<std::vector<float>> chain_manager::slider_settings()
 {
 	std::vector<std::vector<float>> curr;
