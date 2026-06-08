@@ -86,6 +86,10 @@ public:
 	// Returns default_value when the chain or slider is absent, so a renderer can read
 	// optional per-chain parameters by name without the chain having to define them.
 	float slider_value(uint32_t screen, const std::string& name, float default_value);
+	// Override a named uniform on a named pass of a screen's active chain (for per-frame CPU values).
+	// Returns false when the chain or pass is absent. No-op if the pass does not use the uniform.
+	bool inject_entry_uniform(uint32_t screen, const std::string& entry_name,
+		const std::string& uniform_name, const float* vals, int count);
 	std::unique_ptr<bgfx_chain> load_chain(std::string name, uint32_t screen_index);
 	bool has_applicable_chain(uint32_t screen);
 	std::vector<ui::menu_item> get_slider_list();

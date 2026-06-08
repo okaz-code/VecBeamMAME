@@ -173,6 +173,12 @@ private:
 	const util::notifier_subscription m_load_sub;
 	const util::notifier_subscription m_save_sub;
 
+	// Monitor glow: off-screen overload energy accumulated for the current frame from the vector
+	// device's overload-line notifier, then injected into the chain's monitor-glow pass each frame.
+	float m_mglow_amount = 0.0f;
+	util::notifier_subscription m_mglow_line_sub;
+	util::notifier_subscription m_mglow_frame_sub;
+
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
 	static const uint32_t WHITE_HASH;

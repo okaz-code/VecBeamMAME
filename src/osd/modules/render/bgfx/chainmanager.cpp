@@ -1144,6 +1144,22 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 		windownode->delete_node();
 }
 
+bool chain_manager::inject_entry_uniform(uint32_t screen, const std::string& entry_name,
+	const std::string& uniform_name, const float* vals, int count)
+{
+	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
+		return false;
+	for (bgfx_chain_entry* entry : m_screen_chains[screen]->entries())
+	{
+		if (entry->name() == entry_name)
+		{
+			entry->set_uniform(uniform_name, vals, count);
+			return true;
+		}
+	}
+	return false;
+}
+
 float chain_manager::slider_value(uint32_t screen, const std::string& name, float default_value)
 {
 	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
