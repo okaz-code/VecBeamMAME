@@ -779,8 +779,10 @@ int renderer_bgfx::create()
 	// drawing). Follows how bgfx_target.cpp creates them.
 	if (window().index() == 0)
 	{
-		m_vec_fb_w = uint16_t(wdim.width() * VEC_SUPERSAMPLE);
-		m_vec_fb_h = uint16_t(wdim.height() * VEC_SUPERSAMPLE);
+		const int ss = m_module().options().bgfx_vec_supersample();
+		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
+		m_vec_fb_w = uint16_t(wdim.width() * m_vec_supersample);
+		m_vec_fb_h = uint16_t(wdim.height() * m_vec_supersample);
 		// draw() recreates this when the size no longer matches (only the initial creation is here;
 		// draw()'s recreation logic uses equivalent code).
 		// POINT filter flags omitted -> default bilinear.
@@ -1654,8 +1656,8 @@ int renderer_bgfx::draw(int update)
 	{
 		const uint16_t cur_w = uint16_t(s_width[window_index]);
 		const uint16_t cur_h = uint16_t(s_height[window_index]);
-		const uint16_t target_fb_w = uint16_t(cur_w * VEC_SUPERSAMPLE);
-		const uint16_t target_fb_h = uint16_t(cur_h * VEC_SUPERSAMPLE);
+		const uint16_t target_fb_w = uint16_t(cur_w * m_vec_supersample);
+		const uint16_t target_fb_h = uint16_t(cur_h * m_vec_supersample);
 		if (cur_w > 0 && cur_h > 0 && (target_fb_w != m_vec_fb_w || target_fb_h != m_vec_fb_h))
 		{
 			if (bgfx::isValid(m_vec_fb))
