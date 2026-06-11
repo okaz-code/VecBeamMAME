@@ -11,7 +11,7 @@
 #include "target.h"
 
 bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
-	uint32_t style, bool double_buffer, bool filter, uint16_t scale, uint32_t screen)
+	uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen)
 	: m_name(name)
 	, m_format(format)
 	, m_targets(nullptr)
@@ -31,8 +31,12 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 {
 	if (m_width > 0 && m_height > 0)
 	{
-		m_width *= m_scale;
-		m_height *= m_scale;
+		// fractional scales are allowed (e.g. 0.5 for half-resolution bloom targets);
+		// round to nearest and keep at least 1px
+		const float scaled_w = float(m_width) * m_scale;
+		const float scaled_h = float(m_height) * m_scale;
+		m_width  = (scaled_w < 1.0f) ? uint16_t(1) : uint16_t(scaled_w + 0.5f);
+		m_height = (scaled_h < 1.0f) ? uint16_t(1) : uint16_t(scaled_h + 0.5f);
 
 		uint32_t wrap_mode = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
 		uint32_t filter_mode = filter ? (BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC) : (BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT);

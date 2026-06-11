@@ -57,10 +57,12 @@ bgfx_target* target_reader::read_from_value(
 			READER_WARN(false, "%sTarget '%s': unknown format '%s', falling back to BGRA8\n", prefix, target_name, fmt_str);
 		}
 	}
-	int scale = 1;
+	float scale = 1.0f;
 	if (value.HasMember("scale"))
 	{
-		scale = int(floor(value["scale"].GetDouble() + 0.5));
+		// fractional scales (e.g. 0.5 for half-resolution) are allowed
+		scale = float(value["scale"].GetDouble());
+		if (!READER_CHECK(scale > 0.0f, "%sTarget '%s': Value 'scale' must be positive\n", prefix, target_name)) return nullptr;
 	}
 	bool use_user_prescale = get_bool(value, "user_prescale", false);
 

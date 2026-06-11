@@ -43,7 +43,7 @@ bgfx_target* target_manager::create_target(
 		uint32_t style,
 		bool double_buffer,
 		bool filter,
-		uint16_t scale,
+		float scale,
 		uint32_t screen)
 {
 	const std::string full_name = name + std::to_string(screen);
@@ -141,7 +141,7 @@ void target_manager::rebuild_targets(uint32_t screen, uint32_t style, uint16_t u
 		const bgfx::TextureFormat::Enum format = target->format();
 		const bool double_buffered = target->double_buffered();
 		const bool filter = target->filter();
-		const uint16_t scale = target->scale();
+		const float scale = target->scale();
 		const uint16_t width(sizes[screen].width());
 		const uint16_t height(sizes[screen].height());
 		uint16_t xprescale = user_prescale;

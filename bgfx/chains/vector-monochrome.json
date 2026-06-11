@@ -79,38 +79,38 @@
 			"doublebuffer": true
 		},
 		{   "name": "acc0",
-			"_comment": "Stage 2 ladder bloom accumulators (acc0..acc6, fixed 16:9 pyramid). Each is seeded with bloom_lvl(n) x weight (implicit clear) then up-added from acc(n+1) with clear:{}; the repeated bilinear up-resampling smooths deeper levels progressively, replacing the old halo blur",
-			"mode": "custom", "width": 960, "height": 540,
+			"_comment": "Stage 2 ladder bloom accumulators (acc0..acc6, window-proportional pyramid via fractional scale). Each is seeded with bloom_lvl(n) x weight (implicit clear) then up-added from acc(n+1) with clear:{}; the repeated bilinear up-resampling smooths deeper levels progressively, replacing the old halo blur",
+			"mode": "native", "scale": 0.5,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc1",
-			"mode": "custom", "width": 480, "height": 270,
+			"mode": "native", "scale": 0.25,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc2",
-			"mode": "custom", "width": 240, "height": 135,
+			"mode": "native", "scale": 0.125,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc3",
-			"mode": "custom", "width": 120, "height": 68,
+			"mode": "native", "scale": 0.0625,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc4",
-			"mode": "custom", "width": 60, "height": 34,
+			"mode": "native", "scale": 0.03125,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc5",
-			"mode": "custom", "width": 30, "height": 17,
+			"mode": "native", "scale": 0.015625,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		},
 		{   "name": "acc6",
-			"mode": "custom", "width": 15, "height": 8,
+			"mode": "native", "scale": 0.0078125,
 			"doublebuffer": false,
 			"format": "RGBA16F"
 		}

@@ -39,10 +39,6 @@ class vector_device;
 class renderer_bgfx : public osd_renderer, public slider_dirty_notifier
 {
 public:
-	// Supersample factor for vector drawing (used for both the render_target bounds
-	// and the FBO resolution). Public because view.cpp and others reference it.
-	static constexpr uint16_t VEC_SUPERSAMPLE = 2;
-
 	class parent_module;
 
 	renderer_bgfx(osd_window &window, parent_module &parent_module);
@@ -145,7 +141,8 @@ private:
 	std::vector<uint32_t> m_seen_views;
 
 	// FBO for vector drawing in the BGFX-sample style (not routed through chain_manager).
-	// (VEC_SUPERSAMPLE lives in the public section.)
+	// m_vec_supersample is the FBO supersampling factor, from -bgfx_vec_supersample (clamped 1-2).
+	uint16_t m_vec_supersample = 2;
 	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_fb_w = 0;
 	uint16_t m_vec_fb_h = 0;
