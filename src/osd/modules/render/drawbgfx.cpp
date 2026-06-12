@@ -383,6 +383,7 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	m_max_texture_size = caps->limits.maxTextureSize;
 
 	ScreenVertex::init();
+	AnalyticLineVertex::init();
 
 	imguiCreate();
 
@@ -803,7 +804,16 @@ int renderer_bgfx::create()
 	// load the analytic-AA vector line effect
 	if (window().index() == 0)
 	{
-		m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_line");
+		const char *const line_shader = m_module().options().bgfx_vec_line_shader();
+		m_line_analytic = (line_shader != nullptr && strcmp(line_shader, "analytic") == 0);
+		m_line_effect = m_effects->get_or_load_effect(m_module().options(),
+			m_line_analytic ? "vector/vector_line_analytic" : "vector/vector_line");
+		if (m_line_analytic && m_line_effect == nullptr)
+		{
+			osd_printf_warning("BGFX: analytic line effect failed to load, falling back to classic\n");
+			m_line_analytic = false;
+			m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_line");
+		}
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
@@ -905,6 +915,7 @@ int renderer_bgfx::xy_to_render_target(int x, int y, int *xt, int *yt)
 //============================================================
 
 bgfx::VertexLayout ScreenVertex::ms_decl;
+bgfx::VertexLayout AnalyticLineVertex::ms_decl;
 
 void renderer_bgfx::put_packed_quad(render_primitive *prim, uint32_t hash, ScreenVertex* vertices)
 {
@@ -1328,6 +1339,131 @@ static float vector_overload_sigmoid(float n, float k)
 	return (n - n * k) / (k - fabsf(n) * 2.0f * k + 1.0f);
 }
 
+// Analytic gaussian line integral: emit one expanded quad (6 vertices) carrying the
+// line-local coordinates; fs_vector_line_analytic evaluates the swept-spot exposure in
+// closed form, so AA, the cross profile and the end roll-off all come from the math.
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex)
+{
+	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
+	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
+	float dx = x1 - x0, dy = y1 - y0;
+	const float seg_len = sqrtf(dx * dx + dy * dy);
+
+	// Same renderer-side overload model as put_solid_line (width / display intensity / overload).
+	const float ov_threshold = m_chains->slider_value(0, "overload_threshold", -1.0f);
+	const bool  overload_chain = (ov_threshold >= 0.0f);
+	const float point_threshold = m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD);
+	const bool as_point = (seg_len <= point_threshold);
+
+	float width;
+	float display_a;
+	float ovld = 0.0f;
+	if (overload_chain)
+	{
+		const float src = std::clamp(prim->beam_energy, 0.0f, 1.0f);
+		const float k   = m_chains->slider_value(0, "overload_sigmoid_k", 0.0f);
+		const float thr = std::clamp(ov_threshold, 0.001f, 1.0f);
+		const float out = std::clamp(vector_overload_sigmoid(src, k), 0.0f, 1.0f);
+		const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
+		const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
+		const float ow_max = m_chains->slider_value(0, "overload_width_max", 5.0f);
+		float beam_units;
+		if (out <= thr)
+		{
+			const float t = out / thr;
+			display_a = t;
+			const float w = std::clamp(vector_overload_sigmoid(t,
+				m_chains->slider_value(0, "overload_width_curve_low", 0.0f)), 0.0f, 1.0f);
+			beam_units = bw_min + w * (bw_max - bw_min);
+		}
+		else
+		{
+			display_a = 1.0f;
+			const float span = std::max(0.001f, 1.0f - thr);
+			ovld = std::clamp((out - thr) / span, 0.0f, 1.0f);
+			const float w = std::clamp(vector_overload_sigmoid(ovld,
+				m_chains->slider_value(0, "overload_width_curve_high", 0.0f)), 0.0f, 1.0f);
+			beam_units = bw_max + w * (ow_max - bw_max);
+		}
+		if (as_point)
+		{
+			const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
+			const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
+			const float w = std::clamp(vector_overload_sigmoid(src,
+				m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
+			beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
+		}
+		width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+	}
+	else
+	{
+		width = prim->width;
+		display_a = prim->color.a;
+	}
+	if (width < 0.5f) width = 0.5f;
+
+	// Length fade + flicker + window-blend weight, identical to the classic path.
+	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
+	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
+	float length_factor = 1.0f;
+	if (vls_scale > 0.0001f && vls_ratio > 0.0001f)
+	{
+		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
+		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
+		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
+		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
+	}
+	length_factor *= m_crt_flicker_factor * m_vec_line_weight;
+
+	const uint32_t rgba = u32Color(
+		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
+		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
+		uint32_t(prim->color.b * length_factor * 255.0f + 0.5f),
+		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
+
+	// sigma: FWHM = width (2.355 sigma); the overload defocus widens it (the classic path's
+	// parabola->gaussian blend reached about 2x at full overload).
+	float sigma = (width / 2.355f) * (1.0f + ovld);
+	if (sigma < 0.30f) sigma = 0.30f;
+	const float pad = 3.5f * sigma + 0.5f;
+
+	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
+	else { dx = 1.0f; dy = 0.0f; }
+	const float nx = dy, ny = -dx;
+
+	auto setv = [&](int i, float x, float y, float a, float b, float d, float sg) {
+		vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f;
+		vertex[i].m_rgba = rgba;
+		vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+	};
+
+	if (as_point)
+	{
+		// dwelling beam: 2D gaussian at the segment centre (sigma sign flags point mode)
+		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
+		const float sg = -sigma;
+		setv(0, cx - pad, cy - pad, -pad, 0.0f, -pad, sg);
+		setv(1, cx + pad, cy - pad,  pad, 0.0f, -pad, sg);
+		setv(2, cx + pad, cy + pad,  pad, 0.0f,  pad, sg);
+		setv(3, cx - pad, cy - pad, -pad, 0.0f, -pad, sg);
+		setv(4, cx + pad, cy + pad,  pad, 0.0f,  pad, sg);
+		setv(5, cx - pad, cy + pad, -pad, 0.0f,  pad, sg);
+		return;
+	}
+
+	// expanded quad: +-pad beyond both endpoints and to both sides
+	const float sx0 = x0 - dx * pad, sy0 = y0 - dy * pad;   // start edge centre
+	const float sx1 = x1 + dx * pad, sy1 = y1 + dy * pad;   // end edge centre
+	const float a0 = -pad, a1 = seg_len + pad;
+	// corners: 0=start+n, 1=end+n, 2=end-n, 3=start-n
+	setv(0, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
+	setv(1, sx1 + nx * pad, sy1 + ny * pad, a1, a1 - seg_len,  pad, sigma);
+	setv(2, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
+	setv(3, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
+	setv(4, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
+	setv(5, sx0 - nx * pad, sy0 - ny * pad, a0, a0 - seg_len, -pad, sigma);
+}
+
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 {
 	float x0 = prim->bounds.x0;
@@ -1748,20 +1884,19 @@ int renderer_bgfx::draw(int update)
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
 
-			// fill vertex data (put_solid_line builds the AA-free quad + rounded fans)
+			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
+			const uint32_t verts_per_line = m_line_analytic ? 6 : uint32_t(LINE_VERTICES_PER_LINE);
+			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
 			bgfx::TransientVertexBuffer tvb = {};
 			if (visible_count > 0)
 			{
-				// 1 line = body 6 + both rounded end fans 2*N*3 = LINE_VERTICES_PER_LINE vertices
-				const uint32_t needed = uint32_t(visible_count) * uint32_t(LINE_VERTICES_PER_LINE);
-				if (needed == bgfx::getAvailTransientVertexBuffer(needed, ScreenVertex::ms_decl))
+				const uint32_t needed = uint32_t(visible_count) * verts_per_line;
+				if (needed == bgfx::getAvailTransientVertexBuffer(needed, line_decl))
 				{
-					bgfx::allocTransientVertexBuffer(&tvb, needed, ScreenVertex::ms_decl);
+					bgfx::allocTransientVertexBuffer(&tvb, needed, line_decl);
 					if (tvb.data)
 					{
-						ScreenVertex* vptr = reinterpret_cast<ScreenVertex*>(tvb.data);
-
 						render_primitive *vprim = window().m_primlist->first();
 						while (vprim != nullptr)
 						{
@@ -1773,8 +1908,11 @@ int renderer_bgfx::draw(int update)
 								if (w > 0.0f)
 								{
 									m_vec_line_weight = w;
-									put_solid_line(vprim, vptr + vertices);
-									vertices += LINE_VERTICES_PER_LINE;
+									if (m_line_analytic)
+										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices);
+									else
+										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
+									vertices += verts_per_line;
 								}
 							}
 							vprim = vprim->next();
