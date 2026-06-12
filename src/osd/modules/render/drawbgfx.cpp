@@ -157,6 +157,10 @@ inline renderer_bgfx::parent_module_holder::~parent_module_holder()
 //  OSD MODULE
 //============================================================
 
+// HDR PoC: true while the swapchain runs in HDR10 (PQ / Rec.2020, RGB10A2). Set at library
+// init from -bgfx_hdr and the device caps; every later bgfx::reset must carry the same flags.
+static bool s_bgfx_hdr_active = false;
+
 namespace osd {
 
 namespace {
@@ -192,10 +196,6 @@ private:
 	bool m_bgfx_library_initialized;
 };
 
-
-// HDR PoC: true while the swapchain runs in HDR10 (PQ / Rec.2020, RGB10A2). Set at library
-// init from -bgfx_hdr and the device caps; every later bgfx::reset must carry the same flags.
-static bool s_bgfx_hdr_active = false;
 
 //============================================================
 //  video_bgfx::init
