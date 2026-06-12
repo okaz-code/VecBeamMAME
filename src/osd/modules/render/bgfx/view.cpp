@@ -26,13 +26,15 @@ void bgfx_view::update() {
 }
 
 void bgfx_ortho_view::setup() {
-	if (m_window_index == 0)
+	// Honour an explicit backbuffer when one is set (window 0 normally has none and renders to
+	// the default backbuffer; the HDR UI layer redirects it to an offscreen target instead).
+	if (m_backbuffer != nullptr)
 	{
-		bgfx::setViewFrameBuffer(m_index, BGFX_INVALID_HANDLE);
+		bgfx::setViewFrameBuffer(m_index, m_backbuffer->target());
 	}
 	else
 	{
-		bgfx::setViewFrameBuffer(m_index, m_backbuffer->target());
+		bgfx::setViewFrameBuffer(m_index, BGFX_INVALID_HANDLE);
 	}
 	bgfx::setViewRect(m_index, 0, 0, m_view_width, m_view_height);
 
