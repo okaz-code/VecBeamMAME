@@ -1424,7 +1424,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// sigma: FWHM = width (2.355 sigma); the overload defocus widens it (the classic path's
 	// parabola->gaussian blend reached about 2x at full overload).
 	float sigma = (width / 2.355f) * (1.0f + ovld);
-	if (sigma < 0.30f) sigma = 0.30f;
+	// Rasterization floor, mirroring the classic path's r >= 1px clamp: a gaussian narrower
+	// than the fragment pitch falls between fragment centres and vanishes (the Star Wars
+	// starfield: zero-length VCTRs with sub-pixel dot sizes). Points need a wider floor
+	// because they have no extent in either axis.
+	const float sig_floor = as_point ? 0.85f : 0.55f;
+	if (sigma < sig_floor) sigma = sig_floor;
 	const float pad = 3.5f * sigma + 0.5f;
 
 	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
