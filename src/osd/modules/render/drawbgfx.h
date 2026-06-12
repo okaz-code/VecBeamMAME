@@ -179,8 +179,19 @@ private:
 
 	// CRT flicker: the vector device (if any) whose stale-frame flag is read, and the per-frame dim
 	// factor (1.0 = none) computed from it and the chain's vector_crt_flicker slider.
+	// Used only for untimed beam sources; timed lists flicker physically via the time window below.
 	vector_device *m_vector_device = nullptr;
 	float m_crt_flicker_factor = 1.0f;
+
+	// Beam-event time window (machine time, seconds): each presented frame draws only the vector
+	// lines whose draw time falls in (m_vec_win_t0, m_vec_win_t1]. The window advances when the
+	// vector device starts a new emulated frame (m_vec_new_frame, set from its frame-begin
+	// notifier), so re-presents of the same primitives reproduce the same image instead of going
+	// dark. Lines from a list crossing a frame boundary land in the window they were actually
+	// drawn in - this is what produces the per-vector CRT flicker.
+	double m_vec_win_t0 = 0.0;
+	double m_vec_win_t1 = 0.0;
+	bool m_vec_new_frame = false;
 
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
