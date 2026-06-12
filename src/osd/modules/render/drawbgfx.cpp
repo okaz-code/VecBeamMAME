@@ -2360,7 +2360,13 @@ void renderer_bgfx::setup_ortho_view()
 		s_current_view++;
 		// the UI offscreen needs a transparent clear (the backbuffer path keeps its no-clear setup)
 		if (ui_target == m_hdr_ui_target)
+		{
 			bgfx::setViewClear(m_ortho_view->get_index(), BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
+			// bgfx only executes a view's clear when the view is touched; without this, frames
+			// with no UI primitives would keep the offscreen's previous (or uninitialized)
+			// content and the composite would show a stale menu / garbage over the game.
+			bgfx::touch(uint16_t(m_ortho_view->get_index()));
+		}
 	}
 	m_ortho_view->update();
 }
