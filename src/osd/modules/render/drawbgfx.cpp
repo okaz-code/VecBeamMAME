@@ -2099,6 +2099,14 @@ int renderer_bgfx::draw(int update)
 				const float tail_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "tail_accum", "u_tail_freeze", tail_freeze, 4);
 
+				// HDR chain on an SDR swapchain (caps fallback or -bgfx_hdr 0): neutralize the
+				// PQ encode into a plain blit so the colours stay correct. No-op without the pass.
+				if (!s_bgfx_hdr_active)
+				{
+					const float hdr_off[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
+					m_chains->inject_entry_uniform(0, "Final Blit (HDR PQ encode)", "u_hdr_params", hdr_off, 4);
+				}
+
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
 			}
