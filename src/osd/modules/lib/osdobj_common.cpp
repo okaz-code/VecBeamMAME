@@ -158,6 +158,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_DEBUG,                      "0",               core_options::option_type::BOOLEAN,  "enable BGFX debugging statistics" },
 	{ OSDOPTION_BGFX_SCREEN_CHAINS,              "",                core_options::option_type::STRING,   "comma-delimited list of screen chain JSON names, colon-delimited per-window" },
 	{ OSDOPTION_BGFX_VEC_SUPERSAMPLE "(1-2)",    "2",               core_options::option_type::INTEGER,  "vector FBO supersampling factor (1 = window resolution, 2 = 2x)" },
+	{ OSDOPTION_BGFX_VEC_BEAM_EVENTS,            "1",               core_options::option_type::BOOLEAN,  "draw vector lines in the display frame they were beamed in (per-vector CRT flicker); 0 = classic whole-list frames" },
 	{ OSDOPTION_BGFX_SHADOW_MASK,                "slot-mask.png",   core_options::option_type::STRING,   "shadow mask texture name" },
 	{ OSDOPTION_BGFX_LUT,                        "lut-default.png", core_options::option_type::STRING,   "LUT texture name" },
 	{ OSDOPTION_BGFX_AVI_NAME,                   OSDOPTVAL_AUTO,    core_options::option_type::PATH,     "filename for BGFX output logging" },
