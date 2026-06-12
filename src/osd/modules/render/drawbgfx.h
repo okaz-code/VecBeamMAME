@@ -156,6 +156,11 @@ private:
 	bool m_line_analytic = false;
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex);
 
+	// HDR UI composite: the UI layer renders into this SDR offscreen, then a final pass
+	// maps it to paper-white nits / Rec.2020 / PQ and alpha-blends it over the backbuffer.
+	bgfx_target *m_hdr_ui_target = nullptr;
+	bgfx_effect *m_hdr_ui_effect = nullptr;
+
 	std::map<uint32_t, rectangle_packer::packed_rectangle> m_hash_to_entry;
 	std::vector<rectangle_packer::packable_rectangle> m_texinfo;
 	rectangle_packer m_packer;
