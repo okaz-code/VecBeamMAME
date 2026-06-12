@@ -152,7 +152,7 @@ private:
 	// The subsequent post-processing is handled by the chain (JSON).
 	bgfx_effect* m_line_effect = nullptr;
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
-	// 6 verts/line on AnalyticLineVertex, line ends emerge from the math - no cap fans).
+	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex);
 

@@ -1421,9 +1421,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		uint32_t(prim->color.b * length_factor * 255.0f + 0.5f),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
-	// sigma: FWHM = width (2.355 sigma); the overload defocus widens it (the classic path's
-	// parabola->gaussian blend reached about 2x at full overload).
-	float sigma = (width / 2.355f) * (1.0f + ovld);
+	// sigma: width/3.2 keeps the gaussian core as tight as the classic parabola (a gaussian's
+	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
+	// path's parabola->gaussian blend reached about 2x at full overload).
+	float sigma = (width / 3.2f) * (1.0f + ovld);
 	// Rasterization floor, mirroring the classic path's r >= 1px clamp: a gaussian narrower
 	// than the fragment pitch falls between fragment centres and vanishes (the Star Wars
 	// starfield: zero-length VCTRs with sub-pixel dot sizes). Points need a wider floor
@@ -1442,18 +1443,73 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = sg;
 	};
 
+	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader)
+	auto set_dot = [&](int base, float cx, float cy, float sg_abs, uint32_t drgba) {
+		const float p = 3.5f * sg_abs + 0.5f;
+		const float sg = -sg_abs;
+		auto dv = [&](int i, float x, float y, float a, float d) {
+			vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f;
+			vertex[i].m_rgba = drgba;
+			vertex[i].m_a = a; vertex[i].m_b = 0.0f; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+		};
+		dv(base + 0, cx - p, cy - p, -p, -p);
+		dv(base + 1, cx + p, cy - p,  p, -p);
+		dv(base + 2, cx + p, cy + p,  p,  p);
+		dv(base + 3, cx - p, cy - p, -p, -p);
+		dv(base + 4, cx + p, cy + p,  p,  p);
+		dv(base + 5, cx - p, cy + p, -p,  p);
+	};
+	auto set_degenerate = [&](int base) {
+		for (int i = 0; i < 6; i++)
+		{
+			vertex[base + i].m_x = x0; vertex[base + i].m_y = y0; vertex[base + i].m_z = 0.0f;
+			vertex[base + i].m_rgba = 0;
+			vertex[base + i].m_a = 0.0f; vertex[base + i].m_b = 0.0f; vertex[base + i].m_d = 0.0f; vertex[base + i].m_sigma = -1.0f;
+		}
+	};
+
 	if (as_point)
 	{
-		// dwelling beam: 2D gaussian at the segment centre (sigma sign flags point mode)
-		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
-		const float sg = -sigma;
-		setv(0, cx - pad, cy - pad, -pad, 0.0f, -pad, sg);
-		setv(1, cx + pad, cy - pad,  pad, 0.0f, -pad, sg);
-		setv(2, cx + pad, cy + pad,  pad, 0.0f,  pad, sg);
-		setv(3, cx - pad, cy - pad, -pad, 0.0f, -pad, sg);
-		setv(4, cx + pad, cy + pad,  pad, 0.0f,  pad, sg);
-		setv(5, cx - pad, cy + pad, -pad, 0.0f,  pad, sg);
+		// dwelling beam: one 2D gaussian at the segment centre; cap slots stay degenerate
+		set_dot(0, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f, sigma, rgba);
+		set_degenerate(6);
+		set_degenerate(12);
 		return;
+	}
+
+	// End caps: gaussian dots driven by the same line_cap sliders as the classic path
+	// (size/min/intensity-curve/brightness). The erf already gives the physical 50% end
+	// roll-off; these add the visible bright endpoint on top, until the dwell-time model
+	// (master plan 2-3) replaces them.
+	{
+		const float cap_res_scale = float(s_width[window().index()]) / 1920.0f;
+		const float cap_full   = m_chains->slider_value(0, "line_cap_size", LINE_CAP_SIZE_PX) * cap_res_scale;
+		const float cap_min_px = m_chains->slider_value(0, "line_cap_min_size", 0.0f) * cap_res_scale;
+		const float cap_curve  = m_chains->slider_value(0, "line_cap_intensity_curve", 0.0f);
+		const float cap_bi     = std::clamp(prim->color.a, 0.0f, 1.0f);
+		const float cap_f      = (cap_curve <= 0.0001f) ? 1.0f : powf(cap_bi, cap_curve);
+		const float cap_radius = std::max(0.0f, cap_min_px + (cap_full - cap_min_px) * cap_f);
+		if (cap_radius > 0.05f)
+		{
+			const float cap_bright = std::max(1.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
+			uint32_t cap_rgba = rgba;
+			if (cap_bright > 1.0001f)
+			{
+				cap_rgba = u32Color(
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_bright * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_bright * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * cap_bright * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
+			}
+			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
+			set_dot(6, x0, y0, sg_cap, cap_rgba);
+			set_dot(12, x1, y1, sg_cap, cap_rgba);
+		}
+		else
+		{
+			set_degenerate(6);
+			set_degenerate(12);
+		}
 	}
 
 	// expanded quad: +-pad beyond both endpoints and to both sides
@@ -1891,7 +1947,8 @@ int renderer_bgfx::draw(int update)
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
-			const uint32_t verts_per_line = m_line_analytic ? 6 : uint32_t(LINE_VERTICES_PER_LINE);
+			// analytic: body quad 6 + two end-cap dots 6+6
+			const uint32_t verts_per_line = m_line_analytic ? 18 : uint32_t(LINE_VERTICES_PER_LINE);
 			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
 			bgfx::TransientVertexBuffer tvb = {};
 			if (visible_count > 0)
