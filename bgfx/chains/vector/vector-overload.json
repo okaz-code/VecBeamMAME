@@ -346,7 +346,7 @@
 			"output": "internal"
 		},
 
-		{   "effect": "vector_phosphor_tail",
+		{   "effect": "vector/vector_phosphor_tail",
 			"name": "tail_accum",
 			"_comment": "Two-component phosphor decay, slow component: slow_pool = slow_pool_prev x tail_decay + current lines. Taps the mask-applied internal (same source as the bloom; the tail is phosphor emission, downstream of the mask). u_tail_freeze is injected by the renderer (1 while emulation time is not advancing, e.g. pause) to hold the pool",
 			"disablewhen": [

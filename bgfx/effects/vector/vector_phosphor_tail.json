@@ -16,7 +16,7 @@
 	"cull": { "mode": "none" },
 	"write": { "rgb": true, "alpha": true },
 	"vertex": "vs_gui",
-	"fragment": "fs_vector_phosphor_tail",
+	"fragment": "vector/fs_vector_phosphor_tail",
 	"uniforms": [
 		{ "name": "s_prev",          "type": "int",  "values": [ 0.0 ] },
 		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },

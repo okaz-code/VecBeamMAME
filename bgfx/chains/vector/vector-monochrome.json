@@ -261,7 +261,7 @@
 			"output": "internal"
 		},
 
-		{   "effect": "vector_phosphor_tail",
+		{   "effect": "vector/vector_phosphor_tail",
 			"name": "tail_accum",
 			"_comment": "Two-component phosphor decay, slow component: slow_pool = slow_pool_prev x tail_decay + current lines. Taps post-pincushion internal (pre-bloom) so the tail tracks the line geometry; the small cross-feed from the fast Phosphor Decay history is accepted. u_tail_freeze is injected by the renderer (1 while emulation time is not advancing, e.g. pause) to hold the pool",
 			"disablewhen": [
