@@ -2226,6 +2226,9 @@ int renderer_bgfx::draw(int update)
 				ui_fb = m_framebuffer->target();
 			bgfx::setViewFrameBuffer(ui_view, ui_fb);
 			bgfx::setViewRect(ui_view, 0, 0, uint16_t(w), uint16_t(h));
+			// explicit no-clear: this index may previously have hosted a chain pass whose
+			// opaque clear would otherwise wipe the game image before the UI composite
+			bgfx::setViewClear(ui_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 			bgfx::setViewMode(ui_view, bgfx::ViewMode::Sequential);
 			float ui_proj[16];
 			bx::mtxOrtho(ui_proj, 0.0f, w, h, 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
@@ -2358,17 +2361,23 @@ void renderer_bgfx::setup_ortho_view()
 		m_ortho_view->set_index(s_current_view);
 		m_ortho_view->setup();
 		s_current_view++;
-		// the UI offscreen needs a transparent clear (the backbuffer path keeps its no-clear setup).
-		// The null check matters: in SDR both pointers are null and compare "equal", but the view
-		// is then bound to the default backbuffer - clearing it here wiped the game image.
-		if (m_hdr_ui_target != nullptr && ui_target == m_hdr_ui_target)
-		{
-			bgfx::setViewClear(m_ortho_view->get_index(), BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
-			// bgfx only executes a view's clear when the view is touched; without this, frames
-			// with no UI primitives would keep the offscreen's previous (or uninitialized)
-			// content and the composite would show a stale menu / garbage over the game.
-			bgfx::touch(uint16_t(m_ortho_view->get_index()));
-		}
+	}
+	// (Re)set the clear state every frame: the view index shifts when chain passes toggle via
+	// disablewhen, and a shifted index inherits the previous occupant's clear settings (e.g. a
+	// chain pass's opaque black clear), which would wipe the game image right before the UI draws.
+	// The null check matters: in SDR both pointers are null and compare "equal", but the view is
+	// then bound to the default backbuffer.
+	if (m_hdr_ui_target != nullptr && ui_target == m_hdr_ui_target)
+	{
+		// UI offscreen: transparent clear; touch so the clear executes even with no UI primitives
+		// (otherwise stale menu content or uninitialized garbage stays in the layer).
+		bgfx::setViewClear(m_ortho_view->get_index(), BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
+		bgfx::touch(uint16_t(m_ortho_view->get_index()));
+	}
+	else
+	{
+		// backbuffer: never clear (the game image is already there)
+		bgfx::setViewClear(m_ortho_view->get_index(), BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 	}
 	m_ortho_view->update();
 }
