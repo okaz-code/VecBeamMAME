@@ -100,18 +100,21 @@
 		{   "name": "guest",
 			"mode": "native",
 			"bilinear": false,
-			"doublebuffer": true
+			"doublebuffer": true,
+			"format": "RG11B10F"
 		},
 		{   "name": "internal",
 			"_comment": "scale 1: process all full-screen passes at the window resolution",
 			"mode": "native",
 			"scale": 1,
-			"doublebuffer": true
+			"doublebuffer": true,
+			"format": "RG11B10F"
 		},
 		{   "name": "previous",
 			"mode": "native",
 			"scale": 1,
-			"doublebuffer": true
+			"doublebuffer": true,
+			"format": "RG11B10F"
 		},
 		{   "name": "acc0",
 			"_comment": "Stage 2 ladder bloom accumulators (acc0..acc6, window-proportional pyramid via fractional scale). Each is seeded with bloom_lvl(n) x weight (implicit clear) then up-added from acc(n+1) with clear:{}; the repeated bilinear up-resampling smooths deeper levels progressively, replacing the old halo blur",
@@ -158,8 +161,9 @@
 	],
 
 	"passes": [
-		{   "effect": "misc/blit",
-			"name": "Initial Blit (screen -> guest)",
+		{   "effect": "vector/vector_linearize",
+			"name": "Initial Blit (linearize, screen -> guest)",
+			"_comment": "linear HDR chain: everything downstream operates on linear light",
 			"input": [
 				{ "sampler": "s_tex", "texture": "screen" }
 			],
@@ -425,7 +429,8 @@
 				{ "sampler": "s_tex", "target": "internal" }
 			],
 			"uniforms": [
-				{ "uniform": "u_hdr_params", "slider": "beam_peak_nits" }
+				{ "uniform": "u_hdr_params", "slider": "beam_peak_nits" },
+				{ "uniform": "u_hdr_input",  "value": [ 1.0, 0.0, 0.0, 0.0 ] }
 			],
 			"output": "output"
 		}

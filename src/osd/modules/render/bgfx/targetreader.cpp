@@ -50,6 +50,7 @@ bgfx_target* target_reader::read_from_value(
 		if      (fmt_str == "RGBA16F") format = bgfx::TextureFormat::RGBA16F;
 		else if (fmt_str == "RGBA32F") format = bgfx::TextureFormat::RGBA32F;
 		else if (fmt_str == "RGBA16")  format = bgfx::TextureFormat::RGBA16;
+		else if (fmt_str == "RG11B10F") format = bgfx::TextureFormat::RG11B10F;
 		else if (fmt_str == "RGBA8")   format = bgfx::TextureFormat::RGBA8;
 		else if (fmt_str == "BGRA8")   format = bgfx::TextureFormat::BGRA8;
 		else

@@ -12,6 +12,7 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_tex, 0);
 
 uniform vec4 u_hdr_params;  // x = peak nits mapped to full intensity (e.g. 600); <= 0 = passthrough
+uniform vec4 u_hdr_input;   // x = 1 when the chain already runs in linear light (skip the EOTF)
 
 void main()
 {
@@ -21,12 +22,14 @@ void main()
 	// unavailable, turning this pass into a plain blit so the HDR chain still displays correctly.
 	if (u_hdr_params.x <= 0.0)
 	{
-		gl_FragColor = vec4(srgb, 1.0) * v_color0;
+		// linear chains need re-encoding to gamma for the SDR backbuffer
+		vec3 outc = (u_hdr_input.x > 0.5) ? pow(max(srgb, vec3_splat(0.0)), vec3_splat(1.0 / 2.2)) : srgb;
+		gl_FragColor = vec4(outc, 1.0) * v_color0;
 		return;
 	}
 
-	// approximate sRGB EOTF
-	vec3 lin = pow(max(srgb, vec3_splat(0.0)), vec3_splat(2.2));
+	// approximate sRGB EOTF (skipped when the chain is already linear)
+	vec3 lin = (u_hdr_input.x > 0.5) ? max(srgb, vec3_splat(0.0)) : pow(max(srgb, vec3_splat(0.0)), vec3_splat(2.2));
 
 	// Rec.709 -> Rec.2020 primaries
 	vec3 c2020 = vec3(
