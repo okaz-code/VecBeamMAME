@@ -1329,7 +1329,7 @@ uint32_t renderer_bgfx::u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a 
 // 6 (line body) + 2 * N * 3 = 6 + 6N vertices/line. N=8 gives 54 vertices.
 static constexpr int   LINE_CAP_SEGMENTS      = 8;
 static constexpr int   LINE_VERTICES_PER_LINE = 6 + 2 * LINE_CAP_SEGMENTS * 3;
-static constexpr float LINE_CAP_SIZE_PX       = 4.0f;  // cap radius (px at a 1920px-wide window)
+static constexpr float LINE_CAP_SIZE_PX       = 2.0f;  // cap radius (px at a 1920px-wide window)
 static constexpr float LINE_POINT_THRESHOLD   = 2.0f;  // segments shorter than this are drawn as points
 
 // Normalized tunable sigmoid (Dino Dini's curve, n and k in [-1, 1]); k=0 is linear.
