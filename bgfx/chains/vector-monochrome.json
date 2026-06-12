@@ -49,6 +49,9 @@
 
 		{ "type": "color", "name": "phosphor", "text": "Phosphor Persistence, ",  "default": [ 0.40, 0.40, 0.40 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
+		{ "type": "float", "name": "tail_strength", "text": "Phosphor Tail Strength", "default": 0.010, "max": 0.25,  "min": 0.00, "step": 0.002, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.90,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
+
 		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_y_quad",  "text": "Vector Pincushion Y (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -118,6 +121,12 @@
 		{   "name": "acc6",
 			"mode": "native", "scale": 0.0078125,
 			"doublebuffer": false,
+			"format": "RGBA16F"
+		},
+		{   "name": "slow_pool",
+			"_comment": "Two-component phosphor decay: slow-tail accumulator (P31 comet tail). Half-res float; the bilinear upscale at composite doubles as the physical blur of the tail",
+			"mode": "native", "scale": 0.5,
+			"doublebuffer": true,
 			"format": "RGBA16F"
 		}
 	],
@@ -251,6 +260,22 @@
 			"output": "internal"
 		},
 
+		{   "effect": "vector_phosphor_tail",
+			"name": "tail_accum",
+			"_comment": "Two-component phosphor decay, slow component: slow_pool = slow_pool_prev x tail_decay + current lines. Taps post-pincushion internal (pre-bloom) so the tail tracks the line geometry; the small cross-feed from the fast Phosphor Decay history is accepted. u_tail_freeze is injected by the renderer (1 while emulation time is not advancing, e.g. pause) to hold the pool",
+			"disablewhen": [
+				{ "type": "slider", "condition": "equal", "name": "tail_strength", "value": 0.0 }
+			],
+			"input": [
+				{ "sampler": "s_prev", "target": "slow_pool" },
+				{ "sampler": "s_tex",  "target": "internal" }
+			],
+			"uniforms": [
+				{ "uniform": "u_tail_decay", "slider": "tail_decay" }
+			],
+			"output": "slow_pool"
+		},
+
 		{ "_comment": "8-level 0.5x bloom (same method as the Color version). Bloom source = mask-applied internal. vector_downsample shrinks bloom_lvl0..7 by 0.5x repeatedly; the ladder below accumulates the levels into acc0..acc6",
 		  "effect": "vector_downsample", "name": "ds_bloom0", "input": [ { "sampler": "s_tex", "target": "internal"   } ], "output": "bloom_lvl0" },
 		{ "effect": "vector_downsample", "name": "ds_bloom1", "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ], "output": "bloom_lvl1" },
@@ -276,6 +301,13 @@
 		{ "effect": "vector_upsample", "name": "up_acc2_to_acc1", "clear": {}, "input": [ { "sampler": "s_tex", "target": "acc2" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "acc1" },
 		{ "effect": "vector_blit_add", "name": "seed_acc0",                  "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ], "uniforms": [ { "uniform": "u_blit_intensity", "slider": "bloom_lvl0_weight" } ], "output": "acc0" },
 		{ "effect": "vector_upsample", "name": "up_acc1_to_acc0", "clear": {}, "input": [ { "sampler": "s_tex", "target": "acc1" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "acc0" },
+
+		{ "effect": "vector_blit_add", "name": "tail_add", "clear": {},
+		  "_comment": "composite the slow tail: ADD slow_pool x tail_strength onto acc0 (same half resolution, single-buffered like the ladder), so it reaches the image through Bloom Apply and gets the phosphor tint with everything else. internal cannot take a partial ADD directly (doublebuffered)",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "tail_strength", "value": 0.0 } ],
+		  "input": [ { "sampler": "s_tex", "target": "slow_pool" } ],
+		  "uniforms": [ { "uniform": "u_blit_intensity", "slider": "tail_strength" } ],
+		  "output": "acc0" },
 
 				{ "effect": "vector_bloom_apply", "name": "Bloom Apply",
 		  "_comment": "monochrome: overdrive / channel_gain not needed, fixed at literal identity",

@@ -1693,6 +1693,7 @@ int renderer_bgfx::draw(int update)
 		// The machine-time basis makes pause and fast-forward transparent; time can regress on
 		// state load / rewind, in which case the window restarts from zero.
 		const double vec_now = window().machine().time().as_double();
+		m_vec_frame_advanced = m_vec_new_frame;
 		if (m_vec_new_frame)
 		{
 			m_vec_win_t0 = (vec_now < m_vec_win_t1) ? 0.0 : m_vec_win_t1;
@@ -1849,6 +1850,11 @@ int renderer_bgfx::draw(int update)
 				// No-op when the active chain has no "add_mglow" pass.
 				const float mglow_vals[4] = { m_mglow_amount, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
+
+				// Freeze the phosphor-tail pool on presents that did not advance emulation
+				// (pause, menu stills): no decay, no injection. No-op without a "tail_accum" pass.
+				const float tail_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "tail_accum", "u_tail_freeze", tail_freeze, 4);
 
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
