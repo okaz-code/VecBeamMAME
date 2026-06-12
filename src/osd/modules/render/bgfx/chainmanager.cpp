@@ -604,8 +604,7 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 
 	// (6) Create/recreate the dynamically-sized bloom mip targets when dimensions change.
 	// These are sized relative to the window (window/2 .. window/256), so they cannot be declared
-	// with fixed sizes in the chain JSON; the CRT chains (vector-color / vector-monochrome) read
-	// bloom_lvl0..7 and bloom_smooth_tmp by name.
+	// with fixed sizes in the chain JSON; the vector chains read bloom_lvl0..7 by name.
 	if (width != m_vec_win_w || height != m_vec_win_h || vec_fb_w != m_vec_fb_w || vec_fb_h != m_vec_fb_h)
 	{
 		m_vec_win_w = width;
@@ -641,10 +640,6 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::BGRA8,
 				bloom_lvl_w[i], bloom_lvl_h[i], 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
 		}
-		// bloom_sum smoothing-blur intermediate (RGBA16F, window size) used by halo_smoothness:
-		// bloom_sum -> bloom_smooth_tmp (h-blur) -> bloom_sum (v-blur).
-		m_targets.create_target("bloom_smooth_tmp", bgfx::TextureFormat::RGBA16F,
-			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
 	}
 }
 

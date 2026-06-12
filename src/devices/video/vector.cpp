@@ -49,8 +49,8 @@ void vector_options::init(emu_options &options)
 	s_beam_dot_size = options.beam_dot_size();
 	s_beam_intensity_weight = options.beam_intensity_weight();
 	s_flicker = options.flicker();
-	s_overscan_x = options.overscan_x();
-	s_overscan_y = options.overscan_y();
+	s_overscan_x = options.vector_overscan_x();
+	s_overscan_y = options.vector_overscan_y();
 }
 
 // device type definition
@@ -118,9 +118,9 @@ util::notifier_subscription vector_device::add_line_notifier(line_delegate &&n)
 	return m_line_notifier.subscribe(std::move(n));
 }
 
-util::notifier_subscription vector_device::add_overload_line_notifier(overload_line_delegate &&n)
+util::notifier_subscription vector_device::add_beam_energy_line_notifier(beam_energy_line_delegate &&n)
 {
-	return m_overload_line_notifier.subscribe(std::move(n));
+	return m_beam_energy_line_notifier.subscribe(std::move(n));
 }
 
 
@@ -140,7 +140,7 @@ float vector_device::normalized_sigmoid(float n, float k)
 // needs to call this.
 //-------------------------------------------------
 
-void vector_device::add_point(int x, int y, rgb_t color, int intensity, float overload)
+void vector_device::add_point(int x, int y, rgb_t color, int intensity, float beam_energy)
 {
 	point *newpoint;
 
@@ -164,11 +164,11 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float ov
 	newpoint->col = color;
 	newpoint->intensity = intensity;
 	// Normalized (0..1) beam energy carried on the primitive for renderer overdrive effects.
-	// When the device supplies a raw beam-energy value (overload >= 0) it is used as-is; otherwise
+	// When the device supplies a raw value (beam_energy >= 0) it is used as-is; otherwise
 	// the displayed intensity is used as the normalized value. This is pure data: the displayed
 	// intensity above is unchanged, so renderers that ignore it produce stock output.
-	newpoint->overload = (overload >= 0.0f) ? std::clamp(overload, 0.0f, 1.0f)
-											: float(intensity) / 255.0f;
+	newpoint->beam_energy = (beam_energy >= 0.0f) ? std::clamp(beam_energy, 0.0f, 1.0f)
+												  : float(intensity) / 255.0f;
 
 	m_vector_index++;
 	if (m_vector_index >= MAX_POINTS)
@@ -261,10 +261,10 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					beam_width,
 					(curpoint->intensity << 24) | (curpoint->col & 0xffffff),
 					flags,
-					curpoint->overload);
+					curpoint->beam_energy);
 			m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
 			// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
-			m_overload_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->overload);
+			m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
 		}
 		else
 		{
