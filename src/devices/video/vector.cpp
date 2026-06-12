@@ -161,7 +161,11 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	m_min_intensity = intensity > 0 ? std::min(m_min_intensity, intensity) : m_min_intensity;
 	m_max_intensity = intensity > 0 ? std::max(m_max_intensity, intensity) : m_max_intensity;
 
-	if (vector_options::s_flicker && (intensity > 0))
+	// Legacy random flicker (-flicker). Skipped for timed points when a beam-event renderer is
+	// attached: those flicker physically through the time-window assignment, and the random
+	// jitter would only distort it. Untimed sources and classic-mode rendering keep the option.
+	const bool physical_flicker = m_beam_event_mode && !t0.is_never();
+	if (vector_options::s_flicker && (intensity > 0) && !physical_flicker)
 	{
 		float random = float(machine().rand() & 255) / 255.0f; // random value between 0.0 and 1.0
 
