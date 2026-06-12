@@ -170,7 +170,7 @@ public:
 	bool bgfx_debug() const { return bool_value(OSDOPTION_BGFX_DEBUG); }
 	const char *bgfx_screen_chains() const { return value(OSDOPTION_BGFX_SCREEN_CHAINS); }
 	int bgfx_vec_supersample() const { return int_value(OSDOPTION_BGFX_VEC_SUPERSAMPLE); }
-	bool bgfx_vec_beam_events() const { return bool_value(OSDOPTION_BGFX_VEC_BEAM_EVENTS); }
+	bool bgfx_vec_beam_events() const { return int_value(OSDOPTION_BGFX_VEC_BEAM_EVENTS) != 0; }
 	const char *bgfx_shadow_mask() const { return value(OSDOPTION_BGFX_SHADOW_MASK); }
 	const char *bgfx_lut() const { return value(OSDOPTION_BGFX_LUT); }
 	const char *bgfx_avi_name() const { return value(OSDOPTION_BGFX_AVI_NAME); }
