@@ -119,6 +119,7 @@
 #define OPTION_FLICKER              "flicker"
 #define OPTION_VECTOR_OVERSCAN_X    "vector_overscan_x"
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
+#define OPTION_VECTOR_EVENT_DUMP    "vector_event_dump"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -406,6 +407,7 @@ public:
 	float flicker() const { return float_value(OPTION_FLICKER); }
 	float vector_overscan_x() const { return float_value(OPTION_VECTOR_OVERSCAN_X); }
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
+	const char *vector_event_dump() const { return value(OPTION_VECTOR_EVENT_DUMP); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }

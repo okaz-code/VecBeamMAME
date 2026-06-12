@@ -55,29 +55,37 @@ void avgdvg_device_base::apply_flipping(int &x, int &y) const
 
 void avgdvg_device_base::vg_flush()
 {
-	// The default clip window is symmetric about the origin (lower bound -0x5000000 instead of
-	// stock's 0). The Quadrascan hardware scans signed coordinates centred on 0; a symmetric window
-	// keeps the left/top off-screen beams in the buffer instead of discarding them, so a renderer can
-	// pick them up (off-screen beam effects) via the overload line notifier. On-screen output is
-	// unchanged: the draw side is still clipped at the screen edge downstream.
-	int cx0 = -0x5000000, cy0 = -0x5000000, cx1 = 0x5000000, cy1 = 0x5000000;
-	int i = 0;
+	// Resumable flush: the clip window and beam position chain live in m_flush_* members so the
+	// buffer can be handed over in slice-sized batches (beam-event mode) without losing list
+	// state. vg_flush_list_end() re-primes the state at each list boundary, which reproduces the
+	// stock one-flush-per-list behaviour exactly when event mode is off.
+	if (!m_flush_primed)
+	{
+		for (int j = 0; j < m_nvect; j++)
+		{
+			if (m_vectbuf[j].status == VGVECTOR)
+			{
+				m_flush_xs = m_vectbuf[j].x;
+				m_flush_ys = m_vectbuf[j].y;
+				m_flush_primed = true;
+				break;
+			}
+		}
+	}
 
-	while (m_vectbuf[i].status == VGCLIP)
-		i++;
-	int xs = m_vectbuf[i].x;
-	int ys = m_vectbuf[i].y;
+	int &cx0 = m_flush_cx0, &cy0 = m_flush_cy0;
+	int &cx1 = m_flush_cx1, &cy1 = m_flush_cy1;
 
-	for (i = 0; i < m_nvect; i++)
+	for (int i = 0; i < m_nvect; i++)
 	{
 		if (m_vectbuf[i].status == VGVECTOR)
 		{
 			int xe = m_vectbuf[i].x;
 			int ye = m_vectbuf[i].y;
-			int x0 = xs, y0 = ys, x1 = xe, y1 = ye;
+			int x0 = m_flush_xs, y0 = m_flush_ys, x1 = xe, y1 = ye;
 
-			xs = xe;
-			ys = ye;
+			m_flush_xs = xe;
+			m_flush_ys = ye;
 
 			if ((x0 < cx0 && x1 < cx0) || (x0 > cx1 && x1 > cx1))
 				continue;
@@ -127,8 +135,8 @@ void avgdvg_device_base::vg_flush()
 				y1 = cy1;
 			}
 
-			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0);
-			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].beam_energy);
+			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0, -1.0f, m_vectbuf[i].t0, m_vectbuf[i].t1);
+			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].beam_energy, m_vectbuf[i].t0, m_vectbuf[i].t1);
 		}
 
 		if (m_vectbuf[i].status == VGCLIP)
@@ -148,6 +156,30 @@ void avgdvg_device_base::vg_flush()
 	m_nvect = 0;
 }
 
+// Flush the residual buffer and re-prime the resumable flush state for the next list.
+// Called at the list boundaries (VGGO and the Tempest/Quantum jump-to-zero).
+void avgdvg_device_base::vg_flush_list_end()
+{
+	vg_flush();
+	vg_flush_reset();
+}
+
+void avgdvg_device_base::vg_flush_reset()
+{
+	// The default clip window is symmetric about the origin (lower bound -0x5000000 instead of
+	// stock's 0). The Quadrascan hardware scans signed coordinates centred on 0; a symmetric window
+	// keeps the left/top off-screen beams in the buffer instead of discarding them, so a renderer can
+	// pick them up (off-screen beam effects) via the beam-energy line notifier. On-screen output is
+	// unchanged: the draw side is still clipped at the screen edge downstream.
+	m_flush_cx0 = -0x5000000;
+	m_flush_cy0 = -0x5000000;
+	m_flush_cx1 = 0x5000000;
+	m_flush_cy1 = 0x5000000;
+	m_flush_xs = 0;
+	m_flush_ys = 0;
+	m_flush_primed = false;
+}
+
 void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy)
 {
 	if (m_nvect < MAXVECT)
@@ -158,6 +190,9 @@ void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensi
 		m_vectbuf[m_nvect].color = color;
 		m_vectbuf[m_nvect].intensity = intensity;
 		m_vectbuf[m_nvect].beam_energy = beam_energy;
+		// stamped by run_state_machine once the op's cycle count is known
+		m_vectbuf[m_nvect].t0 = attotime::never;
+		m_vectbuf[m_nvect].t1 = attotime::never;
 		m_nvect++;
 	}
 }
@@ -171,6 +206,8 @@ void avgdvg_device_base::vg_add_clip(int xmin, int ymin, int xmax, int ymax)
 		m_vectbuf[m_nvect].y = ymin;
 		m_vectbuf[m_nvect].arg1 = xmax;
 		m_vectbuf[m_nvect].arg2 = ymax;
+		m_vectbuf[m_nvect].t0 = attotime::never;
+		m_vectbuf[m_nvect].t1 = attotime::never;
 		m_nvect++;
 	}
 }
@@ -590,7 +627,7 @@ int avg_device::avg_common_strobe2()
 				 */
 
 				m_vector->clear_list();
-				vg_flush();
+				vg_flush_list_end();
 			}
 		}
 		else
@@ -1218,6 +1255,7 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::vg_set_halt_callback)
 TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 {
 	int cycles = 0;
+	const attotime slice_base = machine().time();
 
 	while (cycles < VGSLICE)
 	{
@@ -1228,6 +1266,9 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 		{
 			// Read vector RAM/ROM
 			update_databus();
+
+			const int nvect_before = m_nvect;
+			const int cycles_before = cycles;
 
 			// Decode state and call the corresponding handler
 			switch (m_state_latch & 7)
@@ -1241,6 +1282,21 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 			case 6 : cycles += handler_6(); break;
 			case 7 : cycles += handler_7(); break;
 			}
+
+			// Stamp the events this op buffered with its absolute draw interval. cycles counts
+			// MASTER_CLOCK ticks (the timers below convert with the same base, so the stamps line
+			// up with machine time). A handler can flush mid-op (jump-to-zero), in which case
+			// everything still in the buffer is new.
+			if (m_nvect != nvect_before)
+			{
+				const attotime t0 = slice_base + attotime::from_ticks(cycles_before, MASTER_CLOCK);
+				const attotime t1 = slice_base + attotime::from_ticks(cycles, MASTER_CLOCK);
+				for (int i = (m_nvect > nvect_before) ? nvect_before : 0; i < m_nvect; i++)
+				{
+					m_vectbuf[i].t0 = t0;
+					m_vectbuf[i].t1 = t1;
+				}
+			}
 		}
 
 		// If halt flag was set, let CPU catch up before we make halt visible
@@ -1250,6 +1306,11 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 		m_state_latch = (m_halt << 4) | (m_state_latch & 0xf);
 		cycles += 8;
 	}
+
+	// In beam-event mode the renderer consumes timed events as they are drawn, so hand over what
+	// this slice produced instead of holding everything until the next list boundary.
+	if (m_vector->beam_event_mode())
+		vg_flush();
 
 	m_vg_run_timer->adjust(attotime::from_hz(MASTER_CLOCK) * cycles);
 }
@@ -1279,7 +1340,7 @@ void avgdvg_device_base::go_w(u8 data)
 		 */
 		m_vector->clear_list();
 	}
-	vg_flush();
+	vg_flush_list_end();
 
 	vg_set_halt(0);
 	m_vg_run_timer->adjust(attotime::zero);
@@ -1323,6 +1384,7 @@ void avgdvg_device_base::device_start()
 	m_vg_run_timer = timer_alloc(FUNC(avgdvg_device_base::run_state_machine), this);
 
 	m_flip_x = m_flip_y = false;
+	vg_flush_reset();
 
 	save_item(NAME(m_pc));
 	save_item(NAME(m_sp));

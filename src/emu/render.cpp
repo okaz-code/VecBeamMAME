@@ -648,12 +648,14 @@ void render_container::set_user_settings(const user_settings &settings)
 //  add_line - add a line item to this container
 //-------------------------------------------------
 
-void render_container::add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy)
+void render_container::add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy, double t0, double t1)
 {
 	item &newitem = add_generic(CONTAINER_ITEM_LINE, x0, y0, x1, y1, argb);
 	newitem.m_width = width;
 	newitem.m_flags = flags;
 	newitem.m_beam_energy = beam_energy;
+	newitem.m_t0 = t0;
+	newitem.m_t1 = t1;
 }
 
 
@@ -2549,6 +2551,8 @@ void render_target::add_container_primitives(render_primitive_list &list, const 
 				// scale the width by the minimum of X/Y scale factors
 				prim->width = curitem.width() * std::min(container_xform.xscale, container_xform.yscale);
 				prim->beam_energy = curitem.beam_energy();
+				prim->t0 = curitem.t0();
+				prim->t1 = curitem.t1();
 				prim->flags |= curitem.flags();
 
 				// clip the primitive

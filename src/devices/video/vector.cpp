@@ -62,6 +62,7 @@ vector_device::vector_device(const machine_config &mconfig, const char *tag, dev
 		m_vector_list(nullptr),
 		m_min_intensity(255),
 		m_max_intensity(0),
+		m_beam_event_mode(false),
 		m_list_generation(0),
 		m_last_drawn_generation(~uint32_t(0)),
 		m_beam_list_stale(false)
@@ -76,6 +77,17 @@ void vector_device::device_start()
 
 	/* allocate memory for tables */
 	m_vector_list = std::make_unique<point[]>(MAX_POINTS);
+
+	// Debug aid: -vector_event_dump <file> writes one CSV row per timed beam event.
+	const char *const dump_path = machine().options().vector_event_dump();
+	if (dump_path != nullptr && dump_path[0] != '\0')
+	{
+		m_event_dump.open(dump_path);
+		if (m_event_dump.is_open())
+			m_event_dump << "t0,t1,x,y,intensity,beam_energy\n";
+		else
+			osd_printf_warning("vector: could not open event dump file '%s'\n", dump_path);
+	}
 }
 
 
@@ -140,7 +152,7 @@ float vector_device::normalized_sigmoid(float n, float k)
 // needs to call this.
 //-------------------------------------------------
 
-void vector_device::add_point(int x, int y, rgb_t color, int intensity, float beam_energy)
+void vector_device::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
 {
 	point *newpoint;
 
@@ -169,6 +181,12 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	// intensity above is unchanged, so renderers that ignore it produce stock output.
 	newpoint->beam_energy = (beam_energy >= 0.0f) ? std::clamp(beam_energy, 0.0f, 1.0f)
 												  : float(intensity) / 255.0f;
+	newpoint->t0 = t0;
+	newpoint->t1 = t1;
+
+	if (m_event_dump.is_open() && !t0.is_never())
+		util::stream_format(m_event_dump, "%.9f,%.9f,%d,%d,%d,%.4f\n",
+				t0.as_double(), t1.as_double(), x, y, intensity, newpoint->beam_energy);
 
 	m_vector_index++;
 	if (m_vector_index >= MAX_POINTS)
@@ -186,7 +204,23 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 
 void vector_device::clear_list()
 {
-	m_vector_index = 0;
+	if (m_beam_event_mode)
+	{
+		// Timed points are presentation-owned: they stay queued until screen_update has emitted
+		// them once, so a list crossing a frame boundary keeps its tail. Only untimed points
+		// (stock semantics) are dropped here.
+		int w = 0;
+		for (int r = 0; r < m_vector_index; r++)
+		{
+			if (!m_vector_list[r].t0.is_never())
+				m_vector_list[w++] = m_vector_list[r];
+		}
+		m_vector_index = w;
+	}
+	else
+	{
+		m_vector_index = 0;
+	}
 	// A new beam list is starting; bump the generation so screen_update can tell this frame redrew.
 	m_list_generation++;
 }
@@ -261,7 +295,9 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					beam_width,
 					(curpoint->intensity << 24) | (curpoint->col & 0xffffff),
 					flags,
-					curpoint->beam_energy);
+					curpoint->beam_energy,
+					curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
+					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double());
 			m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
 			// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
 			m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
@@ -275,6 +311,20 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		lasty = curpoint->y;
 
 		curpoint++;
+	}
+
+	if (m_beam_event_mode)
+	{
+		// Timed points have now been emitted once and are consumed; the renderer's time-window
+		// filter handles any re-presentation of the same primitives. Untimed points keep stock
+		// semantics (redrawn until the next clear_list).
+		int w = 0;
+		for (int i = 0; i < m_vector_index; i++)
+		{
+			if (m_vector_list[i].t0.is_never())
+				m_vector_list[w++] = m_vector_list[i];
+		}
+		m_vector_index = w;
 	}
 
 	m_frame_end_notifier();

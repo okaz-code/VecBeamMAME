@@ -44,6 +44,7 @@ protected:
 		int arg1; int arg2;
 		int status;
 		float beam_energy;  // normalized (0..1) raw beam energy, or < 0 when the device has none
+		attotime t0, t1;    // absolute machine time the beam spent drawing this event (never = untimed)
 	};
 
 	avgdvg_device_base(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock);
@@ -74,6 +75,7 @@ protected:
 	void vg_set_halt(int dummy);
 
 	void vg_flush();
+	void vg_flush_list_end();
 	void vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f);
 	void vg_add_clip(int xmin, int ymin, int xmax, int ymax);
 
@@ -109,10 +111,19 @@ private:
 	TIMER_CALLBACK_MEMBER(vg_set_halt_callback);
 	TIMER_CALLBACK_MEMBER(run_state_machine);
 
+	void vg_flush_reset();
+
 	required_region_ptr<u8> m_prom;
 	emu_timer *m_vg_run_timer, *m_vg_halt_timer;
 
 	bool m_flip_x, m_flip_y;
+
+	// Resumable vg_flush state (clip window + beam position chain). Persists across the
+	// slice-sized batch flushes of beam-event mode; re-primed at each list boundary so the
+	// stock one-flush-per-list behaviour is reproduced exactly when event mode is off.
+	int m_flush_cx0, m_flush_cy0, m_flush_cx1, m_flush_cy1;
+	int m_flush_xs, m_flush_ys;
+	bool m_flush_primed;
 };
 
 
