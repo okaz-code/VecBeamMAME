@@ -239,6 +239,8 @@ public:
 	u32                 flags = 0U;         // flags
 	float               width = 0.0F;       // width (for line primitives)
 	float               beam_energy = 0.0F; // normalized (0..1) beam energy for renderer overload/overdrive effects (0 = none; ignored by stock renderers)
+	double              t0 = -1.0;          // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
+	double              t1 = -1.0;          // absolute machine time (s) the beam finished drawing this line
 	render_texinfo      texture;            // texture info (for quad primitives)
 	render_quad_texuv   texcoords;          // texture coordinates (for quad primitives)
 	render_container *  container = nullptr;// the render container we belong to
@@ -419,7 +421,7 @@ public:
 	void empty() { m_item_allocator.reclaim_all(m_itemlist); }
 
 	// add items to the list
-	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy = 0.0f);
+	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy = 0.0f, double t0 = -1.0, double t1 = -1.0);
 	void add_quad(float x0, float y0, float x1, float y1, rgb_t argb, render_texture *texture, u32 flags);
 	void add_char(float x0, float y0, float height, float aspect, rgb_t argb, render_font &font, u16 ch);
 	void add_point(float x0, float y0, float diameter, rgb_t argb, u32 flags) { add_line(x0, y0, x0, y0, diameter, argb, flags); }
@@ -439,7 +441,7 @@ private:
 		friend class simple_list<item>;
 
 	public:
-		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_beam_energy(0), m_texture(nullptr) { }
+		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_beam_energy(0), m_t0(-1.0), m_t1(-1.0), m_texture(nullptr) { }
 
 		// getters
 		item *next() const { return m_next; }
@@ -450,6 +452,8 @@ private:
 		u32 internal() const { return m_internal; }
 		float width() const { return m_width; }
 		float beam_energy() const { return m_beam_energy; }
+		double t0() const { return m_t0; }
+		double t1() const { return m_t1; }
 		render_texture *texture() const { return m_texture; }
 
 	private:
@@ -462,6 +466,8 @@ private:
 		u32                 m_internal;         // internal flags
 		float               m_width;            // width of the line (lines only)
 		float               m_beam_energy;      // normalized (0..1) beam energy for renderer overload effects (lines only; 0 = none)
+		double              m_t0;               // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
+		double              m_t1;               // absolute machine time (s) the beam finished drawing this line
 		render_texture *    m_texture;          // pointer to the source texture (quads only)
 	};
 

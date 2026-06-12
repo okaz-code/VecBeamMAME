@@ -7,6 +7,7 @@
 
 #include "notifier.h"
 
+#include <fstream>
 #include <utility>
 
 
@@ -56,11 +57,21 @@ public:
 	// new list). A renderer can use this to reproduce CRT flicker; the emulation does not act on it.
 	bool beam_list_stale() const { return m_beam_list_stale; }
 
-	// overload is the normalized (0..1) raw beam energy for renderer overdrive effects.
+	// beam_energy is the normalized (0..1) raw beam energy for renderer overdrive effects.
 	// Pass < 0 (the default) when the device has no raw beam-energy signal; the display
 	// intensity is then used as the normalized value instead. The displayed intensity is
 	// unaffected either way, so non-bgfx output is identical to stock.
-	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f);
+	// t0/t1 are the absolute machine times the beam spent drawing this point's line
+	// (attotime::never = untimed; only timing-aware vector generators supply them).
+	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
+			attotime t0 = attotime::never, attotime t1 = attotime::never);
+
+	// Beam-event mode (opt-in by a timing-aware renderer): timed points are consumed by
+	// screen_update once emitted instead of being redrawn until the next clear_list, and
+	// clear_list leaves timed points alone so a list crossing a frame boundary is split
+	// across the frames it was actually drawn in. Untimed points keep stock semantics.
+	void set_beam_event_mode(bool enable) { m_beam_event_mode = enable; }
+	bool beam_event_mode() const { return m_beam_event_mode; }
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
@@ -97,18 +108,21 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f) { }
+		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never) { }
 
 		int x; int y;
 		rgb_t col;
 		int intensity;
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
+		attotime t0, t1;    // absolute machine time the beam drew this line (never = untimed)
 	};
 
 	std::unique_ptr<point[]> m_vector_list;
 	int m_vector_index;
 	int m_min_intensity;
 	int m_max_intensity;
+	bool m_beam_event_mode;
+	std::ofstream m_event_dump;
 	// Generation counters for CRT-flicker detection: clear_list() bumps m_list_generation when the
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;

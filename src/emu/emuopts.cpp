@@ -141,6 +141,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_FLICKER,                                    "0",         core_options::option_type::FLOAT,      "set vector flicker effect" },
 	{ OPTION_VECTOR_OVERSCAN_X,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (X), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_OVERSCAN_Y,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
+	{ OPTION_VECTOR_EVENT_DUMP,                          nullptr,     core_options::option_type::PATH,       "debug: write timed beam events to this CSV file" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },
