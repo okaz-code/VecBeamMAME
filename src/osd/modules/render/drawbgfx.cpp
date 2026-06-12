@@ -760,7 +760,7 @@ int renderer_bgfx::create()
 #endif
 		bgfx::touch(window().index());
 
-		if (m_ortho_view)
+		if (m_ortho_view && !(s_bgfx_hdr_active && m_hdr_ui_target != nullptr))
 			m_ortho_view->set_backbuffer(m_framebuffer);
 	}
 
@@ -839,6 +839,10 @@ int renderer_bgfx::create()
 			m_line_analytic = false;
 			m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_line");
 		}
+
+		// HDR UI composite effect (paper-white scale + PQ for the SDR UI layer)
+		if (s_bgfx_hdr_active)
+			m_hdr_ui_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_ui");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
@@ -2121,7 +2125,17 @@ int renderer_bgfx::draw(int update)
 	// allocation inside buffer_primitives never runs, m_ortho_view stays null, and the later
 	// `m_gui_effect[blend]->submit(m_ortho_view->get_index())` null-derefs.
 	if (window_index == 0)
+	{
+		// HDR: (re)create the SDR UI layer at the window size
+		if (s_bgfx_hdr_active)
+		{
+			const uint16_t uw = uint16_t(s_width[0]);
+			const uint16_t uh = uint16_t(s_height[0]);
+			if (uw > 0 && uh > 0 && (m_hdr_ui_target == nullptr || m_hdr_ui_target->width() != uw || m_hdr_ui_target->height() != uh))
+				m_hdr_ui_target = m_targets->create_target("hdr_ui", bgfx::TextureFormat::BGRA8, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
+		}
 		setup_ortho_view();
+	}
 
 	render_primitive *prim = window().m_primlist->first();
 	std::vector<void*> sources;
@@ -2184,6 +2198,47 @@ int renderer_bgfx::draw(int update)
 	}
 
 	window().m_primlist->release_lock();
+
+	// HDR UI composite: convert the SDR UI layer to paper-white nits / Rec.2020 / PQ and
+	// alpha-blend it over the HDR10 backbuffer.
+	if (s_bgfx_hdr_active && window_index == 0 && m_hdr_ui_target != nullptr && m_hdr_ui_effect != nullptr
+		&& m_ortho_view && m_ortho_view->get_index() != UINT_MAX)
+	{
+		if (6 == bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl))
+		{
+			bgfx::TransientVertexBuffer vb;
+			bgfx::allocTransientVertexBuffer(&vb, 6, ScreenVertex::ms_decl);
+			ScreenVertex *v = reinterpret_cast<ScreenVertex *>(vb.data);
+			const float w = float(s_width[window_index]);
+			const float h = float(s_height[window_index]);
+			vertex(&v[0], 0.0f, 0.0f, 0.0f, 0xffffffff, 0.0f, 0.0f);
+			vertex(&v[1], w,    0.0f, 0.0f, 0xffffffff, 1.0f, 0.0f);
+			vertex(&v[2], w,    h,    0.0f, 0xffffffff, 1.0f, 1.0f);
+			vertex(&v[3], 0.0f, 0.0f, 0.0f, 0xffffffff, 0.0f, 0.0f);
+			vertex(&v[4], w,    h,    0.0f, 0xffffffff, 1.0f, 1.0f);
+			vertex(&v[5], 0.0f, h,    0.0f, 0xffffffff, 0.0f, 1.0f);
+
+			const uint16_t ui_view = uint16_t(s_current_view);
+			s_current_view++;
+			bgfx::setViewFrameBuffer(ui_view, m_framebuffer->target());
+			bgfx::setViewRect(ui_view, 0, 0, uint16_t(w), uint16_t(h));
+			bgfx::setViewMode(ui_view, bgfx::ViewMode::Sequential);
+			float ui_proj[16];
+			bx::mtxOrtho(ui_proj, 0.0f, w, h, 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+			bgfx::setViewTransform(ui_view, nullptr, ui_proj);
+
+			bgfx_uniform *pw = m_hdr_ui_effect->uniform("u_hdr_params");
+			if (pw)
+			{
+				float vals[4] = { float(m_module().options().bgfx_hdr_paper_white()), 0.0f, 0.0f, 0.0f };
+				pw->set(vals, sizeof(float) * 4);
+				pw->upload();
+			}
+			bgfx::setTexture(0, m_hdr_ui_effect->uniform("s_tex")->handle(), m_hdr_ui_target->texture());
+			bgfx::setVertexBuffer(0, &vb);
+			m_hdr_ui_effect->submit(ui_view);
+		}
+	}
 
 	// The blit block was moved before buffer_primitives (see above); nothing to do here.
 	// The UI was already submitted to m_ortho_view (the late view) inside buffer_primitives.
@@ -2281,18 +2336,25 @@ bool renderer_bgfx::update_dimensions()
 
 void renderer_bgfx::setup_ortho_view()
 {
+	// HDR: the UI layer draws into its own SDR offscreen, composited over the PQ backbuffer
+	// at the end of the frame.
+	bgfx_target *const ui_target = (s_bgfx_hdr_active && m_hdr_ui_target != nullptr) ? m_hdr_ui_target : m_framebuffer;
 	if (!m_ortho_view)
 	{
-		m_ortho_view = std::make_unique<bgfx_ortho_view>(this, 0, m_framebuffer, m_seen_views);
+		m_ortho_view = std::make_unique<bgfx_ortho_view>(this, 0, ui_target, m_seen_views);
 		// Since the UI view is placed at a late index after the blit, m_ortho_view itself does not
 		// clear the backbuffer (the manual clear view already did).
 		m_ortho_view->disable_color_clear();
 	}
+	m_ortho_view->set_backbuffer(ui_target);
 	if (m_ortho_view->get_index() == UINT_MAX)
 	{
 		m_ortho_view->set_index(s_current_view);
 		m_ortho_view->setup();
 		s_current_view++;
+		// the UI offscreen needs a transparent clear (the backbuffer path keeps its no-clear setup)
+		if (ui_target == m_hdr_ui_target)
+			bgfx::setViewClear(m_ortho_view->get_index(), BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
 	}
 	m_ortho_view->update();
 }

@@ -1,0 +1,23 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// HDR UI composite: paper-white nits scale + Rec.2020 + PQ for the SDR UI layer,
+// alpha-blended over the HDR10 backbuffer.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "srcalpha",
+		"dstColor": "1-srcalpha",
+		"srcAlpha": "1",
+		"dstAlpha": "1-srcalpha"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_hdr_ui",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_hdr_params",    "type": "vec4", "values": [ 200.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
