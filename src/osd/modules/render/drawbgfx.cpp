@@ -816,7 +816,9 @@ int renderer_bgfx::create()
 			// Opt in to beam-event mode: timed points are consumed once presented, so each frame
 			// shows only the lines the beam actually drew during it (per-vector CRT flicker).
 			// Untimed vector sources (non-avgdvg drivers) keep stock list semantics.
-			vec.set_beam_event_mode(true);
+			// -bgfx_vec_beam_events 0 restores the classic whole-list behaviour entirely.
+			m_vec_beam_events = m_module().options().bgfx_vec_beam_events();
+			vec.set_beam_event_mode(m_vec_beam_events);
 			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_vec_new_frame = true; });
 			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
 				[this] (float x0, float y0, float x1, float y1, float beam_energy)
@@ -1710,7 +1712,7 @@ int renderer_bgfx::draw(int update)
 		const double vec_blend = std::max(0.0, double(m_chains->slider_value(0, "vector_window_blend", 0.0f)) * 0.001);
 		auto vec_window_weight = [this, vec_draw_all, vec_blend] (const render_primitive &p) -> float
 		{
-			if (p.t0 < 0.0 || vec_draw_all)
+			if (!m_vec_beam_events || p.t0 < 0.0 || vec_draw_all)
 				return 1.0f;
 			if (vec_blend <= 0.0)
 				return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
@@ -1740,8 +1742,9 @@ int renderer_bgfx::draw(int update)
 		{
 			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame.
 			// Renderer-side (bgfx only); the amount comes from the chain's vector_crt_flicker slider.
-			// Untimed beam sources only: timed lists flicker physically via the time-window assignment.
-			m_crt_flicker_factor = (!any_timed && m_vector_device != nullptr && m_vector_device->beam_list_stale())
+			// Untimed beam sources (and beam-event mode off) only: timed lists flicker physically
+			// via the time-window assignment.
+			m_crt_flicker_factor = ((!any_timed || !m_vec_beam_events) && m_vector_device != nullptr && m_vector_device->beam_list_stale())
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
 

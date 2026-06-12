@@ -183,6 +183,10 @@ private:
 	vector_device *m_vector_device = nullptr;
 	float m_crt_flicker_factor = 1.0f;
 
+	// Beam-event mode master switch, from -bgfx_vec_beam_events (default on). Off restores the
+	// classic behaviour: whole lists redrawn every frame, stale frames dimmed by the
+	// vector_crt_flicker slider.
+	bool m_vec_beam_events = true;
 	// Beam-event time window (machine time, seconds): each presented frame draws only the vector
 	// lines whose draw time falls in (m_vec_win_t0, m_vec_win_t1]. The window advances when the
 	// vector device starts a new emulated frame (m_vec_new_frame, set from its frame-begin
