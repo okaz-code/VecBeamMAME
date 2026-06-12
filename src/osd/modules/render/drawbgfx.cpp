@@ -815,8 +815,10 @@ int renderer_bgfx::create()
 			BGFX_TEXTURE_RT;
 		const uint64_t depth_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
 			BGFX_TEXTURE_RT;
+		// RG11B10F: same 32bpp as BGRA8 but float - additive blending no longer clamps at 1.0,
+		// so line crossings and end caps keep their real energy for the chain (and for HDR).
 		bgfx::TextureHandle tex_color = bgfx::createTexture2D(
-			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::BGRA8, color_flags);
+			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
 		bgfx::TextureHandle tex_depth = bgfx::createTexture2D(
 			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, depth_flags);
 		bgfx::TextureHandle attachments[2] = { tex_color, tex_depth };
@@ -1894,7 +1896,7 @@ int renderer_bgfx::draw(int update)
 			// bilinear (no MSAA, for sampler compatibility)
 			const uint64_t cf = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
 				BGFX_TEXTURE_RT;
-			bgfx::TextureHandle tc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::BGRA8, cf);
+			bgfx::TextureHandle tc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
 			bgfx::TextureHandle at[2] = { tc, td };
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
