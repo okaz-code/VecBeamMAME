@@ -1,0 +1,23 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// HDR PoC final blit: linearize -> nits scale -> Rec.2020 -> PQ encode for an
+// HDR10 backbuffer. Used by the experimental vector-color-hdr chain.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_hdr_encode",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_hdr_params",    "type": "vec4", "values": [ 600.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

@@ -92,6 +92,7 @@
 #define OSDOPTION_BGFX_VEC_SUPERSAMPLE  "bgfx_vec_supersample"
 #define OSDOPTION_BGFX_VEC_BEAM_EVENTS  "bgfx_vec_beam_events"
 #define OSDOPTION_BGFX_VEC_LINE_SHADER  "bgfx_vec_line_shader"
+#define OSDOPTION_BGFX_HDR              "bgfx_hdr"
 #define OSDOPTION_BGFX_SHADOW_MASK      "bgfx_shadow_mask"
 #define OSDOPTION_BGFX_LUT              "bgfx_lut"
 #define OSDOPTION_BGFX_AVI_NAME         "bgfx_avi_name"
@@ -173,6 +174,7 @@ public:
 	int bgfx_vec_supersample() const { return int_value(OSDOPTION_BGFX_VEC_SUPERSAMPLE); }
 	bool bgfx_vec_beam_events() const { return int_value(OSDOPTION_BGFX_VEC_BEAM_EVENTS) != 0; }
 	const char *bgfx_vec_line_shader() const { return value(OSDOPTION_BGFX_VEC_LINE_SHADER); }
+	bool bgfx_hdr() const { return int_value(OSDOPTION_BGFX_HDR) != 0; }
 	const char *bgfx_shadow_mask() const { return value(OSDOPTION_BGFX_SHADOW_MASK); }
 	const char *bgfx_lut() const { return value(OSDOPTION_BGFX_LUT); }
 	const char *bgfx_avi_name() const { return value(OSDOPTION_BGFX_AVI_NAME); }

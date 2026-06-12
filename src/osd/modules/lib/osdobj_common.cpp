@@ -160,6 +160,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_VEC_SUPERSAMPLE "(1-2)",    "2",               core_options::option_type::INTEGER,  "vector FBO supersampling factor (1 = window resolution, 2 = 2x)" },
 	{ OSDOPTION_BGFX_VEC_BEAM_EVENTS "(0-1)",    "1",               core_options::option_type::INTEGER,  "draw vector lines in the display frame they were beamed in (per-vector CRT flicker); 0 = classic whole-list frames" },
 	{ OSDOPTION_BGFX_VEC_LINE_SHADER,            "analytic",         core_options::option_type::STRING,   "vector line renderer (classic = quad + cap fans, analytic = gaussian line integral)" },
+	{ OSDOPTION_BGFX_HDR "(0-1)",                "0",                core_options::option_type::INTEGER,  "HDR10 output (PQ / Rec.2020, RGB10A2 backbuffer); requires Windows HDR on and d3d11/d3d12" },
 	{ OSDOPTION_BGFX_SHADOW_MASK,                "slot-mask.png",   core_options::option_type::STRING,   "shadow mask texture name" },
 	{ OSDOPTION_BGFX_LUT,                        "lut-default.png", core_options::option_type::STRING,   "LUT texture name" },
 	{ OSDOPTION_BGFX_AVI_NAME,                   OSDOPTVAL_AUTO,    core_options::option_type::PATH,     "filename for BGFX output logging" },
