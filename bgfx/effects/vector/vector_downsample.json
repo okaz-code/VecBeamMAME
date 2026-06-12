@@ -15,7 +15,7 @@
 	"cull": { "mode": "none" },
 	"write": { "rgb": true, "alpha": true },
 	"vertex": "vs_gui",
-	"fragment": "fs_vector_downsample",
+	"fragment": "vector/fs_vector_downsample",
 	"uniforms": [
 		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
 		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
