@@ -813,7 +813,11 @@ int renderer_bgfx::create()
 		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
 		{
 			m_vector_device = &vec;  // for the CRT-flicker stale-frame query
-			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; });
+			// Opt in to beam-event mode: timed points are consumed once presented, so each frame
+			// shows only the lines the beam actually drew during it (per-vector CRT flicker).
+			// Untimed vector sources (non-avgdvg drivers) keep stock list semantics.
+			vec.set_beam_event_mode(true);
+			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_vec_new_frame = true; });
 			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
 				[this] (float x0, float y0, float x1, float y1, float beam_energy)
 				{
@@ -1685,95 +1689,135 @@ int renderer_bgfx::draw(int update)
 		// Only LINEs with PRIMFLAG_VECTOR go to the FBO, to keep UI lines out of the phosphor path
 		// (which would ghost them). UI / MAME-menu LINEs stay on the normal buffer_primitives path
 		// (View 0, cleared each frame).
-		int vector_count = 0;
+		// Advance the beam time window when the vector device started a new emulated frame.
+		// The machine-time basis makes pause and fast-forward transparent; time can regress on
+		// state load / rewind, in which case the window restarts from zero.
+		const double vec_now = window().machine().time().as_double();
+		if (m_vec_new_frame)
+		{
+			m_vec_win_t0 = (vec_now < m_vec_win_t1) ? 0.0 : m_vec_win_t1;
+			m_vec_win_t1 = vec_now;
+			m_vec_new_frame = false;
+		}
+		// While paused no new events arrive; keep showing the queued primitives as a still image.
+		const bool vec_draw_all = window().machine().paused();
+		auto vec_in_window = [this, vec_draw_all] (const render_primitive &p)
+		{
+			return (p.t0 < 0.0) || vec_draw_all || ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1));
+		};
+
+		int vector_count = 0;   // all vector lines (decides the FBO path)
+		int visible_count = 0;  // lines whose draw time falls in the current window
+		bool any_timed = false;
 		render_primitive *scan = window().m_primlist->first();
 		while (scan != nullptr)
 		{
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
+			{
 				vector_count++;
+				if (scan->t0 >= 0.0)
+					any_timed = true;
+				if (vec_in_window(*scan))
+					visible_count++;
+			}
 			scan = scan->next();
 		}
 
 		if (vector_count > 0)
 		{
-			// 1 line = body 6 + both rounded end fans 2*N*3 = LINE_VERTICES_PER_LINE vertices
-			const uint32_t needed = uint32_t(vector_count) * uint32_t(LINE_VERTICES_PER_LINE);
-			if (needed == bgfx::getAvailTransientVertexBuffer(needed, ScreenVertex::ms_decl))
+			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame.
+			// Renderer-side (bgfx only); the amount comes from the chain's vector_crt_flicker slider.
+			// Untimed beam sources only: timed lists flicker physically via the time-window assignment.
+			m_crt_flicker_factor = (!any_timed && m_vector_device != nullptr && m_vector_device->beam_list_stale())
+				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
+				: 1.0f;
+
+			// fill vertex data (put_solid_line builds the AA-free quad + rounded fans)
+			int vertices = 0;
+			bgfx::TransientVertexBuffer tvb = {};
+			if (visible_count > 0)
 			{
-				bgfx::TransientVertexBuffer tvb;
-				bgfx::allocTransientVertexBuffer(&tvb, needed, ScreenVertex::ms_decl);
-				if (tvb.data)
+				// 1 line = body 6 + both rounded end fans 2*N*3 = LINE_VERTICES_PER_LINE vertices
+				const uint32_t needed = uint32_t(visible_count) * uint32_t(LINE_VERTICES_PER_LINE);
+				if (needed == bgfx::getAvailTransientVertexBuffer(needed, ScreenVertex::ms_decl))
 				{
-					// fill vertex data (put_solid_line builds the AA-free quad + rounded fans)
-					int vertices = 0;
-					ScreenVertex* vptr = reinterpret_cast<ScreenVertex*>(tvb.data);
-
-					// CRT flicker: dim the whole frame when the beam list was not refreshed this frame.
-					// Renderer-side (bgfx only); the amount comes from the chain's vector_crt_flicker slider.
-					m_crt_flicker_factor = (m_vector_device != nullptr && m_vector_device->beam_list_stale())
-						? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
-						: 1.0f;
-
-					render_primitive *vprim = window().m_primlist->first();
-					while (vprim != nullptr)
+					bgfx::allocTransientVertexBuffer(&tvb, needed, ScreenVertex::ms_decl);
+					if (tvb.data)
 					{
-						// Write only LINEs with PRIMFLAG_VECTOR to the FBO.
-						// UI lines are drawn normally by buffer_primitives (to avoid phosphor ghosting).
-						if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
-						{
-							put_solid_line(vprim, vptr + vertices);
-							vertices += LINE_VERTICES_PER_LINE;
-						}
-						vprim = vprim->next();
-					}
+						ScreenVertex* vptr = reinterpret_cast<ScreenVertex*>(tvb.data);
 
-					if (vertices > 0)
-					{
-						// allocate a view for FBO drawing
-						const uint16_t fbo_view = uint16_t(s_current_view);
-						s_current_view++;
-						bgfx::setViewFrameBuffer(fbo_view, m_vec_fb);
-						// viewport: the whole FBO (post-supersample resolution)
-						bgfx::setViewRect(fbo_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
-						bgfx::setViewClear(fbo_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff, 1.0f, 0);
-						bgfx::setViewMode(fbo_view, bgfx::ViewMode::Sequential);
-
-						// Target bounds are back to 1x, so primitive coords are 1x too.
-						// Projection covers the 1x window range; the viewport is m_vec_fb (= 2x window).
-						// Rasterizing 1x coords into a 2x viewport improves sub-pixel precision on the GPU
-						// (the set_bounds primitive-rounding resolution boost is gone, but the 2x rasterizer
-						// resolution + fs_vector_line's analytic AA + 25-tap halo absorb it).
-						float proj[16];
-						const bgfx::Caps* caps = bgfx::getCaps();
-						bx::mtxOrtho(proj, 0.0f,
-							float(s_width[window_index]),
-							float(s_height[window_index]),
-							0.0f, 0.0f, 100.0f, 0.0f, caps->homogeneousDepth);
-						bgfx::setViewTransform(fbo_view, nullptr, proj);
-
-						bgfx::setVertexBuffer(0, &tvb);
-						// no texture needed; fs_vector_line computes the fade in-shader
-						bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
-						bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
-						if (inv)
+						render_primitive *vprim = window().m_primlist->first();
+						while (vprim != nullptr)
 						{
-							float values[2] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]) };
-							inv->set(values, sizeof(float) * 2);
-							inv->upload();
+							// Write only LINEs with PRIMFLAG_VECTOR that fall in the beam time window.
+							// UI lines are drawn normally by buffer_primitives (to avoid phosphor ghosting).
+							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags)
+									&& vec_in_window(*vprim))
+							{
+								put_solid_line(vprim, vptr + vertices);
+								vertices += LINE_VERTICES_PER_LINE;
+							}
+							vprim = vprim->next();
 						}
-						// u_line_params.x = Overload Softness (higher = the beam defocuses sooner as it overloads)
-						bgfx_uniform* lp = line_eff->uniform("u_line_params");
-						if (lp)
-						{
-							float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 0.0f, 0.0f };
-							lp->set(vals, sizeof(float) * 4);
-							lp->upload();
-						}
-						line_eff->submit(fbo_view);
-						m_vectors_in_fbo = true;
 					}
 				}
 			}
+
+			// The FBO view runs (cleared) whenever vector primitives exist: a frame whose lines
+			// were all drawn in another time window must present as a dark frame - the chain's
+			// phosphor decay shows through - rather than keep stale FBO content or fall back to
+			// the unfiltered GUI path.
+
+			// allocate a view for FBO drawing
+			const uint16_t fbo_view = uint16_t(s_current_view);
+			s_current_view++;
+			bgfx::setViewFrameBuffer(fbo_view, m_vec_fb);
+			// viewport: the whole FBO (post-supersample resolution)
+			bgfx::setViewRect(fbo_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
+			bgfx::setViewClear(fbo_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff, 1.0f, 0);
+			bgfx::setViewMode(fbo_view, bgfx::ViewMode::Sequential);
+
+			// Target bounds are back to 1x, so primitive coords are 1x too.
+			// Projection covers the 1x window range; the viewport is m_vec_fb (= 2x window).
+			// Rasterizing 1x coords into a 2x viewport improves sub-pixel precision on the GPU
+			// (the set_bounds primitive-rounding resolution boost is gone, but the 2x rasterizer
+			// resolution + fs_vector_line's analytic AA + 25-tap halo absorb it).
+			float proj[16];
+			const bgfx::Caps* caps = bgfx::getCaps();
+			bx::mtxOrtho(proj, 0.0f,
+				float(s_width[window_index]),
+				float(s_height[window_index]),
+				0.0f, 0.0f, 100.0f, 0.0f, caps->homogeneousDepth);
+			bgfx::setViewTransform(fbo_view, nullptr, proj);
+
+			if (vertices > 0)
+			{
+				bgfx::setVertexBuffer(0, &tvb);
+				// no texture needed; fs_vector_line computes the fade in-shader
+				bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
+				bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
+				if (inv)
+				{
+					float values[2] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]) };
+					inv->set(values, sizeof(float) * 2);
+					inv->upload();
+				}
+				// u_line_params.x = Overload Softness (higher = the beam defocuses sooner as it overloads)
+				bgfx_uniform* lp = line_eff->uniform("u_line_params");
+				if (lp)
+				{
+					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 0.0f, 0.0f };
+					lp->set(vals, sizeof(float) * 4);
+					lp->upload();
+				}
+				line_eff->submit(fbo_view);
+			}
+			else
+			{
+				// no lines in this window: make the clear happen so the frame presents dark
+				bgfx::touch(fbo_view);
+			}
+			m_vectors_in_fbo = true;
 		}
 	}
 
