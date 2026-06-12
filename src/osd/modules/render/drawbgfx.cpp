@@ -193,6 +193,10 @@ private:
 };
 
 
+// HDR PoC: true while the swapchain runs in HDR10 (PQ / Rec.2020, RGB10A2). Set at library
+// init from -bgfx_hdr and the device caps; every later bgfx::reset must carry the same flags.
+static bool s_bgfx_hdr_active = false;
+
 //============================================================
 //  video_bgfx::init
 //============================================================
@@ -343,6 +347,15 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	init.resolution.height = wdim.height();
 	init.resolution.numBackBuffers = 1;
 	init.resolution.reset = video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE;
+	// HDR PoC: request an HDR10 swapchain (PQ / Rec.2020 with an RGB10A2 backbuffer). bgfx only
+	// raises BGFX_CAPS_HDR10 when the OS output is already in HDR mode (d3d11/d3d12), checked
+	// after init below.
+	if (m_options->bgfx_hdr())
+	{
+		s_bgfx_hdr_active = true;
+		init.resolution.reset |= BGFX_RESET_HDR10;
+		init.resolution.format = bgfx::TextureFormat::RGB10A2;
+	}
 	if (!set_platform_data(init.platformData, window))
 	{
 		osd_printf_error("Setting BGFX platform data failed\n");
@@ -372,7 +385,17 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	if (!bgfx::init(init))
 		return false;
 
-	bgfx::reset(wdim.width(), wdim.height(), video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE);
+	// HDR PoC: fall back to SDR when the device/output cannot do HDR10 (Windows HDR off,
+	// non-d3d11/12 backend, SDR monitor).
+	if (s_bgfx_hdr_active && (bgfx::getCaps()->supported & BGFX_CAPS_HDR10) == 0)
+	{
+		osd_printf_warning("BGFX: HDR10 requested but not available (is Windows HDR on, backend d3d11/d3d12?), falling back to SDR\n");
+		s_bgfx_hdr_active = false;
+	}
+
+	bgfx::reset(wdim.width(), wdim.height(),
+		(video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | (s_bgfx_hdr_active ? BGFX_RESET_HDR10 : 0),
+		s_bgfx_hdr_active ? bgfx::TextureFormat::RGB10A2 : bgfx::TextureFormat::Count);
 
 	// Enable debug text if requested
 	bool bgfx_debug = m_options->bgfx_debug();
@@ -2216,7 +2239,9 @@ bool renderer_bgfx::update_dimensions()
 
 	if (m_dimensions != osd_dim(width, height))
 	{
-		bgfx::reset(width, height, video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE);
+		bgfx::reset(width, height,
+			(video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | (s_bgfx_hdr_active ? BGFX_RESET_HDR10 : 0),
+			s_bgfx_hdr_active ? bgfx::TextureFormat::RGB10A2 : bgfx::TextureFormat::Count);
 		m_dimensions = osd_dim(width, height);
 
 		if (window().index() != 0)
