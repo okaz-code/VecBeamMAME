@@ -11,11 +11,19 @@ $input v_color0, v_texcoord0
 
 SAMPLER2D(s_tex, 0);
 
-uniform vec4 u_hdr_params;  // x = peak nits mapped to full intensity (e.g. 600)
+uniform vec4 u_hdr_params;  // x = peak nits mapped to full intensity (e.g. 600); <= 0 = passthrough
 
 void main()
 {
 	vec3 srgb = texture2D(s_tex, v_texcoord0).rgb;
+
+	// SDR fallback: the renderer injects a non-positive nits value when the HDR10 swapchain is
+	// unavailable, turning this pass into a plain blit so the HDR chain still displays correctly.
+	if (u_hdr_params.x <= 0.0)
+	{
+		gl_FragColor = vec4(srgb, 1.0) * v_color0;
+		return;
+	}
 
 	// approximate sRGB EOTF
 	vec3 lin = pow(max(srgb, vec3_splat(0.0)), vec3_splat(2.2));
