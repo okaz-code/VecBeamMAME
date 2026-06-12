@@ -192,6 +192,10 @@ private:
 	double m_vec_win_t0 = 0.0;
 	double m_vec_win_t1 = 0.0;
 	bool m_vec_new_frame = false;
+	// True when this present advanced the window (a new emulated frame arrived). Drives the
+	// chain's phosphor-tail freeze: re-presents without emulation progress (pause, menu stills)
+	// must neither decay nor pump the slow tail pool.
+	bool m_vec_frame_advanced = false;
 
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
