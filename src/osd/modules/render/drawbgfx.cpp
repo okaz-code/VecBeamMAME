@@ -803,7 +803,7 @@ int renderer_bgfx::create()
 	// load the analytic-AA vector line effect
 	if (window().index() == 0)
 	{
-		m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector_line");
+		m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_line");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
