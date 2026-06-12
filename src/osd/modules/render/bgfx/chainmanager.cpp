@@ -637,7 +637,10 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 									   "bloom_lvl4", "bloom_lvl5", "bloom_lvl6", "bloom_lvl7" };
 		for (int i = 0; i < 8; i++)
 		{
-			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::BGRA8,
+			// RGBA16F keeps the bloom seeds linear-capable (no 1.0 clamp, no 8-bit banding in
+			// dark glows for the linear HDR chain); the pyramid totals ~1/3 screen so the extra
+			// bandwidth is negligible.
+			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::RGBA16F,
 				bloom_lvl_w[i], bloom_lvl_h[i], 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
 		}
 	}
