@@ -108,13 +108,14 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never) { }
+		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), emitted(false) { }
 
 		int x; int y;
 		rgb_t col;
 		int intensity;
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
 		attotime t0, t1;    // absolute machine time the beam drew this line (never = untimed)
+		bool emitted;       // already emitted once (event mode): notifiers are not re-fired
 	};
 
 	std::unique_ptr<point[]> m_vector_list;

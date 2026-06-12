@@ -183,6 +183,7 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 												  : float(intensity) / 255.0f;
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
+	newpoint->emitted = false;
 
 	if (m_event_dump.is_open() && !t0.is_never())
 		util::stream_format(m_event_dump, "%.9f,%.9f,%d,%d,%d,%.4f\n",
@@ -298,14 +299,21 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					curpoint->beam_energy,
 					curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
 					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double());
-			m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
-			// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
-			m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
+			// Points surviving into a second emission (window-boundary blend) re-emit their
+			// primitive but must not re-fire the notifiers: one beam event, one notification.
+			if (!curpoint->emitted)
+			{
+				m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
+				// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
+				m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
+			}
 		}
-		else
+		else if (!curpoint->emitted)
 		{
 			m_move_notifier(curpoint->x, curpoint->y, curpoint->col, visarea.width(), visarea.height());
 		}
+
+		curpoint->emitted = true;
 
 		lastx = curpoint->x;
 		lasty = curpoint->y;
@@ -315,14 +323,19 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 	if (m_beam_event_mode)
 	{
-		// Timed points have now been emitted once and are consumed; the renderer's time-window
-		// filter handles any re-presentation of the same primitives. Untimed points keep stock
-		// semantics (redrawn until the next clear_list).
+		// Timed points are consumed once emitted, except those young enough to still carry
+		// energy into the next window (the renderer's window-boundary blend, slider max 8ms):
+		// they survive one more emission so the next frame can draw their remainder. Their
+		// emitted flag keeps the notifiers above from firing twice for the same beam event.
+		// Untimed points keep stock semantics (redrawn until the next clear_list).
+		const attotime now = machine().time();
+		const attotime keep = attotime::from_msec(8);
 		int w = 0;
 		for (int i = 0; i < m_vector_index; i++)
 		{
-			if (m_vector_list[i].t0.is_never())
-				m_vector_list[w++] = m_vector_list[i];
+			const point &pt = m_vector_list[i];
+			if (pt.t0.is_never() || (pt.t0 + keep > now))
+				m_vector_list[w++] = pt;
 		}
 		m_vector_index = w;
 	}

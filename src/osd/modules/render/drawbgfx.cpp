@@ -1419,8 +1419,9 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
 		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
 	}
-	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering).
-	length_factor *= m_crt_flicker_factor;
+	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering) and the time-window
+	// energy weight of this line (< 1.0 only in the window-boundary blend zone).
+	length_factor *= m_crt_flicker_factor * m_vec_line_weight;
 
 	// Pack the line color: hue from the primitive (× length fade × flicker), alpha = display intensity.
 	const uint32_t rgba = u32Color(
@@ -1702,13 +1703,24 @@ int renderer_bgfx::draw(int update)
 		}
 		// While paused no new events arrive; keep showing the queued primitives as a still image.
 		const bool vec_draw_all = window().machine().paused();
-		auto vec_in_window = [this, vec_draw_all] (const render_primitive &p)
+		// Window-boundary blend: treat each event as a pulse of this width and give a boundary
+		// line the overlap fraction in each adjacent window (energy-conserving). This hides the
+		// temporal-aliasing blink when the list period beats against the refresh (a line would
+		// otherwise hop between "0 times in this window" and "twice in the next"). 0 = hard cut.
+		const double vec_blend = std::max(0.0, double(m_chains->slider_value(0, "vector_window_blend", 0.0f)) * 0.001);
+		auto vec_window_weight = [this, vec_draw_all, vec_blend] (const render_primitive &p) -> float
 		{
-			return (p.t0 < 0.0) || vec_draw_all || ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1));
+			if (p.t0 < 0.0 || vec_draw_all)
+				return 1.0f;
+			if (vec_blend <= 0.0)
+				return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
+			const double s = std::max(p.t0, m_vec_win_t0);
+			const double e = std::min(p.t0 + vec_blend, m_vec_win_t1);
+			return (e > s) ? float((e - s) / vec_blend) : 0.0f;
 		};
 
 		int vector_count = 0;   // all vector lines (decides the FBO path)
-		int visible_count = 0;  // lines whose draw time falls in the current window
+		int visible_count = 0;  // lines with nonzero energy in the current window
 		bool any_timed = false;
 		render_primitive *scan = window().m_primlist->first();
 		while (scan != nullptr)
@@ -1718,7 +1730,7 @@ int renderer_bgfx::draw(int update)
 				vector_count++;
 				if (scan->t0 >= 0.0)
 					any_timed = true;
-				if (vec_in_window(*scan))
+				if (vec_window_weight(*scan) > 0.0f)
 					visible_count++;
 			}
 			scan = scan->next();
@@ -1752,14 +1764,19 @@ int renderer_bgfx::draw(int update)
 						{
 							// Write only LINEs with PRIMFLAG_VECTOR that fall in the beam time window.
 							// UI lines are drawn normally by buffer_primitives (to avoid phosphor ghosting).
-							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags)
-									&& vec_in_window(*vprim))
+							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
 							{
-								put_solid_line(vprim, vptr + vertices);
-								vertices += LINE_VERTICES_PER_LINE;
+								const float w = vec_window_weight(*vprim);
+								if (w > 0.0f)
+								{
+									m_vec_line_weight = w;
+									put_solid_line(vprim, vptr + vertices);
+									vertices += LINE_VERTICES_PER_LINE;
+								}
 							}
 							vprim = vprim->next();
 						}
+						m_vec_line_weight = 1.0f;
 					}
 				}
 			}

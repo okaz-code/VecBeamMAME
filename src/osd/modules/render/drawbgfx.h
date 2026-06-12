@@ -196,6 +196,11 @@ private:
 	// chain's phosphor-tail freeze: re-presents without emulation progress (pause, menu stills)
 	// must neither decay nor pump the slow tail pool.
 	bool m_vec_frame_advanced = false;
+	// Per-line energy weight (0..1) for the line being built by put_solid_line. Lines near a
+	// window boundary split their energy across the adjacent windows (vector_window_blend
+	// slider), which hides the temporal-aliasing blink when the list period beats against the
+	// refresh; 1.0 for lines fully inside the window.
+	float m_vec_line_weight = 1.0f;
 
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
