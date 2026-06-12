@@ -34,4 +34,30 @@ struct ScreenVertex
 	static bgfx::VertexLayout ms_decl;
 };
 
+// Vertex for the analytic gaussian line renderer: per-line data (signed axial distances
+// from both endpoints, perpendicular distance, sigma) rides a 4-component TEXCOORD1 so a
+// single submit can carry every line's own parameters.
+struct AnalyticLineVertex
+{
+	float m_x;
+	float m_y;
+	float m_z;
+	uint32_t m_rgba;
+	float m_a;      // signed axial distance from p0
+	float m_b;      // signed axial distance from p1 (= a - len)
+	float m_d;      // perpendicular distance (line) / second axis offset (point)
+	float m_sigma;  // gaussian sigma in pixels; negative flags point mode
+
+	static void init()
+	{
+		ms_decl.begin()
+			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
+			.end();
+	}
+
+	static bgfx::VertexLayout ms_decl;
+};
+
 #endif // __DRAWBGFX_VERTEX__
