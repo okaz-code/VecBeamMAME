@@ -2220,7 +2220,8 @@ int renderer_bgfx::draw(int update)
 
 			const uint16_t ui_view = uint16_t(s_current_view);
 			s_current_view++;
-			bgfx::setViewFrameBuffer(ui_view, m_framebuffer->target());
+			// window 0 renders to the default backbuffer (m_framebuffer is null there)
+			bgfx::setViewFrameBuffer(ui_view, (m_framebuffer != nullptr) ? m_framebuffer->target() : BGFX_INVALID_HANDLE);
 			bgfx::setViewRect(ui_view, 0, 0, uint16_t(w), uint16_t(h));
 			bgfx::setViewMode(ui_view, bgfx::ViewMode::Sequential);
 			float ui_proj[16];
@@ -2234,7 +2235,9 @@ int renderer_bgfx::draw(int update)
 				pw->set(vals, sizeof(float) * 4);
 				pw->upload();
 			}
-			bgfx::setTexture(0, m_hdr_ui_effect->uniform("s_tex")->handle(), m_hdr_ui_target->texture());
+			bgfx_uniform *st = m_hdr_ui_effect->uniform("s_tex");
+			if (st != nullptr)
+				bgfx::setTexture(0, st->handle(), m_hdr_ui_target->texture());
 			bgfx::setVertexBuffer(0, &vb);
 			m_hdr_ui_effect->submit(ui_view);
 		}
