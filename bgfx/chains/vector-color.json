@@ -60,6 +60,9 @@
 
 		{ "type": "color", "name": "phosphor", "text": "Phosphor Persistence, ",  "default": [ 0.40, 0.40, 0.40 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
+		{ "type": "float", "name": "tail_strength", "text": "Phosphor Tail Strength", "default": 0.010, "max": 0.25,  "min": 0.00, "step": 0.002, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.90,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
+
 		{ "type": "intenum", "name": "chroma_mode", "text": "Color Mode", "default": 3, "max": 3, "min": 1, "step": 1, "format": "%s", "screen": "vector", "strings": [ " ", "Monochrome", "Dichrome", "Trichrome" ] },
 		{ "type": "color",   "name": "chroma_conversion_gain", "text": "Chroma Conversion Gain, ", "default": [ 0.299, 0.587, 0.114 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.0001, "format": "%1.4f", "screen": "vector" },
 		{ "type": "vec2",    "name": "chroma_a", "text": "Phosphor A Chromaticity ", "default": [ 0.630, 0.340 ], "max": [ 1.0, 1.0 ], "min": [ 0.0, 0.0 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
@@ -141,6 +144,12 @@
 		{   "name": "acc6",
 			"mode": "native", "scale": 0.0078125,
 			"doublebuffer": false,
+			"format": "RGBA16F"
+		},
+		{   "name": "slow_pool",
+			"_comment": "Two-component phosphor decay: slow-tail accumulator (P22: the red channel's ms-scale tail dominates in practice; the RGB pool keeps each line's own colour). Half-res float; the bilinear upscale at composite doubles as the physical blur",
+			"mode": "native", "scale": 0.5,
+			"doublebuffer": true,
 			"format": "RGBA16F"
 		}
 	],
@@ -318,6 +327,22 @@
 			"output": "internal"
 		},
 
+		{   "effect": "vector_phosphor_tail",
+			"name": "tail_accum",
+			"_comment": "Two-component phosphor decay, slow component: slow_pool = slow_pool_prev x tail_decay + current lines. Taps the mask-applied internal (same source as the bloom; the tail is phosphor emission, downstream of the mask). u_tail_freeze is injected by the renderer (1 while emulation time is not advancing, e.g. pause) to hold the pool",
+			"disablewhen": [
+				{ "type": "slider", "condition": "equal", "name": "tail_strength", "value": 0.0 }
+			],
+			"input": [
+				{ "sampler": "s_prev", "target": "slow_pool" },
+				{ "sampler": "s_tex",  "target": "internal" }
+			],
+			"uniforms": [
+				{ "uniform": "u_tail_decay", "slider": "tail_decay" }
+			],
+			"output": "slow_pool"
+		},
+
 		{ "_comment": "8-level 0.5x bloom. Bloom source = mask-applied internal. bloom_lvl0..7 (window/2..window/256) are created on the C++ side. vector_downsample (4-tap) shrinks by 0.5x repeatedly; the ladder below accumulates the levels into acc0..acc6",
 		  "effect": "vector_downsample", "name": "ds_bloom0", "input": [ { "sampler": "s_tex", "target": "internal"   } ], "output": "bloom_lvl0" },
 		{ "effect": "vector_downsample", "name": "ds_bloom1", "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ], "output": "bloom_lvl1" },
@@ -343,6 +368,13 @@
 		{ "effect": "vector_upsample", "name": "up_acc2_to_acc1", "clear": {}, "input": [ { "sampler": "s_tex", "target": "acc2" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "acc1" },
 		{ "effect": "vector_blit_add", "name": "seed_acc0",                  "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ], "uniforms": [ { "uniform": "u_blit_intensity", "slider": "bloom_lvl0_weight" } ], "output": "acc0" },
 		{ "effect": "vector_upsample", "name": "up_acc1_to_acc0", "clear": {}, "input": [ { "sampler": "s_tex", "target": "acc1" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "acc0" },
+
+		{ "effect": "vector_blit_add", "name": "tail_add", "clear": {},
+		  "_comment": "composite the slow tail: ADD slow_pool x tail_strength onto acc0 (same half resolution, single-buffered like the ladder), so it reaches the image through Bloom Apply. internal cannot take a partial ADD directly (doublebuffered)",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "tail_strength", "value": 0.0 } ],
+		  "input": [ { "sampler": "s_tex", "target": "slow_pool" } ],
+		  "uniforms": [ { "uniform": "u_blit_intensity", "slider": "tail_strength" } ],
+		  "output": "acc0" },
 
 				{ "effect": "vector_bloom_apply", "name": "Bloom Apply",
 		  "_comment": "compose bloom after the shadow mask. Following the physical order (beam -> mask filtering -> emission -> light scatter(bloom) -> glass), the mask acts only on the incident side; the outgoing scattered light (bloom) is unaffected by the mask",
