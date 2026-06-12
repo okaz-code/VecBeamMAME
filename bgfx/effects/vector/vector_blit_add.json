@@ -1,10 +1,10 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
-// 9-tap tent upsample under pure ADD blend (srcColor=1, dstColor=1).
-// Used by the Stage 2 ladder bloom's up passes (acc(n+1) -> acc(n)) instead of
-// vector_blit_add's single bilinear tap, to suppress diamond/star artifacts from
-// repeated bilinear up-adds.
-// u_blit_intensity.x: contribution weight (the ladder up passes use 1.0)
+// Pure additive blit (no srcalpha correction)
+// gui_add uses srcColor=srcalpha, so output_alpha scales the contribution.
+// For phosphor we want to add texture * decay (vertex color) as-is, so this uses
+// pure additive blending without alpha correction (srcColor=1, dstColor=1).
+// u_blit_intensity.x: Glow Blit Intensity slider (default 1.0)
 {
 	"blend": {
 		"equation": "add",
@@ -17,11 +17,11 @@
 	"cull": { "mode": "none" },
 	"write": { "rgb": true, "alpha": true },
 	"vertex": "vs_gui",
-	"fragment": "fs_vector_upsample",
+	"fragment": "vector/fs_vector_blit_add",
 	"uniforms": [
 		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
 		{ "name": "u_blit_intensity",  "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_bloom_overdrive", "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_inv_view_dims",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]
 }
