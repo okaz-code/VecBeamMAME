@@ -2131,9 +2131,7 @@ std::vector<ui::menu_item> mame_ui_manager::slider_init(running_machine &machine
 			slider_alloc(_("Beam Width Maximum"), 100, 100, 1000, 1, std::bind(&mame_ui_manager::slider_beam_width_max, this, std::ref(screen), _1, _2));
 			slider_alloc(_("Beam Dot Size"), 100, 100, 1000, 1,  std::bind(&mame_ui_manager::slider_beam_dot_size, this, std::ref(screen), _1, _2));
 			slider_alloc(_("Beam Intensity Weight"), -1000, 0, 1000, 10, std::bind(&mame_ui_manager::slider_beam_intensity_weight, this, std::ref(screen), _1, _2));
-			slider_alloc(_("Vector Overscan X"), 33, 100, 100, 1, std::bind(&mame_ui_manager::slider_overscan_x, this, std::ref(screen), _1, _2));
-			slider_alloc(_("Vector Overscan Y"), 33, 100, 100, 1, std::bind(&mame_ui_manager::slider_overscan_y, this, std::ref(screen), _1, _2));
-			break;
+break;
 		}
 	}
 
@@ -2620,35 +2618,6 @@ int32_t mame_ui_manager::slider_beam_intensity_weight([[maybe_unused]] screen_de
 	return floorf(vector_options::s_beam_intensity_weight * 1000.0F + 0.5F);
 }
 
-
-//-------------------------------------------------
-//  slider_overscan_x - vector overscan zoom (X) slider
-//  callback
-//-------------------------------------------------
-
-int32_t mame_ui_manager::slider_overscan_x([[maybe_unused]] screen_device &screen, std::string *str, int32_t newval)
-{
-	if (newval != SLIDER_NOCHANGE)
-		vector_options::s_overscan_x = float(newval) * 0.01F;
-	if (str != nullptr)
-		*str = string_format(_("%1$1.2f"), vector_options::s_overscan_x);
-	return floorf(vector_options::s_overscan_x * 100.0F + 0.5F);
-}
-
-
-//-------------------------------------------------
-//  slider_overscan_y - vector overscan zoom (Y) slider
-//  callback
-//-------------------------------------------------
-
-int32_t mame_ui_manager::slider_overscan_y([[maybe_unused]] screen_device &screen, std::string *str, int32_t newval)
-{
-	if (newval != SLIDER_NOCHANGE)
-		vector_options::s_overscan_y = float(newval) * 0.01F;
-	if (str != nullptr)
-		*str = string_format(_("%1$1.2f"), vector_options::s_overscan_y);
-	return floorf(vector_options::s_overscan_y * 100.0F + 0.5F);
-}
 
 
 //-------------------------------------------------

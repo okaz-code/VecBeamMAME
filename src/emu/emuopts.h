@@ -117,8 +117,8 @@
 #define OPTION_BEAM_DOT_SIZE        "beam_dot_size"
 #define OPTION_BEAM_INTENSITY_WEIGHT   "beam_intensity_weight"
 #define OPTION_FLICKER              "flicker"
-#define OPTION_OVERSCAN_X           "overscan_x"
-#define OPTION_OVERSCAN_Y           "overscan_y"
+#define OPTION_VECTOR_OVERSCAN_X    "vector_overscan_x"
+#define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -404,8 +404,8 @@ public:
 	float beam_dot_size() const { return float_value(OPTION_BEAM_DOT_SIZE); }
 	float beam_intensity_weight() const { return float_value(OPTION_BEAM_INTENSITY_WEIGHT); }
 	float flicker() const { return float_value(OPTION_FLICKER); }
-	float overscan_x() const { return float_value(OPTION_OVERSCAN_X); }
-	float overscan_y() const { return float_value(OPTION_OVERSCAN_Y); }
+	float vector_overscan_x() const { return float_value(OPTION_VECTOR_OVERSCAN_X); }
+	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }

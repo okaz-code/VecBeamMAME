@@ -40,7 +40,7 @@ public:
 	// visible area, < 0 or > 1 when off-screen) plus the normalized (0..1) beam energy, for renderers
 	// that reproduce off-screen beam effects (e.g. monitor glow). Separate from line_delegate so the
 	// existing notifier's signature (part of the Lua API) is left untouched.
-	using overload_line_delegate = delegate<void (float, float, float, float, float)>;
+	using beam_energy_line_delegate = delegate<void (float, float, float, float, float)>;
 
 	template <typename T> static constexpr rgb_t color111(T c) { return rgb_t(pal1bit(c >> 2), pal1bit(c >> 1), pal1bit(c >> 0)); }
 	template <typename T> static constexpr rgb_t color222(T c) { return rgb_t(pal2bit(c >> 4), pal2bit(c >> 2), pal2bit(c >> 0)); }
@@ -60,7 +60,7 @@ public:
 	// Pass < 0 (the default) when the device has no raw beam-energy signal; the display
 	// intensity is then used as the normalized value instead. The displayed intensity is
 	// unaffected either way, so non-bgfx output is identical to stock.
-	void add_point(int x, int y, rgb_t color, int intensity, float overload = -1.0f);
+	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f);
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
@@ -86,10 +86,10 @@ public:
 	util::notifier_subscription add_line_notifier(T &&n)
 	{ return add_line_notifier(line_delegate(std::forward<T>(n))); }
 
-	util::notifier_subscription add_overload_line_notifier(overload_line_delegate &&n);
+	util::notifier_subscription add_beam_energy_line_notifier(beam_energy_line_delegate &&n);
 	template <typename T>
-	util::notifier_subscription add_overload_line_notifier(T &&n)
-	{ return add_overload_line_notifier(overload_line_delegate(std::forward<T>(n))); }
+	util::notifier_subscription add_beam_energy_line_notifier(T &&n)
+	{ return add_beam_energy_line_notifier(beam_energy_line_delegate(std::forward<T>(n))); }
 
 private:
 	float normalized_sigmoid(float n, float k);
@@ -97,12 +97,12 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), col(0), intensity(0), overload(0.0f) { }
+		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f) { }
 
 		int x; int y;
 		rgb_t col;
 		int intensity;
-		float overload;     // normalized (0..1) beam energy passed through to the render primitive
+		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
 	};
 
 	std::unique_ptr<point[]> m_vector_list;
@@ -120,7 +120,7 @@ private:
 	util::notifier<> m_frame_end_notifier;
 	util::notifier<int, int, uint32_t, int, int> m_move_notifier;
 	util::notifier<int, int, int, int, uint32_t, int, int, int> m_line_notifier;
-	util::notifier<float, float, float, float, float> m_overload_line_notifier;
+	util::notifier<float, float, float, float, float> m_beam_energy_line_notifier;
 };
 
 // device type definition

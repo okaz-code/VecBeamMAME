@@ -377,9 +377,7 @@ private:
 	int32_t slider_beam_width_max(screen_device &screen, std::string *str, int32_t newval);
 	int32_t slider_beam_dot_size(screen_device &screen, std::string *str, int32_t newval);
 	int32_t slider_beam_intensity_weight(screen_device &screen, std::string *str, int32_t newval);
-	int32_t slider_overscan_x(screen_device &screen, std::string *str, int32_t newval);
-	int32_t slider_overscan_y(screen_device &screen, std::string *str, int32_t newval);
-	std::string slider_get_screen_desc(screen_device &screen);
+std::string slider_get_screen_desc(screen_device &screen);
 #ifdef MAME_DEBUG
 	int32_t slider_crossscale(ioport_field &field, std::string *str, int32_t newval);
 	int32_t slider_crossoffset(ioport_field &field, std::string *str, int32_t newval);

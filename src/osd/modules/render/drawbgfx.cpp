@@ -806,20 +806,20 @@ int renderer_bgfx::create()
 		m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector_line");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
-		// frame_begin resets the per-frame accumulator; the overload-line notifier accumulates
-		// off-screen overload energy weighted by how far the beam runs past the screen edge. The
+		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
+		// off-screen beam energy weighted by how far the beam runs past the screen edge. The
 		// thresholds/coefficient come from the active chain's sliders, so a chain that does not
 		// define them (coefficient defaults to 0) accumulates nothing.
 		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
 		{
 			m_vector_device = &vec;  // for the CRT-flicker stale-frame query
 			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; });
-			m_mglow_line_sub = vec.add_overload_line_notifier(
-				[this] (float x0, float y0, float x1, float y1, float overload)
+			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
+				[this] (float x0, float y0, float x1, float y1, float beam_energy)
 				{
 					const float coeff = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
 					const float thr   = m_chains->slider_value(0, "mglow_threshold", 0.7f);
-					if (coeff <= 0.0f || overload <= thr)
+					if (coeff <= 0.0f || beam_energy <= thr)
 						return;
 					const float mind = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
 					auto outside = [] (float x, float y) {
@@ -828,7 +828,7 @@ int renderer_bgfx::create()
 						return std::max(dx, dy);
 					};
 					if (std::max(outside(x0, y0), outside(x1, y1)) > mind)
-						m_mglow_amount += (overload - thr) * coeff;
+						m_mglow_amount += (beam_energy - thr) * coeff;
 				});
 			break;
 		}
@@ -1333,7 +1333,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	float dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
-	// Renderer-side overload model. Consumes prim->overload (normalized 0..1 beam energy supplied
+	// Renderer-side overload model. Consumes prim->beam_energy (normalized 0..1 beam energy supplied
 	// by the vector device) and the chain's overload sliders to derive the display intensity, the
 	// beam width and the overload amount. This is the math the emulation core used to do; keeping it
 	// here leaves the device renderer-agnostic. Chains without an "overload_threshold" slider opt out
@@ -1352,7 +1352,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 
 	if (overload_chain)
 	{
-		const float src = std::clamp(prim->overload, 0.0f, 1.0f);
+		const float src = std::clamp(prim->beam_energy, 0.0f, 1.0f);
 		const float k   = m_chains->slider_value(0, "overload_sigmoid_k", 0.0f);
 		const float thr = std::clamp(ov_threshold, 0.001f, 1.0f);
 		const float out = std::clamp(vector_overload_sigmoid(src, k), 0.0f, 1.0f);

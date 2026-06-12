@@ -128,7 +128,7 @@ void avgdvg_device_base::vg_flush()
 			}
 
 			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0);
-			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].overload);
+			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].beam_energy);
 		}
 
 		if (m_vectbuf[i].status == VGCLIP)
@@ -148,7 +148,7 @@ void avgdvg_device_base::vg_flush()
 	m_nvect = 0;
 }
 
-void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float overload)
+void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy)
 {
 	if (m_nvect < MAXVECT)
 	{
@@ -157,7 +157,7 @@ void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensi
 		m_vectbuf[m_nvect].y = y;
 		m_vectbuf[m_nvect].color = color;
 		m_vectbuf[m_nvect].intensity = intensity;
-		m_vectbuf[m_nvect].overload = overload;
+		m_vectbuf[m_nvect].beam_energy = beam_energy;
 		m_nvect++;
 	}
 }
@@ -936,14 +936,14 @@ int avg_starwars_device::handler_7() // starwars_strobe3
 		// stock value and is left unchanged, so non-bgfx output is identical to stock.
 		static constexpr float VCTR_X[8] = { 0.00f, 1.00f, 1.96f, 2.96f, 3.91f, 4.91f, 5.87f, 6.87f };
 		const float raw_beam = VCTR_X[(m_int_latch >> 1) & 0x07] * float(m_intensity); // 0 .. 1751.85
-		const float overload = raw_beam / 1751.85f;                                    // normalized 0..1
+		const float beam_energy = raw_beam / 1751.85f;                                 // normalized 0..1
 
 		vg_add_point_buf(
 				m_xpos,
 				m_ypos,
 				vector_device::color111(m_color),
 				((m_int_latch >> 1) * m_intensity) >> 3,
-				overload);
+				beam_energy);
 	}
 
 	return cycles;
