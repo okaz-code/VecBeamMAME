@@ -1,0 +1,26 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// HDR final composite: screen (linear) + backdrop (additive) + bezel/UI (alpha) -> PQ.
+// Driven entirely by the renderer (textures and uniforms bound in code), so it writes
+// the backbuffer directly with a plain opaque blit.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_hdr_composite",
+	"uniforms": [
+		{ "name": "s_screen",        "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_under",         "type": "int",  "values": [ 1.0 ] },
+		{ "name": "s_over",          "type": "int",  "values": [ 2.0 ] },
+		{ "name": "u_hdr_params",    "type": "vec4", "values": [ 1000.0, 200.0, 1.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
