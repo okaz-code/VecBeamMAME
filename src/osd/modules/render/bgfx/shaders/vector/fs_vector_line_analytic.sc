@@ -15,9 +15,6 @@ $input v_color0, v_texcoord1
 
 #include "common.sh"
 
-// u_ring_params.x = halation inner-disc fill ratio (the faint glow inside the ring).
-uniform vec4 u_ring_params;
-
 // Abramowitz-Stegun 7.1.26 rational approximation, max abs error 1.5e-7
 float erf_approx(float x)
 {
@@ -46,13 +43,10 @@ void main()
 			// halation ring mode: one smooth circle centred on the dwell dot. b = ring radius R0,
 			// sg = edge width. A gaussian band at radius R0 gives the raised, soft-edged rim; an
 			// inner linear term fills the disc faintly (the diffuse scatter inside the halo).
+			// rim only: a smooth gaussian band at radius R0. The inner-disc fill is drawn as a
+			// separate gaussian dot (decoupled from the rim gain), not added here.
 			float r = sqrt(a * a + d * d);
-			float band = exp(-((r - b) * (r - b)) * inv_2s2);
-			// flatter (quadratic) inner-disc fill reads as a lit disc rather than a centre spike;
-			// u_ring_params.x is its strength relative to the rim
-			float t = clamp(r / b, 0.0, 1.0);
-			float fill = (r < b) ? (1.0 - t * t) * u_ring_params.x : 0.0;
-			fade = band + fill;
+			fade = exp(-((r - b) * (r - b)) * inv_2s2);
 		}
 		else
 		{
