@@ -190,6 +190,7 @@ private:
 	// Monitor glow: off-screen overload energy accumulated for the current frame from the vector
 	// device's overload-line notifier, then injected into the chain's monitor-glow pass each frame.
 	float m_mglow_amount = 0.0f;
+	float m_mglow_smoothed = 0.0f;  // temporally smoothed glow (peak + slow decay), avoids vsync flicker
 	util::notifier_subscription m_mglow_line_sub;
 	util::notifier_subscription m_mglow_frame_sub;
 
