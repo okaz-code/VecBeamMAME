@@ -48,7 +48,10 @@ void main()
 			// inner linear term fills the disc faintly (the diffuse scatter inside the halo).
 			float r = sqrt(a * a + d * d);
 			float band = exp(-((r - b) * (r - b)) * inv_2s2);
-			float fill = (r < b) ? (1.0 - r / b) * u_ring_params.x : 0.0;
+			// flatter (quadratic) inner-disc fill reads as a lit disc rather than a centre spike;
+			// u_ring_params.x is its strength relative to the rim
+			float t = clamp(r / b, 0.0, 1.0);
+			float fill = (r < b) ? (1.0 - t * t) * u_ring_params.x : 0.0;
 			fade = band + fill;
 		}
 		else

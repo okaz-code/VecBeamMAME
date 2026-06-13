@@ -1588,7 +1588,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float res = float(s_width[window().index()]) / 1920.0f;
 			const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
 			const float width  = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
-			const float g = length_factor * ring_gain;
+			// internal 0.25 so the gain slider maps to a gentle rim (the dot it reflects is already
+			// at full/HDR brightness); the inner fill is a ratio of this via u_ring_params
+			const float g = length_factor * ring_gain * 0.25f;
 			const uint32_t ring_rgba = u32Color(
 				std::min<uint32_t>(uint32_t(prim->color.r * g * 255.0f + 0.5f), 255),
 				std::min<uint32_t>(uint32_t(prim->color.g * g * 255.0f + 0.5f), 255),
