@@ -842,9 +842,14 @@ int renderer_bgfx::create()
 			m_line_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_line");
 		}
 
-		// HDR composite effect (screen + backdrop + bezel/UI -> PQ). Loaded unconditionally: an
-		// HDR-type chain is composited even on an SDR swapchain (the shader gamma-encodes instead).
-		m_hdr_composite_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_composite");
+		// HDR composite effects (loaded unconditionally: an HDR-type chain composites even on an
+		// SDR swapchain, where the present pass gamma-encodes instead of PQ).
+		m_hdr_screen_effect  = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_screen");
+		m_hdr_present_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_present");
+		m_hdr_gui_effect[BLENDMODE_NONE]         = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_opaque");
+		m_hdr_gui_effect[BLENDMODE_ALPHA]        = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_blend");
+		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
+		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
@@ -1122,7 +1127,9 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 			, texture_flags, prim->texture.unique_id, prim->texture.old_id);
 	}
 
-	bgfx_effect** effects = is_screen ? m_screen_effect : m_gui_effect;
+	// HDR: artwork (non-screen) quads draw into the linear work target with the HDR gui effects
+	// (linearize + nits scale + native blend), so MAME's blend modes compose physically.
+	bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
 
 	uint32_t blend = PRIMFLAG_GET_BLENDMODE(prim->flags);
 	bgfx::setVertexBuffer(0,buffer);
@@ -1810,10 +1817,8 @@ int renderer_bgfx::draw(int update)
 	m_seen_views.clear();
 	if (m_ortho_view)
 		m_ortho_view->set_index(UINT_MAX);
-	// HDR composite: restart the under/over split for this frame.
-	m_ui_over_phase = false;
-	m_hdr_under_view = UINT_MAX;
-	m_hdr_over_view = UINT_MAX;
+	// HDR composite: reset the per-frame work-target view.
+	m_hdr_work_view = UINT_MAX;
 
 	osd_dim wdim = window().get_size_pixels();
 	s_width[window_index] = wdim.width();
@@ -2124,39 +2129,65 @@ int renderer_bgfx::draw(int update)
 	// `m_gui_effect[blend]->submit(m_ortho_view->get_index())` null-derefs.
 	if (window_index == 0)
 	{
-		// HDR-type chain detection: the active chain declares a "screen_hdr" target (linear output
-		// that the composite consumes). Drives the whole composite path; independent of whether the
-		// swapchain is actually HDR10 (SDR fallback still composites, gamma-encoded).
-		m_vec_hdr_chain = (window_index == 0) && m_chains->has_applicable_chain(0)
-			&& (m_chains->targets().target(0, "screen_hdr") != nullptr);
+		// HDR-type chain detection: the active chain declares a "screen_hdr" target (linear vector
+		// output). Drives the whole HDR composite path; independent of whether the swapchain is
+		// actually HDR10 (SDR fallback still composites, gamma-encoded by the present pass).
+		bgfx_target *const screen_hdr = m_chains->has_applicable_chain(0)
+			? m_chains->targets().target(0, "screen_hdr") : nullptr;
+		m_vec_hdr_chain = (window_index == 0) && (screen_hdr != nullptr);
 
-		// (re)create the two SDR artwork/UI layers (under = backdrop, over = bezel/UI) at window size
 		if (m_vec_hdr_chain)
 		{
+			// (re)create the linear work target (absolute nits): vector screen + artwork composited
 			const uint16_t uw = uint16_t(s_width[0]);
 			const uint16_t uh = uint16_t(s_height[0]);
-			if (uw > 0 && uh > 0 && (m_hdr_ui_target == nullptr || m_hdr_ui_target->width() != uw || m_hdr_ui_target->height() != uh))
-			{
-				m_hdr_ui_target  = m_targets->create_target("hdr_ui",        bgfx::TextureFormat::BGRA8, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
-				m_hdr_art_under  = m_targets->create_target("hdr_art_under", bgfx::TextureFormat::BGRA8, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
-			}
-			// Safety: if the layers could not be created (e.g. zero size mid-init), drop to the
-			// plain SDR path this frame rather than routing prims to an invalid view.
-			if (m_hdr_ui_target == nullptr || m_hdr_art_under == nullptr)
+			if (uw > 0 && uh > 0 && (m_hdr_work == nullptr || m_hdr_work->width() != uw || m_hdr_work->height() != uh))
+				m_hdr_work = m_targets->create_target("hdr_work", bgfx::TextureFormat::RG11B10F, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
+			// Safety: drop to the plain SDR path if the work target could not be created.
+			if (m_hdr_work == nullptr)
 				m_vec_hdr_chain = false;
 		}
+
 		if (m_vec_hdr_chain)
 		{
-			// Reserve + clear both layer views up front so the composite always has defined
-			// inputs, even if a phase (backdrop-only, or no-bezel) draws nothing this frame.
-			m_ui_over_phase = false; setup_ortho_view();  // under
-			m_ui_over_phase = true;  setup_ortho_view();  // over
-			m_ui_over_phase = false;                      // prims start as backdrop
+			const float w = float(s_width[0]);
+			const float h = float(s_height[0]);
+			const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
+			const float paper_white = float(m_module().options().bgfx_hdr_paper_white());
+
+			// Seed pass: hdr_work = screen_hdr * beam_peak (linear nits). A dedicated view before
+			// the artwork view; overwrites the whole target so no clear is needed.
+			const uint16_t seed_view = uint16_t(s_current_view++);
+			bgfx::setViewFrameBuffer(seed_view, m_hdr_work->target());
+			bgfx::setViewRect(seed_view, 0, 0, uint16_t(w), uint16_t(h));
+			bgfx::setViewClear(seed_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+			bgfx::setViewMode(seed_view, bgfx::ViewMode::Sequential);
+			float seed_proj[16];
+			bx::mtxOrtho(seed_proj, 0.0f, w, h, 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+			bgfx::setViewTransform(seed_view, nullptr, seed_proj);
+			if (6 == bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) && m_hdr_screen_effect != nullptr)
+			{
+				bgfx::TransientVertexBuffer vb; bgfx::allocTransientVertexBuffer(&vb, 6, ScreenVertex::ms_decl);
+				ScreenVertex *v = reinterpret_cast<ScreenVertex *>(vb.data);
+				vertex(&v[0], 0,0,0,0xffffffff,0,0); vertex(&v[1], w,0,0,0xffffffff,1,0); vertex(&v[2], w,h,0,0xffffffff,1,1);
+				vertex(&v[3], 0,0,0,0xffffffff,0,0); vertex(&v[4], w,h,0,0xffffffff,1,1); vertex(&v[5], 0,h,0,0xffffffff,0,1);
+				bgfx_uniform *p = m_hdr_screen_effect->uniform("u_hdr_params");
+				if (p) { float val[4] = { beam_peak, 0,0,0 }; p->set(val, sizeof(float)*4); p->upload(); }
+				bgfx_uniform *st = m_hdr_screen_effect->uniform("s_tex");
+				if (st) bgfx::setTexture(0, st->handle(), screen_hdr->texture());
+				bgfx::setVertexBuffer(0, &vb);
+				m_hdr_screen_effect->submit(seed_view);
+			}
+
+			// Set the per-frame nits scale on the HDR gui effects (multiply stays a unit ratio).
+			for (int b = 0; b < 4; b++)
+			{
+				if (m_hdr_gui_effect[b] == nullptr) continue;
+				bgfx_uniform *u = m_hdr_gui_effect[b]->uniform("u_hdr_gui");
+				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : paper_white, 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
+			}
 		}
-		else
-		{
-			setup_ortho_view();
-		}
+		setup_ortho_view();
 	}
 
 	render_primitive *prim = window().m_primlist->first();
@@ -2199,10 +2230,12 @@ int renderer_bgfx::draw(int update)
 			// buffer.data == nullptr means allocate_buffer returned without doing anything at
 			// vertices==0 (all prims skipped); passing it to setVertexBuffer would crash inside BGFX
 			// with a garbage handle.
+			// HDR: packed UI quads/lines also go through the HDR gui effects into the work target.
+			bgfx_effect *gui = m_vec_hdr_chain ? m_hdr_gui_effect[blend] : m_gui_effect[blend];
 			bgfx::setVertexBuffer(0, &buffer);
-			bgfx::setTexture(0, m_gui_effect[blend]->uniform("s_tex")->handle(), m_texture_cache->texture());
+			bgfx::setTexture(0, gui->uniform("s_tex")->handle(), m_texture_cache->texture());
 
-			bgfx_uniform* inv_view_dims = m_gui_effect[blend]->uniform("u_inv_view_dims");
+			bgfx_uniform* inv_view_dims = gui->uniform("u_inv_view_dims");
 			if (inv_view_dims)
 			{
 				float values[2] = { -1.0f / s_width[window_index], 1.0f / s_height[window_index] };
@@ -2210,7 +2243,7 @@ int renderer_bgfx::draw(int update)
 				inv_view_dims->upload();
 			}
 
-			m_gui_effect[blend]->submit(m_ortho_view->get_index());
+			gui->submit(m_ortho_view->get_index());
 		}
 
 		if (status != BUFFER_DONE && status != BUFFER_PRE_FLUSH)
@@ -2221,13 +2254,9 @@ int renderer_bgfx::draw(int update)
 
 	window().m_primlist->release_lock();
 
-	// HDR composite (section 4.1): combine the chain's linear screen output, the additive
-	// backdrop (under) and the alpha bezel/UI (over) and PQ-encode the backbuffer. Runs for any
-	// HDR-type chain; on an SDR swapchain the shader gamma-encodes instead (so the chain still
-	// displays). screen_hdr is a chain target; the two SDR layers are renderer targets.
-	bgfx_target *screen_hdr = m_vec_hdr_chain ? m_chains->targets().target(0, "screen_hdr") : nullptr;
-	if (m_vec_hdr_chain && window_index == 0 && m_hdr_composite_effect != nullptr
-		&& screen_hdr != nullptr && m_hdr_ui_target != nullptr && m_hdr_art_under != nullptr)
+	// HDR present (section 4.1): the work target now holds vector + artwork composited in linear
+	// nits. Encode it to the backbuffer (PQ for HDR10, gamma for the SDR fallback).
+	if (m_vec_hdr_chain && window_index == 0 && m_hdr_present_effect != nullptr && m_hdr_work != nullptr)
 	{
 		if (6 == bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl))
 		{
@@ -2243,23 +2272,22 @@ int renderer_bgfx::draw(int update)
 			vertex(&v[4], w,    h,    0.0f, 0xffffffff, 1.0f, 1.0f);
 			vertex(&v[5], 0.0f, h,    0.0f, 0xffffffff, 0.0f, 1.0f);
 
-			const uint16_t comp_view = uint16_t(s_current_view);
+			const uint16_t present_view = uint16_t(s_current_view);
 			s_current_view++;
 			// window 0 renders to the default backbuffer (m_framebuffer is null there)
-			bgfx::FrameBufferHandle comp_fb = BGFX_INVALID_HANDLE;
+			bgfx::FrameBufferHandle present_fb = BGFX_INVALID_HANDLE;
 			if (m_framebuffer != nullptr)
-				comp_fb = m_framebuffer->target();
-			bgfx::setViewFrameBuffer(comp_view, comp_fb);
-			bgfx::setViewRect(comp_view, 0, 0, uint16_t(w), uint16_t(h));
-			// the chain wrote screen_hdr, not the backbuffer; the backbuffer is undefined this
-			// frame, so the composite (opaque blit) fully overwrites it - no clear needed
-			bgfx::setViewClear(comp_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
-			bgfx::setViewMode(comp_view, bgfx::ViewMode::Sequential);
-			float comp_proj[16];
-			bx::mtxOrtho(comp_proj, 0.0f, w, h, 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
-			bgfx::setViewTransform(comp_view, nullptr, comp_proj);
+				present_fb = m_framebuffer->target();
+			bgfx::setViewFrameBuffer(present_view, present_fb);
+			bgfx::setViewRect(present_view, 0, 0, uint16_t(w), uint16_t(h));
+			// opaque blit fully overwrites the backbuffer (the chain wrote screen_hdr, not it)
+			bgfx::setViewClear(present_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+			bgfx::setViewMode(present_view, bgfx::ViewMode::Sequential);
+			float present_proj[16];
+			bx::mtxOrtho(present_proj, 0.0f, w, h, 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+			bgfx::setViewTransform(present_view, nullptr, present_proj);
 
-			bgfx_uniform *hp = m_hdr_composite_effect->uniform("u_hdr_params");
+			bgfx_uniform *hp = m_hdr_present_effect->uniform("u_hdr_params");
 			if (hp)
 			{
 				float vals[4] = {
@@ -2270,14 +2298,10 @@ int renderer_bgfx::draw(int update)
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
 			}
-			bgfx_uniform *ss = m_hdr_composite_effect->uniform("s_screen");
-			bgfx_uniform *su = m_hdr_composite_effect->uniform("s_under");
-			bgfx_uniform *so = m_hdr_composite_effect->uniform("s_over");
-			if (ss) bgfx::setTexture(0, ss->handle(), screen_hdr->texture());
-			if (su) bgfx::setTexture(1, su->handle(), m_hdr_art_under->texture());
-			if (so) bgfx::setTexture(2, so->handle(), m_hdr_ui_target->texture());
+			bgfx_uniform *st = m_hdr_present_effect->uniform("s_tex");
+			if (st) bgfx::setTexture(0, st->handle(), m_hdr_work->texture());
 			bgfx::setVertexBuffer(0, &vb);
-			m_hdr_composite_effect->submit(comp_view);
+			m_hdr_present_effect->submit(present_view);
 		}
 	}
 
@@ -2389,29 +2413,25 @@ void renderer_bgfx::setup_ortho_view()
 		m_ortho_view->disable_color_clear();
 	}
 
-	if (m_vec_hdr_chain)
+	if (m_vec_hdr_chain && m_hdr_work != nullptr)
 	{
-		// Route to one of two SDR layers by phase (under = backdrop, over = bezel/UI). Each layer
-		// has a per-frame view index, configured + transparent-cleared + touched on first use so
-		// the composite always reads a defined layer even when a phase has no primitives.
-		bgfx_target *const tgt = m_ui_over_phase ? m_hdr_ui_target : m_hdr_art_under;
-		uint32_t &cached = m_ui_over_phase ? m_hdr_over_view : m_hdr_under_view;
-		if (cached == UINT_MAX && tgt != nullptr)
+		// Artwork/UI draws into the single linear work target (seeded with the vector screen by
+		// the screen pass). Per-frame view index; no clear (the seed pass already filled it).
+		if (m_hdr_work_view == UINT_MAX)
 		{
-			cached = s_current_view++;
+			m_hdr_work_view = s_current_view++;
 			const uint16_t vw = uint16_t(s_width[window().index()]);
 			const uint16_t vh = uint16_t(s_height[window().index()]);
-			bgfx::setViewFrameBuffer(uint16_t(cached), tgt->target());
-			bgfx::setViewRect(uint16_t(cached), 0, 0, vw, vh);
-			bgfx::setViewClear(uint16_t(cached), BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
-			bgfx::setViewMode(uint16_t(cached), bgfx::ViewMode::Sequential);
+			bgfx::setViewFrameBuffer(uint16_t(m_hdr_work_view), m_hdr_work->target());
+			bgfx::setViewRect(uint16_t(m_hdr_work_view), 0, 0, vw, vh);
+			bgfx::setViewClear(uint16_t(m_hdr_work_view), BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+			bgfx::setViewMode(uint16_t(m_hdr_work_view), bgfx::ViewMode::Sequential);
 			float proj[16];
 			bx::mtxOrtho(proj, 0.0f, float(vw), float(vh), 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
-			bgfx::setViewTransform(uint16_t(cached), nullptr, proj);
-			bgfx::touch(uint16_t(cached));
+			bgfx::setViewTransform(uint16_t(m_hdr_work_view), nullptr, proj);
 		}
-		m_ortho_view->set_backbuffer(tgt);
-		m_ortho_view->set_index(cached);
+		m_ortho_view->set_backbuffer(m_hdr_work);
+		m_ortho_view->set_index(m_hdr_work_view);
 		m_ortho_view->update();
 		return;
 	}
@@ -2478,13 +2498,8 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 			case render_primitive::QUAD:
 				// Skip the VECTORBUF background quad (the black background drawn by vector.cpp):
 				// it would overwrite the vec blit, which has already filled the backbuffer.
-				// It also marks the screen position: artwork before it is backdrop (under layer),
-				// after it is bezel/UI (over layer). Flip the HDR composite phase here.
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTORBUF((*prim)->flags))
-				{
-					m_ui_over_phase = true;
 					break;
-				}
 				if ((*prim)->texture.base == nullptr)
 				{
 					setup_ortho_view();

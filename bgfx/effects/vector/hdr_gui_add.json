@@ -1,0 +1,16 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// HDR artwork/UI, additive (half-mirror reflection adds light over the vector screen).
+{
+	"blend": { "equation": "add", "srcColor": "srcalpha", "dstColor": "1", "srcAlpha": "srcalpha", "dstAlpha": "1" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_hdr_gui",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_hdr_gui",       "type": "vec4", "values": [ 200.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

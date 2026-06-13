@@ -1,0 +1,16 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Seed the HDR linear work target with the chain's vector output scaled to nits.
+{
+	"blend": { "equation": "add", "srcColor": "1", "dstColor": "0", "srcAlpha": "1", "dstAlpha": "0" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_hdr_screen",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_hdr_params",    "type": "vec4", "values": [ 1000.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
