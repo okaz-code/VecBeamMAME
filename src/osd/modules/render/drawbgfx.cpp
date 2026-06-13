@@ -1529,7 +1529,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float cap_radius = std::max(0.0f, cap_min_px + (cap_full - cap_min_px) * cap_f);
 		if (cap_radius > 0.05f)
 		{
-			const float cap_bright = std::max(1.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
+			const float cap_bright = std::max(0.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
 			// The cap dot is ADDED on top of the line's erf end (~50% at the endpoint). At full line
 			// intensity that made the vertex ~1.5x the body, and the brighter pixel lingered longer
 			// under the phosphor max()-persistence than the moving line - a lagging vertex trail on
@@ -1696,11 +1696,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float qy[4] = { y0 + ny * r, y1 + ny * r, y1 - ny * r, y0 - ny * r };
 	const float qv[4] = { 0.0f,        0.0f,        1.0f,        1.0f        };
 
-	// Cap center vertex color. The Line Cap Brightness slider (1..3x, clamped to 255) lets the cap
-	// glow brighter than the body; default 1.0 keeps it identical to the body.
-	const float cap_bright = std::max(1.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
+	// Cap center vertex color. The Line Cap Brightness slider scales the cap relative to the body:
+	// >1 makes it glow brighter, <1 dims it (the cap fan replaces the end, so this is its intensity).
+	const float cap_bright = std::max(0.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
 	uint32_t cap_center_rgba = rgba;
-	if (cap_bright > 1.0001f)
+	if (cap_bright < 0.9999f || cap_bright > 1.0001f)
 	{
 		const uint32_t r8 = std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_bright * 255.0f + 0.5f), 255);
 		const uint32_t g8 = std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_bright * 255.0f + 0.5f), 255);
