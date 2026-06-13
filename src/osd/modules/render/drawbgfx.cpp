@@ -1435,8 +1435,31 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	}
 	else
 	{
-		width = prim->width;
 		display_a = prim->color.a;
+		// Non-overload chains: if they define beam_width sliders (vector-color / monochrome), let
+		// those drive the width too (interpolated by the line's display intensity), the same way
+		// the overload chain does - not just the ini beam_width options. Chains without the slider
+		// (CRT etc.) keep the stock prim->width.
+		const float bw_min = m_chains->slider_value(0, "beam_width_min", -1.0f);
+		if (bw_min >= 0.0f)
+		{
+			const float bw_max = m_chains->slider_value(0, "beam_width_max", bw_min);
+			const float intensity = std::clamp(prim->color.a, 0.0f, 1.0f);
+			float beam_units = bw_min + intensity * (bw_max - bw_min);
+			if (as_point)
+			{
+				const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
+				const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
+				const float w = std::clamp(vector_overload_sigmoid(intensity,
+					m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
+				beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
+			}
+			width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+		}
+		else
+		{
+			width = prim->width;
+		}
 	}
 	if (width < 0.5f) width = 0.5f;
 
@@ -1639,8 +1662,29 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	}
 	else
 	{
-		width = prim->width;
 		display_a = prim->color.a;
+		// Non-overload chains: honour their beam_width / beam_dot sliders if present (vector-color /
+		// monochrome), interpolated by display intensity, so they work like the overload chain.
+		const float bw_min = m_chains->slider_value(0, "beam_width_min", -1.0f);
+		if (bw_min >= 0.0f)
+		{
+			const float bw_max = m_chains->slider_value(0, "beam_width_max", bw_min);
+			const float intensity = std::clamp(prim->color.a, 0.0f, 1.0f);
+			float beam_units = bw_min + intensity * (bw_max - bw_min);
+			if (as_point)
+			{
+				const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
+				const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
+				const float w = std::clamp(vector_overload_sigmoid(intensity,
+					m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
+				beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
+			}
+			width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+		}
+		else
+		{
+			width = prim->width;
+		}
 	}
 	if (width < 0.5f) width = 0.5f;
 
