@@ -2127,8 +2127,8 @@ std::vector<ui::menu_item> mame_ui_manager::slider_init(running_machine &machine
 		{
 			// add vector control (FIXME: these should all be per-screen rather than global)
 			slider_alloc(_("Vector Flicker"), 0, 0, 1000, 10, std::bind(&mame_ui_manager::slider_flicker, this, std::ref(screen), _1, _2));
-			slider_alloc(_("Beam Width Minimum"), 25, 100, 1000, 1, std::bind(&mame_ui_manager::slider_beam_width_min, this, std::ref(screen), _1, _2));
-			slider_alloc(_("Beam Width Maximum"), 25, 100, 1000, 1, std::bind(&mame_ui_manager::slider_beam_width_max, this, std::ref(screen), _1, _2));
+			slider_alloc(_("Beam Width Minimum"), 100, 100, 1000, 1, std::bind(&mame_ui_manager::slider_beam_width_min, this, std::ref(screen), _1, _2));
+			slider_alloc(_("Beam Width Maximum"), 100, 100, 1000, 1, std::bind(&mame_ui_manager::slider_beam_width_max, this, std::ref(screen), _1, _2));
 			slider_alloc(_("Beam Dot Size"), 100, 100, 1000, 1,  std::bind(&mame_ui_manager::slider_beam_dot_size, this, std::ref(screen), _1, _2));
 			slider_alloc(_("Beam Intensity Weight"), -1000, 0, 1000, 10, std::bind(&mame_ui_manager::slider_beam_intensity_weight, this, std::ref(screen), _1, _2));
 break;
