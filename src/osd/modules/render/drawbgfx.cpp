@@ -1476,10 +1476,34 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	}
 	length_factor *= m_crt_flicker_factor * m_vec_line_weight;
 
+	// Dwell-time brightness (real DVG behaviour, per jmargolin.com/vgens): a vector is drawn in a
+	// roughly length-independent time, so a shorter/slower-drawn beam concentrates its energy over
+	// a shorter path and glows brighter - dots (near-zero length) brightest. Uses the per-vector
+	// draw interval (t1-t0) carried by the timestamped beam events. dwell_brightness 0 = off, so
+	// chains without the slider (and untimed sources) are unaffected.
+	const float dwell_str = m_chains->slider_value(0, "dwell_brightness", 0.0f);
+	if (dwell_str > 0.0f && prim->t0 >= 0.0 && prim->t1 > prim->t0)
+	{
+		const float dmax = m_chains->slider_value(0, "dwell_max", 3.0f);
+		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
+		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
+		const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
+		float mul = dmax;
+		if (norm_len > 1e-4f && dt_ms > 0.0)
+		{
+			// draw speed in screen-fractions per millisecond; brightness ~ ref / speed
+			const float v = norm_len / float(dt_ms);
+			const float ref = m_chains->slider_value(0, "dwell_speed_ref", 1.0f);
+			mul = std::clamp((v > 1e-6f) ? (ref / v) : dmax, 0.3f, dmax);
+		}
+		length_factor *= (1.0f + dwell_str * (mul - 1.0f));
+	}
+
+	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
-		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
-		uint32_t(prim->color.b * length_factor * 255.0f + 0.5f),
+		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.g * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
 	// sigma: width/3.2 keeps the gaussian core as tight as the classic parabola (a gaussian's
