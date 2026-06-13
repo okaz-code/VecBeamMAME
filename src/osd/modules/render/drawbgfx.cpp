@@ -1553,11 +1553,53 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 	};
 
+	// Halation ring: one smooth circle centred on the dot (b = radius flags ring mode in the
+	// shader; sigma = -edge width). A single quad per bullet, so it is continuous, not a ring of
+	// gather dots.
+	auto set_ring = [&](int base, float cx, float cy, float radius, float width, uint32_t rrgba) {
+		const float p = radius + 3.0f * width + 1.0f;  // quad half-extent covers the soft rim
+		const float sg = -width;
+		auto rv = [&](int i, float x, float y, float a, float d) {
+			vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f;
+			vertex[i].m_rgba = rrgba;
+			vertex[i].m_a = a; vertex[i].m_b = radius; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+		};
+		rv(base + 0, cx - p, cy - p, -p, -p);
+		rv(base + 1, cx + p, cy - p,  p, -p);
+		rv(base + 2, cx + p, cy + p,  p,  p);
+		rv(base + 3, cx - p, cy - p, -p, -p);
+		rv(base + 4, cx + p, cy + p,  p,  p);
+		rv(base + 5, cx - p, cy + p, -p,  p);
+	};
+
 	if (as_point)
 	{
-		// dwelling beam: one 2D gaussian at the segment centre; cap slots stay degenerate
-		set_dot(0, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f, sigma, rgba);
-		set_degenerate(6);
+		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
+		// dwelling beam: one 2D gaussian at the segment centre
+		set_dot(0, cx, cy, sigma, rgba);
+
+		// Halation ring around bright dwell dots (bullets). The rendered brightness includes the
+		// dwell-time boost, so only the bright dots reach the threshold and ring; rocks/ship lines
+		// never take this branch.
+		const float ring_gain = m_chains->slider_value(0, "ring_gain", 0.0f);
+		const float eff_bright = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
+		if (ring_gain > 0.0f && eff_bright >= m_chains->slider_value(0, "ring_threshold", 0.0f))
+		{
+			const float res = float(s_width[window().index()]) / 1920.0f;
+			const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
+			const float width  = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
+			const float g = length_factor * ring_gain;
+			const uint32_t ring_rgba = u32Color(
+				std::min<uint32_t>(uint32_t(prim->color.r * g * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.g * g * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.b * g * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
+			set_ring(6, cx, cy, radius, width, ring_rgba);
+		}
+		else
+		{
+			set_degenerate(6);
+		}
 		set_degenerate(12);
 		return;
 	}
@@ -2140,6 +2182,14 @@ int renderer_bgfx::draw(int update)
 					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 0.0f, 0.0f };
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
+				}
+				// u_ring_params.x = halation ring inner-disc fill ratio (analytic ring mode)
+				bgfx_uniform* rp = line_eff->uniform("u_ring_params");
+				if (rp)
+				{
+					float rvals[4] = { m_chains->slider_value(0, "ring_fill", 0.0f), 0.0f, 0.0f, 0.0f };
+					rp->set(rvals, sizeof(float) * 4);
+					rp->upload();
 				}
 				line_eff->submit(fbo_view);
 			}
