@@ -276,14 +276,6 @@ int dvg_device::handler_2() //dvg_gostrobe
 {
 	int scale;
 
-	// SVEC (short vector, op 0xf) draws the dots - notably the bullets. Optionally brighten just
-	// those (-dvg_svec_intensity > 1) so they pick up the halation ring while the long vectors
-	// (rocks/ship) stay below the ring threshold.
-	const bool is_svec = (m_op == 0xf);
-	const int draw_int = (is_svec && m_svec_intensity_mul > 1.0f)
-		? std::min<int>(0xf, int(float(m_intensity) * m_svec_intensity_mul + 0.5f))
-		: m_intensity;
-
 	if (m_op == 0xf)
 	{
 		scale = (m_scale +
@@ -358,7 +350,7 @@ int dvg_device::handler_2() //dvg_gostrobe
 			if (!(m_ypos & 0x400) && ((m_xpos ^ (m_xpos + dx)) & 0x400))
 			{
 				if ((m_xpos + dx) & 0x400)  // We are leaving the valid range
-					dvg_draw_to(m_xpos, m_ypos, draw_int);
+					dvg_draw_to(m_xpos, m_ypos, m_intensity);
 				else                        // We are entering the valid range
 					dvg_draw_to((m_xpos + dx) & 0xfff, m_ypos, 0);
 			}
@@ -372,7 +364,7 @@ int dvg_device::handler_2() //dvg_gostrobe
 				if (!(m_xpos & 0x400))
 				{
 					if ((m_ypos + dy) & 0x400)
-						dvg_draw_to(m_xpos, m_ypos, draw_int);
+						dvg_draw_to(m_xpos, m_ypos, m_intensity);
 					else
 						dvg_draw_to(m_xpos, (m_ypos + dy) & 0xfff, 0);
 				}
@@ -381,7 +373,7 @@ int dvg_device::handler_2() //dvg_gostrobe
 		}
 	}
 
-	dvg_draw_to(m_xpos, m_ypos, draw_int);
+	dvg_draw_to(m_xpos, m_ypos, m_intensity);
 
 	return cycles;
 }
@@ -1424,8 +1416,6 @@ void dvg_device::device_start()
 
 	m_xcenter = 512;
 	m_ycenter = 512;
-
-	m_svec_intensity_mul = std::max(1.0f, machine().options().dvg_svec_intensity());
 }
 
 void avg_device::device_start()
