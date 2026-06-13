@@ -13,7 +13,7 @@
 		{ "type": "float", "name": "beam_width_min",            "text": "Beam Width Minimum",        "default": 2.0,  "min": 0.1,  "max": 5.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_max",            "text": "Beam Width Maximum",        "default": 3.0,  "min": 0.1,  "max": 20.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_dot_size_min",         "text": "Beam Dot Size Min",         "default": 2.0,  "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_dot_size_max",         "text": "Beam Dot Size Max",         "default": 5.0,  "min": 0.0,  "max": 16.0, "step": 0.1,  "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_dot_size_max",         "text": "Beam Dot Size Max",         "default": 12.0,  "min": 0.0,  "max": 16.0, "step": 0.1,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_dot_size_curve",       "text": "Beam Dot Size Curve",       "default": 0.0,  "min": -1.0, "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold",     "text": "Line Point Threshold",     "default": 2.0,  "min": 0.0, "max": 10.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
@@ -43,7 +43,7 @@
 
 		{ "type": "intenum", "name": "adjustments", "text": "Enable Adjustments", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
 
-		{ "type": "vec2", "name": "defocus", "text": "Defocus, ", "default": [ 0.6, 0.6 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		{ "type": "vec2", "name": "defocus", "text": "Defocus, ", "default": [ 0.8, 0.8 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
 
 		{ "type": "color", "name": "floor", "text": "Signal Floor, ",    "default": [ 0.00, 0.00, 0.00 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "power", "text": "Signal Exponent, ", "default": [ 1.00, 1.00, 1.00 ], "max": [ 4.00, 4.00, 4.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -51,11 +51,11 @@
 		{ "type": "color", "name": "phosphor", "text": "Phosphor Persistence, ",  "default": [ 0.40, 0.40, 0.40 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		{ "type": "float", "name": "tail_strength", "text": "Phosphor Tail Strength", "default": 0.010, "max": 0.25,  "min": 0.00, "step": 0.002, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.600,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.700,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "ring_radius",  "text": "Halation Ring Radius (px)", "default": 48.0, "min": 2.0, "max": 100.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
-		{ "type": "float", "name": "ring_gain",    "text": "Halation Ring Gain",       "default": 0.08,  "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ring_gain",    "text": "Halation Ring Gain",       "default": 0.20,  "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_width",    "text": "Halation Ring Width (px)",  "default": 0.5,  "min": 0.5, "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
-		{ "type": "float", "name": "ring_fill",     "text": "Halation Ring Inner Fill", "default": 0.29,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ring_fill",     "text": "Halation Ring Inner Fill", "default": 0.07,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_threshold","text": "Halation Ring Threshold",  "default": 0.5,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dwell_brightness", "text": "Dwell Brightness (short=bright)", "default": 1.0, "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dwell_speed_ref",  "text": "Dwell Speed Reference",          "default": 0.5, "min": 0.05,"max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
