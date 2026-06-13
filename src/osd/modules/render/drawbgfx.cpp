@@ -1486,11 +1486,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
 	// path's parabola->gaussian blend reached about 2x at full overload).
 	float sigma = (width / 3.2f) * (1.0f + ovld);
-	// Rasterization floor, mirroring the classic path's r >= 1px clamp: a gaussian narrower
-	// than the fragment pitch falls between fragment centres and vanishes (the Star Wars
-	// starfield: zero-length VCTRs with sub-pixel dot sizes). Points need a wider floor
-	// because they have no extent in either axis.
-	const float sig_floor = as_point ? 0.85f : 0.55f;
+	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
+	// vanish. Lines are 1D-continuous so they can go thinner than points (which have no extent
+	// in either axis and need a wider floor). 0.33 sigma = FWHM ~0.78px, about the thinnest a
+	// vector line stays solid - this is the practical minimum the beam_width slider reaches.
+	const float sig_floor = as_point ? 0.85f : 0.33f;
 	if (sigma < sig_floor) sigma = sig_floor;
 	const float pad = 3.5f * sigma + 0.5f;
 
