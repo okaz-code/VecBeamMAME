@@ -2152,9 +2152,14 @@ int renderer_bgfx::draw(int update)
 			// Guard against null chain (e.g. chain change from menu, or failed load).
 			if (m_chains->has_applicable_chain(0))
 			{
-				// Feed the per-frame monitor-glow accumulation into the chain's glow pass.
-				// No-op when the active chain has no "add_mglow" pass.
-				const float mglow_vals[4] = { m_mglow_amount, 0.0f, 0.0f, 0.0f };
+				// Feed the monitor-glow accumulation into the chain's glow pass (no-op without an
+				// "add_mglow" pass). In beam-event mode the per-frame energy drops to 0 on frames
+				// where the beam list was not refreshed (its timed points were already consumed),
+				// which made the glow flicker against vsync. The monitor glow physically persists,
+				// so track the peak and decay it gently instead of using the raw per-frame value.
+				if (m_vec_frame_advanced)
+					m_mglow_smoothed = std::max(m_mglow_amount, m_mglow_smoothed * 0.80f);
+				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 
 				// Freeze the phosphor-tail pool on presents that did not advance emulation
