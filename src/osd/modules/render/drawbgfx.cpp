@@ -1578,31 +1578,40 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// dwelling beam: one 2D gaussian at the segment centre
 		set_dot(0, cx, cy, sigma, rgba);
 
-		// Halation ring around bright dwell dots (bullets). The rendered brightness includes the
-		// dwell-time boost, so only the bright dots reach the threshold and ring; rocks/ship lines
-		// never take this branch.
+		// Halation around bright dwell dots (bullets). The rendered brightness includes the
+		// dwell-time boost, so only the bright dots reach the threshold; rocks/ship lines never
+		// take this branch. The rim (gain) and the inner fill have independent brightness so the
+		// fill stays visible when the rim is dialed right down.
 		const float ring_gain = m_chains->slider_value(0, "ring_gain", 0.0f);
+		const float ring_fill = m_chains->slider_value(0, "ring_fill", 0.0f);
 		const float eff_bright = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
-		if (ring_gain > 0.0f && eff_bright >= m_chains->slider_value(0, "ring_threshold", 0.0f))
+		const bool ring_on = (ring_gain > 0.0f || ring_fill > 0.0f)
+			&& eff_bright >= m_chains->slider_value(0, "ring_threshold", 0.0f);
+		const float res = float(s_width[window().index()]) / 1920.0f;
+		const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
+		const float da = std::clamp(display_a, 0.0f, 1.0f);
+		auto ring_color = [&](float strength) -> uint32_t {
+			return u32Color(
+				std::min<uint32_t>(uint32_t(prim->color.r * length_factor * strength * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.g * length_factor * strength * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.b * length_factor * strength * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
+		};
+
+		// rim: gaussian ring at R0 (internal 0.05 keeps the gain slider gentle)
+		if (ring_on && ring_gain > 0.0f)
 		{
-			const float res = float(s_width[window().index()]) / 1920.0f;
-			const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
-			const float width  = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
-			// internal 0.25 so the gain slider maps to a gentle rim (the dot it reflects is already
-			// at full/HDR brightness); the inner fill is a ratio of this via u_ring_params
-			const float g = length_factor * ring_gain * 0.25f;
-			const uint32_t ring_rgba = u32Color(
-				std::min<uint32_t>(uint32_t(prim->color.r * g * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.g * g * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.b * g * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
-			set_ring(6, cx, cy, radius, width, ring_rgba);
+			const float width = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
+			set_ring(6, cx, cy, radius, width, ring_color(ring_gain * 0.05f));
 		}
 		else
-		{
 			set_degenerate(6);
-		}
-		set_degenerate(12);
+
+		// inner fill: a soft gaussian disc inside the ring, brightness independent of the rim gain
+		if (ring_on && ring_fill > 0.0f)
+			set_dot(12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(ring_fill * 0.04f));
+		else
+			set_degenerate(12);
 		return;
 	}
 
@@ -2184,14 +2193,6 @@ int renderer_bgfx::draw(int update)
 					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 0.0f, 0.0f };
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
-				}
-				// u_ring_params.x = halation ring inner-disc fill ratio (analytic ring mode)
-				bgfx_uniform* rp = line_eff->uniform("u_ring_params");
-				if (rp)
-				{
-					float rvals[4] = { m_chains->slider_value(0, "ring_fill", 0.0f), 0.0f, 0.0f, 0.0f };
-					rp->set(rvals, sizeof(float) * 4);
-					rp->upload();
 				}
 				line_eff->submit(fbo_view);
 			}
