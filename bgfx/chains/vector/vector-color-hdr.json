@@ -97,6 +97,12 @@
 	],
 
 	"targets": [
+		{   "name": "screen_hdr",
+			"_comment": "linear chain output sampled by the HDR composite (RG11B10F, window size)",
+			"mode": "native", "scale": 1,
+			"doublebuffer": false,
+			"format": "RG11B10F"
+		},
 		{   "name": "guest",
 			"mode": "native",
 			"bilinear": false,
@@ -422,17 +428,13 @@
 			],
 			"output": "internal"
 		},
-		{   "effect": "vector/vector_hdr_encode",
-			"name": "Final Blit (HDR PQ encode)",
-			"_comment": "PoC: the chain stays gamma-space; this single pass linearizes, scales to beam_peak_nits, converts to Rec.2020 and PQ-encodes for the HDR10 backbuffer. Requires -bgfx_hdr 1 (otherwise the PQ image just looks dim/washed on the SDR swapchain)",
+		{   "effect": "misc/blit",
+			"name": "Final Blit (-> screen_hdr, linear)",
+			"_comment": "linear chain output goes to the sampleable screen_hdr target; the renderer's HDR composite pass adds the backdrop, alpha-composites bezel/UI and PQ-encodes the backbuffer (vector-hdr-display-study.md 4.1)",
 			"input": [
 				{ "sampler": "s_tex", "target": "internal" }
 			],
-			"uniforms": [
-				{ "uniform": "u_hdr_params", "slider": "beam_peak_nits" },
-				{ "uniform": "u_hdr_input",  "value": [ 1.0, 0.0, 0.0, 0.0 ] }
-			],
-			"output": "output"
+			"output": "screen_hdr"
 		}
 	]
 }
