@@ -157,16 +157,16 @@ private:
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex);
 
 	// HDR composite (vector-hdr-display-study.md 4.1). An HDR-type chain (one declaring a
-	// "screen_hdr" target) outputs linear light there; artwork/UI primitives are split into two
-	// SDR offscreen layers by their position relative to the vector screen, and a final pass
-	// combines them: under (backdrop) additive, screen additive, over (bezel/UI) alpha, then PQ.
+	// "screen_hdr" target) outputs linear light there. The vector screen is seeded into a linear
+	// work target in absolute nits, then artwork/UI quads are drawn on top with their native MAME
+	// blend modes (alpha / multiply / add) in linear light - reproducing the half-mirror combine -
+	// and a final pass PQ-encodes the result (gamma on an SDR swapchain).
 	bool m_vec_hdr_chain = false;          // active chain is HDR-type (has a screen_hdr target)
-	bgfx_target *m_hdr_ui_target = nullptr;    // over layer: bezel / menu / OSD (after the screen)
-	bgfx_target *m_hdr_art_under = nullptr;    // under layer: backdrop (before the screen)
-	bgfx_effect *m_hdr_composite_effect = nullptr;
-	bool m_ui_over_phase = false;          // false until the vector screen marker, then true
-	uint32_t m_hdr_under_view = UINT_MAX;  // per-frame view index for the under (backdrop) layer
-	uint32_t m_hdr_over_view = UINT_MAX;   // per-frame view index for the over (bezel/UI) layer
+	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
+	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
+	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
+	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
+	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
 
 	std::map<uint32_t, rectangle_packer::packed_rectangle> m_hash_to_entry;
 	std::vector<rectangle_packer::packable_rectangle> m_texinfo;

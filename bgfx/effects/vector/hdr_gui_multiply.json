@@ -1,0 +1,17 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// HDR artwork/UI, multiply (tint/darken). Source is a dimensionless transmission ratio
+// (u_hdr_gui.x set to 1.0 by the renderer), multiplied onto the destination nits.
+{
+	"blend": { "equation": "add", "srcColor": "dstcolor", "dstColor": "1-srcalpha" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_hdr_gui",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_hdr_gui",       "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
