@@ -150,6 +150,8 @@ protected:
 
 private:
 	void dvg_draw_to(int x, int y, int intensity);
+
+	float m_svec_intensity_mul;  // -dvg_svec_intensity: SVEC (short vector / bullets) brightness boost
 };
 
 

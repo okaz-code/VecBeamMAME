@@ -20,12 +20,14 @@ uniform vec4 u_inv_screen_dims;
 uniform vec4 u_ring_radius;
 uniform vec4 u_ring_gain;
 uniform vec4 u_ring_gain2;
+uniform vec4 u_ring_threshold;  // x = source threshold: only cores brighter than this ring (bullets)
 
 void main()
 {
 	// window px -> half-res source texels -> UV offset
 	vec2 r1 = u_inv_screen_dims.xy * (u_ring_radius.x * 0.5);
 	vec2 r2 = r1 * 2.0;
+	vec3 thr = vec3_splat(u_ring_threshold.x);
 
 	vec3 a1 = vec3_splat(0.0);
 	vec3 a2 = vec3_splat(0.0);
@@ -34,8 +36,10 @@ void main()
 	{
 		float ang = 6.2831853071795864 * (float(i) / float(N));
 		vec2 dir = vec2(cos(ang), sin(ang));
-		a1 += texture2D(s_tex, v_texcoord0 + dir * r1).rgb;
-		a2 += texture2D(s_tex, v_texcoord0 + dir * r2).rgb;
+		// only the part of the source above the threshold contributes, so dim lines (rocks) do not
+		// ring and only the bright dwell dots (bullets, drawn brighter by the SVEC boost) do
+		a1 += max(texture2D(s_tex, v_texcoord0 + dir * r1).rgb - thr, vec3_splat(0.0));
+		a2 += max(texture2D(s_tex, v_texcoord0 + dir * r2).rgb - thr, vec3_splat(0.0));
 	}
 
 	vec3 ring = (a1 * u_ring_gain.x + a2 * u_ring_gain2.x) * (1.0 / float(N));

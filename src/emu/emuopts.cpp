@@ -137,6 +137,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_BEAM_WIDTH_MIN,                             "1.0",       core_options::option_type::FLOAT,      "set vector beam width minimum" },
 	{ OPTION_BEAM_WIDTH_MAX,                             "1.0",       core_options::option_type::FLOAT,      "set vector beam width maximum" },
 	{ OPTION_BEAM_DOT_SIZE,                              "1.0",       core_options::option_type::FLOAT,      "set vector beam size for dots" },
+	{ OPTION_DVG_SVEC_INTENSITY,                       "1.0",       core_options::option_type::FLOAT,      "DVG short-vector (SVEC) intensity multiplier; >1 brightens bullets so they pick up the halation ring" },
 	{ OPTION_BEAM_INTENSITY_WEIGHT,                      "0",         core_options::option_type::FLOAT,      "set vector beam intensity weight " },
 	{ OPTION_FLICKER,                                    "0",         core_options::option_type::FLOAT,      "set vector flicker effect" },
 	{ OPTION_VECTOR_OVERSCAN_X,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (X), < 1.0 reveals off-screen beams" },
