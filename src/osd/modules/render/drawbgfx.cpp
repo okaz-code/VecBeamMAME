@@ -1530,15 +1530,17 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (cap_radius > 0.05f)
 		{
 			const float cap_bright = std::max(1.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
-			uint32_t cap_rgba = rgba;
-			if (cap_bright > 1.0001f)
-			{
-				cap_rgba = u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_bright * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_bright * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * cap_bright * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
-			}
+			// The cap dot is ADDED on top of the line's erf end (~50% at the endpoint). At full line
+			// intensity that made the vertex ~1.5x the body, and the brighter pixel lingered longer
+			// under the phosphor max()-persistence than the moving line - a lagging vertex trail on
+			// rotating shapes. Scale the cap contribution to ~0.5x so the endpoint peak lands near the
+			// line intensity (0.5 erf + 0.5 cap). line_cap_brightness still boosts from there.
+			const float cap_scale = 0.5f * cap_bright;
+			const uint32_t cap_rgba = u32Color(
+				std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_scale * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_scale * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(prim->color.b * length_factor * cap_scale * 255.0f + 0.5f), 255),
+				std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
 			set_dot(6, x0, y0, sg_cap, cap_rgba);
 			set_dot(12, x1, y1, sg_cap, cap_rgba);
