@@ -55,6 +55,7 @@
 		{ "type": "float", "name": "ring_radius",  "text": "Halation Ring Radius (px)", "default": 24.0, "min": 2.0, "max": 100.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "ring_gain",    "text": "Halation Ring Gain",       "default": 0.0,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_gain2",   "text": "Halation 2nd Ring Gain",   "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ring_threshold","text": "Halation Ring Threshold",  "default": 0.0,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -317,7 +318,7 @@
 		  "_comment": "annular gather of the half-res bright source: a bright point becomes a ring at ring_radius (+ fainter 2x ring). ring_gain 0 = off (passes skipped)",
 		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "ring_gain", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ],
-		  "uniforms": [ { "uniform": "u_ring_radius", "slider": "ring_radius" }, { "uniform": "u_ring_gain", "slider": "ring_gain" }, { "uniform": "u_ring_gain2", "slider": "ring_gain2" } ],
+		  "uniforms": [ { "uniform": "u_ring_radius", "slider": "ring_radius" }, { "uniform": "u_ring_gain", "slider": "ring_gain" }, { "uniform": "u_ring_gain2", "slider": "ring_gain2" }, { "uniform": "u_ring_threshold", "slider": "ring_threshold" } ],
 		  "output": "halo_ring" },
 		{ "effect": "vector/vector_blit_add", "name": "add_halo", "clear": {},
 		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "ring_gain", "value": 0.0 } ],
