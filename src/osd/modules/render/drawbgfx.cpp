@@ -2671,6 +2671,13 @@ int renderer_bgfx::draw(int update)
 				const float tail_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "tail_accum", "u_tail_freeze", tail_freeze, 4);
 
+				// Bloom dark-area noise: strength from the slider, and freeze the pattern (y=1) on
+				// presents that did not advance emulation so the shimmer stops while paused (F5).
+				const float bloom_noise[4] = {
+					m_chains->slider_value(0, "bloom_noise", 0.10f),
+					m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Bloom Apply", "u_bloom_noise", bloom_noise, 4);
+
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
 			}

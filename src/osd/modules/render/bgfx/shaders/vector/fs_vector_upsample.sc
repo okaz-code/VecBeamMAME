@@ -24,20 +24,20 @@ void main()
 	vec2 o = u_inv_screen_dims.xy;
 	vec2 uv = v_texcoord0;
 
-	// gaussian sigma ~1.3 source texels: center 1.0, edge(+-1) 0.744, corner(+-1,+-1) 0.553, far(+-2) 0.306
+	// gaussian sigma ~1.6 source texels: center 1.0, edge(+-1) 0.822, corner(+-1,+-1) 0.677, far(+-2) 0.458
 	vec4 c = texture2D(s_tex, uv) * 1.0;
 	c += (texture2D(s_tex, uv + vec2(-o.x, 0.0))
 		+ texture2D(s_tex, uv + vec2( o.x, 0.0))
 		+ texture2D(s_tex, uv + vec2(0.0, -o.y))
-		+ texture2D(s_tex, uv + vec2(0.0,  o.y))) * 0.744;
+		+ texture2D(s_tex, uv + vec2(0.0,  o.y))) * 0.822;
 	c += (texture2D(s_tex, uv + vec2(-o.x, -o.y))
 		+ texture2D(s_tex, uv + vec2( o.x, -o.y))
 		+ texture2D(s_tex, uv + vec2(-o.x,  o.y))
-		+ texture2D(s_tex, uv + vec2( o.x,  o.y))) * 0.553;
+		+ texture2D(s_tex, uv + vec2( o.x,  o.y))) * 0.677;
 	c += (texture2D(s_tex, uv + vec2(-2.0 * o.x, 0.0))
 		+ texture2D(s_tex, uv + vec2( 2.0 * o.x, 0.0))
 		+ texture2D(s_tex, uv + vec2(0.0, -2.0 * o.y))
-		+ texture2D(s_tex, uv + vec2(0.0,  2.0 * o.y))) * 0.306;
+		+ texture2D(s_tex, uv + vec2(0.0,  2.0 * o.y))) * 0.458;
 
-	gl_FragColor = c * (1.0 / 7.412) * u_blit_intensity.x * v_color0;
+	gl_FragColor = c * (1.0 / 8.828) * u_blit_intensity.x * v_color0;
 }
