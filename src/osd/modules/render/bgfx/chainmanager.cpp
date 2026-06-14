@@ -646,6 +646,15 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 	}
 }
 
+void chain_manager::inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	// Register the analytic-glow FBO colour attachment as "glow0"; a chain pass references it as
+	// texture "glow" (chainentryreader treats "glow" as a runtime provider, like "screen").
+	m_textures.remove_provider("glow0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("glow0", std::move(prov));
+}
+
 uint32_t chain_manager::count_screens(render_primitive* prim)
 {
 	uint32_t screen_count = 0;

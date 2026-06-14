@@ -357,6 +357,13 @@
 			"output": "slow_pool"
 		},
 
+		{ "effect": "vector/vector_blit_add", "name": "Analytic Glow Composite",
+		  "_comment": "Add the separate analytic-glow FBO (glow0) into internal AFTER the shadow mask / tint, so the broad scattered glow is not patterned by the mask. disablewhen keeps it free when analytic_glow is 0",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "analytic_glow", "value": 0.0 } ],
+		  "clear": {},
+		  "input": [ { "sampler": "s_tex", "texture": "glow" } ],
+		  "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ],
+		  "output": "internal" },
 		{ "_comment": "8-level 0.5x bloom. Bloom source = mask-applied internal. bloom_lvl0..7 (window/2..window/256) are created on the C++ side. vector_downsample (4-tap) shrinks by 0.5x repeatedly; the ladder below accumulates the levels into acc0..acc6",
 		  "effect": "vector/vector_downsample", "name": "ds_bloom0", "input": [ { "sampler": "s_tex", "target": "internal"   } ], "output": "bloom_lvl0" },
 		{ "effect": "vector/vector_downsample", "name": "ds_bloom1", "input": [ { "sampler": "s_tex", "target": "bloom_lvl0" } ], "output": "bloom_lvl1" },

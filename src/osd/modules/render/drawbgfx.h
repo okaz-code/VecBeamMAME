@@ -147,6 +147,10 @@ private:
 	uint16_t m_vec_fb_w = 0;
 	uint16_t m_vec_fb_h = 0;
 	bool m_vectors_in_fbo = false;  // whether vector LINEs were drawn into the FBO this frame
+	// Analytic glow FBO (案A): the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
+	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Same size as
+	// m_vec_fb; colour-only. Injected to the chain as "glow0" when analytic glow is active.
+	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
 
 	// Analytic-AA vector line effect (fs_vector_line). Draws vector LINEs into m_vec_fb.
 	// The subsequent post-processing is handled by the chain (JSON).
@@ -154,7 +158,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, float start_cap = 1.0f, float end_cap = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f);
 
 	// Deflection-amplifier dynamics (master plan 3-3): the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
