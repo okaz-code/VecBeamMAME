@@ -223,6 +223,13 @@ private:
 	// refresh; 1.0 for lines fully inside the window.
 	float m_vec_line_weight = 1.0f;
 
+	// Analog integrator drift (AVG): op-amp offset slowly translates the whole image, the CNTR
+	// command pulling it back - a sub-Hz wobble that gives the picture some "life". Modelled as a
+	// per-axis sum of incommensurate low-frequency sines (mean zero = self-recentring), recomputed
+	// each frame from machine time and added to every vector vertex. 0 px when analog_drift is off.
+	float m_vec_drift_x = 0.0f;
+	float m_vec_drift_y = 0.0f;
+
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
 	static const uint32_t WHITE_HASH;
