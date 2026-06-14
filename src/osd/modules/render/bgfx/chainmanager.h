@@ -72,6 +72,11 @@ public:
 	void inject_vector_screen(bgfx::TextureHandle color_tex, uint16_t width, uint16_t height,
 		uint16_t vec_fb_w, uint16_t vec_fb_h);
 
+	// Register a second GPU-rendered FBO as "glow0" - the analytic glow drawn separately so a chain
+	// can composite it AFTER the shadow mask (scattered light is not masked). Must be called before
+	// process_screen_chains() each frame when analytic glow is active.
+	void inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
+
 	// Getters
 	running_machine& machine() const { return m_machine; }
 	const osd_options& options() const { return m_options; }
