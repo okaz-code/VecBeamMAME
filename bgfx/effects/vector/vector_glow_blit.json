@@ -1,0 +1,24 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Additive glow composite with the chain defocus blur applied (so the post-mask halation ring / glow
+// keeps the same softness as when it used to pass through hlsl/defocus). Pure additive (src 1, dst 1).
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "1",
+		"srcAlpha": "1",
+		"dstAlpha": "1"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_glow_blit",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_blit_intensity","type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_glow_defocus",  "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

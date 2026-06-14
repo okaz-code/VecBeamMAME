@@ -860,6 +860,7 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_ALPHA]        = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_blend");
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
+		m_backdrop_effect                        = m_effects->get_or_load_effect(m_module().options(), "vector/backdrop_uv");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
@@ -1113,6 +1114,20 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 	float u[4] = { prim->texcoords.tl.u, prim->texcoords.tr.u, prim->texcoords.bl.u, prim->texcoords.br.u };
 	float v[4] = { prim->texcoords.tl.v, prim->texcoords.tr.v, prim->texcoords.bl.v, prim->texcoords.br.v };
 
+	// Half-mirror backdrop treatment (monochrome test): active when a monochrome chain exposes the
+	// backdrop_* sliders (sentinel: backdrop_saturation < 0 means absent => off) AND the quad is
+	// ADD-blended - that is the half-mirror backdrop. MULTIPLY (colour-gel overlay, e.g. Battlezone)
+	// and ALPHA (bezel) keep their normal path, so the additive treatment never breaks a gel/bezel.
+	// Parallax shifts the backdrop so it sits at a different apparent depth than the vector image.
+	const bool bd_treat = !PRIMFLAG_GET_SCREENTEX(prim->flags) && (m_backdrop_effect != nullptr)
+		&& (PRIMFLAG_GET_BLENDMODE(prim->flags) == BLENDMODE_ADD)
+		&& (m_chains->slider_value(0, "backdrop_saturation", -1.0f) >= 0.0f);
+	if (bd_treat)
+	{
+		const float bd_px = m_chains->slider_value(0, "backdrop_parallax", 0.0f);
+		for (int i = 0; i < 4; i++) x[i] += bd_px;
+	}
+
 	vertex(&vertices[0], x[0], y[0], 0, rgba, u[0], v[0]);
 	vertex(&vertices[1], x[1], y[1], 0, rgba, u[1], v[1]);
 	vertex(&vertices[2], x[3], y[3], 0, rgba, u[3], v[3]);
@@ -1146,13 +1161,34 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 
 	// HDR: artwork (non-screen) quads draw into the linear work target with the HDR gui effects
 	// (linearize + nits scale + native blend), so MAME's blend modes compose physically.
-	bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
+	bgfx_effect* effect;
+	if (bd_treat)
+	{
+		// Half-mirror backdrop: UV-fluorescence + defocus, additive (its own ADD blend). u_bd_params.x
+		// flags HDR (linearize + nits, matching hdr_gui) vs SDR.
+		effect = m_backdrop_effect;
+		const float pw = float(m_module().options().bgfx_hdr_paper_white());
+		float bd_params[4]   = { (m_vec_hdr_chain ? 1.0f : 0.0f), pw,
+								 m_chains->slider_value(0, "backdrop_defocus", 0.0f), 0.0f };
+		float bd_texel[4]    = { 1.0f / float(std::max<uint16_t>(tex_width, uint16_t(1))),
+								 1.0f / float(std::max<uint16_t>(tex_height, uint16_t(1))), 0.0f, 0.0f };
+		float bd_fluor[4]    = { m_chains->slider_value(0, "backdrop_saturation", 1.0f),
+								 m_chains->slider_value(0, "backdrop_gain", 1.0f),
+								 m_chains->slider_value(0, "backdrop_uv", 0.0f), 0.0f };
+		bgfx_uniform* up = effect->uniform("u_bd_params");  if (up) { up->set(bd_params, sizeof(float)*4); up->upload(); }
+		bgfx_uniform* ut = effect->uniform("u_bd_texel");   if (ut) { ut->set(bd_texel,  sizeof(float)*4); ut->upload(); }
+		bgfx_uniform* uf = effect->uniform("u_bd_fluor");   if (uf) { uf->set(bd_fluor,  sizeof(float)*4); uf->upload(); }
+	}
+	else
+	{
+		bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
+		effect = effects[PRIMFLAG_GET_BLENDMODE(prim->flags)];
+	}
 
-	uint32_t blend = PRIMFLAG_GET_BLENDMODE(prim->flags);
 	bgfx::setVertexBuffer(0,buffer);
-	bgfx::setTexture(0, effects[blend]->uniform("s_tex")->handle(), texture);
+	bgfx::setTexture(0, effect->uniform("s_tex")->handle(), texture);
 
-	bgfx_uniform* inv_view_dims = effects[blend]->uniform("u_inv_view_dims");
+	bgfx_uniform* inv_view_dims = effect->uniform("u_inv_view_dims");
 	if (inv_view_dims)
 	{
 		float values[2] = { -1.0f / s_width[window_index], 1.0f / s_height[window_index] };
@@ -1160,7 +1196,7 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 		inv_view_dims->upload();
 	}
 
-	effects[blend]->submit(m_ortho_view->get_index());
+	effect->submit(m_ortho_view->get_index());
 
 	if (is_screen)
 	{
@@ -1683,14 +1719,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = sg;
 	};
 
-	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader)
-	auto set_dot = [&](int base, float cx, float cy, float sg_abs, uint32_t drgba) {
+	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
+	// glow buffer (halation ring / inner fill go to the glow buffer so they are not shadow-masked).
+	auto set_dot = [&](AnalyticLineVertex* tgt, int base, float cx, float cy, float sg_abs, uint32_t drgba) {
 		const float p = 3.5f * sg_abs + 0.5f;
 		const float sg = -sg_abs;
 		auto dv = [&](int i, float x, float y, float a, float d) {
-			vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f;
-			vertex[i].m_rgba = drgba;
-			vertex[i].m_a = a; vertex[i].m_b = 0.0f; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+			tgt[i].m_x = x; tgt[i].m_y = y; tgt[i].m_z = 0.0f;
+			tgt[i].m_rgba = drgba;
+			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 		};
 		dv(base + 0, cx - p, cy - p, -p, -p);
 		dv(base + 1, cx + p, cy - p,  p, -p);
@@ -1699,25 +1736,25 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		dv(base + 4, cx + p, cy + p,  p,  p);
 		dv(base + 5, cx - p, cy + p, -p,  p);
 	};
-	auto set_degenerate = [&](int base) {
+	auto set_degenerate = [&](AnalyticLineVertex* tgt, int base) {
 		for (int i = 0; i < 6; i++)
 		{
-			vertex[base + i].m_x = x0; vertex[base + i].m_y = y0; vertex[base + i].m_z = 0.0f;
-			vertex[base + i].m_rgba = 0;
-			vertex[base + i].m_a = 0.0f; vertex[base + i].m_b = 0.0f; vertex[base + i].m_d = 0.0f; vertex[base + i].m_sigma = -1.0f;
+			tgt[base + i].m_x = x0; tgt[base + i].m_y = y0; tgt[base + i].m_z = 0.0f;
+			tgt[base + i].m_rgba = 0;
+			tgt[base + i].m_a = 0.0f; tgt[base + i].m_b = 0.0f; tgt[base + i].m_d = 0.0f; tgt[base + i].m_sigma = -1.0f;
 		}
 	};
 
 	// Halation ring: one smooth circle centred on the dot (b = radius flags ring mode in the
 	// shader; sigma = -edge width). A single quad per bullet, so it is continuous, not a ring of
 	// gather dots.
-	auto set_ring = [&](int base, float cx, float cy, float radius, float width, uint32_t rrgba) {
+	auto set_ring = [&](AnalyticLineVertex* tgt, int base, float cx, float cy, float radius, float width, uint32_t rrgba) {
 		const float p = radius + 3.0f * width + 1.0f;  // quad half-extent covers the soft rim
 		const float sg = -width;
 		auto rv = [&](int i, float x, float y, float a, float d) {
-			vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f;
-			vertex[i].m_rgba = rrgba;
-			vertex[i].m_a = a; vertex[i].m_b = radius; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+			tgt[i].m_x = x; tgt[i].m_y = y; tgt[i].m_z = 0.0f;
+			tgt[i].m_rgba = rrgba;
+			tgt[i].m_a = a; tgt[i].m_b = radius; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 		};
 		rv(base + 0, cx - p, cy - p, -p, -p);
 		rv(base + 1, cx + p, cy - p,  p, -p);
@@ -1754,63 +1791,52 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	if (as_point)
 	{
 		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
-		// dwelling beam: one 2D gaussian at the segment centre
-		set_dot(0, cx, cy, sigma, rgba);
+		// CORE: the sharp dwelling-beam spot (emission - masked normally by the shadow mask). Blank the
+		// rest of the core buffer; the halation ring / inner fill now live in the glow buffer instead.
+		set_dot(vertex, 0, cx, cy, sigma, rgba);
+		for (int g = 1; g * 6 < int(m_vec_vpl); g++)
+			set_degenerate(vertex, g * 6);
 
-		// Halation around bright dwell dots (bullets). The rendered brightness includes the
-		// dwell-time boost, so only the bright dots reach the threshold; rocks/ship lines never
-		// take this branch. The rim (gain) and the inner fill have independent brightness so the
-		// fill stays visible when the rim is dialed right down.
-		const float ring_gain = m_chains->slider_value(0, "ring_gain", 0.0f);
-		const float ring_fill = m_chains->slider_value(0, "ring_fill", 0.0f);
-		const float eff_bright = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
-		const bool ring_on = (ring_gain > 0.0f || ring_fill > 0.0f)
-			&& eff_bright >= m_chains->slider_value(0, "ring_threshold", 0.0f);
-		const float res = float(s_width[window().index()]) / 1920.0f;
-		const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
-		const float da = std::clamp(display_a, 0.0f, 1.0f);
-		auto ring_color = [&](float strength) -> uint32_t {
-			return u32Color(
-				std::min<uint32_t>(uint32_t(prim->color.r * length_factor * strength * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.g * length_factor * strength * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.b * length_factor * strength * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
-		};
-
-		// rim: gaussian ring at R0 (internal 0.05 keeps the gain slider gentle)
-		if (ring_on && ring_gain > 0.0f)
-		{
-			const float width = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
-			set_ring(6, cx, cy, radius, width, ring_color(ring_gain * 0.05f));
-		}
-		else
-			set_degenerate(6);
-
-		// inner fill: a soft gaussian disc inside the ring, brightness independent of the rim gain
-		if (ring_on && ring_fill > 0.0f)
-			set_dot(12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(ring_fill * 0.04f));
-		else
-			set_degenerate(12);
-		// In deflection mode the line buffer is wider (DEFL_NOUT body quads + 2 caps); a point only
-		// uses groups 0..2 (dot/ring/fill), so blank the rest.
-		if (m_defl_on)
-			for (int g = 3; g * 6 < int(m_vec_vpl); g++)
-				set_degenerate(g * 6);
-		// glow: a wide gaussian dot around the dwell point, into the separate glow buffer
+		// GLOW buffer (composited AFTER the shadow mask, so this scattered light is not mask-patterned):
+		// the wide analytic glow dot + the halation ring + the inner fill.
 		if (glow_vertex)
 		{
-			const float gp = 3.5f * glow_sig + 0.5f;
-			const float gs = -glow_sig;
-			auto gdv = [&](int i, float x, float y, float a, float d) {
-				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = 0.0f; glow_vertex[i].m_rgba = glow_rgba;
-				glow_vertex[i].m_a = a; glow_vertex[i].m_b = 0.0f; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = gs;
+			// analytic glow dot (glow_rgba is 0 when analytic_glow is off -> invisible)
+			set_dot(glow_vertex, 0, cx, cy, glow_sig, glow_rgba);
+
+			// Halation around bright dwell dots (bullets). The rendered brightness includes the dwell
+			// boost, so only bright dots reach the threshold; the rim (gain) and the inner fill have
+			// independent brightness so the fill stays visible when the rim is dialed right down.
+			const float ring_gain = m_chains->slider_value(0, "ring_gain", 0.0f);
+			const float ring_fill = m_chains->slider_value(0, "ring_fill", 0.0f);
+			const float eff_bright = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
+			const bool ring_on = (ring_gain > 0.0f || ring_fill > 0.0f)
+				&& eff_bright >= m_chains->slider_value(0, "ring_threshold", 0.0f);
+			const float res = float(s_width[window().index()]) / 1920.0f;
+			const float radius = std::max(2.0f, m_chains->slider_value(0, "ring_radius", 24.0f) * res);
+			const float da = std::clamp(display_a, 0.0f, 1.0f);
+			auto ring_color = [&](float strength) -> uint32_t {
+				return u32Color(
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
 			};
-			gdv(0, cx - gp, cy - gp, -gp, -gp);
-			gdv(1, cx + gp, cy - gp,  gp, -gp);
-			gdv(2, cx + gp, cy + gp,  gp,  gp);
-			gdv(3, cx - gp, cy - gp, -gp, -gp);
-			gdv(4, cx + gp, cy + gp,  gp,  gp);
-			gdv(5, cx - gp, cy + gp, -gp,  gp);
+			// rim at slot 6, inner fill at slot 12. A sqrt response (instead of linear x0.05 / x0.04)
+			// lifts the dim end so the thin rim stays visible at low gain - a thin defocused band fell
+			// below the visibility floor below ~0.008 linear - while the constants keep the slider maxima
+			// (ring_gain 0.05 -> 0.0025, ring_fill 0.2 -> 0.008) about the same as before.
+			if (ring_on && ring_gain > 0.0f)
+			{
+				const float width = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
+				set_ring(glow_vertex, 6, cx, cy, radius, width, ring_color(sqrtf(ring_gain) * 0.0112f));
+			}
+			else
+				set_degenerate(glow_vertex, 6);
+			if (ring_on && ring_fill > 0.0f)
+				set_dot(glow_vertex, 12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(sqrtf(ring_fill) * 0.0179f));
+			else
+				set_degenerate(glow_vertex, 12);
 		}
 		return;
 	}
@@ -1852,13 +1878,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
 			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
-			set_dot(cap0, x0, y0, sg_cap, cap_rgba_for(start_cap));
-			set_dot(cap1, x1, y1, sg_cap, cap_rgba_for(end_cap));
+			set_dot(vertex, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap));
+			set_dot(vertex, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap));
 		}
 		else
 		{
-			set_degenerate(cap0);
-			set_degenerate(cap1);
+			set_degenerate(vertex, cap0);
+			set_degenerate(vertex, cap1);
 		}
 	}
 
@@ -1936,6 +1962,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		gv(3, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
 		gv(4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
 		gv(5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
+		// blank the ring/fill slots (used only by points) in the wider glow buffer
+		set_degenerate(glow_vertex, 6);
+		set_degenerate(glow_vertex, 12);
 	}
 }
 
@@ -2463,7 +2492,14 @@ int renderer_bgfx::draw(int update)
 			// gaussian that follows the beam exactly - a physical PSF tail, no pyramid and no temporal lag.
 			// Drawn into a SEPARATE FBO (m_vec_glow_fb) so a chain pass can add it AFTER the shadow mask
 			// (scattered light is unmasked). 6 verts/line into that buffer; 0 = off.
-			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f);
+			// The glow FBO carries all post-mask additive scatter: the analytic glow AND the halation
+			// ring / inner fill (so the shadow mask does not pattern them). Allocate it when any of those
+			// is active. Buffer is 18 verts/line: line = glow quad (rest blanked); point = glow dot +
+			// ring + fill.
+			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
+				&& ((m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f)
+				 || (m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f)
+				 || (m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f));
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
@@ -2487,7 +2523,7 @@ int renderer_bgfx::draw(int update)
 						// core still draws; glow is simply skipped this frame.
 						if (m_glow_on)
 						{
-							const uint32_t gneeded = uint32_t(visible_count) * 6u;
+							const uint32_t gneeded = uint32_t(visible_count) * 18u;
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
@@ -2519,7 +2555,7 @@ int renderer_bgfx::draw(int update)
 										}
 										AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
 										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, scap, ecap);
-										if (gptr) glow_verts += 6;
+										if (gptr) glow_verts += 18;
 									}
 									else
 										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);

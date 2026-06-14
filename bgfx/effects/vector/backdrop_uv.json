@@ -1,0 +1,21 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Half-mirror backdrop treatment (monochrome test): UV-fluorescence + defocus, composited additively
+// (half mirror adds the backdrop light over the reflected vector image). Same additive blend as
+// hdr_gui_add; works for both the SDR backbuffer and the HDR linear work target (u_bd_params.x picks).
+{
+	"blend": { "equation": "add", "srcColor": "srcalpha", "dstColor": "1", "srcAlpha": "srcalpha", "dstAlpha": "1" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_backdrop",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_bd_params",     "type": "vec4", "values": [ 0.0, 200.0, 0.0, 0.0 ] },
+		{ "name": "u_bd_texel",      "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_bd_fluor",      "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_bd_uv_color",   "type": "vec4", "values": [ 0.4, 0.3, 1.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
