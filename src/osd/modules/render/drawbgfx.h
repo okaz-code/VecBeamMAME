@@ -230,6 +230,16 @@ private:
 	float m_vec_drift_x = 0.0f;
 	float m_vec_drift_y = 0.0f;
 
+	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
+	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. m_hv_energy
+	// is this frame's total beam energy (beam_energy x length, summed by the beam-energy notifier over
+	// the whole list, reset each frame); m_hv_smoothed peak-tracks it with gentle decay (like the
+	// monitor glow) so it does not flicker against vsync; m_hv_load_norm is the 0..1 normalised load
+	// the renderer applies. 0 load / hv_droop 0 = no effect.
+	float m_hv_energy = 0.0f;
+	float m_hv_smoothed = 0.0f;
+	float m_hv_load_norm = 0.0f;
+
 	static const uint16_t CACHE_SIZE;
 	static const uint32_t PACKABLE_SIZE;
 	static const uint32_t WHITE_HASH;

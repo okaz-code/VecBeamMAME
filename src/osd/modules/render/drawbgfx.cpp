@@ -866,10 +866,17 @@ int renderer_bgfx::create()
 			// -bgfx_vec_beam_events 0 restores the classic whole-list behaviour entirely.
 			m_vec_beam_events = m_module().options().bgfx_vec_beam_events();
 			vec.set_beam_event_mode(m_vec_beam_events);
-			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_vec_new_frame = true; });
+			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_hv_energy = 0.0f; m_vec_new_frame = true; });
 			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
 				[this] (float x0, float y0, float x1, float y1, float beam_energy)
 				{
+					// HV supply droop load: total beam energy = current (beam_energy) x draw time
+					// (proportional to length at constant velocity), summed over the whole frame.
+					if (beam_energy > 0.0f)
+					{
+						const float lx = x1 - x0, ly = y1 - y0;
+						m_hv_energy += beam_energy * sqrtf(lx * lx + ly * ly);
+					}
 					const float coeff = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
 					const float thr   = m_chains->slider_value(0, "mglow_threshold", 0.7f);
 					if (coeff <= 0.0f || beam_energy <= thr)
@@ -1500,6 +1507,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		length_factor *= (1.0f + dwell_str * (mul - 1.0f));
 	}
 
+	// HV supply droop (master plan 3-4 / 6.2): a bright/busy frame sags the EHT supply, dimming the
+	// whole picture (here) and defocusing the spot (sigma, below). m_hv_load_norm is the smoothed 0..1
+	// frame load; hv_droop scales the effect (0 = off). The dim is capped at 0.4 of full brightness.
+	const float hv_droop = m_chains->slider_value(0, "hv_droop", 0.0f);
+	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
+		length_factor *= (1.0f - hv_droop * 0.4f * m_hv_load_norm);
+
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
 		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * 255.0f + 0.5f), 255),
@@ -1544,6 +1558,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float ecurve = m_chains->slider_value(0, "edge_defocus_curve", 2.0f);
 		sigma += edge_def * (sw / 1920.0f) * powf(r, ecurve);
 	}
+	// HV droop defocus: the same supply sag that dims the picture widens the spot (capped ~2.5 px at
+	// 1920-ref, scaled by the load). Pairs with the dim applied to length_factor above.
+	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
+		sigma += hv_droop * 2.5f * (float(s_width[window().index()]) / 1920.0f) * m_hv_load_norm;
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
 	// vanish. Lines are 1D-continuous so they can go thinner than points (which have no extent
 	// in either axis and need a wider floor). 0.33 sigma = FWHM ~0.78px, about the thinnest a
@@ -2167,6 +2185,15 @@ int renderer_bgfx::draw(int update)
 				m_vec_drift_x = 0.0f;
 				m_vec_drift_y = 0.0f;
 			}
+
+			// HV supply droop load (master plan 3-4 / 6.2): peak-track this frame's total beam energy
+			// with gentle decay (so it does not flicker against vsync when a beam-event frame is stale),
+			// then normalise by hv_droop_ref to a 0..1 load that put_analytic_line turns into a global
+			// dim + defocus. Computed before the draw so this present's lines see the current load.
+			if (m_vec_frame_advanced)
+				m_hv_smoothed = std::max(m_hv_energy, m_hv_smoothed * 0.82f);
+			const float hv_ref = std::max(0.01f, m_chains->slider_value(0, "hv_droop_ref", 10.0f));
+			m_hv_load_norm = std::clamp(m_hv_smoothed / hv_ref, 0.0f, 1.0f);
 
 			// Vertex-dwell endpoint dots (master plan 2-3): neighbour-aware pass over the vector list in
 			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
