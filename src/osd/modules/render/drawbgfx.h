@@ -194,6 +194,10 @@ private:
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
 	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
+	// Half-mirror backdrop treatment (monochrome test): UV-fluorescence + defocus + parallax applied to
+	// artwork quads, additive (half-mirror combine). Active only when a monochrome chain exposes the
+	// backdrop_* sliders. Used by render_textured_quad in place of the plain gui effect.
+	bgfx_effect *m_backdrop_effect = nullptr;
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
 
