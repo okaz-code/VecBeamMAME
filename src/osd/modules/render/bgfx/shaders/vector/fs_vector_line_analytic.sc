@@ -58,7 +58,27 @@ void main()
 	{
 		float inv_s_sqrt2 = 0.70710678 / sg;
 		float axial = 0.5 * (erf_approx(a * inv_s_sqrt2) - erf_approx(b * inv_s_sqrt2));
-		fade = exp(-d * d * inv_2s2) * axial;
+		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
+		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on
+		// a pixel centre (crisp, fat) while diagonals fell between pixels (thin). The footprint width
+		// w sets how wide the gaussian is box-averaged: at H/V both norms give 1.0, but at 45 degrees
+		// Euclidean (|grad d| = 1) leaves diagonals too thin while Manhattan (|dFdx|+|dFdy| = 1.41)
+		// over-blurs them fat. The midpoint of the two norms lands diagonals at ~1.21 - between the
+		// two failure modes - and is exactly 1.0 at H/V (those stay put). Normalised so peak -> 1 as
+		// w -> 0 (thick lines unchanged). 1.2533141 = sqrt(pi/2).
+		float gx = dFdx(d), gy = dFdy(d);
+		float w = 0.5 * (abs(gx) + abs(gy)) + 0.5 * sqrt(gx * gx + gy * gy);
+		float perp;
+		if (w > 1e-4)
+		{
+			float norm = sg * 1.2533141 / w;
+			perp = norm * (erf_approx((d + 0.5 * w) * inv_s_sqrt2) - erf_approx((d - 0.5 * w) * inv_s_sqrt2));
+		}
+		else
+		{
+			perp = exp(-d * d * inv_2s2);
+		}
+		fade = perp * axial;
 	}
 
 	gl_FragColor = v_color0 * vec4(1.0, 1.0, 1.0, fade);
