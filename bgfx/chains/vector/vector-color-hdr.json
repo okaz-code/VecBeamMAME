@@ -35,6 +35,7 @@
 		{ "type": "float", "name": "ambient_level", "text": "Ambient Level (x0.001)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus",       "text": "Edge Defocus (px at corner)", "default": 0.0, "min": 0.0, "max": 8.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve", "text": "Edge Defocus Curve",          "default": 2.0, "min": 0.5, "max": 4.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "vertex_dwell",       "text": "Vertex Dwell (corner dots)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_radius",  "text": "Halation Ring Radius (px)", "default": 24.0, "min": 2.0, "max": 100.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "ring_gain",    "text": "Halation Ring Gain",       "default": 0.0,  "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_width",    "text": "Halation Ring Width (px)",  "default": 3.0,  "min": 0.5, "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },

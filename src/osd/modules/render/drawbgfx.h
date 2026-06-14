@@ -154,7 +154,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, float start_cap = 1.0f, float end_cap = 1.0f);
 
 	// HDR composite (vector-hdr-display-study.md 4.1). An HDR-type chain (one declaring a
 	// "screen_hdr" target) outputs linear light there. The vector screen is seeded into a linear

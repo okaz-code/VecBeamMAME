@@ -70,6 +70,7 @@ extern void *GetOSWindow(void *wincontroller);
 #include "imgui/imgui.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 
 //============================================================
@@ -1380,7 +1381,7 @@ static float vector_overload_sigmoid(float n, float k)
 // Analytic gaussian line integral: emit one expanded quad (6 vertices) carrying the
 // line-local coordinates; fs_vector_line_analytic evaluates the swept-spot exposure in
 // closed form, so AA, the cross profile and the end roll-off all come from the math.
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, float start_cap, float end_cap)
 {
 	float x0 = prim->bounds.x0 + m_vec_drift_x, y0 = prim->bounds.y0 + m_vec_drift_y;
 	float x1 = prim->bounds.x1 + m_vec_drift_x, y1 = prim->bounds.y1 + m_vec_drift_y;
@@ -1669,14 +1670,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// rotating shapes. Scale the cap contribution to ~0.5x so the endpoint peak lands near the
 			// line intensity (0.5 erf + 0.5 cap). line_cap_brightness still boosts from there.
 			const float cap_scale = 0.5f * cap_bright;
-			const uint32_t cap_rgba = u32Color(
-				std::min<uint32_t>(uint32_t(prim->color.r * length_factor * cap_scale * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.g * length_factor * cap_scale * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(prim->color.b * length_factor * cap_scale * 255.0f + 0.5f), 255),
-				std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
+			// Per-endpoint dwell factor (master plan 2-3, vertex dwell): start_cap / end_cap come from
+			// the neighbour-aware pre-pass - 1.0 at stroke termini and sharp corners (the beam dwells),
+			// down toward 0 at straight joints (no dwell). vertex_dwell 0 leaves both at 1.0 = the old
+			// uniform cap. The dot brightness scales with it; a 0 factor yields a zero-colour (skipped) dot.
+			auto cap_rgba_for = [&](float boost) -> uint32_t {
+				const float s = cap_scale * boost;
+				return u32Color(
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
+			};
 			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
-			set_dot(6, x0, y0, sg_cap, cap_rgba);
-			set_dot(12, x1, y1, sg_cap, cap_rgba);
+			set_dot(6, x0, y0, sg_cap, cap_rgba_for(start_cap));
+			set_dot(12, x1, y1, sg_cap, cap_rgba_for(end_cap));
 		}
 		else
 		{
@@ -2160,6 +2168,44 @@ int renderer_bgfx::draw(int update)
 				m_vec_drift_y = 0.0f;
 			}
 
+			// Vertex-dwell endpoint dots (master plan 2-3): neighbour-aware pass over the vector list in
+			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
+			// proportion to how sharply it turns (straight joint -> no dwell, sharp corner / reversal ->
+			// full dwell); an unshared point is a stroke terminus where the beam stops (full dwell). The
+			// per-endpoint factor scales the end-cap dot in put_analytic_line. vertex_dwell 0 = off
+			// (uniform caps, the old behaviour). Only meaningful for the analytic path (it draws caps).
+			const float vertex_dwell = m_line_analytic ? m_chains->slider_value(0, "vertex_dwell", 0.0f) : 0.0f;
+			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
+			if (vertex_dwell > 0.0f)
+			{
+				vtx_boost.reserve(size_t(vector_count) * 2);
+				const render_primitive *pv = nullptr;
+				float pdx = 0.0f, pdy = 0.0f;
+				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+				{
+					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags))
+						continue;
+					const float ddx = p->bounds.x1 - p->bounds.x0, ddy = p->bounds.y1 - p->bounds.y0;
+					const float len = sqrtf(ddx * ddx + ddy * ddy);
+					if (len < 1.0f)
+						continue;  // dots have no direction; leave them transparent to the chain
+					const float ndx = ddx / len, ndy = ddy / len;
+					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
+					if (pv != nullptr)
+					{
+						const float gx = p->bounds.x0 - pv->bounds.x1;
+						const float gy = p->bounds.y0 - pv->bounds.y1;
+						if (gx * gx + gy * gy < 0.25f)  // shared vertex (within 0.5 px)
+						{
+							const float prof = (1.0f - (pdx * ndx + pdy * ndy)) * 0.5f;  // 0 straight, 1 reversal
+							vtx_boost[pv].second = prof;  // prev segment's end
+							vtx_boost[p].first   = prof;  // this segment's start
+						}
+					}
+					pv = p; pdx = ndx; pdy = ndy;
+				}
+			}
+
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
 			// analytic: body quad 6 + two end-cap dots 6+6
@@ -2186,7 +2232,19 @@ int renderer_bgfx::draw(int update)
 								{
 									m_vec_line_weight = w;
 									if (m_line_analytic)
-										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices);
+									{
+										float scap = 1.0f, ecap = 1.0f;
+										if (vertex_dwell > 0.0f)
+										{
+											auto it = vtx_boost.find(vprim);
+											if (it != vtx_boost.end())
+											{
+												scap = 1.0f + vertex_dwell * (it->second.first  - 1.0f);
+												ecap = 1.0f + vertex_dwell * (it->second.second - 1.0f);
+											}
+										}
+										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, scap, ecap);
+									}
 									else
 										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 									vertices += verts_per_line;
