@@ -1510,6 +1510,23 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
 	// path's parabola->gaussian blend reached about 2x at full overload).
 	float sigma = (width / 3.2f) * (1.0f + ovld);
+	// Intensity-driven blooming (vgens: overdriving the beam draws more current, sagging the HV
+	// and defocusing the spot - a brighter line/dot has a physically wider core). sigma grows with
+	// the rendered peak brightness, which already folds in the dwell-time boost, so the brightest
+	// dots (bullets) bloom most. Applied only to the core spot here, not the caps/ring. The slider
+	// strength is in 1920-reference pixels (scaled to the actual resolution). beam_bloom_strength
+	// 0 = off, so chains without the slider are unaffected.
+	const float beam_bloom = m_chains->slider_value(0, "beam_bloom_strength", 0.0f);
+	if (beam_bloom > 0.0f)
+	{
+		const float bloom_p = m_chains->slider_value(0, "beam_bloom_curve", 1.0f);
+		const float bI = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
+		if (bI > 0.0f)
+		{
+			const float bres = float(s_width[window().index()]) / 1920.0f;
+			sigma += beam_bloom * bres * powf(std::min(bI, 4.0f), bloom_p);
+		}
+	}
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
 	// vanish. Lines are 1D-continuous so they can go thinner than points (which have no extent
 	// in either axis and need a wider floor). 0.33 sigma = FWHM ~0.78px, about the thinnest a

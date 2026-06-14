@@ -60,6 +60,8 @@
 		{ "type": "float", "name": "dwell_brightness", "text": "Dwell Brightness (short=bright)", "default": 1.0, "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dwell_speed_ref",  "text": "Dwell Speed Reference",          "default": 0.5, "min": 0.05,"max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "dwell_max",        "text": "Dwell Max Boost",                 "default": 5.0, "min": 1.0, "max": 8.0,  "step": 0.1,  "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "beam_bloom_strength", "text": "Beam Bloom (intensity width)", "default": 0.0, "min": 0.0,  "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_bloom_curve",    "text": "Beam Bloom Curve",              "default": 1.0, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		{ "type": "float", "name": "beam_peak_nits", "text": "HDR Beam Peak (nits)", "default": 1000.0, "max": 2000.0, "min": 80.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
 
