@@ -1734,10 +1734,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float glow_str  = m_chains->slider_value(0, "analytic_glow", 0.0f);
 	const float glow_w    = m_chains->slider_value(0, "analytic_glow_width", 8.0f) * (float(s_width[window().index()]) / 1920.0f);
 	const float glow_sig  = sigma + std::max(0.0f, glow_w);
+	// Glow onset: only sources brighter than glow_threshold glow, ramped by glow_curve - so faint
+	// stars stay dark while bright bullets/explosions bloom. glow_threshold 0 + glow_curve 1 reproduce
+	// the old linear behaviour (magnitude = colour x length_factor x analytic_glow) exactly. The hue is
+	// preserved (colour normalised by its peak) and the magnitude carries the shaped intensity.
+	const float glow_thr  = m_chains->slider_value(0, "glow_threshold", 0.0f);
+	const float glow_crv  = m_chains->slider_value(0, "glow_curve", 1.0f);
+	const float g_bI    = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
+	const float g_onset = std::max(0.0f, g_bI - glow_thr);
+	const float g_mag   = glow_str * ((glow_crv == 1.0f) ? g_onset : powf(g_onset, glow_crv));
+	const float g_peak  = std::max(std::max(std::max(prim->color.r, prim->color.g), prim->color.b), 1e-4f);
+	const float g_scale = g_mag / g_peak;
 	const uint32_t glow_rgba = u32Color(
-		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * glow_str * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(prim->color.g * length_factor * glow_str * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(prim->color.b * length_factor * glow_str * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.r * g_scale * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.g * g_scale * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.b * g_scale * 255.0f + 0.5f), 255),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
 	if (as_point)
