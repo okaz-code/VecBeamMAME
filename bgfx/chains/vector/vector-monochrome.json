@@ -71,6 +71,11 @@
 		{ "type": "float", "name": "vertex_dwell",       "text": "Vertex Dwell (corner dots)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop",     "text": "HV Droop (dim+defocus)", "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop_ref", "text": "HV Droop Load Ref",      "default": 10.0, "min": 1.0, "max": 60.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_settle",   "text": "Deflection Settle (us)",    "default": 5.0, "min": 0.5,  "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_damping",  "text": "Deflection Damping",        "default": 0.5, "min": 0.05, "max": 1.5,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vector_linearity_x",  "text": "Vector Linearity X (gain)", "default": 1.0, "min": 0.8, "max": 1.2, "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "vector_linearity_y",  "text": "Vector Linearity Y (gain)", "default": 1.0, "min": 0.8, "max": 1.2, "step": 0.005, "format": "%1.3f", "screen": "vector" },
 
 		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },

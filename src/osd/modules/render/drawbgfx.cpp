@@ -1388,10 +1388,104 @@ static float vector_overload_sigmoid(float n, float k)
 // Analytic gaussian line integral: emit one expanded quad (6 vertices) carrying the
 // line-local coordinates; fs_vector_line_analytic evaluates the swept-spot exposure in
 // closed form, so AA, the cross profile and the end roll-off all come from the math.
+// Integrate one vector segment (S -> E over draw_secs) through the X/Y deflection amplifiers, modelled
+// as independent second-order systems (natural frequency wn from deflection_settle, damping zeta).
+// The beam state (position + velocity) is carried continuously from the previous segment, so a sharp
+// direction change overshoots into a corner "hook" and a post-jump start curves in. Returns DEFL_NOUT
+// (segment count); outx/outy receive DEFL_NOUT+1 trajectory points, blended toward the straight chord
+// by deflection_dynamics so strength 0 renders an exact straight line. Updates the beam state.
+int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, double draw_secs, float *outx, float *outy)
+{
+	const int   N        = DEFL_NOUT;
+	const float strength = std::clamp(m_chains->slider_value(0, "deflection_dynamics", 0.0f), 0.0f, 1.0f);
+	const float settle_us = std::max(0.1f, m_chains->slider_value(0, "deflection_settle", 5.0f));
+	const float zeta     = std::clamp(m_chains->slider_value(0, "deflection_damping", 0.5f), 0.05f, 2.0f);
+	const float res      = float(s_width[window().index()]) / 1920.0f;
+
+	double T = draw_secs;
+	if (!(T > 1e-9)) T = 1e-6;   // untimed / degenerate: nominal time (settles to straight)
+	const float wn = 1.0f / (settle_us * 1e-6f);
+
+	const float vcx = float((ex - sx) / T);   // commanded (steady-state) velocity
+	const float vcy = float((ey - sy) / T);
+
+	// Entry state: continuous when the beam is already at the segment start (a shared vertex - the
+	// hook comes from the carried velocity); otherwise a new stroke / post-jump start, taken as settled.
+	float px, py, vx, vy;
+	const float rthresh = 4.0f * res;
+	if (m_beam_valid && fabsf(m_beam_px - sx) < rthresh && fabsf(m_beam_py - sy) < rthresh)
+	{
+		px = m_beam_px; py = m_beam_py; vx = m_beam_vx; vy = m_beam_vy;
+	}
+	else
+	{
+		px = sx; py = sy; vx = vcx; vy = vcy;
+	}
+
+	const double dt_max = std::min(T / N, double(0.3f / wn));
+	int Nint = int(std::ceil(T / std::max(dt_max, 1e-12)));
+	Nint = std::clamp(Nint, N, 256);
+	const double dt = T / Nint;
+
+	outx[0] = px; outy[0] = py;
+	int next_out = 1;
+	for (int k = 1; k <= Nint; k++)
+	{
+		const float frac = float((k * dt) / T);
+		const float cmdx = sx + (ex - sx) * frac;
+		const float cmdy = sy + (ey - sy) * frac;
+		const float ax = wn * wn * (cmdx - px) - 2.0f * zeta * wn * (vx - vcx);
+		const float ay = wn * wn * (cmdy - py) - 2.0f * zeta * wn * (vy - vcy);
+		vx += ax * float(dt); vy += ay * float(dt);
+		px += vx * float(dt); py += vy * float(dt);
+		while (next_out <= N && k >= int(llround(double(next_out) * Nint / N)))
+		{
+			outx[next_out] = px; outy[next_out] = py;
+			++next_out;
+		}
+	}
+	while (next_out <= N) { outx[next_out] = px; outy[next_out] = py; ++next_out; }
+
+	m_beam_px = px; m_beam_py = py; m_beam_vx = vx; m_beam_vy = vy; m_beam_valid = true;
+
+	for (int i = 0; i <= N; i++)
+	{
+		const float frac = float(i) / float(N);
+		const float strx = sx + (ex - sx) * frac;
+		const float stry = sy + (ey - sy) * frac;
+		outx[i] = strx + (outx[i] - strx) * strength;
+		outy[i] = stry + (outy[i] - stry) * strength;
+	}
+	return N;
+}
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, float start_cap, float end_cap)
 {
 	float x0 = prim->bounds.x0 + m_vec_drift_x, y0 = prim->bounds.y0 + m_vec_drift_y;
 	float x1 = prim->bounds.x1 + m_vec_drift_x, y1 = prim->bounds.y1 + m_vec_drift_y;
+
+	// Vector linearity calibration (board "Linear" / X-Y SIZE pots = per-axis integrator gain): draw
+	// each vector as the commanded delta x gain (X and Y independent), continuing from where the beam
+	// actually ended up. A gain != 1 makes a contiguous stroke grow/shrink and the error accumulate
+	// along it, resetting at a jump (a start that does not meet the previous commanded end) or a new
+	// frame. 1.0 / 1.0 = exact (off).
+	const float lx = m_chains->slider_value(0, "vector_linearity_x", 1.0f);
+	const float ly = m_chains->slider_value(0, "vector_linearity_y", 1.0f);
+	if (lx != 1.0f || ly != 1.0f)
+	{
+		float sx, sy;
+		if (m_lin_valid && fabsf(x0 - m_lin_cmd_ex) < 0.5f && fabsf(y0 - m_lin_cmd_ey) < 0.5f)
+		{ sx = m_lin_drawn_ex; sy = m_lin_drawn_ey; }   // contiguous: continue from the drawn end
+		else
+		{ sx = x0; sy = y0; }                            // jump / first vector: beam at commanded start
+		const float ex = sx + (x1 - x0) * lx;
+		const float ey = sy + (y1 - y0) * ly;
+		m_lin_cmd_ex = x1; m_lin_cmd_ey = y1;            // remember commanded end for the next test
+		m_lin_drawn_ex = ex; m_lin_drawn_ey = ey;
+		m_lin_valid = true;
+		x0 = sx; y0 = sy; x1 = ex; y1 = ey;
+	}
+
 	float dx = x1 - x0, dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
@@ -1664,13 +1758,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			set_dot(12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(ring_fill * 0.04f));
 		else
 			set_degenerate(12);
+		// In deflection mode the line buffer is wider (DEFL_NOUT body quads + 2 caps); a point only
+		// uses groups 0..2 (dot/ring/fill), so blank the rest.
+		if (m_defl_on)
+			for (int g = 3; g * 6 < int(m_vec_vpl); g++)
+				set_degenerate(g * 6);
 		return;
 	}
 
 	// End caps: gaussian dots driven by the same line_cap sliders as the classic path
 	// (size/min/intensity-curve/brightness). The erf already gives the physical 50% end
 	// roll-off; these add the visible bright endpoint on top, until the dwell-time model
-	// (master plan 2-3) replaces them.
+	// (master plan 2-3) replaces them. In deflection mode the body uses DEFL_NOUT quads, so the
+	// caps move to the slots right after it.
+	const int cap0 = m_defl_on ? DEFL_NOUT * 6 : 6;
+	const int cap1 = cap0 + 6;
 	{
 		const float cap_res_scale = float(s_width[window().index()]) / 1920.0f;
 		const float cap_full   = m_chains->slider_value(0, "line_cap_size", LINE_CAP_SIZE_PX) * cap_res_scale;
@@ -1701,27 +1803,69 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
 			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
-			set_dot(6, x0, y0, sg_cap, cap_rgba_for(start_cap));
-			set_dot(12, x1, y1, sg_cap, cap_rgba_for(end_cap));
+			set_dot(cap0, x0, y0, sg_cap, cap_rgba_for(start_cap));
+			set_dot(cap1, x1, y1, sg_cap, cap_rgba_for(end_cap));
 		}
 		else
 		{
-			set_degenerate(6);
-			set_degenerate(12);
+			set_degenerate(cap0);
+			set_degenerate(cap1);
 		}
 	}
 
-	// expanded quad: +-pad beyond both endpoints and to both sides
-	const float sx0 = x0 - dx * pad, sy0 = y0 - dy * pad;   // start edge centre
-	const float sx1 = x1 + dx * pad, sy1 = y1 + dy * pad;   // end edge centre
-	const float a0 = -pad, a1 = seg_len + pad;
-	// corners: 0=start+n, 1=end+n, 2=end-n, 3=start-n
-	setv(0, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
-	setv(1, sx1 + nx * pad, sy1 + ny * pad, a1, a1 - seg_len,  pad, sigma);
-	setv(2, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
-	setv(3, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
-	setv(4, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
-	setv(5, sx0 - nx * pad, sy0 - ny * pad, a0, a0 - seg_len, -pad, sigma);
+	if (!m_defl_on)
+	{
+		// expanded quad: +-pad beyond both endpoints and to both sides
+		const float sx0 = x0 - dx * pad, sy0 = y0 - dy * pad;   // start edge centre
+		const float sx1 = x1 + dx * pad, sy1 = y1 + dy * pad;   // end edge centre
+		const float a0 = -pad, a1 = seg_len + pad;
+		// corners: 0=start+n, 1=end+n, 2=end-n, 3=start-n
+		setv(0, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
+		setv(1, sx1 + nx * pad, sy1 + ny * pad, a1, a1 - seg_len,  pad, sigma);
+		setv(2, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
+		setv(3, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
+		setv(4, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
+		setv(5, sx0 - nx * pad, sy0 - ny * pad, a0, a0 - seg_len, -pad, sigma);
+		return;
+	}
+
+	// Deflection dynamics: draw the simulated beam trajectory as a short polyline of DEFL_NOUT sub-
+	// quads. Each sub-quad uses a saturated axial term (a = +BIG, b = -BIG -> the erf difference is 1),
+	// so there is no per-sub-segment end roll-off and the pieces join continuously; the true endpoints
+	// are handled by the cap dots above. The perpendicular gaussian (d = +-pad) still gives the width.
+	float tx[DEFL_NOUT + 1], ty[DEFL_NOUT + 1];
+	const double draw_secs = (prim->t0 >= 0.0 && prim->t1 > prim->t0) ? (prim->t1 - prim->t0) : 0.0;
+	simulate_deflection(x0, y0, x1, y1, draw_secs, tx, ty);
+	// Only the true segment ends roll off (erf), so they stay round like the straight path; the
+	// interior sub-quad joints use a saturated axial term (a=+BIG, b=-BIG -> axial 1) and join
+	// seamlessly. Without this every sub-quad ended square, which made corners and hook tips boxy.
+	const float BIG = 1.0e4f;
+	for (int s = 0; s < DEFL_NOUT; s++)
+	{
+		const int idx = s * 6;
+		const bool first = (s == 0), last = (s == DEFL_NOUT - 1);
+		float ux = tx[s + 1] - tx[s], uy = ty[s + 1] - ty[s];
+		const float sub_len = sqrtf(ux * ux + uy * uy);
+		if (sub_len > 1e-4f) { ux /= sub_len; uy /= sub_len; } else { ux = dx; uy = dy; }
+		const float pnx = uy, pny = -ux;   // sub-segment normal
+		// back / front edge centres; extend past the true ends by pad so the roll-off has area
+		float bx = tx[s],     by = ty[s];
+		float fx = tx[s + 1], fy = ty[s + 1];
+		if (first) { bx -= ux * pad; by -= uy * pad; }
+		if (last)  { fx += ux * pad; fy += uy * pad; }
+		// axial coords: a measured from this segment's start (roll off at first sub-quad's back),
+		// b from its end (roll off at last sub-quad's front); BIG elsewhere = no joint roll-off
+		const float aB = first ? -pad     : BIG;
+		const float aF = first ? sub_len  : BIG;
+		const float bB = last  ? -sub_len : -BIG;
+		const float bF = last  ? pad      : -BIG;
+		setv(idx + 0, bx + pnx * pad, by + pny * pad, aB, bB,  pad, sigma);
+		setv(idx + 1, fx + pnx * pad, fy + pny * pad, aF, bF,  pad, sigma);
+		setv(idx + 2, fx - pnx * pad, fy - pny * pad, aF, bF, -pad, sigma);
+		setv(idx + 3, bx + pnx * pad, by + pny * pad, aB, bB,  pad, sigma);
+		setv(idx + 4, fx - pnx * pad, fy - pny * pad, aF, bF, -pad, sigma);
+		setv(idx + 5, bx - pnx * pad, by - pny * pad, aB, bB, -pad, sigma);
+	}
 }
 
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
@@ -2233,10 +2377,19 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
+			// Deflection-amplifier dynamics (master plan 3-3): when on, each analytic line is drawn as a
+			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
+			// DEFL_NOUT*6 verts (+ the two caps). The beam integrator state is reset at the start of each
+			// frame's draw. Needs the analytic path; 0 = off (exact straight lines, 18 verts as before).
+			m_defl_on = m_line_analytic && (m_chains->slider_value(0, "deflection_dynamics", 0.0f) > 0.0f);
+			m_beam_valid = false;
+			m_lin_valid = false;
+
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
-			// analytic: body quad 6 + two end-cap dots 6+6
-			const uint32_t verts_per_line = m_line_analytic ? 18 : uint32_t(LINE_VERTICES_PER_LINE);
+			// analytic: body quad 6 + two end-cap dots 6+6 (or DEFL_NOUT*6 body + 12 caps with deflection)
+			const uint32_t verts_per_line = m_line_analytic ? (m_defl_on ? uint32_t(DEFL_NOUT * 6 + 12) : 18u) : uint32_t(LINE_VERTICES_PER_LINE);
+			m_vec_vpl = verts_per_line;
 			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
 			bgfx::TransientVertexBuffer tvb = {};
 			if (visible_count > 0)
