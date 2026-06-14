@@ -1718,6 +1718,20 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		rv(base + 5, cx - p, cy + p, -p,  p);
 	};
 
+	// Analytic glow (additional-ideas A-1b): a wide, low-amplitude gaussian copy of the same
+	// primitive, drawn additively into the FBO. Being analytic it tracks the beam exactly (no pyramid,
+	// no temporal lag) and its broad tail accumulates across lines into the scene glow. The glow quad
+	// goes in the slots right after the body + caps. m_glow_on gates it (analytic_glow 0 = off).
+	const float glow_str  = m_glow_on ? m_chains->slider_value(0, "analytic_glow", 0.0f) : 0.0f;
+	const float glow_w    = m_chains->slider_value(0, "analytic_glow_width", 8.0f) * (float(s_width[window().index()]) / 1920.0f);
+	const float glow_sig  = sigma + std::max(0.0f, glow_w);
+	const int   glow_base = m_defl_on ? (DEFL_NOUT * 6 + 12) : 18;
+	const uint32_t glow_rgba = u32Color(
+		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * glow_str * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.g * length_factor * glow_str * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(prim->color.b * length_factor * glow_str * 255.0f + 0.5f), 255),
+		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
+
 	if (as_point)
 	{
 		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
@@ -1763,6 +1777,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (m_defl_on)
 			for (int g = 3; g * 6 < int(m_vec_vpl); g++)
 				set_degenerate(g * 6);
+		// glow: a wide gaussian dot around the dwell point (emitted last so it overwrites any blanked slot)
+		if (m_glow_on)
+			set_dot(glow_base, cx, cy, glow_sig, glow_rgba);
 		return;
 	}
 
@@ -1826,9 +1843,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		setv(3, sx0 + nx * pad, sy0 + ny * pad, a0, a0 - seg_len,  pad, sigma);
 		setv(4, sx1 - nx * pad, sy1 - ny * pad, a1, a1 - seg_len, -pad, sigma);
 		setv(5, sx0 - nx * pad, sy0 - ny * pad, a0, a0 - seg_len, -pad, sigma);
-		return;
 	}
-
+	else
+	{
 	// Deflection dynamics: draw the simulated beam trajectory as a short polyline of DEFL_NOUT sub-
 	// quads. Each sub-quad uses a saturated axial term (a = +BIG, b = -BIG -> the erf difference is 1),
 	// so there is no per-sub-segment end roll-off and the pieces join continuously; the true endpoints
@@ -1865,6 +1882,28 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		setv(idx + 3, bx + pnx * pad, by + pny * pad, aB, bB,  pad, sigma);
 		setv(idx + 4, fx - pnx * pad, fy - pny * pad, aF, bF, -pad, sigma);
 		setv(idx + 5, bx - pnx * pad, by - pny * pad, aB, bB, -pad, sigma);
+	}
+	}
+
+	// Analytic glow: the line widened into a low-amplitude gaussian along the straight chord (in the
+	// slots after the body + caps), added into the FBO. Wide sigma -> broad soft tail; accumulates
+	// across lines into the scene glow, tracking the beam exactly with no pyramid and no temporal lag.
+	if (m_glow_on)
+	{
+		const float gpad = 3.5f * glow_sig + 0.5f;
+		const float gsx0 = x0 - dx * gpad, gsy0 = y0 - dy * gpad;
+		const float gsx1 = x1 + dx * gpad, gsy1 = y1 + dy * gpad;
+		const float ga0 = -gpad, ga1 = seg_len + gpad;
+		auto gv = [&](int i, float x, float y, float a, float b, float d) {
+			vertex[i].m_x = x; vertex[i].m_y = y; vertex[i].m_z = 0.0f; vertex[i].m_rgba = glow_rgba;
+			vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = glow_sig;
+		};
+		gv(glow_base + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
+		gv(glow_base + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
+		gv(glow_base + 2, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
+		gv(glow_base + 3, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
+		gv(glow_base + 4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
+		gv(glow_base + 5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
 	}
 }
 
@@ -2385,10 +2424,17 @@ int renderer_bgfx::draw(int update)
 			m_beam_valid = false;
 			m_lin_valid = false;
 
+			// Analytic glow (additional-ideas A-1b): draw each line a second time as a wide, low-amplitude
+			// gaussian that follows the beam exactly - a physical PSF tail, no pyramid and no temporal
+			// lag. Adds one quad (6 verts) per line; 0 = off.
+			m_glow_on = m_line_analytic && (m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f);
+
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
-			// analytic: body quad 6 + two end-cap dots 6+6 (or DEFL_NOUT*6 body + 12 caps with deflection)
-			const uint32_t verts_per_line = m_line_analytic ? (m_defl_on ? uint32_t(DEFL_NOUT * 6 + 12) : 18u) : uint32_t(LINE_VERTICES_PER_LINE);
+			// analytic: body quad 6 + two end-cap dots 6+6 (or DEFL_NOUT*6 body + 12 caps with deflection),
+			// plus one wide glow quad (6) when analytic glow is on
+			const uint32_t base_vpl = m_line_analytic ? (m_defl_on ? uint32_t(DEFL_NOUT * 6 + 12) : 18u) : uint32_t(LINE_VERTICES_PER_LINE);
+			const uint32_t verts_per_line = base_vpl + (m_glow_on ? 6u : 0u);
 			m_vec_vpl = verts_per_line;
 			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
 			bgfx::TransientVertexBuffer tvb = {};
@@ -2715,6 +2761,15 @@ int renderer_bgfx::draw(int update)
 					0.0f };
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
+			}
+			// Phosphor gamut blend (master plan 2-6): push the Rec.709 primaries toward the P22
+			// phosphor chromaticities in the Rec.2020 container. 0 = off (exact 709 -> 2020).
+			bgfx_uniform *pg = m_hdr_present_effect->uniform("u_phosphor_gamut");
+			if (pg)
+			{
+				float pgv[4] = { m_chains->slider_value(0, "phosphor_gamut", 0.0f), 0.0f, 0.0f, 0.0f };
+				pg->set(pgv, sizeof(float) * 4);
+				pg->upload();
 			}
 			bgfx_uniform *st = m_hdr_present_effect->uniform("s_tex");
 			if (st) bgfx::setTexture(0, st->handle(), m_hdr_work->texture());

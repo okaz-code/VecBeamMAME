@@ -169,7 +169,8 @@ private:
 	float m_beam_px = 0.0f, m_beam_py = 0.0f;   // last actual beam position (pixels, drifted space)
 	float m_beam_vx = 0.0f, m_beam_vy = 0.0f;   // last actual beam velocity (pixels / second)
 	bool  m_defl_on = false;                    // deflection dynamics active this frame
-	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (18, or DEFL_NOUT*6+12)
+	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
+	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)
 
 	// Vector linearity calibration (integrator gain error, like the board's Linear pot): each vector
 	// is drawn as (commanded vector) x gain from where the beam actually ended up, so the error
