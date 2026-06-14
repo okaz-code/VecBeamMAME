@@ -156,6 +156,30 @@ private:
 	bool m_line_analytic = false;
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, float start_cap = 1.0f, float end_cap = 1.0f);
 
+	// Deflection-amplifier dynamics (master plan 3-3): the AVG X/Y deflection amps are second-order
+	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
+	// "hooks", curved starts after a jump). When enabled, the beam position/velocity are integrated
+	// continuously across the draw-ordered vector list and each segment is drawn as a short polyline
+	// following the simulated trajectory. simulate_deflection fills out[] with DEFL_NOUT+1 points for
+	// one segment (start S -> end E over draw time draw_secs) and advances the beam state; it returns
+	// the trajectory in the same pixel space as the vertices. m_beam_valid resets each frame.
+	static constexpr int DEFL_NOUT = 8;   // sub-quads per segment when deflection dynamics are on
+	int simulate_deflection(float sx, float sy, float ex, float ey, double draw_secs, float *outx, float *outy);
+	bool  m_beam_valid = false;
+	float m_beam_px = 0.0f, m_beam_py = 0.0f;   // last actual beam position (pixels, drifted space)
+	float m_beam_vx = 0.0f, m_beam_vy = 0.0f;   // last actual beam velocity (pixels / second)
+	bool  m_defl_on = false;                    // deflection dynamics active this frame
+	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (18, or DEFL_NOUT*6+12)
+
+	// Vector linearity calibration (integrator gain error, like the board's Linear pot): each vector
+	// is drawn as (commanded vector) x gain from where the beam actually ended up, so the error
+	// accumulates along a contiguous stroke and resets at a jump (non-contiguous start) or new frame.
+	// m_lin_cmd_e* is the previous commanded endpoint (contiguity test); m_lin_drawn_e* the previous
+	// drawn endpoint (where the next contiguous vector continues from).
+	bool  m_lin_valid = false;
+	float m_lin_cmd_ex = 0.0f, m_lin_cmd_ey = 0.0f;
+	float m_lin_drawn_ex = 0.0f, m_lin_drawn_ey = 0.0f;
+
 	// HDR composite (vector-hdr-display-study.md 4.1). An HDR-type chain (one declaring a
 	// "screen_hdr" target) outputs linear light there. The vector screen is seeded into a linear
 	// work target in absolute nits, then artwork/UI quads are drawn on top with their native MAME
