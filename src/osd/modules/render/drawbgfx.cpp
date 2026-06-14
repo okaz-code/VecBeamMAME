@@ -1382,8 +1382,8 @@ static float vector_overload_sigmoid(float n, float k)
 // closed form, so AA, the cross profile and the end roll-off all come from the math.
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex)
 {
-	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
-	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
+	float x0 = prim->bounds.x0 + m_vec_drift_x, y0 = prim->bounds.y0 + m_vec_drift_y;
+	float x1 = prim->bounds.x1 + m_vec_drift_x, y1 = prim->bounds.y1 + m_vec_drift_y;
 	float dx = x1 - x0, dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
@@ -1684,10 +1684,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 {
-	float x0 = prim->bounds.x0;
-	float y0 = prim->bounds.y0;
-	float x1 = prim->bounds.x1;
-	float y1 = prim->bounds.y1;
+	float x0 = prim->bounds.x0 + m_vec_drift_x;
+	float y0 = prim->bounds.y0 + m_vec_drift_y;
+	float x1 = prim->bounds.x1 + m_vec_drift_x;
+	float y1 = prim->bounds.y1 + m_vec_drift_y;
 
 	float dx = x1 - x0;
 	float dy = y1 - y0;
@@ -2124,6 +2124,25 @@ int renderer_bgfx::draw(int update)
 			m_crt_flicker_factor = ((!any_timed || !m_vec_beam_events) && m_vector_device != nullptr && m_vector_device->beam_list_stale())
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
+
+			// Analog integrator drift (AVG, master plan 3-4): op-amp offset slowly translates the
+			// whole image and the CNTR command pulls it back. Modelled per axis as a sum of two
+			// incommensurate sub-Hz sines (mean zero, so it self-recentres without a sawtooth reset),
+			// amplitude in 1920-reference pixels scaled to the actual resolution. analog_drift 0 = off.
+			const float drift_amt = m_chains->slider_value(0, "analog_drift", 0.0f);
+			if (drift_amt > 0.0f)
+			{
+				const float spd = std::max(0.05f, m_chains->slider_value(0, "analog_drift_speed", 1.0f));
+				const float t   = float(vec_now) * spd;
+				const float amp = drift_amt * (float(s_width[window().index()]) / 1920.0f);
+				m_vec_drift_x = amp * (0.6f * sinf(t * 1.70f)        + 0.4f * sinf(t * 0.91f + 1.3f));
+				m_vec_drift_y = amp * (0.6f * sinf(t * 1.43f + 2.1f) + 0.4f * sinf(t * 0.64f + 0.7f));
+			}
+			else
+			{
+				m_vec_drift_x = 0.0f;
+				m_vec_drift_y = 0.0f;
+			}
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
