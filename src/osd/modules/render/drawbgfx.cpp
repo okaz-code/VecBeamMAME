@@ -1527,6 +1527,22 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			sigma += beam_bloom * bres * powf(std::min(bI, 4.0f), bloom_p);
 		}
 	}
+	// Edge defocus (vgens / master plan 3-5): at large deflection angles the spot defocuses
+	// astigmatically, so sigma grows toward the screen edges. The segment midpoint's radius is
+	// normalised to the half-diagonal (0 at centre, 1 at a corner) and raised to edge_defocus_curve
+	// (2 = quadratic, matching deflection-angle growth). edge_defocus 0 = off.
+	const float edge_def = m_chains->slider_value(0, "edge_defocus", 0.0f);
+	if (edge_def > 0.0f)
+	{
+		const float sw = float(s_width[window().index()]);
+		const float sh = float(s_height[window().index()]);
+		const float halfdiag = 0.5f * sqrtf(sw * sw + sh * sh);
+		const float mx = (x0 + x1) * 0.5f - sw * 0.5f;
+		const float my = (y0 + y1) * 0.5f - sh * 0.5f;
+		float r = (halfdiag > 0.0f) ? std::min(sqrtf(mx * mx + my * my) / halfdiag, 1.0f) : 0.0f;
+		const float ecurve = m_chains->slider_value(0, "edge_defocus_curve", 2.0f);
+		sigma += edge_def * (sw / 1920.0f) * powf(r, ecurve);
+	}
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
 	// vanish. Lines are 1D-continuous so they can go thinner than points (which have no extent
 	// in either axis and need a wider floor). 0.33 sigma = FWHM ~0.78px, about the thinnest a
