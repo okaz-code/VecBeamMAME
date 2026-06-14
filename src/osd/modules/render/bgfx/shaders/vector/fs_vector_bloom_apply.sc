@@ -36,6 +36,7 @@ uniform vec4 u_bloom_channel_gain; // (r, g, b, 0) per-channel gain on the bloom
 uniform vec4 u_time;               // (time_seconds, 0, 0, 0) auto-bound by a chain system parameter
 uniform vec4 u_ambient_color;      // (r, g, b, 0) non-excited phosphor body tint (P31 grey-green / P22 grey)
 uniform vec4 u_ambient_level;      // (level, 0, 0, 0) room-light reflection floor, 0 = off
+uniform vec4 u_bloom_noise;        // (strength, freeze, 0, 0) dark-area shimmer amount; freeze>0.5 holds the pattern (pause)
 
 // per-pixel + per-frame hash random [0, 1], compatible with HLSL random.fx
 float random(vec2 uv, float t)
@@ -72,9 +73,13 @@ void main()
 	);
 	bloom += crosstalk;
 
-	// HLSL NoiseFactor: shimmer up to +25% in dark areas (n->0), nearly 0 in bright areas (n->1)
-	float r = random(v_texcoord0, u_time.x);
-	vec3 noise_factor = vec3_splat(1.0) + r * max(vec3_splat(0.0), vec3_splat(0.25) * exp(-8.0 * bloom));
+	// Dark-area shimmer (HLSL NoiseFactor): up to u_bloom_noise.x in dark areas, ~0 in bright areas.
+	// Driven by u_time so it animates - but the renderer sets u_bloom_noise.y (freeze) when emulation
+	// is paused (no new frame), and we then hold the pattern with a constant seed so it stops shimmering
+	// while paused. u_bloom_noise.x is the strength (smaller = subtler than the old fixed 0.25).
+	float seed = (u_bloom_noise.y > 0.5) ? 0.0 : u_time.x;
+	float r = random(v_texcoord0, seed);
+	vec3 noise_factor = vec3_splat(1.0) + r * max(vec3_splat(0.0), vec3_splat(u_bloom_noise.x) * exp(-8.0 * bloom));
 	bloom *= noise_factor;
 
 	// Ambient / non-excited phosphor body colour (master plan 2-7): room light reflected off the dark
