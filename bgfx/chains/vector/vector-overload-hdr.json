@@ -49,7 +49,6 @@
 		{ "type": "float", "name": "ring_width",    "text": "Halation Ring Width (px)",  "default": 3.0,  "min": 0.5, "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "ring_fill",     "text": "Halation Ring Inner Fill", "default": 1.0,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_threshold","text": "Halation Ring Threshold",  "default": 0.30,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "float", "name": "bloom_scale",          "text": "Bloom Scale",                       "default": 0.02, "max": 2.00, "min": 0.00, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "color", "name": "bloom_overdrive",      "text": "Bloom Overdrive, ",                 "default": [ 0.008, 0.008, 0.008 ], "max": [ 2.0, 2.0, 2.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "color", "name": "bloom_channel_gain",   "text": "Bloom Channel Gain, ",              "default": [ 2.0, 1.3, 4.0 ], "max": [ 10.0, 10.0, 10.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01,  "format": "%1.2f", "screen": "vector" },
@@ -62,7 +61,6 @@
 		{ "type": "float", "name": "bloom_lvl5_weight",    "text": "Bloom Level 6 Weight (1/64)",       "default": 0.10, "max": 1.00, "min": 0.00, "step": 0.01,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "bloom_lvl6_weight",    "text": "Bloom Level 7 Weight (1/128)",      "default": 0.05, "max": 1.00, "min": 0.00, "step": 0.01,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "bloom_lvl7_weight",    "text": "Bloom Level 8 Weight (1/256)",      "default": 0.02, "max": 1.00, "min": 0.00, "step": 0.01,  "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "float", "name": "overload_threshold",        "text": "Overload Threshold",        "default": 0.7,  "min": 0.01, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_sigmoid_k",        "text": "Overload Sigmoid K",        "default": 0.0,  "min": -1.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_width_curve_low",  "text": "Overload Width Curve Low",  "default": 0.8,  "min": -1.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
@@ -74,51 +72,42 @@
 		{ "type": "float", "name": "mglow_coefficient",         "text": "Monitor Glow Coefficient",      "default": 0.3,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_brightness",          "text": "Monitor Glow Brightness",       "default": 0.05,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_center_edge_diff",    "text": "Monitor Glow Center-Edge Diff", "default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
-
+		{ "type": "float", "name": "tail_strength", "text": "Phosphor Tail Strength", "default": 0.120, "max": 0.25,  "min": 0.00, "step": 0.002, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.050,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "beam_peak_nits", "text": "HDR Beam Peak (nits)", "default": 1000.0, "max": 2000.0, "min": 80.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
+		{ "type": "float", "name": "analytic_glow",       "text": "Analytic Glow (per-line)", "default": 0.0, "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "analytic_glow_width", "text": "Analytic Glow Width (px)", "default": 8.0, "min": 1.0, "max": 40.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_gamut",     "text": "Phosphor Gamut (P22, HDR)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "adjustments", "text": "Enable Adjustments", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
-
 		{ "type": "color", "name": "red_ratios", "text": "Red Output from ",   "default": [ 1.00, 0.00, 0.00 ], "max": [ 2.00, 2.00, 2.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "grn_ratios", "text": "Green Output from ", "default": [ 0.00, 1.00, 0.00 ], "max": [ 2.00, 2.00, 2.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "blu_ratios", "text": "Blue Output from ",  "default": [ 0.00, 0.00, 1.00 ], "max": [ 2.00, 2.00, 2.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "offset",     "text": "Signal Offset, ",    "default": [ 0.00, 0.00, 0.00 ], "max": [ 2.00, 2.00, 2.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "scale",      "text": "Signal Scale, ",     "default": [ 1.00, 1.00, 1.00 ], "max": [ 2.00, 2.00, 2.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "saturation", "text": "Color Saturation",   "default": 1.00,                 "max": 4.00,                 "min": 0.00,                 "step": 0.01, "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "vec2", "name": "converge_red",          "text": "Red Linear Convergence, ",          "default": [ 0.0, 0.0 ], "max": [ 10.0, 10.0 ], "min": [ -10.0, -10.0 ], "step": 0.1, "format": "%2.1f", "screen": "vector" },
 		{ "type": "vec2", "name": "converge_green",        "text": "Green Linear Convergence, ",        "default": [ 0.0, 0.0 ], "max": [ 10.0, 10.0 ], "min": [ -10.0, -10.0 ], "step": 0.1, "format": "%2.1f", "screen": "vector" },
 		{ "type": "vec2", "name": "converge_blue",         "text": "Blue Linear Convergence, ",         "default": [ 0.0, 0.0 ], "max": [ 10.0, 10.0 ], "min": [ -10.0, -10.0 ], "step": 0.1, "format": "%2.1f", "screen": "vector" },
 		{ "type": "vec2", "name": "radial_converge_red",   "text": "Red Radial Convergence, ",          "default": [ 0.0, 0.0 ], "max": [ 0.1, 0.1 ], "min": [ -0.1, -0.1 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "vec2", "name": "radial_converge_green", "text": "Green Radial Convergence, ",        "default": [ 0.0, 0.0 ], "max": [ 0.1, 0.1 ], "min": [ -0.1, -0.1 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "vec2", "name": "radial_converge_blue",  "text": "Blue Radial Convergence, ",         "default": [ 0.0, 0.0 ], "max": [ 0.1, 0.1 ], "min": [ -0.1, -0.1 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
-
 		{ "type": "vec2", "name": "defocus", "text": "Defocus, ", "default": [ 0.8, 0.8 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
-
 		{ "type": "color", "name": "floor", "text": "Signal Floor, ",    "default": [ 0.00, 0.00, 0.00 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "power", "text": "Signal Exponent, ", "default": [ 1.00, 1.00, 1.00 ], "max": [ 4.00, 4.00, 4.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "color", "name": "phosphor", "text": "Phosphor Persistence, ",  "default": [ 0.40, 0.30, 0.30 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
-
-		{ "type": "float", "name": "tail_strength", "text": "Phosphor Tail Strength", "default": 0.120, "max": 0.25,  "min": 0.00, "step": 0.002, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "tail_decay",    "text": "Phosphor Tail Decay",    "default": 0.050,  "max": 0.995, "min": 0.00, "step": 0.005, "format": "%1.3f", "screen": "vector" },
-
-		{ "type": "float", "name": "beam_peak_nits", "text": "HDR Beam Peak (nits)", "default": 1000.0, "max": 2000.0, "min": 80.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
-
 		{ "type": "intenum", "name": "chroma_mode", "text": "Color Mode", "default": 3, "max": 3, "min": 1, "step": 1, "format": "%s", "screen": "vector", "strings": [ " ", "Monochrome", "Dichrome", "Trichrome" ] },
 		{ "type": "color",   "name": "chroma_conversion_gain", "text": "Chroma Conversion Gain, ", "default": [ 0.299, 0.587, 0.114 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.0001, "format": "%1.4f", "screen": "vector" },
 		{ "type": "vec2",    "name": "chroma_a", "text": "Phosphor A Chromaticity ", "default": [ 0.630, 0.340 ], "max": [ 1.0, 1.0 ], "min": [ 0.0, 0.0 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "vec2",    "name": "chroma_b", "text": "Phosphor B Chromaticity ", "default": [ 0.310, 0.595 ], "max": [ 1.0, 1.0 ], "min": [ 0.0, 0.0 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "vec2",    "name": "chroma_c", "text": "Phosphor C Chromaticity ", "default": [ 0.155, 0.070 ], "max": [ 1.0, 1.0 ], "min": [ 0.0, 0.0 ], "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "color",   "name": "chroma_y_gain", "text": "Phosphor Gain, ", "default": [ 0.2130, 0.7011, 0.0866 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.001, "format": "%1.4f", "screen": "vector" },
-
 		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_y_quad",  "text": "Vector Pincushion Y (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_y_cubic", "text": "Vector Pincushion Y (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "float", "name": "shadow_mask_strength",    "text": "Shadow Mask Strength",          "default": 0.7,  "min": 0.0,  "max": 1.0,  "step": 0.01,  "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "shadow_mask_brightboost", "text": "Shadow Mask Brightness Boost",  "default": 0.0,  "min": 0.0,  "max": 2.0,  "step": 0.05,  "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "shadow_mask_scale",       "text": "Shadow Mask Scale (px @1080p)", "default": 4.0,  "min": 1.0,  "max": 8.0,  "step": 0.5,   "format": "%2.1f", "screen": "vector" },
-
 		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.20, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "cubic_distortion", "text": "Cubic Distortion Amount",   "default": 0.00, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "distort_corner",   "text": "Distorted Corner Amount",   "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
