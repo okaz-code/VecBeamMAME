@@ -22,6 +22,8 @@
 		{ "name": "u_bloom_scale",       "type": "vec4", "values": [ 0.75, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_bloom_overdrive",   "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
 		{ "name": "u_bloom_channel_gain","type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
+		{ "name": "u_ambient_color",     "type": "vec4", "values": [ 0.4, 0.4, 0.4, 0.0 ] },
+		{ "name": "u_ambient_level",     "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_time",              "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_inv_view_dims",     "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]

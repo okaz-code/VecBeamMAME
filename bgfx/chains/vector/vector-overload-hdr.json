@@ -32,6 +32,8 @@
 		{ "type": "float", "name": "beam_bloom_curve",    "text": "Beam Bloom Curve",              "default": 1.0, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "analog_drift",       "text": "Analog Drift (px, AVG)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "analog_drift_speed", "text": "Analog Drift Speed",     "default": 1.0, "min": 0.1, "max": 4.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		{ "type": "color", "name": "ambient_color", "text": "Ambient Body Color, ", "default": [ 0.40, 0.40, 0.40 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ambient_level", "text": "Ambient Level (x0.001)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "ring_radius",  "text": "Halation Ring Radius (px)", "default": 40.0, "min": 2.0, "max": 100.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "ring_gain",    "text": "Halation Ring Gain",       "default": 0.20,  "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_width",    "text": "Halation Ring Width (px)",  "default": 3.0,  "min": 0.5, "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
@@ -424,6 +426,8 @@
 			{ "uniform": "u_bloom_scale",       "slider":    "bloom_scale" },
 			{ "uniform": "u_bloom_overdrive",   "slider":    "bloom_overdrive" },
 			{ "uniform": "u_bloom_channel_gain","slider":    "bloom_channel_gain" },
+			{ "uniform": "u_ambient_color",     "slider":    "ambient_color" },
+			{ "uniform": "u_ambient_level",     "slider":    "ambient_level" },
 			{ "uniform": "u_time",              "parameter": "time" }
 		  ],
 		  "output": "post_bloom" },
