@@ -1767,26 +1767,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const int cap0 = m_defl_on ? DEFL_NOUT * 6 : 6;
 	const int cap1 = cap0 + 6;
 	{
-		const float cap_res_scale = float(s_width[window().index()]) / 1920.0f;
-		const float cap_full   = m_chains->slider_value(0, "line_cap_size", LINE_CAP_SIZE_PX) * cap_res_scale;
-		const float cap_min_px = m_chains->slider_value(0, "line_cap_min_size", 0.0f) * cap_res_scale;
-		const float cap_curve  = m_chains->slider_value(0, "line_cap_intensity_curve", 0.0f);
-		const float cap_bi     = std::clamp(prim->color.a, 0.0f, 1.0f);
-		const float cap_f      = (cap_curve <= 0.0001f) ? 1.0f : powf(cap_bi, cap_curve);
-		const float cap_radius = std::max(0.0f, cap_min_px + (cap_full - cap_min_px) * cap_f);
-		if (cap_radius > 0.05f)
+		// End caps: a beam-spot dot at each true endpoint. Its size is intrinsic - the same gaussian
+		// sigma as the line cross-section (the dwelling beam spot), so it tracks the unified width
+		// transfer automatically (a dim / thin line gets a small cap) and needs no separate size
+		// sliders. line_cap_brightness sets the overall strength; vertex_dwell's per-endpoint factor
+		// (start_cap / end_cap from the neighbour-aware pre-pass) modulates it - 1.0 at stroke termini
+		// and sharp corners where the beam dwells, toward 0 at straight joints. The erf already gives
+		// the physical 50% end roll-off; the cap adds the bright endpoint on top, scaled to ~0.5x so the
+		// endpoint peak (0.5 erf + 0.5 cap) lands near the line intensity at full strength.
+		const float cap_bright = std::max(0.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
+		if (cap_bright > 0.0f)
 		{
-			const float cap_bright = std::max(0.0f, m_chains->slider_value(0, "line_cap_brightness", 1.0f));
-			// The cap dot is ADDED on top of the line's erf end (~50% at the endpoint). At full line
-			// intensity that made the vertex ~1.5x the body, and the brighter pixel lingered longer
-			// under the phosphor max()-persistence than the moving line - a lagging vertex trail on
-			// rotating shapes. Scale the cap contribution to ~0.5x so the endpoint peak lands near the
-			// line intensity (0.5 erf + 0.5 cap). line_cap_brightness still boosts from there.
 			const float cap_scale = 0.5f * cap_bright;
-			// Per-endpoint dwell factor (master plan 2-3, vertex dwell): start_cap / end_cap come from
-			// the neighbour-aware pre-pass - 1.0 at stroke termini and sharp corners (the beam dwells),
-			// down toward 0 at straight joints (no dwell). vertex_dwell 0 leaves both at 1.0 = the old
-			// uniform cap. The dot brightness scales with it; a 0 factor yields a zero-colour (skipped) dot.
+			// line_cap_width fattens the endpoint dot a touch beyond the bare beam spot (1.0 = exactly
+			// the line's sigma); the dwell dot is usually a little larger than the running stroke.
+			const float sg_cap = sigma * std::max(0.1f, m_chains->slider_value(0, "line_cap_width", 1.5f));
 			auto cap_rgba_for = [&](float boost) -> uint32_t {
 				const float s = cap_scale * boost;
 				return u32Color(
@@ -1795,7 +1790,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * s * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
-			const float sg_cap = std::max(0.85f, cap_radius * 0.6f);
 			set_dot(vertex, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap));
 			set_dot(vertex, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap));
 		}
