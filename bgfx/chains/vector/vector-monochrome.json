@@ -19,9 +19,6 @@
 		{ "type": "float", "name": "width_clip_high",           "text": "Width Clip High",            "default": 1.0,  "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "width_curve",               "text": "Width Curve (1=linear)",     "default": 1.0,  "min": 0.25, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "point_width_scale",         "text": "Point Width Scale",          "default": 1.0,  "min": 0.0,  "max": 8.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_dot_size_min",         "text": "Beam Dot Size Min",         "default": 4.0,  "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_dot_size_max",         "text": "Beam Dot Size Max",         "default": 0.80,  "min": 0.0,  "max": 16.0, "step": 0.1,  "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_dot_size_curve",       "text": "Beam Dot Size Curve",       "default": 0.0,  "min": -1.0, "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold",     "text": "Line Point Threshold",     "default": 2.0,  "min": 0.0, "max": 10.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "line_cap_size",            "text": "Line Cap Size (px)",       "default": 2.0,  "min": 0.0, "max": 20.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "line_cap_min_size",        "text": "Line Cap Min Size (px)",   "default": 1.0,  "min": 0.0, "max": 20.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
@@ -57,8 +54,6 @@
 		{ "type": "float", "name": "dwell_max",        "text": "Dwell Max Boost",                 "default": 3.0, "min": 1.0, "max": 8.0,  "step": 0.1,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "beam_bloom_strength", "text": "Beam Bloom (intensity width)", "default": 0.0, "min": 0.0,  "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_bloom_curve",    "text": "Beam Bloom Curve",              "default": 1.0, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "analog_drift",       "text": "Analog Drift (px, AVG)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "analog_drift_speed", "text": "Analog Drift Speed",     "default": 1.0, "min": 0.1, "max": 4.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "color", "name": "ambient_color", "text": "Ambient Body Color, ", "default": [ 0.35, 0.45, 0.38 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ambient_level", "text": "Ambient Level (x0.001)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus",       "text": "Edge Defocus (px at corner)", "default": 0.0, "min": 0.0, "max": 8.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
@@ -75,11 +70,11 @@
 		{ "type": "float", "name": "analytic_glow_width", "text": "Analytic Glow Width (px)", "default": 8.0, "min": 1.0, "max": 40.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
 		{ "type": "float", "name": "glow_threshold",     "text": "Analytic Glow Threshold", "default": 0.0, "min": 0.0,  "max": 2.0, "step": 0.02, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "glow_curve",         "text": "Analytic Glow Curve",     "default": 1.0, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "backdrop_saturation", "text": "Backdrop Saturation (UV)",  "default": 1.0, "min": 0.0,   "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "backdrop_gain",       "text": "Backdrop Gain (UV)",        "default": 1.0, "min": 0.0,   "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "backdrop_uv",         "text": "Backdrop UV Glow",          "default": 0.0, "min": 0.0,   "max": 1.0,  "step": 0.02, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "backdrop_parallax",   "text": "Backdrop Parallax (px)",    "default": 0.0, "min": -20.0, "max": 20.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
-		{ "type": "float", "name": "backdrop_defocus",    "text": "Backdrop Defocus (texels)", "default": 0.0, "min": 0.0,   "max": 8.0,  "step": 0.25, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_threshold",           "text": "Monitor Glow Threshold",        "default": 0.7,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_min_distance",        "text": "Monitor Glow Off-screen Dist",  "default": 0.30, "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_coefficient",         "text": "Monitor Glow Coefficient",      "default": 0.0,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_brightness",          "text": "Monitor Glow Brightness",       "default": 0.5,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_center_edge_diff",    "text": "Monitor Glow Center-Edge Diff", "default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "adjustments", "text": "Enable Adjustments", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "vec2", "name": "defocus", "text": "Defocus, ", "default": [ 0.9, 0.9 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "color", "name": "floor", "text": "Signal Floor, ",    "default": [ 0.00, 0.00, 0.00 ], "max": [ 1.00, 1.00, 1.00 ], "min": [ 0.00, 0.00, 0.00 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -104,6 +99,12 @@
 	],
 
 	"targets": [
+		{   "name": "mglow_out",
+			"_comment": "single-buffer target holding the monitor-glow-composited final image fed to the Final Blit (add_mglow cannot self-RW the doublebuffered internal)",
+			"mode": "native",
+			"scale": 1,
+			"doublebuffer": false
+		},
 		{   "name": "guest",
 			"mode": "native",
 			"bilinear": false,
@@ -406,10 +407,19 @@
 			],
 			"output": "internal"
 		},
+		{ "effect": "misc/blit", "name": "mglow_seed",
+		  "_comment": "seed mglow_out with the final image; add_mglow then additively blends the radial glow on top (vector_monitor_glow outputs glow only with additive blend, so the target must already hold the image)",
+		  "input": [ { "sampler": "s_tex", "target": "internal" } ],
+		  "output": "mglow_out" },
+		{ "effect": "vector/vector_monitor_glow", "name": "add_mglow", "clear": {},
+		  "_comment": "monitor glow: screen-edge glow from off-screen beam energy (u_mglow_amount injected by the renderer), additively composited over the seeded image; clear:{} preserves the seed",
+		  "input": [ { "sampler": "s_tex", "target": "mglow_out" } ],
+		  "uniforms": [ { "uniform": "u_mglow_brightness", "slider": "mglow_brightness" }, { "uniform": "u_mglow_edge_diff", "slider": "mglow_center_edge_diff" } ],
+		  "output": "mglow_out" },
 		{   "effect": "misc/blit",
 			"name": "Final Blit",
 			"input": [
-				{ "sampler": "s_tex", "target": "internal" }
+				{ "sampler": "s_tex", "target": "mglow_out" }
 			],
 			"output": "output"
 		}

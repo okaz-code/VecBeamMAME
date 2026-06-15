@@ -860,7 +860,6 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_ALPHA]        = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_blend");
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
-		m_backdrop_effect                        = m_effects->get_or_load_effect(m_module().options(), "vector/backdrop_uv");
 
 		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
 		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
@@ -1114,20 +1113,6 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 	float u[4] = { prim->texcoords.tl.u, prim->texcoords.tr.u, prim->texcoords.bl.u, prim->texcoords.br.u };
 	float v[4] = { prim->texcoords.tl.v, prim->texcoords.tr.v, prim->texcoords.bl.v, prim->texcoords.br.v };
 
-	// Half-mirror backdrop treatment (monochrome test): active when a monochrome chain exposes the
-	// backdrop_* sliders (sentinel: backdrop_saturation < 0 means absent => off) AND the quad is
-	// ADD-blended - that is the half-mirror backdrop. MULTIPLY (colour-gel overlay, e.g. Battlezone)
-	// and ALPHA (bezel) keep their normal path, so the additive treatment never breaks a gel/bezel.
-	// Parallax shifts the backdrop so it sits at a different apparent depth than the vector image.
-	const bool bd_treat = !PRIMFLAG_GET_SCREENTEX(prim->flags) && (m_backdrop_effect != nullptr)
-		&& (PRIMFLAG_GET_BLENDMODE(prim->flags) == BLENDMODE_ADD)
-		&& (m_chains->slider_value(0, "backdrop_saturation", -1.0f) >= 0.0f);
-	if (bd_treat)
-	{
-		const float bd_px = m_chains->slider_value(0, "backdrop_parallax", 0.0f);
-		for (int i = 0; i < 4; i++) x[i] += bd_px;
-	}
-
 	vertex(&vertices[0], x[0], y[0], 0, rgba, u[0], v[0]);
 	vertex(&vertices[1], x[1], y[1], 0, rgba, u[1], v[1]);
 	vertex(&vertices[2], x[3], y[3], 0, rgba, u[3], v[3]);
@@ -1161,29 +1146,8 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 
 	// HDR: artwork (non-screen) quads draw into the linear work target with the HDR gui effects
 	// (linearize + nits scale + native blend), so MAME's blend modes compose physically.
-	bgfx_effect* effect;
-	if (bd_treat)
-	{
-		// Half-mirror backdrop: UV-fluorescence + defocus, additive (its own ADD blend). u_bd_params.x
-		// flags HDR (linearize + nits, matching hdr_gui) vs SDR.
-		effect = m_backdrop_effect;
-		const float pw = float(m_module().options().bgfx_hdr_paper_white());
-		float bd_params[4]   = { (m_vec_hdr_chain ? 1.0f : 0.0f), pw,
-								 m_chains->slider_value(0, "backdrop_defocus", 0.0f), 0.0f };
-		float bd_texel[4]    = { 1.0f / float(std::max<uint16_t>(tex_width, uint16_t(1))),
-								 1.0f / float(std::max<uint16_t>(tex_height, uint16_t(1))), 0.0f, 0.0f };
-		float bd_fluor[4]    = { m_chains->slider_value(0, "backdrop_saturation", 1.0f),
-								 m_chains->slider_value(0, "backdrop_gain", 1.0f),
-								 m_chains->slider_value(0, "backdrop_uv", 0.0f), 0.0f };
-		bgfx_uniform* up = effect->uniform("u_bd_params");  if (up) { up->set(bd_params, sizeof(float)*4); up->upload(); }
-		bgfx_uniform* ut = effect->uniform("u_bd_texel");   if (ut) { ut->set(bd_texel,  sizeof(float)*4); ut->upload(); }
-		bgfx_uniform* uf = effect->uniform("u_bd_fluor");   if (uf) { uf->set(bd_fluor,  sizeof(float)*4); uf->upload(); }
-	}
-	else
-	{
-		bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
-		effect = effects[PRIMFLAG_GET_BLENDMODE(prim->flags)];
-	}
+	bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
+	bgfx_effect* effect = effects[PRIMFLAG_GET_BLENDMODE(prim->flags)];
 
 	bgfx::setVertexBuffer(0,buffer);
 	bgfx::setTexture(0, effect->uniform("s_tex")->handle(), texture);
@@ -1499,8 +1463,8 @@ int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, d
 
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, float start_cap, float end_cap)
 {
-	float x0 = prim->bounds.x0 + m_vec_drift_x, y0 = prim->bounds.y0 + m_vec_drift_y;
-	float x1 = prim->bounds.x1 + m_vec_drift_x, y1 = prim->bounds.y1 + m_vec_drift_y;
+	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
+	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
 
 	// Vector linearity calibration (board "Linear" / X-Y SIZE pots = per-axis integrator gain): draw
 	// each vector as the commanded delta x gain (X and Y independent), continuing from where the beam
@@ -1924,10 +1888,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 {
-	float x0 = prim->bounds.x0 + m_vec_drift_x;
-	float y0 = prim->bounds.y0 + m_vec_drift_y;
-	float x1 = prim->bounds.x1 + m_vec_drift_x;
-	float y1 = prim->bounds.y1 + m_vec_drift_y;
+	float x0 = prim->bounds.x0;
+	float y0 = prim->bounds.y0;
+	float x1 = prim->bounds.x1;
+	float y1 = prim->bounds.y1;
 
 	float dx = x1 - x0;
 	float dy = y1 - y0;
@@ -2315,25 +2279,6 @@ int renderer_bgfx::draw(int update)
 			m_crt_flicker_factor = ((!any_timed || !m_vec_beam_events) && m_vector_device != nullptr && m_vector_device->beam_list_stale())
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
-
-			// Analog integrator drift (AVG, master plan 3-4): op-amp offset slowly translates the
-			// whole image and the CNTR command pulls it back. Modelled per axis as a sum of two
-			// incommensurate sub-Hz sines (mean zero, so it self-recentres without a sawtooth reset),
-			// amplitude in 1920-reference pixels scaled to the actual resolution. analog_drift 0 = off.
-			const float drift_amt = m_chains->slider_value(0, "analog_drift", 0.0f);
-			if (drift_amt > 0.0f)
-			{
-				const float spd = std::max(0.05f, m_chains->slider_value(0, "analog_drift_speed", 1.0f));
-				const float t   = float(vec_now) * spd;
-				const float amp = drift_amt * (float(s_width[window().index()]) / 1920.0f);
-				m_vec_drift_x = amp * (0.6f * sinf(t * 1.70f)        + 0.4f * sinf(t * 0.91f + 1.3f));
-				m_vec_drift_y = amp * (0.6f * sinf(t * 1.43f + 2.1f) + 0.4f * sinf(t * 0.64f + 0.7f));
-			}
-			else
-			{
-				m_vec_drift_x = 0.0f;
-				m_vec_drift_y = 0.0f;
-			}
 
 			// HV supply droop load (master plan 3-4 / 6.2): peak-track this frame's total beam energy
 			// with gentle decay (so it does not flicker against vsync when a beam-event frame is stale),
