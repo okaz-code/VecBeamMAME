@@ -100,6 +100,7 @@ private:
 		int x = 0; int y = 0;
 		rgb_t col;
 		int intensity = 0;
+		int eye = 0;   // imager eye this vector was drawn for (0 = none, 1 = left, 2 = right)
 	};
 
 	required_shared_ptr<uint8_t> m_gce_vectorram;
@@ -137,6 +138,14 @@ private:
 	int m_display_start = 0;
 	int m_display_end = 0;
 	vectrex_point m_points[NVECT];
+	// 3D imager "Separate images" per-eye frame retention (layer B / eye-tag). Each eye's last completed
+	// frame is COPIED out (not a range into the wrapping ring) and capped, so screen_update can redraw
+	// both eyes stably without flooding the renderer when the wheel is slow (long eye intervals -> many
+	// points / ring wrap). 1 = left, 2 = right.
+	static constexpr int EYE_FRAME_MAX = 2048;
+	vectrex_point m_eye_frame[3][EYE_FRAME_MAX];
+	int m_eye_count[3] = { 0, 0, 0 };
+	int m_eye_draw_start = 0;   // m_point_index where the current eye's drawing began
 	uint16_t m_via_timer2 = 0;
 	attotime m_vector_start_time;
 	uint8_t m_cb2 = 0;
