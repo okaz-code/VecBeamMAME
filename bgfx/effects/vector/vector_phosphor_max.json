@@ -1,0 +1,24 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Max-persistence (asymmetric phosphor) for flicker reduction.
+// out = max(cur, prev * u_persist_decay.x): rises instantly, decays only.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_phosphor_max",
+	"uniforms": [
+		{ "name": "s_prev",          "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_tex",           "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_persist_decay", "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
