@@ -1,4 +1,4 @@
-$input v_color0, v_texcoord1
+$input v_color0, v_texcoord1, v_texcoord0
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -92,5 +92,10 @@ void main()
 		fade = perp * axial;
 	}
 
-	gl_FragColor = v_color0 * vec4(1.0, 1.0, 1.0, fade);
+	// Intensity overrange: v_texcoord0.x carries the per-vector overdrive (0 = none). The blend is
+	// additive with the SRC_ALPHA factor (deposit = colour.rgb * out.a), so scaling the alpha by (1+z)
+	// pushes the deposited light above the per-line ceiling into the float FBO - feeding the present's
+	// overload whitening. Glow / ring quads carry z = 0 (x1), so they are unaffected.
+	float over_mult = 1.0 + max(0.0, v_texcoord0.x);
+	gl_FragColor = v_color0 * vec4(1.0, 1.0, 1.0, fade * over_mult);
 }

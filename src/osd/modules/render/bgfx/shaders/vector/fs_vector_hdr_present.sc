@@ -13,6 +13,7 @@ SAMPLER2D(s_tex, 0);
 
 uniform vec4 u_hdr_params;
 uniform vec4 u_phosphor_gamut;   // (blend 0..1, 0, 0, 0) 0 = Rec.709 primaries, 1 = P22 phosphor primaries
+uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, 0, 0) hue-preserving highlight roll-off; max<=knee disables
 
 void main()
 {
@@ -20,6 +21,30 @@ void main()
 	bool  hdr         = u_hdr_params.z > 0.5;
 
 	vec3 L = max(texture2D(s_tex, v_texcoord0).rgb, vec3_splat(0.0));  // nits
+
+	// Hue-preserving highlight roll-off. Additive crossings of bright vectors push a single primary
+	// (esp. blue, the lowest-luminance panel primary) past what the display can show as that pure
+	// colour, so the panel desaturates it toward white/its complement (a blue X reads purple at the
+	// crossing). Cap the peak channel with a soft curve and scale ALL channels by the same factor, so
+	// chromaticity (hue+saturation) is preserved - an over-bright blue stays blue, just stops getting
+	// brighter, instead of turning purple. knee/max are multiples of beam_peak; max<=knee = off. A knee
+	// of 1.0 leaves a single full-intensity line untouched and only rolls the brighter overlaps.
+	{
+		float peak = max(u_hdr_params.x, 1.0);
+		float m0   = max(L.r, max(L.g, L.b));   // original peak (overload indicator - additive overlap nits)
+		float knee = u_hdr_rolloff.x * peak;
+		float ceil = u_hdr_rolloff.y * peak;
+		if (ceil > knee && m0 > knee)
+		{
+			float over   = m0 - knee;
+			float range  = ceil - knee;
+			float rolled = knee + range * (over / (over + range));   // m0 -> inf asymptotes to ceil
+			L *= rolled / m0;
+		}
+		// (Overload whitening is done per-vector in the renderer, tied to beam_energy overdrive, NOT here
+		//  from total pixel nits - so additive crossings of ordinary vectors stay their colour and only a
+		//  genuinely overdriven beam blooms white. See put_analytic_line's overdrive desaturation.)
+	}
 
 	vec3 outc;
 	if (hdr)
