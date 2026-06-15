@@ -12,6 +12,7 @@
 		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
 		{ "name": "u_hdr_params",    "type": "vec4", "values": [ 1000.0, 200.0, 1.0, 0.0 ] },
 		{ "name": "u_phosphor_gamut","type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_hdr_rolloff",   "type": "vec4", "values": [ 1.0, 1.3, 0.0, 0.0 ] },
 		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]
 }

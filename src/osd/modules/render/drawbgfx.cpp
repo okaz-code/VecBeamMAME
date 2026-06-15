@@ -1522,6 +1522,25 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
+	// Intensity overrange (overdrive): display_a clamps at 1.0, so a single vector tops out at the beam
+	// peak no matter how high beam_energy is - on its own it can only exceed peak by additive overlap.
+	// To let a genuinely overdriven beam push past peak by itself (and so trip the present's overload
+	// whitening), drive past intensity_clip_high adds a >1 factor carried per-vertex in the unused z
+	// slot; fs_vector_line_analytic multiplies the deposit by (1+z), landing it in the float FBO above
+	// 1.0. 0 = off (z stays 0 -> x1).
+	// intensity_overdrive_curve shapes the ramp from intensity_clip_high (t=0) to full drive (t=1):
+	// out = ov_gain * t^curve. curve > 1 keeps the white flare near zero until drive approaches 1.0 and
+	// then rises sharply, so only the very brightest beams blow out white. curve = 1 is linear.
+	const float i_clip_high = m_chains->slider_value(0, "intensity_clip_high", 1.0f);
+	const float ov_gain     = m_chains->slider_value(0, "intensity_overdrive", 0.0f);
+	float line_over = 0.0f;
+	if (ov_gain > 0.0f)
+	{
+		const float ot     = std::clamp((drive - i_clip_high) / std::max(1e-3f, 1.0f - i_clip_high), 0.0f, 1.0f);
+		const float ocurve = m_chains->slider_value(0, "intensity_overdrive_curve", 2.0f);
+		line_over = ov_gain * ((ocurve == 1.0f) ? ot : powf(ot, ocurve));
+	}
+
 	// Length fade + flicker + window-blend weight, identical to the classic path.
 	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
 	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
@@ -1565,12 +1584,24 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
 		length_factor *= (1.0f - hv_droop * 0.4f * m_hv_load_norm);
 
+	// Overdrive white-out lives in the glow buffer (post shadow-mask), NOT here: a beam driven past
+	// intensity_clip_high deposits an UNMASKED white flare (below) so the white bloom is not patterned by
+	// the shadow mask. The masked core stays the ordinary coloured line at its normal intensity.
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
 		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * 255.0f + 0.5f), 255),
 		std::min<uint32_t>(uint32_t(prim->color.g * length_factor * 255.0f + 0.5f), 255),
 		std::min<uint32_t>(uint32_t(prim->color.b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
+
+	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
+	// patterned by the mask). White, peak proportional to the overdrive; peak > 1 is carried in z (the
+	// shader multiplies the deposit by 1+z) exactly like the body overrange. flare_on gates the slot.
+	const bool  flare_on   = (line_over > 0.0f);
+	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor;
+	const float flare_z    = std::max(0.0f, flare_peak - 1.0f);
+	const uint32_t flare_rgba = u32Color(255, 255, 255,
+		uint32_t(std::min(1.0f, flare_peak) * 255.0f + 0.5f));
 
 	// sigma: width/3.2 keeps the gaussian core as tight as the classic parabola (a gaussian's
 	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
@@ -1633,11 +1664,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
 	// glow buffer (halation ring / inner fill go to the glow buffer so they are not shadow-masked).
-	auto set_dot = [&](AnalyticLineVertex* tgt, int base, float cx, float cy, float sg_abs, uint32_t drgba) {
+	// zval = intensity overrange carried in z (core dot / caps pass line_over; glow / ring pass 0).
+	auto set_dot = [&](AnalyticLineVertex* tgt, int base, float cx, float cy, float sg_abs, uint32_t drgba, float zval) {
 		const float p = 3.5f * sg_abs + 0.5f;
 		const float sg = -sg_abs;
 		auto dv = [&](int i, float x, float y, float a, float d) {
-			tgt[i].m_x = x; tgt[i].m_y = y; tgt[i].m_z = 0.0f;
+			tgt[i].m_x = x; tgt[i].m_y = y; tgt[i].m_z = zval;
 			tgt[i].m_rgba = drgba;
 			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 		};
@@ -1711,7 +1743,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// (display_a in rgba) and point_width_scale sets only the spot size. No energy normalisation -
 		// scaling the peak by 1/sigma^2 made a larger dot dimmer, so point_width_scale brightened then
 		// darkened the dot instead of simply growing it.
-		set_dot(vertex, 0, cx, cy, sigma, rgba);
+		set_dot(vertex, 0, cx, cy, sigma, rgba, 0.0f);
 		for (int g = 1; g * 6 < int(m_vec_vpl); g++)
 			set_degenerate(vertex, g * 6);
 
@@ -1720,7 +1752,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (glow_vertex)
 		{
 			// analytic glow dot (glow_rgba is 0 when analytic_glow is off -> invisible)
-			set_dot(glow_vertex, 0, cx, cy, glow_sig, glow_rgba);
+			set_dot(glow_vertex, 0, cx, cy, glow_sig, glow_rgba, 0.0f);
 
 			// Halation around bright dwell dots (bullets). The rendered brightness includes the dwell
 			// boost, so only bright dots reach the threshold; the rim (gain) and the inner fill have
@@ -1752,9 +1784,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			else
 				set_degenerate(glow_vertex, 6);
 			if (ring_on && ring_fill > 0.0f)
-				set_dot(glow_vertex, 12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(sqrtf(ring_fill) * 0.0179f));
+				set_dot(glow_vertex, 12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(sqrtf(ring_fill) * 0.0179f), 0.0f);
 			else
 				set_degenerate(glow_vertex, 12);
+			// Overdrive white flare (slot 18): an overdriven dwell dot blooms white-hot here in the glow
+			// buffer (post-mask), at the dot's own size, so it is not patterned by the shadow mask.
+			if (flare_on)
+				set_dot(glow_vertex, 18, cx, cy, sigma, flare_rgba, flare_z);
+			else
+				set_degenerate(glow_vertex, 18);
 		}
 		return;
 	}
@@ -1790,8 +1828,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * s * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
-			set_dot(vertex, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap));
-			set_dot(vertex, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap));
+			set_dot(vertex, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), 0.0f);
+			set_dot(vertex, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), 0.0f);
 		}
 		else
 		{
@@ -1877,6 +1915,27 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// blank the ring/fill slots (used only by points) in the wider glow buffer
 		set_degenerate(glow_vertex, 6);
 		set_degenerate(glow_vertex, 12);
+		// Overdrive white flare (slots 18-23): an overdriven line blooms white-hot here in the glow buffer
+		// (post-mask), at the beam's own sigma (not the wide analytic glow), so it is not mask-patterned.
+		if (flare_on)
+		{
+			const float fpad = 3.5f * sigma + 0.5f;
+			const float fsx0 = x0 - dx * fpad, fsy0 = y0 - dy * fpad;
+			const float fsx1 = x1 + dx * fpad, fsy1 = y1 + dy * fpad;
+			const float fa0 = -fpad, fa1 = seg_len + fpad;
+			auto fv = [&](int i, float x, float y, float a, float b, float d) {
+				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = flare_z; glow_vertex[i].m_rgba = flare_rgba;
+				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
+			};
+			fv(18, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
+			fv(19, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
+			fv(20, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
+			fv(21, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
+			fv(22, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
+			fv(23, fsx0 - nx * fpad, fsy0 - ny * fpad, fa0, fa0 - seg_len, -fpad);
+		}
+		else
+			set_degenerate(glow_vertex, 18);
 	}
 }
 
@@ -2340,7 +2399,8 @@ int renderer_bgfx::draw(int update)
 			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
 				&& ((m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f)
 				 || (m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f)
-				 || (m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f));
+				 || (m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f)
+				 || (m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f));
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
@@ -2364,7 +2424,7 @@ int renderer_bgfx::draw(int update)
 						// core still draws; glow is simply skipped this frame.
 						if (m_glow_on)
 						{
-							const uint32_t gneeded = uint32_t(visible_count) * 18u;
+							const uint32_t gneeded = uint32_t(visible_count) * 24u;
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
@@ -2396,7 +2456,7 @@ int renderer_bgfx::draw(int update)
 										}
 										AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
 										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, scap, ecap);
-										if (gptr) glow_verts += 18;
+										if (gptr) glow_verts += 24;
 									}
 									else
 										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
@@ -2745,6 +2805,21 @@ int renderer_bgfx::draw(int update)
 				float pgv[4] = { m_chains->slider_value(0, "phosphor_gamut", 0.0f), 0.0f, 0.0f, 0.0f };
 				pg->set(pgv, sizeof(float) * 4);
 				pg->upload();
+			}
+			// Hue-preserving highlight roll-off (knee / max as multiples of beam_peak). Caps over-bright
+			// additive crossings while keeping chromaticity, so a blue line crossing stays blue instead of
+			// the panel desaturating it to purple. max <= knee disables. Defaults leave a single full line
+			// untouched (knee 1.0) and only roll the brighter overlaps. (.zw unused: overload whitening is
+			// done per-vector in put_analytic_line, tied to beam_energy, not from total pixel nits here.)
+			bgfx_uniform *ro = m_hdr_present_effect->uniform("u_hdr_rolloff");
+			if (ro)
+			{
+				float rov[4] = {
+					m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f),
+					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
+					0.0f, 0.0f };
+				ro->set(rov, sizeof(float) * 4);
+				ro->upload();
 			}
 			bgfx_uniform *st = m_hdr_present_effect->uniform("s_tex");
 			if (st) bgfx::setTexture(0, st->handle(), m_hdr_work->texture());

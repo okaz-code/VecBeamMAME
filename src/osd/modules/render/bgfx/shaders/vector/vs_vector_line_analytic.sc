@@ -1,5 +1,5 @@
 $input a_position, a_color0, a_texcoord1
-$output v_color0, v_texcoord1
+$output v_color0, v_texcoord1, v_texcoord0
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -8,6 +8,8 @@ $output v_color0, v_texcoord1
 // perpendicular distance, and the gaussian sigma (negative = point mode).
 // All four interpolate linearly across the expanded quad, giving every fragment
 // its exact line-local coordinates.
+// a_position.z carries the per-vector intensity overrange (>=0); clip z is forced to 0 (2D ortho), so
+// the slot is otherwise unused. Passed through as v_texcoord0.x for the fragment to scale the deposit.
 
 #include "common.sh"
 
@@ -21,4 +23,5 @@ void main()
 #endif
 	v_color0 = a_color0;
 	v_texcoord1 = a_texcoord1;
+	v_texcoord0 = vec2(a_position.z, 0.0);
 }
