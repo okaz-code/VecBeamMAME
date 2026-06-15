@@ -309,6 +309,36 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::imager_index)
 	}
 }
 
+TIMER_CALLBACK_MEMBER(vectrex_base_state::imager_coast)
+{
+	// Problem 3: the colour-wheel speed is integrated only on PWM falling edges (psg_port_w), so once the
+	// game stops driving the motor the wheel never slows. Here we spin it down with friction while idle.
+	if (m_imager_status == 0)
+		return;   // imager disabled
+
+	// "Idle" = no recent PWM falling edge. m_sl holds the last falling-edge time; active spin-up keeps it
+	// fresh (edges every few ms), so this never fires while the game is actually driving the motor.
+	if ((machine().time().as_double() - m_sl) < 0.15)
+		return;
+
+	if (m_imager_freq > 1.0)
+	{
+		// ~1 s coast-down time constant (0.95 per 50 ms tick).
+		m_imager_freq *= 0.95;
+		if (m_imager_freq < 1.0)
+			m_imager_freq = 1.0;
+	}
+	else
+	{
+		// Stopped: halt the wheel timers so a still wheel does not keep cycling eye / colour. psg_port_w
+		// re-arms the index timer (and thus the eye / colour cascade) once the motor is driven again.
+		m_imager_index_timer->adjust(attotime::never);
+		m_imager_eye_timer->adjust(attotime::never);
+		for (auto &t : m_imager_color_timers)
+			t->adjust(attotime::never);
+	}
+}
+
 void vectrex_base_state::psg_port_w(uint8_t data)
 {
 	uint8_t mcontrol = data & 0x40; /* IO6 controls the imager motor */
