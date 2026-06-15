@@ -261,6 +261,29 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::imager_eye)
 		// character that the game happens to draw during it. 50 = stock, +-0.01 rotation, 0.0002/step.
 		const double red_off = (int(m_io_3dredphase.read_safe(50)) - 50) / 5000.0;
 
+		// Eye changing: the old eye's image is now complete. Copy it out (capped) so screen_update can
+		// redraw both eyes' last completed frames together. Copying (rather than holding a range into the
+		// wrapping point ring) keeps it bounded even when the wheel is slow and the ring wraps many times.
+		// add_point pre-increments, so this eye's points are (m_eye_draw_start, m_point_index]: the point
+		// AT m_eye_draw_start belongs to the previous eye, and m_point_index is this eye's last point.
+		// Copying that exact span avoids prepending a foreign point (a spurious cross-screen line when the
+		// first vector is drawn) and avoids dropping this eye's last vector.
+		if (param != m_imager_status)
+		{
+			int n = 0;
+			if (m_eye_draw_start != m_point_index)
+			{
+				for (int i = (m_eye_draw_start + 1) % NVECT; n < EYE_FRAME_MAX; i = (i + 1) % NVECT)
+				{
+					m_eye_frame[m_imager_status][n++] = m_points[i];
+					if (i == m_point_index)
+						break;
+				}
+			}
+			m_eye_count[m_imager_status] = n;
+			m_eye_draw_start = m_point_index;
+		}
+
 		m_imager_status = param;
 		m_imager_color_timers[0]->adjust(attotime::from_double(rtime * std::max(0.0, m_imager_angles[0] + phase)),           m_imager_colors[coffset+2]);
 		m_imager_color_timers[1]->adjust(attotime::from_double(rtime * std::max(0.0, m_imager_angles[1] + phase + red_off)), m_imager_colors[coffset+1]);

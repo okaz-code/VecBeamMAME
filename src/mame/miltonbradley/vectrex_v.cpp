@@ -121,18 +121,40 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 {
 	screen_configuration();
 
-	/* start black */
-	m_vector->add_point(m_points[m_display_start].x,
-						m_points[m_display_start].y,
-						m_points[m_display_start].col,
-						0);
+	// 3D imager "Separate images": draw BOTH eyes' last completed frames together so the side-by-side
+	// pair is stable instead of the single eye that fell in the last refresh interval (which alternated /
+	// flickered). Gated on the wheel actually spinning (m_imager_freq) and both eye frames captured, so
+	// at startup / low speed (huge / meaningless eye intervals) it safely falls back to the stock path -
+	// the per-eye buffers are also capped (EYE_FRAME_MAX) so the renderer is never flooded.
+	const uint8_t conf = m_io_3dconf->read();
+	const bool stereo_split = (conf & 0x01) && (conf & 0x02) && m_imager_freq > 5.0
+		&& m_eye_count[1] > 0 && m_eye_count[2] > 0;
 
-	for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
+	if (stereo_split)
 	{
-		m_vector->add_point(m_points[i].x,
-							m_points[i].y,
-							m_points[i].col,
-							m_points[i].intensity);
+		for (int e = 1; e <= 2; e++)
+		{
+			/* blanked move to this eye frame's start (no joining line between the two images) */
+			m_vector->add_point(m_eye_frame[e][0].x, m_eye_frame[e][0].y, m_eye_frame[e][0].col, 0);
+			for (int i = 0; i < m_eye_count[e]; i++)
+				m_vector->add_point(m_eye_frame[e][i].x, m_eye_frame[e][i].y, m_eye_frame[e][i].col, m_eye_frame[e][i].intensity);
+		}
+	}
+	else
+	{
+		/* start black */
+		m_vector->add_point(m_points[m_display_start].x,
+							m_points[m_display_start].y,
+							m_points[m_display_start].col,
+							0);
+
+		for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
+		{
+			m_vector->add_point(m_points[i].x,
+								m_points[i].y,
+								m_points[i].col,
+								m_points[i].intensity);
+		}
 	}
 
 	m_vector->screen_update(screen, bitmap, cliprect);
@@ -158,6 +180,7 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity)
 	newpoint->y = y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
+	newpoint->eye = m_imager_status;   // tag with the eye currently being drawn (0 = imager off)
 }
 
 
