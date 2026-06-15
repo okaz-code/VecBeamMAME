@@ -1423,13 +1423,6 @@ static constexpr int   LINE_VERTICES_PER_LINE = 6 + 2 * LINE_CAP_SEGMENTS * 3;
 static constexpr float LINE_CAP_SIZE_PX       = 2.0f;  // cap radius (px at a 1920px-wide window)
 static constexpr float LINE_POINT_THRESHOLD   = 2.0f;  // segments shorter than this are drawn as points
 
-// Normalized tunable sigmoid (Dino Dini's curve, n and k in [-1, 1]); k=0 is linear.
-// Used by the renderer-side overload model to shape the display/width response.
-static float vector_overload_sigmoid(float n, float k)
-{
-	return (n - n * k) / (k - fabsf(n) * 2.0f * k + 1.0f);
-}
-
 // Analytic gaussian line integral: emit one expanded quad (6 vertices) carrying the
 // line-local coordinates; fs_vector_line_analytic evaluates the swept-spot exposure in
 // closed form, so AA, the cross profile and the end roll-off all come from the math.
@@ -1534,80 +1527,35 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	float dx = x1 - x0, dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
-	// Same renderer-side overload model as put_solid_line (width / display intensity / overload).
-	const float ov_threshold = m_chains->slider_value(0, "overload_threshold", -1.0f);
-	const bool  overload_chain = (ov_threshold >= 0.0f);
 	const float point_threshold = m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD);
 	const bool as_point = (seg_len <= point_threshold);
 
-	float width;
-	float display_a;
-	float ovld = 0.0f;
-	if (overload_chain)
-	{
-		const float src = std::clamp(prim->beam_energy, 0.0f, 1.0f);
-		const float k   = m_chains->slider_value(0, "overload_sigmoid_k", 0.0f);
-		const float thr = std::clamp(ov_threshold, 0.001f, 1.0f);
-		const float out = std::clamp(vector_overload_sigmoid(src, k), 0.0f, 1.0f);
-		const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
-		const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
-		const float ow_max = m_chains->slider_value(0, "overload_width_max", 5.0f);
-		float beam_units;
-		if (out <= thr)
-		{
-			const float t = out / thr;
-			display_a = t;
-			const float w = std::clamp(vector_overload_sigmoid(t,
-				m_chains->slider_value(0, "overload_width_curve_low", 0.0f)), 0.0f, 1.0f);
-			beam_units = bw_min + w * (bw_max - bw_min);
-		}
-		else
-		{
-			display_a = 1.0f;
-			const float span = std::max(0.001f, 1.0f - thr);
-			ovld = std::clamp((out - thr) / span, 0.0f, 1.0f);
-			const float w = std::clamp(vector_overload_sigmoid(ovld,
-				m_chains->slider_value(0, "overload_width_curve_high", 0.0f)), 0.0f, 1.0f);
-			beam_units = bw_max + w * (ow_max - bw_max);
-		}
-		if (as_point)
-		{
-			const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
-			const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
-			const float w = std::clamp(vector_overload_sigmoid(src,
-				m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
-			beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
-		}
-		width = beam_units * (float(s_width[window().index()]) / 1920.0f);
-	}
-	else
-	{
-		display_a = prim->color.a;
-		// Non-overload chains: if they define beam_width sliders (vector-color / monochrome), let
-		// those drive the width too (interpolated by the line's display intensity), the same way
-		// the overload chain does - not just the ini beam_width options. Chains without the slider
-		// (CRT etc.) keep the stock prim->width.
-		const float bw_min = m_chains->slider_value(0, "beam_width_min", -1.0f);
-		if (bw_min >= 0.0f)
-		{
-			const float bw_max = m_chains->slider_value(0, "beam_width_max", bw_min);
-			const float intensity = std::clamp(prim->color.a, 0.0f, 1.0f);
-			float beam_units = bw_min + intensity * (bw_max - bw_min);
-			if (as_point)
-			{
-				const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
-				const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
-				const float w = std::clamp(vector_overload_sigmoid(intensity,
-					m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
-				beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
-			}
-			width = beam_units * (float(s_width[window().index()]) / 1920.0f);
-		}
-		else
-		{
-			width = prim->width;
-		}
-	}
+	// Unified per-vector transfers. drive = beam_energy when the device supplies it (AVG: Tempest /
+	// Star Wars / Major Havoc), else the display intensity (DVG: Asteroids etc.). Brightness and width
+	// are two independent clipped power curves: out = clamp((drive-lo)/(hi-lo),0,1)^gamma. Decoupling
+	// them lets brightness saturate early while width keeps growing - this subsumes the old overload
+	// model (now removed). lo=0 / hi=1 / curve=1 reproduces the plain intensity-linear response.
+	const float drive = (prim->beam_energy >= 0.0f)
+		? std::clamp(prim->beam_energy, 0.0f, 1.0f)
+		: std::clamp(prim->color.a, 0.0f, 1.0f);
+	auto transfer = [](float x, float lo, float hi, float g) -> float {
+		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
+		return (g == 1.0f) ? t : powf(t, g);
+	};
+	const float display_a = transfer(drive,
+		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
+		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
+		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	const float wf = transfer(drive,
+		m_chains->slider_value(0, "width_clip_low",  0.0f),
+		m_chains->slider_value(0, "width_clip_high", 1.0f),
+		m_chains->slider_value(0, "width_curve",     1.0f));
+	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
+	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
+	float beam_units = bw_min + wf * (bw_max - bw_min);
+	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
+	float width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
 	// Length fade + flicker + window-blend weight, identical to the classic path.
@@ -1702,10 +1650,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
 		sigma += hv_droop * 2.5f * (float(s_width[window().index()]) / 1920.0f) * m_hv_load_norm;
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
-	// vanish. Lines are 1D-continuous so they can go thinner than points (which have no extent
-	// in either axis and need a wider floor). 0.33 sigma = FWHM ~0.78px, about the thinnest a
-	// vector line stays solid - this is the practical minimum the beam_width slider reaches.
-	const float sig_floor = as_point ? 0.85f : 0.33f;
+	// vanish. Points now use the same box-integrated AA as lines (see fs_vector_line_analytic point
+	// mode), so they can share the line's thin floor - this keeps a point and a connected line of equal
+	// intensity the same size/brightness (previously the point's larger 0.85 floor made it read brighter).
+	const float sig_floor = 0.33f;
 	if (sigma < sig_floor) sigma = sig_floor;
 	const float pad = 3.5f * sigma + 0.5f;
 
@@ -1793,6 +1741,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
 		// CORE: the sharp dwelling-beam spot (emission - masked normally by the shadow mask). Blank the
 		// rest of the core buffer; the halation ring / inner fill now live in the glow buffer instead.
+		// The dot carries the same colour as a line of equal intensity: the shader's box-integrated AA
+		// already saturates the spot peak to 1 once it covers a fragment, so a resolved dot's brightness
+		// is independent of its size. Brightness therefore comes purely from the intensity transfer
+		// (display_a in rgba) and point_width_scale sets only the spot size. No energy normalisation -
+		// scaling the peak by 1/sigma^2 made a larger dot dimmer, so point_width_scale brightened then
+		// darkened the dot instead of simply growing it.
 		set_dot(vertex, 0, cx, cy, sigma, rgba);
 		for (int g = 1; g * 6 < int(m_vec_vpl); g++)
 			set_degenerate(vertex, g * 6);
@@ -1979,93 +1933,37 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	float dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
-	// Renderer-side overload model. Consumes prim->beam_energy (normalized 0..1 beam energy supplied
-	// by the vector device) and the chain's overload sliders to derive the display intensity, the
-	// beam width and the overload amount. This is the math the emulation core used to do; keeping it
-	// here leaves the device renderer-agnostic. Chains without an "overload_threshold" slider opt out
-	// (overload_chain == false) and keep the stock width/intensity, so CRT chains that do not define
-	// these sliders are unaffected.
-	const float ov_threshold = m_chains->slider_value(0, "overload_threshold", -1.0f);
-	const bool  overload_chain = (ov_threshold >= 0.0f);
 	const float point_threshold = m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD);
 	// Point-treatment test: short segments (add_point gives x0==x1,y0==y1 -> seg_len 0) are drawn as a
 	// single circle so the two half-circle caps do not overlap into a double-bright distorted blob.
 	const bool as_point = (seg_len <= point_threshold);
 
-	float width;
-	float display_a;    // line display intensity (0..1), written to the vertex alpha
-	float ovld = 0.0f;  // overload amount (0..1) handed to fs_vector_line via m_u for the defocus
-
-	if (overload_chain)
-	{
-		const float src = std::clamp(prim->beam_energy, 0.0f, 1.0f);
-		const float k   = m_chains->slider_value(0, "overload_sigmoid_k", 0.0f);
-		const float thr = std::clamp(ov_threshold, 0.001f, 1.0f);
-		const float out = std::clamp(vector_overload_sigmoid(src, k), 0.0f, 1.0f);
-		const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
-		const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
-		const float ow_max = m_chains->slider_value(0, "overload_width_max", 5.0f);
-
-		float beam_units;
-		if (out <= thr)
-		{
-			// below the threshold: ramp display 0..1 and width min..max via the low curve
-			const float t = out / thr;
-			display_a = t;
-			const float w = std::clamp(vector_overload_sigmoid(t,
-				m_chains->slider_value(0, "overload_width_curve_low", 0.0f)), 0.0f, 1.0f);
-			beam_units = bw_min + w * (bw_max - bw_min);
-		}
-		else
-		{
-			// above the threshold: display clips to full, width grows max..overload_max, beam overloads
-			display_a = 1.0f;
-			const float span = std::max(0.001f, 1.0f - thr);
-			ovld = std::clamp((out - thr) / span, 0.0f, 1.0f);
-			const float w = std::clamp(vector_overload_sigmoid(ovld,
-				m_chains->slider_value(0, "overload_width_curve_high", 0.0f)), 0.0f, 1.0f);
-			beam_units = bw_max + w * (ow_max - bw_max);
-		}
-
-		// points use a dedicated dot size interpolated by the source value (independent of width)
-		if (as_point)
-		{
-			const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
-			const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
-			const float w = std::clamp(vector_overload_sigmoid(src,
-				m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
-			beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
-		}
-
-		// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
-		width = beam_units * (float(s_width[window().index()]) / 1920.0f);
-	}
-	else
-	{
-		display_a = prim->color.a;
-		// Non-overload chains: honour their beam_width / beam_dot sliders if present (vector-color /
-		// monochrome), interpolated by display intensity, so they work like the overload chain.
-		const float bw_min = m_chains->slider_value(0, "beam_width_min", -1.0f);
-		if (bw_min >= 0.0f)
-		{
-			const float bw_max = m_chains->slider_value(0, "beam_width_max", bw_min);
-			const float intensity = std::clamp(prim->color.a, 0.0f, 1.0f);
-			float beam_units = bw_min + intensity * (bw_max - bw_min);
-			if (as_point)
-			{
-				const float dmin = m_chains->slider_value(0, "beam_dot_size_min", 0.1f);
-				const float dmax = m_chains->slider_value(0, "beam_dot_size_max", 0.5f);
-				const float w = std::clamp(vector_overload_sigmoid(intensity,
-					m_chains->slider_value(0, "beam_dot_size_curve", 0.0f)), 0.0f, 1.0f);
-				beam_units = std::max(0.0f, dmin + w * (dmax - dmin));
-			}
-			width = beam_units * (float(s_width[window().index()]) / 1920.0f);
-		}
-		else
-		{
-			width = prim->width;
-		}
-	}
+	// Unified per-vector transfers (see put_analytic_line for the full rationale). drive = beam_energy
+	// when the device supplies it, else the display intensity. Brightness and width are two independent
+	// clipped power curves out = clamp((drive-lo)/(hi-lo),0,1)^gamma, decoupled so brightness can
+	// saturate while width keeps growing - this replaces the old renderer-side overload model.
+	const float drive = (prim->beam_energy >= 0.0f)
+		? std::clamp(prim->beam_energy, 0.0f, 1.0f)
+		: std::clamp(prim->color.a, 0.0f, 1.0f);
+	auto transfer = [](float x, float lo, float hi, float g) -> float {
+		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
+		return (g == 1.0f) ? t : powf(t, g);
+	};
+	const float display_a = transfer(drive,
+		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
+		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
+		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	const float wf = transfer(drive,
+		m_chains->slider_value(0, "width_clip_low",  0.0f),
+		m_chains->slider_value(0, "width_clip_high", 1.0f),
+		m_chains->slider_value(0, "width_curve",     1.0f));
+	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
+	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
+	float beam_units = bw_min + wf * (bw_max - bw_min);
+	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
+	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
+	float width = beam_units * (float(s_width[window().index()]) / 1920.0f);
+	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
 	// Length fade (port of the HLSL vector.fx length modulation): longer segments lose intensity,
@@ -2369,16 +2267,20 @@ int renderer_bgfx::draw(int update)
 			m_vec_win_t1 = vec_now;
 			m_vec_new_frame = false;
 		}
-		// While paused no new events arrive; keep showing the queued primitives as a still image.
-		const bool vec_draw_all = window().machine().paused();
+		// While paused no new events arrive and m_vec_new_frame stays false, so the time window below is
+		// frozen at the last running frame's bounds. We deliberately keep applying that window even while
+		// paused: in beam-event mode the primitive list holds a whole persistence window of timestamped
+		// lines (several refreshes' worth), so showing all of them would overlay multiple frames into a
+		// ghosted still. Filtering by the frozen window shows exactly the single frame that was visible at
+		// the instant of the pause.
 		// Window-boundary blend: treat each event as a pulse of this width and give a boundary
 		// line the overlap fraction in each adjacent window (energy-conserving). This hides the
 		// temporal-aliasing blink when the list period beats against the refresh (a line would
 		// otherwise hop between "0 times in this window" and "twice in the next"). 0 = hard cut.
 		const double vec_blend = std::max(0.0, double(m_chains->slider_value(0, "vector_window_blend", 0.0f)) * 0.001);
-		auto vec_window_weight = [this, vec_draw_all, vec_blend] (const render_primitive &p) -> float
+		auto vec_window_weight = [this, vec_blend] (const render_primitive &p) -> float
 		{
-			if (!m_vec_beam_events || p.t0 < 0.0 || vec_draw_all)
+			if (!m_vec_beam_events || p.t0 < 0.0)
 				return 1.0f;
 			if (vec_blend <= 0.0)
 				return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
