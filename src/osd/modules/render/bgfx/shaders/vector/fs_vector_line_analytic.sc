@@ -50,8 +50,19 @@ void main()
 		}
 		else
 		{
-			// point mode: 2D gaussian around the dwell position
-			fade = exp(-(a * a + d * d) * inv_2s2);
+			// point mode: 2D gaussian around the dwell position, box-integrated over the fragment
+			// footprint on BOTH axes (separable) - the same AA as the line's perpendicular. Without it
+			// a sub-pixel dot point-sampled its peak only when it happened to sit on a pixel centre, so
+			// a small dot read brighter/crisper than a thin line of equal intensity (and aliased while
+			// moving). Box integration conserves the dot's energy so it matches a line at the same sigma,
+			// which lets points use the same thin sigma floor as lines. Normalised so peak -> 1 as w -> 0
+			// (large dots unchanged). 1.2533141 = sqrt(pi/2).
+			float inv_pt = 0.70710678 / sg;
+			float wa = 0.5 * (abs(dFdx(a)) + abs(dFdy(a))) + 0.5 * sqrt(dFdx(a) * dFdx(a) + dFdy(a) * dFdy(a));
+			float wd = 0.5 * (abs(dFdx(d)) + abs(dFdy(d))) + 0.5 * sqrt(dFdx(d) * dFdx(d) + dFdy(d) * dFdy(d));
+			float fa = (wa > 1e-4) ? (sg * 1.2533141 / wa) * (erf_approx((a + 0.5 * wa) * inv_pt) - erf_approx((a - 0.5 * wa) * inv_pt)) : exp(-a * a * inv_2s2);
+			float fd = (wd > 1e-4) ? (sg * 1.2533141 / wd) * (erf_approx((d + 0.5 * wd) * inv_pt) - erf_approx((d - 0.5 * wd) * inv_pt)) : exp(-d * d * inv_2s2);
+			fade = fa * fd;
 		}
 	}
 	else
