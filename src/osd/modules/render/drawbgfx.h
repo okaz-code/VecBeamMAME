@@ -194,10 +194,6 @@ private:
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
 	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
-	// Half-mirror backdrop treatment (monochrome test): UV-fluorescence + defocus + parallax applied to
-	// artwork quads, additive (half-mirror combine). Active only when a monochrome chain exposes the
-	// backdrop_* sliders. Used by render_textured_quad in place of the plain gui effect.
-	bgfx_effect *m_backdrop_effect = nullptr;
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
 
@@ -255,13 +251,6 @@ private:
 	// slider), which hides the temporal-aliasing blink when the list period beats against the
 	// refresh; 1.0 for lines fully inside the window.
 	float m_vec_line_weight = 1.0f;
-
-	// Analog integrator drift (AVG): op-amp offset slowly translates the whole image, the CNTR
-	// command pulling it back - a sub-Hz wobble that gives the picture some "life". Modelled as a
-	// per-axis sum of incommensurate low-frequency sines (mean zero = self-recentring), recomputed
-	// each frame from machine time and added to every vector vertex. 0 px when analog_drift is off.
-	float m_vec_drift_x = 0.0f;
-	float m_vec_drift_y = 0.0f;
 
 	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
 	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. m_hv_energy
