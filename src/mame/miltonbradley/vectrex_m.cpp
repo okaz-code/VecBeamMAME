@@ -77,13 +77,27 @@ void vectrex_base_state::configure_imager(bool reset_refresh, const double *imag
 {
 	m_reset_refresh = reset_refresh;
 	m_imager_angles = imager_angles;
+	// Remember the cart-detected disc so the 3DCONF "3D color disc = Auto" setting can restore it.
+	m_cart_reset_refresh = reset_refresh;
+	m_cart_imager_angles = imager_angles;
 }
 
 void vectrex_base_state::screen_configuration()
 {
-	unsigned char cport = m_io_3dconf->read();
+	const ioport_value conf = m_io_3dconf->read();
+	unsigned char cport = (unsigned char)conf;
 
 	/* Vectrex 'dipswitch' configuration */
+
+	/* 3D color disc selection (0x300): Auto restores the cart-detected disc, otherwise force one.
+	   The disc sets both the segment angle table and (via the m_imager_angles==minestorm_3d_angles
+	   test below) the colour order - Mine Storm is G-R-B, Narrow / Crazy Coaster are R-G-B. */
+	switch (conf & 0x300)
+	{
+	case 0x100: m_imager_angles = minestorm_3d_angles;  m_reset_refresh = 0; break; // Mine Storm (G-R-B)
+	case 0x200: m_imager_angles = narrow_escape_angles; m_reset_refresh = 1; break; // Narrow / Coaster (R-G-B)
+	default:    m_imager_angles = m_cart_imager_angles;  m_reset_refresh = m_cart_reset_refresh; break; // Auto
+	}
 
 	/* Imager control */
 	if (cport & 0x01) /* Imager enabled */
@@ -229,10 +243,28 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::imager_eye)
 		const int coffset = param > 1 ? 3: 0;
 		const double rtime = (1.0 / m_imager_freq);
 
+		// 3D color phase trim: shift the colour-segment boundaries relative to the index hole. The real
+		// index position vs the segment layout is only approximate (and the wheel's rotation direction is
+		// uncertain), so this aligns the colour windows by eye in either direction. Both sliders centre at
+		// 50 (= stock, J. Nelson angles unchanged); below 50 shifts segments earlier (green moves toward /
+		// over the index, reducing blue/red there), above 50 shifts them later. PORT_ADJUSTER is integer
+		// 0..100, so a single slider can only do 1% steps - the coarse one does 0.005/step (visible) and
+		// the FINE one trims within one coarse step (0.0001/step) to reach values "between 49 and 50".
+		// Absent on non-imager drivers -> 50 (stock).
+		// NB: read_safe() returns an unsigned ioport_value, so cast to int BEFORE subtracting 50 - a raw
+		// (value - 50) underflows to a huge positive number for sliders below 50, which pushed the colour
+		// timers far past the window (no colour change -> the frame stuck on one colour).
+		const double phase = (int(m_io_3dphase.read_safe(50))      - 50) / 200.0      // coarse: +-0.25, 0.005/step
+		                   + (int(m_io_3dphase_fine.read_safe(50)) - 50) / 10000.0;   // fine:   +-0.005, 0.0001/step
+		// Red-segment-only phase: shifts both the blue->red and red->green edges (i.e. the whole red band)
+		// without touching the blue start or the green end, so the thin red window can be slid off a green
+		// character that the game happens to draw during it. 50 = stock, +-0.01 rotation, 0.0002/step.
+		const double red_off = (int(m_io_3dredphase.read_safe(50)) - 50) / 5000.0;
+
 		m_imager_status = param;
-		m_imager_color_timers[0]->adjust(attotime::from_double(rtime * m_imager_angles[0]), m_imager_colors[coffset+2]);
-		m_imager_color_timers[1]->adjust(attotime::from_double(rtime * m_imager_angles[1]), m_imager_colors[coffset+1]);
-		m_imager_color_timers[2]->adjust(attotime::from_double(rtime * m_imager_angles[2]), m_imager_colors[coffset]);
+		m_imager_color_timers[0]->adjust(attotime::from_double(rtime * std::max(0.0, m_imager_angles[0] + phase)),           m_imager_colors[coffset+2]);
+		m_imager_color_timers[1]->adjust(attotime::from_double(rtime * std::max(0.0, m_imager_angles[1] + phase + red_off)), m_imager_colors[coffset+1]);
+		m_imager_color_timers[2]->adjust(attotime::from_double(rtime * std::max(0.0, m_imager_angles[2] + phase + red_off)), m_imager_colors[coffset]);
 	}
 }
 
@@ -278,9 +310,17 @@ void vectrex_base_state::psg_port_w(uint8_t data)
 
 			if (m_imager_freq > 1)
 			{
-				attotime eye_time = attotime::from_double(std::min(1.0 / m_imager_freq, m_imager_eye_timer->remaining().as_double()));
-				attotime eye_period = attotime::from_double(1.0 / m_imager_freq);
-				m_imager_eye_timer->adjust(eye_time, 2, eye_period);
+				// Drive the colour wheel from a single phase reference: the INDEX pulse (one per
+				// rotation). Re-arm the index timer to the current rotation frequency, phase-preserving
+				// (min(remaining, period)) so the game's sync loop sees the real speed on CA1/IO7 - the
+				// index timer was previously fixed at its 1 Hz start value and never tracked the motor.
+				// imager_index() derives everything else from this edge (eye switch at theta=0 here and
+				// at theta=pi via its half-rotation one-shot, plus the colour-segment timers), so the eye
+				// timer is no longer driven from here: its param used to be clobbered to 2 on every PWM
+				// edge, pinning the imager on the right eye and breaking Separate-images / per-eye colour.
+				attotime period = attotime::from_double(1.0 / m_imager_freq);
+				attotime next   = attotime::from_double(std::min(1.0 / m_imager_freq, m_imager_index_timer->remaining().as_double()));
+				m_imager_index_timer->adjust(next, 2, period);
 			}
 		}
 	}
@@ -294,6 +334,8 @@ void vectrex_base_state::psg_port_w(uint8_t data)
 void vectrex_base_state::driver_start()
 {
 	m_imager_angles = unknown_game_angles;
+	m_cart_imager_angles = unknown_game_angles;   // default until machine_start's cart detection
+	m_cart_reset_refresh = 1;
 	m_beam_color = rgb_t::white();
 	for (auto & elem : m_imager_colors)
 		elem = rgb_t::white();

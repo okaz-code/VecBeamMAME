@@ -36,6 +36,9 @@ protected:
 		m_io_contr(*this, {"CONTR1X", "CONTR1Y", "CONTR2X", "CONTR2Y"}),
 		m_io_buttons(*this, "BUTTONS"),
 		m_io_3dconf(*this, "3DCONF"),
+		m_io_3dphase(*this, "3DPHASE"),
+		m_io_3dphase_fine(*this, "3DPHASEF"),
+		m_io_3dredphase(*this, "3DREDPH"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -105,6 +108,10 @@ private:
 	int m_lightpen_port = 0;
 	int m_reset_refresh = 0;
 	const double *m_imager_angles = nullptr;
+	// Cart-detected color disc (angles + refresh strategy), kept so the 3DCONF "3D color disc = Auto"
+	// setting can revert to it after a manual override.
+	const double *m_cart_imager_angles = nullptr;
+	int m_cart_reset_refresh = 0;
 	rgb_t m_imager_colors[6];
 	unsigned char m_imager_pinlevel = 0;
 	int m_old_mcontrol = 0;
@@ -141,6 +148,9 @@ private:
 	optional_ioport_array<4> m_io_contr;
 	required_ioport m_io_buttons;
 	required_ioport m_io_3dconf;
+	optional_ioport m_io_3dphase;        // 3D imager colour-segment phase trim, coarse (absent on raaspec)
+	optional_ioport m_io_3dphase_fine;   // ... fine sub-step trim
+	optional_ioport m_io_3dredphase;     // ... red-segment-only phase shift
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;
