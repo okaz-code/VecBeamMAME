@@ -279,6 +279,12 @@ void vectrex_state::video_start()
 	m_imager_index_timer = timer_alloc(FUNC(vectrex_state::imager_index), this);
 	m_imager_index_timer->adjust(attotime::from_hz(m_imager_freq), 2, attotime::from_hz(m_imager_freq));
 
+	// Coast timer (problem 3): the colour wheel's speed is only integrated on PWM edges in psg_port_w, so
+	// once the game stops driving the motor the wheel never spins down. Poll periodically and apply friction
+	// when the motor is idle, halting the wheel timers when it stops.
+	m_imager_coast_timer = timer_alloc(FUNC(vectrex_state::imager_coast), this);
+	m_imager_coast_timer->adjust(attotime::from_msec(50), 0, attotime::from_msec(50));
+
 	for (int i = 0; i < 3; i++)
 	{
 		m_imager_color_timers[i] = timer_alloc(FUNC(vectrex_state::imager_change_color), this);

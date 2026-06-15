@@ -55,6 +55,7 @@ protected:
 	TIMER_CALLBACK_MEMBER(update_level);
 	TIMER_CALLBACK_MEMBER(imager_eye);
 	TIMER_CALLBACK_MEMBER(imager_index);
+	TIMER_CALLBACK_MEMBER(imager_coast);
 	TIMER_CALLBACK_MEMBER(lightpen_trigger);
 	TIMER_CALLBACK_MEMBER(refresh);
 	TIMER_CALLBACK_MEMBER(zero_integrators);
@@ -88,6 +89,7 @@ protected:
 	emu_timer *m_imager_color_timers[3]{};
 	emu_timer *m_imager_eye_timer = nullptr;
 	emu_timer *m_imager_index_timer = nullptr;
+	emu_timer *m_imager_coast_timer = nullptr;
 	emu_timer *m_imager_level_timer = nullptr;
 	emu_timer *m_lp_t = nullptr;
 
