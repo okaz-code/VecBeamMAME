@@ -74,6 +74,19 @@ static INPUT_PORTS_START(vectrex)
 	PORT_CONFSETTING(0x40, "Green")
 	PORT_CONFSETTING(0x60, "Blue")
 	PORT_CONFSETTING(0x80, "Color")
+	PORT_CONFNAME(0x300, 0x000, "3D color disc")
+	PORT_CONFSETTING(0x000, "Auto (cart)")
+	PORT_CONFSETTING(0x100, "Mine Storm (G-R-B)")
+	PORT_CONFSETTING(0x200, "Narrow / Coaster (R-G-B)")
+
+	PORT_START("3DPHASE")
+	PORT_ADJUSTER(50, "3D color phase") // colour segments vs index hole; 50 = stock, <50 earlier, >50 later (coarse, 0.005/step)
+
+	PORT_START("3DPHASEF")
+	PORT_ADJUSTER(50, "3D color phase (fine)") // sub-step trim, 50 = none; spans one coarse step (0.0001/step)
+
+	PORT_START("3DREDPH")
+	PORT_ADJUSTER(50, "3D red phase") // shifts ONLY the red segment (its blue/red and red/green edges); 50 = stock
 
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")
