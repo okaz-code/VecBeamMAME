@@ -328,12 +328,12 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	if (m_beam_event_mode)
 	{
 		// Timed points are consumed once emitted, except those young enough to still carry
-		// energy into the next window (the renderer's window-boundary blend, slider max 8ms):
+		// energy into the next window (the renderer's window-boundary blend, slider max 50ms):
 		// they survive one more emission so the next frame can draw their remainder. Their
 		// emitted flag keeps the notifiers above from firing twice for the same beam event.
 		// Untimed points keep stock semantics (redrawn until the next clear_list).
 		const attotime now = machine().time();
-		const attotime keep = attotime::from_msec(8);
+		const attotime keep = attotime::from_msec(50);
 		int w = 0;
 		for (int i = 0; i < m_vector_index; i++)
 		{
