@@ -21,6 +21,14 @@ void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, 
 	const rectangle &visarea = m_screen->visible_area();
 	int intensity = 0xff;
 
+	// Beam-event timing: stamp each vector with the machine time it is drawn (this callback runs during
+	// CCPU execution). The CCPU redraw is VBLANK-locked, so the timestamp is frame-grained; that is
+	// enough for Cinematronics' characteristic OVERLOAD flicker - when the image needs more than one
+	// frame to draw, consecutive frames' vectors get distinct times, letting the bgfx beam-event
+	// renderer retain and composite the partial frames instead of dropping them. No-op when beam events
+	// are off (renderer enables them via -bgfx_vec_beam_events; the window weight ignores t0 then).
+	const attotime now = machine().time();
+
 	/* adjust for slop */
 	sx -= visarea.left();
 	ex -= visarea.left();
@@ -33,10 +41,10 @@ void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, 
 
 	/* move to the starting position if we're not there already */
 	if (sx != m_lastx || sy != m_lasty)
-		m_vector->add_point(sx << 16, sy << 16, 0, 0);
+		m_vector->add_point(sx << 16, sy << 16, 0, 0, -1.0f, now, now);
 
 	/* draw the vector */
-	m_vector->add_point(ex << 16, ey << 16, m_vector_color, intensity);
+	m_vector->add_point(ex << 16, ey << 16, m_vector_color, intensity, -1.0f, now, now);
 
 	/* remember the last point */
 	m_lastx = ex;
