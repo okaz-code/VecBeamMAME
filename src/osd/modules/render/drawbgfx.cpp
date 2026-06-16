@@ -161,6 +161,11 @@ inline renderer_bgfx::parent_module_holder::~parent_module_holder()
 // HDR PoC: true while the swapchain runs in HDR10 (PQ / Rec.2020, RGB10A2). Set at library
 // init from -bgfx_hdr and the device caps; every later bgfx::reset must carry the same flags.
 static bool s_bgfx_hdr_active = false;
+// macOS EDR: true while HDR is active AND the backend is Metal. Metal does not use HDR10/PQ; the
+// swapchain runs as an extended-linear float layer (RGBA16F + extendedLinearSRGB) and the present
+// pass outputs linear values (1.0 = SDR white) instead of PQ. Selects the EDR branch in
+// fs_vector_hdr_present (u_hdr_params.w). Set once after init alongside s_bgfx_hdr_active.
+static bool s_bgfx_edr_active = false;
 
 namespace osd {
 
@@ -392,6 +397,25 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	{
 		osd_printf_warning("BGFX: HDR10 requested but not available (is Windows HDR on, backend d3d11/d3d12?), falling back to SDR\n");
 		s_bgfx_hdr_active = false;
+	}
+
+	// macOS EDR: on the Metal backend an "HDR10" reset is honoured as Extended Dynamic Range (see
+	// renderer_mtl.mm) - extended-linear float layer, no PQ. Flag it so the present pass takes the
+	// linear EDR branch instead of the Windows PQ encode.
+	s_bgfx_edr_active = s_bgfx_hdr_active && (bgfx::getRendererType() == bgfx::RendererType::Metal);
+
+	// Explicit confirmation (non-visual). With -bgfx_hdr the renderer is in one of three states; print
+	// which, so EDR/HDR10 can be verified from the log instead of by eye (-verbose). The display still
+	// has to grant headroom for HDR to actually show; that is a hardware/OS condition checkable via
+	// NSScreen.maximumExtendedDynamicRangeColorComponentValue > 1.0.
+	if (m_options->bgfx_hdr())
+	{
+		if (s_bgfx_edr_active)
+			osd_printf_verbose("BGFX: HDR present path = macOS EDR (Metal, extended-linear RGBA16F)\n");
+		else if (s_bgfx_hdr_active)
+			osd_printf_verbose("BGFX: HDR present path = HDR10 (PQ / Rec.2020, RGB10A2)\n");
+		else
+			osd_printf_verbose("BGFX: HDR present path = SDR fallback (HDR requested but unavailable)\n");
 	}
 
 	bgfx::reset(wdim.width(), wdim.height(),
@@ -2793,7 +2817,7 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "beam_peak_nits", 1000.0f),
 					float(m_module().options().bgfx_hdr_paper_white()),
 					s_bgfx_hdr_active ? 1.0f : 0.0f,
-					0.0f };
+					s_bgfx_edr_active ? 1.0f : 0.0f };
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
 			}

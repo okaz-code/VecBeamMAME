@@ -4,8 +4,9 @@ $input v_color0, v_texcoord0
 // copyright-holders:okaz-code
 // HDR present: the linear working target holds the fully composed image in absolute nits
 // (vector + artwork). Encode it for the backbuffer: Rec.2020 + ST.2084 PQ for an HDR10
-// swapchain, or gamma (paper_white -> 1.0) for the SDR fallback.
-// u_hdr_params = (beam_peak, paper_white, hdr_active, 0)
+// swapchain (Windows/DXGI), linear extended for macOS EDR, or gamma (paper_white -> 1.0)
+// for the SDR fallback.
+// u_hdr_params = (beam_peak, paper_white, hdr_active, edr_active)
 
 #include "common.sh"
 
@@ -19,6 +20,7 @@ void main()
 {
 	float paper_white = u_hdr_params.y;
 	bool  hdr         = u_hdr_params.z > 0.5;
+	bool  edr         = u_hdr_params.w > 0.5;   // macOS EDR: linear extended output instead of PQ
 
 	vec3 L = max(texture2D(s_tex, v_texcoord0).rgb, vec3_splat(0.0));  // nits
 
@@ -47,7 +49,19 @@ void main()
 	}
 
 	vec3 outc;
-	if (hdr)
+	if (edr)
+	{
+		// macOS EDR (extendedLinearSRGB colorspace): the compositor expects LINEAR values where
+		// 1.0 == SDR reference white and values >1.0 use the display's HDR headroom. The working
+		// target is in absolute nits with the artwork/backdrop seeded at paper_white nits, so
+		// normalising by paper_white maps SDR white -> 1.0 and over-bright vectors (overload,
+		// additive crossings) into the headroom. No PQ and no gamma encode: the layer colorspace
+		// applies the display transfer, so this is also correct on non-EDR displays where the
+		// >1.0 portion simply clips to SDR white. (709 primaries == sRGB primaries, so the P22
+		// phosphor-gamut push below is skipped for EDR; it targets the Rec.2020 PQ container.)
+		outc = L / max(paper_white, 1.0);
+	}
+	else if (hdr)
 	{
 		// Rec.709 -> Rec.2020 (standard). Blended with a game-RGB -> P22-phosphor-primaries matrix
 		// (same Rec.2020 container) so phosphor_gamut pushes colours toward the real CRT phosphor
