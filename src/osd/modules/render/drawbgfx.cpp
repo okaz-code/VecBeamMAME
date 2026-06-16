@@ -2702,12 +2702,21 @@ int renderer_bgfx::draw(int update)
 				m_hdr_screen_effect->submit(seed_view);
 			}
 
+			// EDR-only SDR-content level: under macOS EDR the UI/artwork white is anchored to 1.0 =
+			// the display's SDR reference white (= the brightness setting), which can read much
+			// brighter than Windows HDR10's fixed paper_white nits. paper_white only moves the vector
+			// (beam_peak/paper_white) because the UI cancels to paper_white/paper_white = 1.0. This
+			// knob seeds the SDR-anchored content (UI + artwork blends) below paper_white so it
+			// presents at < 1.0 on EDR, dimming it relative to the HDR vectors without touching their
+			// brightness. Windows/SDR keep the factor at 1.0 (no change). Multiply blend stays a unit
+			// ratio.
+			const float edr_ui = s_bgfx_edr_active ? m_chains->slider_value(0, "edr_sdr_level", 1.0f) : 1.0f;
 			// Set the per-frame nits scale on the HDR gui effects (multiply stays a unit ratio).
 			for (int b = 0; b < 4; b++)
 			{
 				if (m_hdr_gui_effect[b] == nullptr) continue;
 				bgfx_uniform *u = m_hdr_gui_effect[b]->uniform("u_hdr_gui");
-				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : paper_white, 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
+				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : (paper_white * edr_ui), 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
 			}
 		}
 		setup_ortho_view();
