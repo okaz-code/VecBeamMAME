@@ -2355,16 +2355,22 @@ int renderer_bgfx::draw(int update)
 		// temporal-aliasing blink when the list period beats against the refresh (a line would
 		// otherwise hop between "0 times in this window" and "twice in the next"). 0 = hard cut.
 		const double vec_blend = std::max(0.0, double(m_chains->slider_value(0, "vector_window_blend", 0.0f)) * 0.001);
-		auto vec_window_weight = [this, vec_blend] (const render_primitive &p) -> float
-		{
-			if (!m_vec_beam_events || p.t0 < 0.0)
-				return 1.0f;
-			if (vec_blend <= 0.0)
-				return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
-			const double s = std::max(p.t0, m_vec_win_t0);
-			const double e = std::min(p.t0 + vec_blend, m_vec_win_t1);
-			return (e > s) ? float((e - s) / vec_blend) : 0.0f;
-		};
+			// F5 pause: composite the whole retained beam window (several refreshes) instead of the single
+			// frozen frame, so a multiplexed/flicker image does not drop out into an incomplete still. Moving
+			// content ghosts slightly, but a paused image is static so it is normally invisible.
+			const bool vec_paused = window().machine().paused();
+			auto vec_window_weight = [this, vec_blend, vec_paused] (const render_primitive &p) -> float
+			{
+				if (!m_vec_beam_events || p.t0 < 0.0)
+					return 1.0f;
+				if (vec_paused)
+					return 1.0f;
+				if (vec_blend <= 0.0)
+					return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
+				const double s = std::max(p.t0, m_vec_win_t0);
+				const double e = std::min(p.t0 + vec_blend, m_vec_win_t1);
+				return (e > s) ? float((e - s) / vec_blend) : 0.0f;
+			};
 
 		int vector_count = 0;   // all vector lines (decides the FBO path)
 		int visible_count = 0;  // lines with nonzero energy in the current window
