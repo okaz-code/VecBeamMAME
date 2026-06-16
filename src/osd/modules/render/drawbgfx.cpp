@@ -1784,7 +1784,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (glow_vertex)
 		{
 			// analytic glow dot (glow_rgba is 0 when analytic_glow is off -> invisible)
-			set_dot(glow_vertex, 0, cx, cy, glow_sig, glow_rgba, 0.0f);
+			if (m_glow_off_glow >= 0) set_dot(glow_vertex, m_glow_off_glow, cx, cy, glow_sig, glow_rgba, 0.0f);
 
 			// Halation around bright dwell dots (bullets). The rendered brightness includes the dwell
 			// boost, so only bright dots reach the threshold; the rim (gain) and the inner fill have
@@ -1808,23 +1808,32 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// lifts the dim end so the thin rim stays visible at low gain - a thin defocused band fell
 			// below the visibility floor below ~0.008 linear - while the constants keep the slider maxima
 			// (ring_gain 0.05 -> 0.0025, ring_fill 0.2 -> 0.008) about the same as before.
-			if (ring_on && ring_gain > 0.0f)
+			if (m_glow_off_ring >= 0)
 			{
-				const float width = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
-				set_ring(glow_vertex, 6, cx, cy, radius, width, ring_color(sqrtf(ring_gain) * 0.0112f));
+				if (ring_on && ring_gain > 0.0f)
+				{
+					const float width = std::max(0.75f, m_chains->slider_value(0, "ring_width", 3.0f) * res);
+					set_ring(glow_vertex, m_glow_off_ring, cx, cy, radius, width, ring_color(sqrtf(ring_gain) * 0.0112f));
+				}
+				else
+					set_degenerate(glow_vertex, m_glow_off_ring);
 			}
-			else
-				set_degenerate(glow_vertex, 6);
-			if (ring_on && ring_fill > 0.0f)
-				set_dot(glow_vertex, 12, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(sqrtf(ring_fill) * 0.0179f), 0.0f);
-			else
-				set_degenerate(glow_vertex, 12);
+			if (m_glow_off_fill >= 0)
+			{
+				if (ring_on && ring_fill > 0.0f)
+					set_dot(glow_vertex, m_glow_off_fill, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(sqrtf(ring_fill) * 0.0179f), 0.0f);
+				else
+					set_degenerate(glow_vertex, m_glow_off_fill);
+			}
 			// Overdrive white flare (slot 18): an overdriven dwell dot blooms white-hot here in the glow
 			// buffer (post-mask), at the dot's own size, so it is not patterned by the shadow mask.
-			if (flare_on)
-				set_dot(glow_vertex, 18, cx, cy, sigma, flare_rgba, flare_z);
-			else
-				set_degenerate(glow_vertex, 18);
+			if (m_glow_off_flare >= 0)
+			{
+				if (flare_on)
+					set_dot(glow_vertex, m_glow_off_flare, cx, cy, sigma, flare_rgba, flare_z);
+				else
+					set_degenerate(glow_vertex, m_glow_off_flare);
+			}
 		}
 		return;
 	}
@@ -1930,6 +1939,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// across lines into the scene glow, tracking the beam exactly with no pyramid and no temporal lag.
 	if (glow_vertex)
 	{
+		if (m_glow_off_glow >= 0)
+		{
 		const float gpad = 3.5f * glow_sig + 0.5f;
 		const float gsx0 = x0 - dx * gpad, gsy0 = y0 - dy * gpad;
 		const float gsx1 = x1 + dx * gpad, gsy1 = y1 + dy * gpad;
@@ -1938,18 +1949,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = 0.0f; glow_vertex[i].m_rgba = glow_rgba;
 			glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = glow_sig;
 		};
-		gv(0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
-		gv(1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
-		gv(2, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
-		gv(3, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
-		gv(4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
-		gv(5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
-		// blank the ring/fill slots (used only by points) in the wider glow buffer
-		set_degenerate(glow_vertex, 6);
-		set_degenerate(glow_vertex, 12);
+		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
+		gv(m_glow_off_glow + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
+		gv(m_glow_off_glow + 2, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
+		gv(m_glow_off_glow + 3, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
+		gv(m_glow_off_glow + 4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
+		gv(m_glow_off_glow + 5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
+		}
+		// blank the ring/fill slots (used only by points) when they have a packed slot this frame
+		if (m_glow_off_ring >= 0) set_degenerate(glow_vertex, m_glow_off_ring);
+		if (m_glow_off_fill >= 0) set_degenerate(glow_vertex, m_glow_off_fill);
 		// Overdrive white flare (slots 18-23): an overdriven line blooms white-hot here in the glow buffer
 		// (post-mask), at the beam's own sigma (not the wide analytic glow), so it is not mask-patterned.
-		if (flare_on)
+		if (m_glow_off_flare >= 0 && flare_on)
 		{
 			const float fpad = 3.5f * sigma + 0.5f;
 			const float fsx0 = x0 - dx * fpad, fsy0 = y0 - dy * fpad;
@@ -1959,15 +1971,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = flare_z; glow_vertex[i].m_rgba = flare_rgba;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
 			};
-			fv(18, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
-			fv(19, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
-			fv(20, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
-			fv(21, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
-			fv(22, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
-			fv(23, fsx0 - nx * fpad, fsy0 - ny * fpad, fa0, fa0 - seg_len, -fpad);
+			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
+			fv(m_glow_off_flare + 1, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
+			fv(m_glow_off_flare + 2, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
+			fv(m_glow_off_flare + 3, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
+			fv(m_glow_off_flare + 4, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
+			fv(m_glow_off_flare + 5, fsx0 - nx * fpad, fsy0 - ny * fpad, fa0, fa0 - seg_len, -fpad);
 		}
-		else
-			set_degenerate(glow_vertex, 18);
+		else if (m_glow_off_flare >= 0)
+			set_degenerate(glow_vertex, m_glow_off_flare);
 	}
 }
 
@@ -2428,11 +2440,21 @@ int renderer_bgfx::draw(int update)
 			// ring / inner fill (so the shadow mask does not pattern them). Allocate it when any of those
 			// is active. Buffer is 18 verts/line: line = glow quad (rest blanked); point = glow dot +
 			// ring + fill.
-			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
-				&& ((m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f)
-				 || (m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f)
-				 || (m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f)
-				 || (m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f));
+			// Pack the glow buffer: give a 6-vertex slot only to the components active this frame, so a
+			// chain that uses just analytic_glow emits 6 verts/line instead of the full 24 (the other
+			// three were written as degenerate quads but still cost vertex processing).
+			const bool g_glow  = m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f;
+			const bool g_ring  = m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f;
+			const bool g_fill  = m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f;
+			const bool g_flare = m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f;
+			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare);
+			int goff = 0;
+			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = -1;
+			if (g_glow)  { m_glow_off_glow  = goff; goff += 6; }
+			if (g_ring)  { m_glow_off_ring  = goff; goff += 6; }
+			if (g_fill)  { m_glow_off_fill  = goff; goff += 6; }
+			if (g_flare) { m_glow_off_flare = goff; goff += 6; }
+			m_glow_vpl = goff;
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
@@ -2456,7 +2478,7 @@ int renderer_bgfx::draw(int update)
 						// core still draws; glow is simply skipped this frame.
 						if (m_glow_on)
 						{
-							const uint32_t gneeded = uint32_t(visible_count) * 24u;
+							const uint32_t gneeded = uint32_t(visible_count) * uint32_t(m_glow_vpl);
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
@@ -2488,7 +2510,7 @@ int renderer_bgfx::draw(int update)
 										}
 										AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
 										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, scap, ecap);
-										if (gptr) glow_verts += 24;
+										if (gptr) glow_verts += m_glow_vpl;
 									}
 									else
 										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
