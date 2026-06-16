@@ -34,6 +34,7 @@
 		{ "type": "float", "name": "beam_bloom_curve",    "text": "Beam Bloom Curve",              "default": 1.0, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "ambient_color", "text": "Ambient Body Color, ", "default": [ 0.40, 0.40, 0.40 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ambient_level", "text": "Ambient Level (x0.001)", "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "ambient_mask", "text": "Ambient Shadow-Mask (0=flat,1=masked)", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus",       "text": "Edge Defocus (px at corner)", "default": 0.0, "min": 0.0, "max": 8.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve", "text": "Edge Defocus Curve",          "default": 2.0, "min": 0.5, "max": 4.0, "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "vertex_dwell",       "text": "Vertex Dwell (corner dots)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -357,7 +358,8 @@
 			"name": "Shadow Mask Pass",
 			"disablewhen": [
 				{ "type": "slider", "condition": "equal", "combine": "or",  "name": "adjustments",          "value": 0 },
-				{ "type": "slider", "condition": "equal", "combine": "and", "name": "shadow_mask_strength", "value": 0.0 }
+				{ "type": "slider", "condition": "equal", "combine": "and", "name": "shadow_mask_strength", "value": 0.0 },
+				{ "type": "slider", "condition": "equal", "combine": "and", "name": "ambient_level",        "value": 0.0 }
 			],
 			"input": [
 				{ "sampler": "s_tex",  "target":  "internal" },
@@ -366,7 +368,10 @@
 			"uniforms": [
 				{ "uniform": "u_shadow_mask_strength",    "slider": "shadow_mask_strength" },
 				{ "uniform": "u_shadow_mask_brightboost", "slider": "shadow_mask_brightboost" },
-				{ "uniform": "u_shadow_mask_scale",       "slider": "shadow_mask_scale" }
+				{ "uniform": "u_shadow_mask_scale",       "slider": "shadow_mask_scale" },
+				{ "uniform": "u_ambient_color",           "slider": "ambient_color" },
+				{ "uniform": "u_ambient_level",           "slider": "ambient_level" },
+				{ "uniform": "u_ambient_mask",            "slider": "ambient_mask" }
 			],
 			"output": "internal"
 		},
@@ -450,8 +455,6 @@
 			{ "uniform": "u_bloom_scale",       "slider":    "bloom_scale" },
 			{ "uniform": "u_bloom_overdrive",   "slider":    "bloom_overdrive" },
 			{ "uniform": "u_bloom_channel_gain","slider":    "bloom_channel_gain" },
-			{ "uniform": "u_ambient_color",     "slider":    "ambient_color" },
-			{ "uniform": "u_ambient_level",     "slider":    "ambient_level" },
 			{ "uniform": "u_time",              "parameter": "time" }
 		  ],
 		  "output": "internal" },
