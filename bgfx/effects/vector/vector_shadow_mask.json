@@ -29,6 +29,9 @@
 		{ "name": "u_shadow_mask_strength",    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_shadow_mask_brightboost", "type": "vec4", "values": [ 0.4, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_shadow_mask_scale",       "type": "vec4", "values": [ 2.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_target_dims",             "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+		{ "name": "u_target_dims",             "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_ambient_color",           "type": "vec4", "values": [ 0.4, 0.4, 0.4, 0.0 ] },
+		{ "name": "u_ambient_level",           "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_ambient_mask",            "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] }
 	]
 }

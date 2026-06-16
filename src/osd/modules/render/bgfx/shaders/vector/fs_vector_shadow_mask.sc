@@ -21,6 +21,9 @@ uniform vec4 u_shadow_mask_strength;
 uniform vec4 u_shadow_mask_brightboost;
 uniform vec4 u_shadow_mask_scale;
 uniform vec4 u_target_dims;
+uniform vec4 u_ambient_color;   // (r,g,b,0) non-excited phosphor body tint (room-light reflection)
+uniform vec4 u_ambient_level;   // (level,0,0,0) reflection floor in milli-units (x0.001), 0 = off
+uniform vec4 u_ambient_mask;    // (amount,0,0,0) 0 = flat floor, 1 = floor modulated by the shadow mask
 
 void main()
 {
@@ -49,5 +52,14 @@ void main()
 	vec3 boosted_mask = mask * (1.0 + brightboost);
 	vec3 mask_factor  = mix(vec3(1.0, 1.0, 1.0), boosted_mask, strength);
 
-	gl_FragColor = vec4(base.rgb * mask_factor, base.a) * v_color0;
+	// Ambient / non-excited phosphor body colour (master plan 2-7): room light reflected off the dark
+	// phosphor raises "black" to the body tint. On a real shadow-mask CRT that reflection is modulated
+	// by the mask/aperture structure, so with the lights up the mask is faintly visible in the dark.
+	// Apply it here (in the mask pass) so it can carry the mask pattern. u_ambient_mask blends the floor
+	// between flat (0) and fully mask-modulated (1); when the mask is off (strength 0) mask_factor is 1,
+	// so the floor stays flat regardless. 0 level = off (chains without the uniforms are unaffected).
+	vec3 ambient     = u_ambient_level.x * 0.001 * u_ambient_color.rgb;
+	vec3 ambient_out = ambient * mix(vec3_splat(1.0), mask_factor, clamp(u_ambient_mask.x, 0.0, 1.0));
+
+	gl_FragColor = vec4(base.rgb * mask_factor + ambient_out, base.a) * v_color0;
 }
