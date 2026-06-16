@@ -246,6 +246,10 @@ private:
 	// chain's phosphor-tail freeze: re-presents without emulation progress (pause, menu stills)
 	// must neither decay nor pump the slow tail pool.
 	bool m_vec_frame_advanced = false;
+	// Emulated time (seconds) at the previous present, used to time-calibrate the max-persist
+	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
+	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
+	double m_vec_persist_prev_t = -1.0;
 	// Per-line energy weight (0..1) for the line being built by put_solid_line. Lines near a
 	// window boundary split their energy across the adjacent windows (vector_window_blend
 	// slider), which hides the temporal-aliasing blink when the list period beats against the

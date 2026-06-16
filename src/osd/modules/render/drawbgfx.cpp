@@ -2640,6 +2640,24 @@ int renderer_bgfx::draw(int update)
 				const float tail_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "tail_accum", "u_tail_freeze", tail_freeze, 4);
 
+				// Time-calibrated max-persist (Flicker Persist) decay. The pass does out=max(cur,prev*decay);
+				// instead of binding decay to the slider directly (a raw per-frame factor, refresh-dependent
+				// and meaningless in real time) we drive it here so flicker_persist reads in MILLISECONDS:
+				// decay = exp(-dt_ms / persist_ms), dt = emulated time advanced since the previous present.
+				// This is the cheap persistence path: keep the beam draw window small (vector_window_blend)
+				// so only the fresh frame is re-rasterised, and let this FBO max-persist hold the light for
+				// the desired duration - cost becomes independent of the persistence length. dt==0 while
+				// paused so the image is held (no decay). No-op without a "Flicker Persist" pass.
+				const double persist_now = window().machine().time().as_double();
+				const double persist_dt  = (m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
+					? (persist_now - m_vec_persist_prev_t) : 0.0;
+				m_vec_persist_prev_t = persist_now;
+				const float persist_ms = m_chains->slider_value(0, "flicker_persist", 0.0f);
+				const float persist_decay = (persist_ms > 0.0f)
+					? expf(-float(persist_dt * 1000.0) / persist_ms) : 0.0f;
+				const float persist_vals[4] = { persist_decay, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Flicker Persist", "u_persist_decay", persist_vals, 4);
+
 				// Bloom dark-area noise: strength from the slider, and freeze the pattern (y=1) on
 				// presents that did not advance emulation so the shimmer stops while paused (F5).
 				const float bloom_noise[4] = {
