@@ -1051,6 +1051,10 @@ void renderer_bgfx::vertex(ScreenVertex* vertex, float x, float y, float z, uint
 
 void renderer_bgfx::render_post_screen_quad(int view, render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index)
 {
+	// allocate_buffer leaves data==nullptr when the transient vertex pool is exhausted (e.g. a large
+	// beam-window vector draw consumed it). Bail rather than write/submit through a null buffer.
+	if (buffer == nullptr || buffer->data == nullptr)
+		return;
 	auto* vertices = reinterpret_cast<ScreenVertex*>(buffer->data);
 
 	float x[4] = { prim->bounds.x0, prim->bounds.x1, prim->bounds.x0, prim->bounds.x1 };
@@ -1129,6 +1133,10 @@ void renderer_bgfx::render_avi_quad()
 
 void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int window_index)
 {
+	// allocate_buffer leaves data==nullptr when the transient vertex pool is exhausted (e.g. a large
+	// beam-window vector draw consumed it). Bail rather than write/submit through a null buffer.
+	if (buffer == nullptr || buffer->data == nullptr)
+		return;
 	auto* vertices = reinterpret_cast<ScreenVertex*>(buffer->data);
 	uint32_t rgba = u32Color(prim->color.r * 255, prim->color.g * 255, prim->color.b * 255, prim->color.a * 255);
 
@@ -3047,7 +3055,12 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTOR((*prim)->flags))
 					break;
 				setup_ortho_view();
-				put_packed_line(*prim, (ScreenVertex*)buffer->data + vertices);
+				// allocate_buffer leaves data==nullptr when the transient vertex pool is exhausted
+				// (e.g. a large beam-window vector draw consumed it). Skip the write then - the caller
+				// already refuses to submit a null buffer; writing would null-deref. vertices still
+				// advances so the batch/flush flow is unchanged.
+				if (buffer->data)
+					put_packed_line(*prim, (ScreenVertex*)buffer->data + vertices);
 				vertices += 30;
 				break;
 
@@ -3059,7 +3072,8 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				if ((*prim)->texture.base == nullptr)
 				{
 					setup_ortho_view();
-					put_packed_quad(*prim, WHITE_HASH, (ScreenVertex*)buffer->data + vertices);
+					if (buffer->data)   // see put_packed_line above: null when the transient pool was exhausted
+						put_packed_quad(*prim, WHITE_HASH, (ScreenVertex*)buffer->data + vertices);
 					vertices += 6;
 				}
 				else
@@ -3068,7 +3082,8 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 					if (atlas_valid && (*prim)->packable(PACKABLE_SIZE) && hash != 0 && m_hash_to_entry[hash].hash())
 					{
 						setup_ortho_view();
-						put_packed_quad(*prim, hash, (ScreenVertex*)buffer->data + vertices);
+						if (buffer->data)   // see put_packed_line above: null when the transient pool was exhausted
+							put_packed_quad(*prim, hash, (ScreenVertex*)buffer->data + vertices);
 						vertices += 6;
 					}
 					else
