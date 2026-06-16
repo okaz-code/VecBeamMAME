@@ -121,20 +121,41 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 {
 	screen_configuration();
 
-	// 3D imager "Separate images": draw BOTH eyes' last completed frames together so the side-by-side
-	// pair is stable instead of the single eye that fell in the last refresh interval (which alternated /
-	// flickered). Gated on the wheel actually spinning (m_imager_freq) and both eye frames captured, so
-	// at startup / low speed (huge / meaningless eye intervals) it safely falls back to the stock path -
-	// the per-eye buffers are also capped (EYE_FRAME_MAX) so the renderer is never flooded.
-	const uint8_t conf = m_io_3dconf->read();
-	const bool stereo_split = (conf & 0x01) && (conf & 0x02) && m_imager_freq > 5.0
-		&& m_eye_count[1] > 0 && m_eye_count[2] > 0;
+	// 3D imager stereo output. Both eyes' last completed frames (layer B per-eye retention) are redrawn
+	// together every refresh so the pair is stable (no left/right flicker). The 3DCONF "3D stereo out"
+	// field picks how to combine them:
+	//   0x000 off  : legacy behaviour (overlay, or the "Separate images" 90deg side-by-side split per 0x02)
+	//   0x400 SBS  : the same 90deg side-by-side split but width-compressed to a proper half each (the
+	//                compression is baked at draw time by add_point_stereo via m_stereo_sbs)
+	//   0x800 ana  : colour anaglyph - left eye -> red channel, right eye -> cyan, overlaid (uses the
+	//                overlay coordinates, so screen_configuration forces add_point and Separate is off)
+	// All paths fall back to the stock single-range draw when the imager is off / the wheel is not spinning
+	// / no frames captured yet (the per-eye buffers are capped at EYE_FRAME_MAX so the renderer is never
+	// flooded). The Vectrex screen is portrait, so the side-by-side pair appears stacked until a 90deg
+	// Video Rotate puts the two eyes left/right.
+	const ioport_value conf = m_io_3dconf->read();
+	const ioport_value stereo_mode = conf & 0xC00;
+	const bool have_eyes = (conf & 0x01) && m_imager_freq > 5.0 && m_eye_count[1] > 0 && m_eye_count[2] > 0;
 
-	if (stereo_split)
+	if (have_eyes && stereo_mode == 0x800)   // colour anaglyph (left = red, right = cyan; swap optional)
 	{
+		const bool swap = (conf & 0x1000) != 0;   // On -> left = cyan, right = red
 		for (int e = 1; e <= 2; e++)
 		{
-			/* blanked move to this eye frame's start (no joining line between the two images) */
+			// eye 1 = left -> red, eye 2 = right -> cyan by default; the swap flips which eye is red.
+			const bool red_eye = ((e == 1) != swap);
+			auto ana = [red_eye](rgb_t c) -> rgb_t { return red_eye ? rgb_t(c.r(), 0, 0) : rgb_t(0, c.g(), c.b()); };
+			m_vector->add_point(m_eye_frame[e][0].x, m_eye_frame[e][0].y, ana(m_eye_frame[e][0].col), 0);
+			for (int i = 0; i < m_eye_count[e]; i++)
+				m_vector->add_point(m_eye_frame[e][i].x, m_eye_frame[e][i].y, ana(m_eye_frame[e][i].col), m_eye_frame[e][i].intensity);
+		}
+	}
+	else if (have_eyes && (stereo_mode == 0x400 || (conf & 0x02)))   // side-by-side / "Separate images"
+	{
+		// Both eyes' last completed frames, replayed stable (the coordinates - including the SBS half-width
+		// compression for stereo_mode 0x400 - are already baked by add_point_stereo at draw time).
+		for (int e = 1; e <= 2; e++)
+		{
 			m_vector->add_point(m_eye_frame[e][0].x, m_eye_frame[e][0].y, m_eye_frame[e][0].col, 0);
 			for (int i = 0; i < m_eye_count[e]; i++)
 				m_vector->add_point(m_eye_frame[e][i].x, m_eye_frame[e][i].y, m_eye_frame[e][i].col, m_eye_frame[e][i].intensity);
@@ -188,10 +209,18 @@ void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensi
 {
 	constexpr double SQRT1_2 = std::numbers::sqrt2 / 2.0;
 
+	// The 90-degree side-by-side split that fits the two eye images into the portrait screen (left in
+	// [0, x_center), right offset by x_center). "3D stereo out = Side-by-side" additionally compresses the
+	// width axis (the L/R separation, x here) to half so each eye occupies a proper half - standard SBS.
+	// ctr re-centres the compressed image within its half (otherwise it sits at the left edge): map the
+	// content centre (y = m_y_center) to the centre of the half (x_center/2).
+	const double xs = m_stereo_sbs ? (SQRT1_2 * 0.5) : SQRT1_2;
+	const int ctr = m_stereo_sbs ? (m_x_center / 2 - (int)(m_y_center * xs)) : 0;
+
 	if (m_imager_status == 2) /* left = 1, right = 2 */
-		add_point((int)(y * SQRT1_2)+ m_x_center, (int)(((m_x_max - x) * SQRT1_2)), color, intensity);
+		add_point((int)(y * xs) + m_x_center + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity);
 	else
-		add_point((int)(y * SQRT1_2), (int)((m_x_max - x) * SQRT1_2), color, intensity);
+		add_point((int)(y * xs) + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity);
 }
 
 
