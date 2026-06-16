@@ -175,6 +175,16 @@ private:
 	bool  m_defl_on = false;                    // deflection dynamics active this frame
 	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
 	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)
+	// Glow buffer is packed: only components whose slider is active this frame get a 6-vertex slot, so a
+	// chain using e.g. analytic_glow only emits 6 verts/line instead of the full 24 (the rest were
+	// degenerate). Per-frame compacted slot offset for each component (vertex units; -1 = inactive),
+	// and the resulting verts-per-line. Computed where m_glow_on is set, used by put_analytic_line and
+	// the glow buffer allocation.
+	int m_glow_off_glow  = -1;   // analytic glow dot / line gaussian (analytic_glow)
+	int m_glow_off_ring  = -1;   // halation ring (ring_gain, point only)
+	int m_glow_off_fill  = -1;   // halation inner fill (ring_fill, point only)
+	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
+	int m_glow_vpl = 0;          // 6 * (active glow components)
 
 	// Vector linearity calibration (integrator gain error, like the board's Linear pot): each vector
 	// is drawn as (commanded vector) x gain from where the beam actually ended up, so the error
