@@ -663,6 +663,18 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 					? BGFX_CAPS_DRAW_INDIRECT
 					: 0
 					;
+
+				// HDR/EDR present support (MAME vector-crt fork): a CAMetalLayer can drive the display
+				// in Extended Dynamic Range (wantsExtendedDynamicRangeContent + an extended-linear
+				// colorspace) from macOS 10.15. Advertise BGFX_CAPS_HDR10 so a caller's HDR reset is
+				// honoured instead of being dropped to SDR; the swapchain is then configured for EDR
+				// (RGBA16Float + extendedLinearSRGB) in SwapChainMtl::resize. Unlike the DXGI path this
+				// is NOT HDR10/PQ - the EDR layer is extended-linear - but the cap name is what the
+				// portable layer keys off of. Degrades gracefully on non-EDR displays.
+				if (@available(macOS 10.15, *) )
+				{
+					g_caps.supported |= BGFX_CAPS_HDR10;
+				}
 			}
 
 			g_caps.limits.maxTextureLayers = 2048;
@@ -3349,6 +3361,31 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 #endif // BX_PLATFORM_OSX
 
 		m_metalLayer.drawableSize = CGSizeMake(_width, _height);
+#if BX_PLATFORM_OSX
+		// HDR/EDR (MAME vector-crt fork): an HDR reset on macOS drives the display in Extended
+		// Dynamic Range. Unlike Windows HDR10 (PQ / Rec.2020 in RGB10A2), macOS EDR uses an
+		// extended-linear float framebuffer: 1.0 is SDR reference white and values up to the
+		// display's headroom are HDR. The present pass writes LINEAR values (no PQ); the layer
+		// colorspace tells the compositor how to map them, so it also renders correctly on non-EDR
+		// displays (the >1.0 portion just clips). See fs_vector_hdr_present's EDR branch.
+		bool edrConfigured = false;
+		if (_flags & BGFX_RESET_HDR10)
+		{
+			// @available must stand alone (clang -Wunsupported-availability-guard), so it is nested
+			// rather than &&-combined with the flag test above.
+			if (@available(macOS 10.15, *) )
+			{
+				m_metalLayer.pixelFormat = MTLPixelFormatRGBA16Float;
+				m_metalLayer.wantsExtendedDynamicRangeContent = YES;
+				CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
+				m_metalLayer.colorspace = colorSpace;
+				CGColorSpaceRelease(colorSpace);
+				BX_TRACE("Metal: EDR swapchain enabled (RGBA16Float, extendedLinearSRGB, wantsEDR=YES).");
+				edrConfigured = true;
+			}
+		}
+		if (!edrConfigured)
+#endif // BX_PLATFORM_OSX
 		m_metalLayer.pixelFormat = (_flags & BGFX_RESET_SRGB_BACKBUFFER)
 			? MTLPixelFormatBGRA8Unorm_sRGB
 			: MTLPixelFormatBGRA8Unorm
