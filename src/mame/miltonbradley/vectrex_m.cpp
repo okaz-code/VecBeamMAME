@@ -105,7 +105,20 @@ void vectrex_base_state::screen_configuration()
 		if (m_imager_status == 0)
 			m_imager_status = cport & 0x01;
 
-		vector_add_point_function = cport & 0x02 ? &vectrex_base_state::add_point_stereo: &vectrex_base_state::add_point;
+		// Draw-function / layout selection by "3D stereo out" (0xc00):
+		//   Anaglyph (0x800): overlay coordinates (add_point) - screen_update splits L/R into colour
+		//                     channels, so the crude 90-degree "Separate images" split is forced off.
+		//   Side-by-side (0x400): the 90-degree side-by-side split (add_point_stereo) but with the L/R
+		//                     width compressed to a proper half each (m_stereo_sbs).
+		//   Off: honour the legacy "Separate images" toggle (add_point_stereo) or plain overlay.
+		const ioport_value smode = conf & 0xc00;
+		m_stereo_sbs = (smode == 0x400);
+		if (smode == 0x800)
+			vector_add_point_function = &vectrex_base_state::add_point;                 // anaglyph: overlay
+		else if (smode == 0x400 || (cport & 0x02))
+			vector_add_point_function = &vectrex_base_state::add_point_stereo;           // SBS / Separate
+		else
+			vector_add_point_function = &vectrex_base_state::add_point;                  // plain overlay
 
 		switch ((cport >> 2) & 0x07)
 		{
@@ -135,6 +148,9 @@ void vectrex_base_state::screen_configuration()
 			}
 			m_imager_colors[2]=VC_BLUE;
 			break;
+		case 0x05:
+			m_imager_colors[0] = m_imager_colors[1] = m_imager_colors[2] = rgb_t::white();
+			break;
 		}
 
 		switch ((cport >> 5) & 0x07)
@@ -163,6 +179,9 @@ void vectrex_base_state::screen_configuration()
 				m_imager_colors[4] = VC_GREEN;
 			}
 			m_imager_colors[5]=VC_BLUE;
+			break;
+		case 0x05:
+			m_imager_colors[3] = m_imager_colors[4] = m_imager_colors[5] = rgb_t::white();
 			break;
 		}
 	}

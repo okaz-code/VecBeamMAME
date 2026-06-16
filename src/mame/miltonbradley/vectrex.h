@@ -110,6 +110,7 @@ private:
 	uint32_t m_beam_color = 0;
 	int m_lightpen_port = 0;
 	int m_reset_refresh = 0;
+	bool m_stereo_sbs = false;   // "3D stereo out = Side-by-side": compress add_point_stereo to half width
 	const double *m_imager_angles = nullptr;
 	// Cart-detected color disc (angles + refresh strategy), kept so the 3DCONF "3D color disc = Auto"
 	// setting can revert to it after a manual override.
