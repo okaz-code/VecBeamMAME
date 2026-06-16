@@ -1538,10 +1538,18 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
 	};
-	const float display_a = transfer(drive,
+	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
+	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
+	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
+	{
+		const float i_min = m_chains->slider_value(0, "intensity_min", 0.0f);
+		const float i_max = m_chains->slider_value(0, "intensity_max", 1.0f);
+		display_a = std::clamp(i_min + display_a * (i_max - i_min), 0.0f, 1.0f);
+	}
 	const float wf = transfer(drive,
 		m_chains->slider_value(0, "width_clip_low",  0.0f),
 		m_chains->slider_value(0, "width_clip_high", 1.0f),
@@ -2010,10 +2018,18 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
 	};
-	const float display_a = transfer(drive,
+	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
+	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
+	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
+	{
+		const float i_min = m_chains->slider_value(0, "intensity_min", 0.0f);
+		const float i_max = m_chains->slider_value(0, "intensity_max", 1.0f);
+		display_a = std::clamp(i_min + display_a * (i_max - i_min), 0.0f, 1.0f);
+	}
 	const float wf = transfer(drive,
 		m_chains->slider_value(0, "width_clip_low",  0.0f),
 		m_chains->slider_value(0, "width_clip_high", 1.0f),
