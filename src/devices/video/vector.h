@@ -66,6 +66,10 @@ public:
 	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
 			attotime t0 = attotime::never, attotime t1 = attotime::never);
 
+	// Optional per-point scale recorded in the -vector_event_dump CSV (driver-specific, e.g. the
+	// Vectrex VIA Timer 1 latch = BIOS vector scale). Set just before add_point; -1 = none.
+	void set_dump_scale(int s) { m_dump_scale = s; }
+
 	// Beam-event mode (opt-in by a timing-aware renderer): timed points are consumed by
 	// screen_update once emitted instead of being redrawn until the next clear_list, and
 	// clear_list leaves timed points alone so a list crossing a frame boundary is split
@@ -108,9 +112,12 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), emitted(false) { }
+		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), emitted(false) { }
 
 		int x; int y;
+		int x0; int y0;     // segment start (previous beam position). Stored so a point retained across
+							// a clear_list boundary (beam-event mode) re-emits its line with the correct
+							// start instead of a chain that may be broken by dropped (untimed) predecessors.
 		rgb_t col;
 		int intensity;
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
@@ -124,6 +131,7 @@ private:
 	int m_max_intensity;
 	bool m_beam_event_mode;
 	std::ofstream m_event_dump;
+	int m_dump_scale = -1;   // scale value for the next dumped point (set by the driver via set_dump_scale)
 	// Generation counters for CRT-flicker detection: clear_list() bumps m_list_generation when the
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;

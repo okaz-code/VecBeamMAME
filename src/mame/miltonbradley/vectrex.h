@@ -77,8 +77,11 @@ protected:
 	void configure_imager(bool reset_refresh, const double *imager_angles);
 	void screen_configuration();
 	void multiplexer(int mux);
-	void add_point(int x, int y, rgb_t color, int intensity);
-	void add_point_stereo(int x, int y, rgb_t color, int intensity);
+	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
+			attotime t0 = attotime::never, attotime t1 = attotime::never);
+	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
+			attotime t0 = attotime::never, attotime t1 = attotime::never);
+	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
 
 	unsigned char m_via_out[2];
 
@@ -102,6 +105,10 @@ private:
 		int x = 0; int y = 0;
 		rgb_t col;
 		int intensity = 0;
+		float beam_energy = -1.0f;
+		attotime t0 = attotime::never;
+		attotime t1 = attotime::never;
+		int scale = 0;   // VIA T1 latch at draw time (BIOS vector scale) - for the event dump
 		int eye = 0;   // imager eye this vector was drawn for (0 = none, 1 = left, 2 = right)
 	};
 
@@ -151,8 +158,9 @@ private:
 	int m_eye_draw_start = 0;   // m_point_index where the current eye's drawing began
 	uint16_t m_via_timer2 = 0;
 	attotime m_vector_start_time;
+		int m_cur_scale = 0;   // VIA T1 latch sampled at update_vector time (BIOS draw scale)
 	uint8_t m_cb2 = 0;
-	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int);
+	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
 	required_device<mc1408_device> m_dac;
 	required_device<ay8910_device> m_ay8912;

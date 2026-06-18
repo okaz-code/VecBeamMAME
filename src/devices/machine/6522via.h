@@ -89,6 +89,10 @@ public:
 	u8 read(offs_t offset);
 	void write(offs_t offset, u8 data);
 
+	// Current Timer 1 latch (the value last loaded by the program). The Vectrex uses T1 as the
+	// vector draw scale, so this exposes the BIOS scale parameter for debugging / dumps.
+	uint16_t t1_latch() const { return uint16_t(m_t1ll) | (uint16_t(m_t1lh) << 8); }
+
 	void write_pa0(int state) { set_pa_line(0, state); }
 	void write_pa1(int state) { set_pa_line(1, state); }
 	void write_pa2(int state) { set_pa_line(2, state); }

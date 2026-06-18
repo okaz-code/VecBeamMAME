@@ -84,7 +84,7 @@ void vector_device::device_start()
 	{
 		m_event_dump.open(dump_path);
 		if (m_event_dump.is_open())
-			m_event_dump << "t0,t1,x,y,intensity,beam_energy\n";
+			m_event_dump << "frame,t0,t1,draw_us,scale,x0,y0,x,y,length,intensity,beam_energy\n";   // frame=list generation; draw_us=actual draw time (us); scale=BIOS vector scale (VIA T1 latch)
 		else
 			osd_printf_warning("vector: could not open event dump file '%s'\n", dump_path);
 	}
@@ -177,21 +177,36 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	newpoint = &m_vector_list[m_vector_index];
 	newpoint->x = x;
 	newpoint->y = y;
+	// Capture the segment start = the previous beam position (the immediately preceding point in draw
+	// order) while the chain is intact. A degenerate first point (no predecessor) starts at itself.
+	// In beam-event mode the predecessor of the first new-frame point is the retained tail's last entry,
+	// but that point is an intensity-0 move (no line drawn), so the chain re-anchors correctly from there.
+	newpoint->x0 = (m_vector_index > 0) ? m_vector_list[m_vector_index - 1].x : x;
+	newpoint->y0 = (m_vector_index > 0) ? m_vector_list[m_vector_index - 1].y : y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
 	// Normalized (0..1) beam energy carried on the primitive for renderer overdrive effects.
 	// When the device supplies a raw value (beam_energy >= 0) it is used as-is; otherwise
 	// the displayed intensity is used as the normalized value. This is pure data: the displayed
 	// intensity above is unchanged, so renderers that ignore it produce stock output.
-	newpoint->beam_energy = (beam_energy >= 0.0f) ? std::clamp(beam_energy, 0.0f, 1.0f)
+	// Upper bound 8.0 (not 1.0): a raw beam_energy can exceed peak (dwelling beam concentrates energy);
+	// the renderer clamps to 0..1 for the displayed core and uses the raw >1 part for the overdrive/HDR
+	// white-hot flare. Sources that never exceed 1.0 are unaffected.
+	newpoint->beam_energy = (beam_energy >= 0.0f) ? std::clamp(beam_energy, 0.0f, 16.0f)
 												  : float(intensity) / 255.0f;
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->emitted = false;
 
 	if (m_event_dump.is_open() && !t0.is_never())
-		util::stream_format(m_event_dump, "%.9f,%.9f,%d,%d,%d,%.4f\n",
-				t0.as_double(), t1.as_double(), x, y, intensity, newpoint->beam_energy);
+	{
+		const double seg_len = std::sqrt(double(x - newpoint->x0) * double(x - newpoint->x0)
+				+ double(y - newpoint->y0) * double(y - newpoint->y0));
+		const double draw_us = (t1 - t0).as_double() * 1e6;   // actual draw time = realized beam scale
+		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f\n",
+				m_list_generation, t0.as_double(), t1.as_double(), draw_us, m_dump_scale,
+				newpoint->x0, newpoint->y0, x, y, seg_len, intensity, newpoint->beam_energy);
+	}
 
 	m_vector_index++;
 	if (m_vector_index >= MAX_POINTS)
@@ -244,8 +259,6 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	float yoffs = (float)visarea.min_y;
 
 	point *curpoint;
-	int lastx = 0;
-	int lasty = 0;
 
 	curpoint = m_vector_list.get();
 
@@ -275,11 +288,11 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		beam_width *= 1.0f / (float)VECTOR_WIDTH_DENOM;
 
 		// apply point scale for points
-		if (lastx == curpoint->x && lasty == curpoint->y)
+		if (curpoint->x0 == curpoint->x && curpoint->y0 == curpoint->y)
 			beam_width *= vector_options::s_beam_dot_size;
 
-		coords.x0 = (float(lastx) - xoffs) * xscale;
-		coords.y0 = (float(lasty) - yoffs) * yscale;
+		coords.x0 = (float(curpoint->x0) - xoffs) * xscale;
+		coords.y0 = (float(curpoint->y0) - yoffs) * yscale;
 		coords.x1 = (float(curpoint->x) - xoffs) * xscale;
 		coords.y1 = (float(curpoint->y) - yoffs) * yscale;
 
@@ -307,7 +320,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			// primitive but must not re-fire the notifiers: one beam event, one notification.
 			if (!curpoint->emitted)
 			{
-				m_line_notifier(lastx, lasty, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
+				m_line_notifier(curpoint->x0, curpoint->y0, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
 				// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
 				m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
 			}
@@ -318,9 +331,6 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		}
 
 		curpoint->emitted = true;
-
-		lastx = curpoint->x;
-		lasty = curpoint->y;
 
 		curpoint++;
 	}
