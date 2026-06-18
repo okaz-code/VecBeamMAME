@@ -87,6 +87,12 @@ static INPUT_PORTS_START(vectrex)
 	PORT_CONFNAME(0x1000, 0x000, "3D anaglyph swap L/R")
 	PORT_CONFSETTING(0x0000, DEF_STR(Off))   // left = red, right = cyan
 	PORT_CONFSETTING(0x1000, DEF_STR(On))    // left = cyan, right = red
+	PORT_CONFNAME(0x2000, 0x000, "3D Separate swap L/R")
+	PORT_CONFSETTING(0x0000, DEF_STR(Off))
+	PORT_CONFSETTING(0x2000, DEF_STR(On))
+	PORT_CONFNAME(0x4000, 0x000, "3D anaglyph right eye")
+	PORT_CONFSETTING(0x0000, "Cyan")
+	PORT_CONFSETTING(0x4000, "Blue")
 
 	PORT_START("3DPHASE")
 	PORT_ADJUSTER(50, "3D color phase") // colour segments vs index hole; 50 = stock, <50 earlier, >50 later (coarse, 0.005/step)

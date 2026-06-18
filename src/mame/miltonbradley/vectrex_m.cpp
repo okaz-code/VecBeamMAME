@@ -113,6 +113,7 @@ void vectrex_base_state::screen_configuration()
 		//   Off: honour the legacy "Separate images" toggle (add_point_stereo) or plain overlay.
 		const ioport_value smode = conf & 0xc00;
 		m_stereo_sbs = (smode == 0x400);
+		m_stereo_swap = (conf & 0x2000) != 0;   // "3D Separate swap L/R"
 		if (smode == 0x800)
 			vector_add_point_function = &vectrex_base_state::add_point;                 // anaglyph: overlay
 		else if (smode == 0x400 || (cport & 0x02))

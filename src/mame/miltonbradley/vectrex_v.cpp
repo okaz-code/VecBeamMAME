@@ -139,14 +139,17 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 	const ioport_value stereo_mode = conf & 0xC00;
 	const bool have_eyes = (conf & 0x01) && m_imager_freq > 5.0 && m_eye_count[1] > 0 && m_eye_count[2] > 0;
 
-	if (have_eyes && stereo_mode == 0x800)   // colour anaglyph (left = red, right = cyan; swap optional)
+	if (have_eyes && stereo_mode == 0x800)   // colour anaglyph (left = red, right = cyan/blue; swap optional)
 	{
-		const bool swap = (conf & 0x1000) != 0;   // On -> left = cyan, right = red
+		const bool swap = (conf & 0x1000) != 0;   // On -> left = cyan/blue, right = red
+		const bool blue = (conf & 0x4000) != 0;   // right eye = blue only (0x4000) instead of cyan
 		for (int e = 1; e <= 2; e++)
 		{
-			// eye 1 = left -> red, eye 2 = right -> cyan by default; the swap flips which eye is red.
+			// eye 1 = left -> red, eye 2 = right -> cyan/blue by default; the swap flips which eye is red.
 			const bool red_eye = ((e == 1) != swap);
-			auto ana = [red_eye](rgb_t c) -> rgb_t { return red_eye ? rgb_t(c.r(), 0, 0) : rgb_t(0, c.g(), c.b()); };
+			auto ana = [red_eye, blue](rgb_t c) -> rgb_t {
+				return red_eye ? rgb_t(c.r(), 0, 0) : (blue ? rgb_t(0, 0, c.b()) : rgb_t(0, c.g(), c.b()));
+			};
 			m_vector->add_point(m_eye_frame[e][0].x, m_eye_frame[e][0].y, ana(m_eye_frame[e][0].col), 0);
 			for (int i = 0; i < m_eye_count[e]; i++)
 				m_vector->add_point(m_eye_frame[e][i].x, m_eye_frame[e][i].y, ana(m_eye_frame[e][i].col), m_eye_frame[e][i].intensity);
@@ -227,10 +230,10 @@ void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensi
 	const double xs = m_stereo_sbs ? (SQRT1_2 * 0.5) : SQRT1_2;
 	const int ctr = m_stereo_sbs ? (m_x_center / 2 - (int)(m_y_center * xs)) : 0;
 
-	if (m_imager_status == 2) /* left = 1, right = 2 */
-		add_point((int)(y * xs) + m_x_center + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
-	else
-		add_point((int)(y * xs) + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
+	// which screen half this eye draws into (eye 2 = right by default; m_stereo_swap flips L/R)
+	const bool to_right = (m_imager_status == 2) != m_stereo_swap;   /* left = 1, right = 2 */
+	add_point((int)(y * xs) + (to_right ? m_x_center : 0) + ctr,
+			(int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
 }
 
 
