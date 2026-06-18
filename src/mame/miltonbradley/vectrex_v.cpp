@@ -5,6 +5,7 @@
 #include "vectrex.h"
 #include "cpu/m6809/m6809.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -12,6 +13,7 @@
 #define ANALOG_DELAY 8500
 
 #define INT_PER_CLOCK 550
+#define BEAM_ENERGY_NORMALIZE 480000.0
 
 /*********************************************************************
 
@@ -171,10 +173,14 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 
 		for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
 		{
+			m_vector->set_dump_scale(m_points[i].scale);   // BIOS draw scale -> event dump
 			m_vector->add_point(m_points[i].x,
 								m_points[i].y,
 								m_points[i].col,
-								m_points[i].intensity);
+								m_points[i].intensity,
+								m_points[i].beam_energy,
+								m_points[i].t0,
+								m_points[i].t1);
 		}
 	}
 
@@ -190,7 +196,7 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 
 *********************************************************************/
 
-void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity)
+void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
 {
 	vectrex_point *newpoint;
 
@@ -201,11 +207,15 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity)
 	newpoint->y = y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
+	newpoint->beam_energy = beam_energy;
+	newpoint->t0 = t0;
+	newpoint->t1 = t1;
+	newpoint->scale = m_cur_scale;     // BIOS vector scale (VIA T1 latch) sampled in update_vector
 	newpoint->eye = m_imager_status;   // tag with the eye currently being drawn (0 = imager off)
 }
 
 
-void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensity)
+void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
 {
 	constexpr double SQRT1_2 = std::numbers::sqrt2 / 2.0;
 
@@ -218,9 +228,34 @@ void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensi
 	const int ctr = m_stereo_sbs ? (m_x_center / 2 - (int)(m_y_center * xs)) : 0;
 
 	if (m_imager_status == 2) /* left = 1, right = 2 */
-		add_point((int)(y * xs) + m_x_center + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity);
+		add_point((int)(y * xs) + m_x_center + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
 	else
-		add_point((int)(y * xs) + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity);
+		add_point((int)(y * xs) + ctr, (int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
+}
+
+
+float vectrex_base_state::calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const
+{
+	if (t0.is_never() || t1.is_never() || t1 <= t0 || intensity <= 0)
+		return -1.0f;
+
+	const double dt = (t1 - t0).as_double();
+	const double beam_current = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
+	const double dx = double(x1) - double(x0);
+	const double dy = double(y1) - double(y0);
+	const double length = std::hypot(dx, dy) / 65536.0;
+
+	double energy = 0.0;
+	if (length < 0.01)
+		energy = beam_current * dt * BEAM_ENERGY_NORMALIZE;
+	else
+		energy = beam_current * dt * BEAM_ENERGY_NORMALIZE / length;
+
+	// No upper clamp at 1.0: a dwelling beam (parked point, length~0) physically deposits far more
+	// energy than a swept line, so beam_energy is allowed to exceed 1.0 (capped at 8x peak). The
+	// renderer clamps it to 0..1 for the displayed core but drives the overdrive/HDR white-hot flare
+	// from the raw value, so dwell points blow out far brighter than peak lines (real Vectrex behaviour).
+	return float(std::clamp(energy, 0.0, 16.0));
 }
 
 
@@ -228,7 +263,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 {
 	m_x_int = m_x_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
-	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0);
+	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0, -1.0f, attotime::never, attotime::never);
 }
 
 
@@ -245,24 +280,35 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 void vectrex_base_state::update_vector()
 {
 	int length;
+	const attotime t0 = m_vector_start_time;
+	const attotime t1 = machine().time();
+	const int x0 = m_x_int;
+	const int y0 = m_y_int;
+	m_cur_scale = m_via6522_0->t1_latch();   // BIOS vector scale (VIA Timer 1 latch) at draw time
 
 	if (!m_ramp)
 	{
 		length = m_maincpu->clocks_to_cycles(m_maincpu->clock()) * INT_PER_CLOCK
-			* (machine().time() - m_vector_start_time).as_double();
+			* (t1 - t0).as_double();
 
 		m_x_int += length * (m_analog[A_X] + m_analog[A_ZR]);
 		m_y_int += length * (m_analog[A_Y] + m_analog[A_ZR]);
 
-		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 2 * m_analog[A_Z] * m_blank);
+		const int intensity = 2 * m_analog[A_Z] * m_blank;
+		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity,
+				calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1), t0, t1);
 	}
 	else
 	{
 		if (m_blank)
-			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 2 * m_analog[A_Z]);
+		{
+			const int intensity = 2 * m_analog[A_Z];
+			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity,
+					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1), t0, t1);
+		}
 	}
 
-	m_vector_start_time = machine().time();
+	m_vector_start_time = t1;
 }
 
 

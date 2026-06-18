@@ -1531,17 +1531,39 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// are two independent clipped power curves: out = clamp((drive-lo)/(hi-lo),0,1)^gamma. Decoupling
 	// them lets brightness saturate early while width keeps growing - this subsumes the old overload
 	// model (now removed). lo=0 / hi=1 / curve=1 reproduces the plain intensity-linear response.
-	const float drive = (prim->beam_energy >= 0.0f)
-		? std::clamp(prim->beam_energy, 0.0f, 1.0f)
-		: std::clamp(prim->color.a, 0.0f, 1.0f);
+	// beam_energy_ref = the beam_energy that maps to full display brightness. Dividing by it spreads the
+	// (now wide, >1) beam_energy across the 0..1 display gradient, so e.g. a dwell point at energy 8 reads
+	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
+	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
+	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
+	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
+												: std::clamp(prim->color.a, 0.0f, 1.0f);
+	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
+	};
+	// gain function: reshapes a 0..1 value. g>0 -> S-curve (sigmoid / contrast: pushes values away from
+	// the pivot c, carving a 'valley' there); g<0 -> inverse-S (logit: expands around c); g=0 -> identity.
+	// c is the pivot (default 0.5). k = 2^g. Lets a contrast valley be placed at a chosen brightness.
+	auto gain = [](float x, float g, float c) -> float {
+		if (g == 0.0f) return x;
+		x = std::clamp(x, 0.0f, 1.0f);
+		c = std::clamp(c, 1e-3f, 1.0f - 1e-3f);
+		const float k = powf(2.0f, g);
+		return (x < c) ? c * powf(x / c, k)
+					   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
 	};
 	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	// Intensity gain (sigmoid/logit about a movable centre): shapes a contrast valley, e.g. near
+	// beam_energy_ref. 0 = identity (no change for chains without the slider).
+	display_a = gain(display_a,
+		m_chains->slider_value(0, "intensity_gain", 0.0f),
+		m_chains->slider_value(0, "intensity_gain_center", 0.5f));
 	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
 	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
 	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
@@ -1576,9 +1598,26 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	float line_over = 0.0f;
 	if (ov_gain > 0.0f)
 	{
-		const float ot     = std::clamp((drive - i_clip_high) / std::max(1e-3f, 1.0f - i_clip_high), 0.0f, 1.0f);
-		const float ocurve = m_chains->slider_value(0, "intensity_overdrive_curve", 2.0f);
-		line_over = ov_gain * ((ocurve == 1.0f) ? ot : powf(ot, ocurve));
+		// Drive the overdrive from the RAW (unclamped) beam energy, not the 0..1 display drive, so a
+		// genuinely overdriven dwell beam (beam_energy can exceed 1.0 - Vectrex parks the beam and dumps
+		// current into a point) flares far brighter than a peak-but-not-overdriven line. The curve shapes
+		// the ramp from the knee to peak (1.0); above peak it grows linearly so true overdrive keeps
+		// climbing instead of saturating at the same flare as a 1.0 line. Sources that never exceed 1.0
+		// (AVG/DVG, color.a fallback) get ot<=1 and behave exactly as before.
+		const float ot     = (n - i_clip_high) / std::max(1e-3f, 1.0f - i_clip_high);   // n is ref-normalized; >1 = energy beyond ref = overload
+		if (ot > 0.0f)
+		{
+			const float ocurve = m_chains->slider_value(0, "intensity_overdrive_curve", 2.0f);
+			float shaped = (ot <= 1.0f) ? ((ocurve == 1.0f) ? ot : powf(ot, ocurve))
+										: (1.0f + (ot - 1.0f));   // linear growth past peak
+			// overload gain: sigmoid/logit shaping of the in-range overload about a movable centre
+			// (0 = identity). The >1 (past-ref) part keeps its linear growth.
+			const float og = m_chains->slider_value(0, "overload_gain", 0.0f);
+			if (og != 0.0f)
+				shaped = gain(std::min(shaped, 1.0f), og,
+						m_chains->slider_value(0, "overload_gain_center", 0.5f)) + std::max(0.0f, shaped - 1.0f);
+			line_over = ov_gain * shaped;
+		}
 	}
 
 	// Length fade + flicker + window-blend weight, identical to the classic path.
@@ -1662,6 +1701,25 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		{
 			const float bres = float(s_width[window().index()]) / 1920.0f;
 			sigma += beam_bloom * bres * powf(std::min(bI, 4.0f), bloom_p);
+		}
+	}
+	// Overload-proportional spot blooming: a beam driven past peak (line_over > 0) physically defocuses
+	// and the spot widens (CRT in-tube blooming under saturation), so a white-hot dwell point / overdriven
+	// line blooms big and soft instead of staying a tiny bright speck. sigma grows with the raw overdrive
+	// amount, widening the core, the caps AND the >1 white flare together. overload_bloom 0 = off; scaled
+	// to 1920-reference pixels, line_over capped so extreme dwell energy does not explode the spot.
+	const float overload_bloom = m_chains->slider_value(0, "overload_bloom", 0.0f);
+	if (overload_bloom > 0.0f)
+	{
+		// Width grows with how far the RAW beam energy exceeds peak (dwell points reach several x peak).
+		// Keyed to raw energy, not line_over, so it keeps differentiating even when the flare brightness
+		// has saturated to white via the HDR rolloff: the hero dwell dot becomes a big soft white blob
+		// while line-junction dots stay small. No hard cap (raw energy is already bounded upstream).
+		const float over_e = std::max(0.0f, n - 1.0f);   // n > 1 = energy beyond ref = genuine overload
+		if (over_e > 0.0f)
+		{
+			const float obres = float(s_width[window().index()]) / 1920.0f;
+			sigma += overload_bloom * obres * over_e;
 		}
 	}
 	// Edge defocus (vgens / master plan 3-5): at large deflection angles the spot defocuses
@@ -2011,17 +2069,39 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// when the device supplies it, else the display intensity. Brightness and width are two independent
 	// clipped power curves out = clamp((drive-lo)/(hi-lo),0,1)^gamma, decoupled so brightness can
 	// saturate while width keeps growing - this replaces the old renderer-side overload model.
-	const float drive = (prim->beam_energy >= 0.0f)
-		? std::clamp(prim->beam_energy, 0.0f, 1.0f)
-		: std::clamp(prim->color.a, 0.0f, 1.0f);
+	// beam_energy_ref = the beam_energy that maps to full display brightness. Dividing by it spreads the
+	// (now wide, >1) beam_energy across the 0..1 display gradient, so e.g. a dwell point at energy 8 reads
+	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
+	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
+	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
+	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
+												: std::clamp(prim->color.a, 0.0f, 1.0f);
+	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
+	};
+	// gain function: reshapes a 0..1 value. g>0 -> S-curve (sigmoid / contrast: pushes values away from
+	// the pivot c, carving a 'valley' there); g<0 -> inverse-S (logit: expands around c); g=0 -> identity.
+	// c is the pivot (default 0.5). k = 2^g. Lets a contrast valley be placed at a chosen brightness.
+	auto gain = [](float x, float g, float c) -> float {
+		if (g == 0.0f) return x;
+		x = std::clamp(x, 0.0f, 1.0f);
+		c = std::clamp(c, 1e-3f, 1.0f - 1e-3f);
+		const float k = powf(2.0f, g);
+		return (x < c) ? c * powf(x / c, k)
+					   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
 	};
 	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
+	// Intensity gain (sigmoid/logit about a movable centre): shapes a contrast valley, e.g. near
+	// beam_energy_ref. 0 = identity (no change for chains without the slider).
+	display_a = gain(display_a,
+		m_chains->slider_value(0, "intensity_gain", 0.0f),
+		m_chains->slider_value(0, "intensity_gain_center", 0.5f));
 	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
 	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
 	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
@@ -2701,6 +2781,21 @@ int renderer_bgfx::draw(int update)
 					? expf(-float(persist_dt * 1000.0) / persist_ms) : 0.0f;
 				const float persist_vals[4] = { persist_decay, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "Flicker Persist", "u_persist_decay", persist_vals, 4);
+
+				// Scan-sim physical phosphor accumulator (vector-vectrex-scansim chain). The persistent
+				// HDR accumulator pass "Scan Accumulate" (vector_phosphor_tail) does out = prev*decay + cur;
+				// drive its decay in real time the same way as Flicker Persist above: decay =
+				// exp(-dt_ms / phosphor_tau_ms), reusing persist_dt (emulated time since the previous
+				// present). On non-advancing presents (pause) dt==0 -> decay==1, but u_tail_freeze=1 then
+				// forces retain=1/inject=0 so the held image is neither decayed nor re-added. No-op without
+				// a "Scan Accumulate" pass.
+				const float scan_tau_ms = m_chains->slider_value(0, "phosphor_tau_ms", 20.0f);
+				const float scan_decay  = (scan_tau_ms > 0.0f)
+					? expf(-float(persist_dt * 1000.0) / scan_tau_ms) : 0.0f;
+				const float scan_decay_vals[4] = { scan_decay, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Scan Accumulate", "u_tail_decay", scan_decay_vals, 4);
+				const float scan_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Scan Accumulate", "u_tail_freeze", scan_freeze, 4);
 
 				// Bloom dark-area noise: strength from the slider, and freeze the pattern (y=1) on
 				// presents that did not advance emulation so the shimmer stops while paused (F5).
