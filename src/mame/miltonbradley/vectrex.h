@@ -118,7 +118,6 @@ private:
 	int m_lightpen_port = 0;
 	int m_reset_refresh = 0;
 	bool m_stereo_sbs = false;   // "3D stereo out = Side-by-side": compress add_point_stereo to half width
-	bool m_stereo_swap = false;  // "3D Separate swap L/R": swap which screen half each eye draws into
 	const double *m_imager_angles = nullptr;
 	// Cart-detected color disc (angles + refresh strategy), kept so the 3DCONF "3D color disc = Auto"
 	// setting can revert to it after a manual override.
