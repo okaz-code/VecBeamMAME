@@ -39,6 +39,7 @@ protected:
 		m_io_3dphase(*this, "3DPHASE"),
 		m_io_3dphase_fine(*this, "3DPHASEF"),
 		m_io_3dredphase(*this, "3DREDPH"),
+		m_io_xskew(*this, "XSKEW"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -171,6 +172,7 @@ private:
 	optional_ioport m_io_3dphase;        // 3D imager colour-segment phase trim, coarse (absent on raaspec)
 	optional_ioport m_io_3dphase_fine;   // ... fine sub-step trim
 	optional_ioport m_io_3dredphase;     // ... red-segment-only phase shift
+	optional_ioport m_io_xskew;          // X-axis MUX extra-lag (glyph slant) adjuster
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;
