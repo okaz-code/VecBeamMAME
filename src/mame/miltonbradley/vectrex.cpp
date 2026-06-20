@@ -100,6 +100,15 @@ static INPUT_PORTS_START(vectrex)
 	PORT_START("XSKEW")
 	PORT_ADJUSTER(0, "X skew delay") // Y-axis lead -> Vectrex glyph slant; ~80ns/step (0 = upright default, ~51 = ~4us, 100 = ~8us)
 
+	PORT_START("BEAMINFL")
+	PORT_ADJUSTER(50, "Beam speed influence") // 0 = intensity only, 100 = up to ~2x boost for slow/short strokes
+	PORT_START("BEAMCURVE")
+	PORT_ADJUSTER(50, "Beam speed curve")     // dt/length saturation gentleness (g = adj/50; 50 = 1.0)
+	PORT_START("BEAMSCALE")
+	PORT_ADJUSTER(50, "Beam speed scale")     // saturation midpoint (dt/length normalizer = adj x 10000)
+	PORT_START("BEAMDWELL")
+	PORT_ADJUSTER(50, "Dwell accum limit")    // cap same-spot pile-up; 0 = only first dot, 100 = ~unlimited (cap = adj/100 x 16)
+
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")
 	PORT_CONFSETTING(0x00, DEF_STR(Off))

@@ -1595,6 +1595,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// then rises sharply, so only the very brightest beams blow out white. curve = 1 is linear.
 	const float i_clip_high = m_chains->slider_value(0, "intensity_clip_high", 1.0f);
 	const float ov_gain     = m_chains->slider_value(0, "intensity_overdrive", 0.0f);
+	// Overload (white-hot) threshold: a beam with normalized energy n above this trips the flare.
+	// Independent of the display clip; defaults to intensity_clip_high so chains without the slider
+	// behave as before (e.g. overload_threshold 0.9 -> beam_energy >= 0.9 vectors blow out).
+	const float ov_thresh   = m_chains->slider_value(0, "overload_threshold", i_clip_high);
 	float line_over = 0.0f;
 	if (ov_gain > 0.0f)
 	{
@@ -1604,7 +1608,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// the ramp from the knee to peak (1.0); above peak it grows linearly so true overdrive keeps
 		// climbing instead of saturating at the same flare as a 1.0 line. Sources that never exceed 1.0
 		// (AVG/DVG, color.a fallback) get ot<=1 and behave exactly as before.
-		const float ot     = (n - i_clip_high) / std::max(1e-3f, 1.0f - i_clip_high);   // n is ref-normalized; >1 = energy beyond ref = overload
+		const float ot     = (n - ov_thresh) / std::max(1e-3f, 1.0f - ov_thresh);   // n above the overload threshold
 		if (ot > 0.0f)
 		{
 			const float ocurve = m_chains->slider_value(0, "intensity_overdrive_curve", 2.0f);
@@ -1715,11 +1719,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// Keyed to raw energy, not line_over, so it keeps differentiating even when the flare brightness
 		// has saturated to white via the HDR rolloff: the hero dwell dot becomes a big soft white blob
 		// while line-junction dots stay small. No hard cap (raw energy is already bounded upstream).
-		const float over_e = std::max(0.0f, n - 1.0f);   // n > 1 = energy beyond ref = genuine overload
+		// Trigger on the same OVERLOAD THRESHOLD as the flare, normalized 0..1. (The old code keyed on
+		// n > 1, which the 0..1 beam_energy model never reaches, so the widening never fired.)
+		const float over_e = std::clamp((n - ov_thresh) / std::max(1e-3f, 1.0f - ov_thresh), 0.0f, 1.0f);
 		if (over_e > 0.0f)
 		{
 			const float obres = float(s_width[window().index()]) / 1920.0f;
-			sigma += overload_bloom * obres * over_e;
+			sigma += overload_bloom * obres * over_e * 4.0f;   // overload_bloom (0..4) x4 = up to ~16px spot widen
 		}
 	}
 	// Edge defocus (vgens / master plan 3-5): at large deflection angles the spot defocuses
@@ -2439,11 +2445,14 @@ int renderer_bgfx::draw(int update)
 			// frozen frame, so a multiplexed/flicker image does not drop out into an incomplete still. Moving
 			// content ghosts slightly, but a paused image is static so it is normally invisible.
 			const bool vec_paused = window().machine().paused();
-			auto vec_window_weight = [this, vec_blend, vec_paused] (const render_primitive &p) -> float
+			// pause_composite (default 1 = on): off -> a paused frame shows the single frozen frame
+			// instead of compositing the whole retained beam window (easier tuning, no pause ghosting).
+			const bool pause_comp = m_chains->slider_value(0, "pause_composite", 1.0f) > 0.5f;
+			auto vec_window_weight = [this, vec_blend, vec_paused, pause_comp] (const render_primitive &p) -> float
 			{
 				if (!m_vec_beam_events || p.t0 < 0.0)
 					return 1.0f;
-				if (vec_paused)
+				if (vec_paused && pause_comp)
 					return 1.0f;
 				if (vec_blend <= 0.0)
 					return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
