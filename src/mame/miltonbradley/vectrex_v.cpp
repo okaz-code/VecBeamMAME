@@ -21,7 +21,6 @@
 #define X_SKEW_NS_PER_STEP 80
 
 #define INT_PER_CLOCK 550
-#define BEAM_ENERGY_NORMALIZE 480000.0
 
 /*********************************************************************
 
@@ -248,23 +247,50 @@ float vectrex_base_state::calculate_beam_energy(int x0, int y0, int x1, int y1, 
 	if (t0.is_never() || t1.is_never() || t1 <= t0 || intensity <= 0)
 		return -1.0f;
 
-	const double dt = (t1 - t0).as_double();
-	const double beam_current = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
-	const double dx = double(x1) - double(x0);
-	const double dy = double(y1) - double(y0);
-	const double length = std::hypot(dx, dy) / 65536.0;
+	// Base brightness = the displayed intensity (Z), normalized to 0..1.
+	const double I = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
 
-	double energy = 0.0;
-	if (length < 0.01)
-		energy = beam_current * dt * BEAM_ENERGY_NORMALIZE;
-	else
-		energy = beam_current * dt * BEAM_ENERGY_NORMALIZE / length;
+	// Gentle, bounded speed coefficient from dwell-per-length (dt/length): a slow / short stroke dwells
+	// longer per unit length and glows a little brighter, but via a SATURATING curve so halving the
+	// length does not double the brightness - it asymptotes. s = x^g/(x^g+1) in [0,1); coeff = 1 +
+	// influence*s stays in [1, 1+influence] (influence <= 1 -> at most ~2x). Params are cached per frame
+	// from the BEAMINFL / BEAMCURVE / BEAMSCALE adjusters; influence 0 -> pure intensity.
+	double coeff = 1.0;
+	if (m_beam_infl > 0.0)
+	{
+		const double dx = double(x1) - double(x0);
+		const double dy = double(y1) - double(y0);
+		const double length = std::max(0.001, std::hypot(dx, dy) / 65536.0);  // floor so dots don't blow up
+		const double dt = (t1 - t0).as_double();
+		const double x = (dt / length) * m_beam_scale;          // dwell per unit length, scaled
+		const double xg = std::pow(x, m_beam_curve);
+		const double s = xg / (xg + 1.0);                       // saturating 0..1
+		coeff = 1.0 + m_beam_infl * s;                          // in [1, 1+influence]
+	}
 
-	// No upper clamp at 1.0: a dwelling beam (parked point, length~0) physically deposits far more
-	// energy than a swept line, so beam_energy is allowed to exceed 1.0 (capped at 8x peak). The
-	// renderer clamps it to 0..1 for the displayed core but drives the overdrive/HDR white-hot flare
-	// from the raw value, so dwell points blow out far brighter than peak lines (real Vectrex behaviour).
-	return float(std::clamp(energy, 0.0, 16.0));
+	return float(std::clamp(I * coeff, 0.0, 1.0));
+}
+
+
+// Limit the additive brightness pile-up of repeated dots at the SAME parked location (the renderer
+// composites overlapping deposits with BLENDMODE_ADD). The first dot at a new spot is full; further
+// dots at the same (x,y) add only until the cumulative beam_energy reaches m_dwell_cap. Moving to a new
+// spot resets the accumulator. m_dwell_cap is the "Dwell accum limit" adjuster (0 = first dot only).
+float vectrex_base_state::apply_dwell_limit(int x, int y, float energy)
+{
+	if (energy < 0.0f)
+		return energy;   // untimed / invalid: pass through (the renderer falls back to intensity)
+	if (x == m_dwell_x && y == m_dwell_y)
+	{
+		const double remaining = std::max(0.0, m_dwell_cap - m_dwell_accum);
+		const double e = std::min(double(energy), remaining);
+		m_dwell_accum += e;
+		return float(e);
+	}
+	m_dwell_x = x;
+	m_dwell_y = y;
+	m_dwell_accum = energy;
+	return energy;
 }
 
 
@@ -304,16 +330,18 @@ void vectrex_base_state::update_vector()
 		m_y_int += length * (m_analog[A_Y] + m_analog[A_ZR]);
 
 		const int intensity = 2 * m_analog[A_Z] * m_blank;
-		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity,
-				calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1), t0, t1);
+		const float e = apply_dwell_limit(m_x_int, m_y_int,
+				calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
 	}
 	else
 	{
 		if (m_blank)
 		{
 			const int intensity = 2 * m_analog[A_Z];
-			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity,
-					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1), t0, t1);
+			const float e = apply_dwell_limit(m_x_int, m_y_int,
+					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
 		}
 	}
 

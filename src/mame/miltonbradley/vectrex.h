@@ -40,6 +40,10 @@ protected:
 		m_io_3dphase_fine(*this, "3DPHASEF"),
 		m_io_3dredphase(*this, "3DREDPH"),
 		m_io_xskew(*this, "XSKEW"),
+		m_io_beam_infl(*this, "BEAMINFL"),
+		m_io_beam_curve(*this, "BEAMCURVE"),
+		m_io_beam_scale(*this, "BEAMSCALE"),
+		m_io_beam_dwell(*this, "BEAMDWELL"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -83,6 +87,7 @@ protected:
 	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
 			attotime t0 = attotime::never, attotime t1 = attotime::never);
 	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
+	float apply_dwell_limit(int x, int y, float energy);   // cap same-location additive pile-up
 
 	unsigned char m_via_out[2];
 
@@ -160,6 +165,16 @@ private:
 	uint16_t m_via_timer2 = 0;
 	attotime m_vector_start_time;
 		int m_cur_scale = 0;   // VIA T1 latch sampled at update_vector time (BIOS draw scale)
+	// beam_energy speed-coefficient params, cached once per frame in screen_configuration()
+	double m_beam_infl = 0.5;        // influence (0..1): 0 = intensity only, 1 = up to ~2x boost
+	double m_beam_curve = 1.0;       // saturation exponent g (gentleness)
+	double m_beam_scale = 500000.0;  // dt/length normalizer (saturation midpoint)
+	// Same-location dwell accumulation limit: caps the cumulative beam_energy deposited at one parked
+	// spot (the additive pile-up of repeated dots). First dot at a new spot is always full.
+	double m_dwell_cap = 8.0;        // cached per frame (0 = only the first dot, large = unlimited)
+	int m_dwell_x = 0;
+	int m_dwell_y = 0;
+	double m_dwell_accum = 0.0;
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
@@ -173,6 +188,10 @@ private:
 	optional_ioport m_io_3dphase_fine;   // ... fine sub-step trim
 	optional_ioport m_io_3dredphase;     // ... red-segment-only phase shift
 	optional_ioport m_io_xskew;          // X-axis MUX extra-lag (glyph slant) adjuster
+	optional_ioport m_io_beam_infl;      // beam_energy speed-coefficient influence (0..100)
+	optional_ioport m_io_beam_curve;     // ... dt/length saturation curve / gentleness
+	optional_ioport m_io_beam_scale;     // ... saturation midpoint scale
+	optional_ioport m_io_beam_dwell;     // same-location accumulation limit (parked-beam pile-up cap)
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;

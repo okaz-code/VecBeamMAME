@@ -24,7 +24,8 @@
 		{ "type": "float", "name": "line_cap_width",      "text": "Line Cap Width (x beam)",   "default": 1.0,  "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "intensity_clip_low",  "text": "Intensity Clip Low",         "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "intensity_clip_high", "text": "Intensity Clip High",        "default": 1.0,  "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "intensity_curve",     "text": "Intensity Curve (1=linear)", "default": 1.0,  "min": 0.25, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" }
+		{ "type": "float", "name": "intensity_curve",     "text": "Intensity Curve (1=linear)", "default": 1.0,  "min": 0.25, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "intenum", "name": "pause_composite", "text": "Pause Frame Composite", "default": 0, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] }
 	],
 
 	"targets": [
