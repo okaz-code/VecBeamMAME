@@ -12,6 +12,14 @@
 
 #define ANALOG_DELAY 8500
 
+// Italic/slant reproduction: extra delay (ns) applied to the Y integrator's DAC application (in
+// via_pa_w), subtracted from ANALOG_DELAY, so Y leads the MUX-routed X axis. Portrait screen (rotated left
+// 90deg), so the shear reads as the italic slant along Y. This per-axis timing asymmetry shears the
+// characteristic Vectrex slant that vectrexy reproduces via its VelocityXDelay (~6 CPU cycles
+// @1.5MHz ~= 4us). Live-adjustable via the "XSKEW" PORT_ADJUSTER (0..100, default 50): the delay is
+// adjuster * X_SKEW_NS_PER_STEP, so 50 -> 4000ns, 100 -> 8000ns, 0 -> upright. Tune to real HW / vectrexy.
+#define X_SKEW_NS_PER_STEP 80
+
 #define INT_PER_CLOCK 550
 #define BEAM_ENERGY_NORMALIZE 480000.0
 
@@ -381,6 +389,8 @@ void vectrex_state::video_start()
 
 void vectrex_base_state::multiplexer(int mux)
 {
+	// MUX-routed channels (A_X / A_Z / A_ZR / A_AUDIO) settle at ANALOG_DELAY. The glyph-slant skew is
+	// applied to the directly-driven Y axis in via_pa_w (see X_SKEW_NS_PER_STEP), not here.
 	machine().scheduler().timer_set(attotime::from_nsec(ANALOG_DELAY), timer_expired_delegate(FUNC(vectrex_base_state::update_analog), this), m_via_out[PORTA] << 9 | 0x100 | mux);
 
 	if (mux == A_AUDIO)
@@ -475,7 +485,12 @@ void vectrex_base_state::via_pa_w(uint8_t data)
 {
 	/* DAC output always goes to Y integrator */
 	m_via_out[PORTA] = data;
-	machine().scheduler().timer_set(attotime::from_nsec(ANALOG_DELAY), timer_expired_delegate(FUNC(vectrex_base_state::update_analog), this), A_Y);
+	// Glyph-slant skew: advance the directly-driven Y integrator AHEAD of the MUX-routed X axis (Y
+	// settles earlier). The screen is portrait (rotated left 90deg) so the italic shear reads along Y.
+	// XSKEW adjuster * step ns subtracted from ANALOG_DELAY; 0 = stock upright. (Y is applied here, not
+	// via multiplexer(), so the skew must live here.)
+	const int skew = int(m_io_xskew.read_safe(0)) * X_SKEW_NS_PER_STEP;
+	machine().scheduler().timer_set(attotime::from_nsec(ANALOG_DELAY - skew), timer_expired_delegate(FUNC(vectrex_base_state::update_analog), this), A_Y);
 
 	if (!(m_via_out[PORTB] & 0x1))
 		multiplexer((m_via_out[PORTB] >> 1) & 0x3);

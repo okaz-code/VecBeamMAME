@@ -97,6 +97,9 @@ static INPUT_PORTS_START(vectrex)
 	PORT_START("3DREDPH")
 	PORT_ADJUSTER(50, "3D red phase") // shifts ONLY the red segment (its blue/red and red/green edges); 50 = stock
 
+	PORT_START("XSKEW")
+	PORT_ADJUSTER(0, "X skew delay") // Y-axis lead -> Vectrex glyph slant; ~80ns/step (0 = upright default, ~51 = ~4us, 100 = ~8us)
+
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")
 	PORT_CONFSETTING(0x00, DEF_STR(Off))
