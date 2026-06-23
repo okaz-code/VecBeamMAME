@@ -84,7 +84,7 @@ void vector_device::device_start()
 	{
 		m_event_dump.open(dump_path);
 		if (m_event_dump.is_open())
-			m_event_dump << "frame,t0,t1,draw_us,scale,x0,y0,x,y,length,intensity,beam_energy\n";   // frame=list generation; draw_us=actual draw time (us); scale=BIOS vector scale (VIA T1 latch)
+			m_event_dump << "frame,t0,t1,draw_us,ramp_us,scale,x0,y0,x,y,length,intensity,beam_energy\n";   // frame=list generation; draw_us=segment draw time (us); ramp_us=RAMP-active time up to this point (us); scale=BIOS vector scale (VIA T1 latch)
 		else
 			osd_printf_warning("vector: could not open event dump file '%s'\n", dump_path);
 	}
@@ -203,8 +203,8 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 		const double seg_len = std::sqrt(double(x - newpoint->x0) * double(x - newpoint->x0)
 				+ double(y - newpoint->y0) * double(y - newpoint->y0));
 		const double draw_us = (t1 - t0).as_double() * 1e6;   // actual draw time = realized beam scale
-		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f\n",
-				m_list_generation, t0.as_double(), t1.as_double(), draw_us, m_dump_scale,
+		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f\n",
+				m_list_generation, t0.as_double(), t1.as_double(), draw_us, m_dump_ramp_us, m_dump_scale,
 				newpoint->x0, newpoint->y0, x, y, seg_len, intensity, newpoint->beam_energy);
 	}
 
@@ -338,12 +338,12 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	if (m_beam_event_mode)
 	{
 		// Timed points are consumed once emitted, except those young enough to still carry
-		// energy into the next window (the renderer's window-boundary blend, slider max 50ms):
-		// they survive one more emission so the next frame can draw their remainder. Their
+		// energy into the next window (the renderer's beam-integration window, slider max 100ms):
+		// they survive until they age past `keep` so the integration window can still draw them. Their
 		// emitted flag keeps the notifiers above from firing twice for the same beam event.
 		// Untimed points keep stock semantics (redrawn until the next clear_list).
 		const attotime now = machine().time();
-		const attotime keep = attotime::from_msec(50);
+		const attotime keep = attotime::from_msec(110);
 		int w = 0;
 		for (int i = 0; i < m_vector_index; i++)
 		{

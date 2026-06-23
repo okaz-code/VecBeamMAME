@@ -32,6 +32,7 @@ uniform vec4 u_line_channel_gain;  // (r, g, b, 0)        default (1,1,1,0)
 // monochrome phosphor_color is shifted off-white.
 uniform vec4 u_phosphor_overdrive;      // (amount, 0, 0, 0)  0 = off
 uniform vec4 u_phosphor_overdrive_knee; // (knee,   0, 0, 0)
+uniform vec4 u_overdrive_color;         // tint highlights saturate toward (default white 1,1,1; set bluish for blue-white)
 
 void main()
 {
@@ -50,7 +51,7 @@ void main()
 	float drive = max(c.r, max(c.g, c.b));
 	float knee  = u_phosphor_overdrive_knee.x;
 	float w = clamp((drive - knee) / max(1e-4, 1.0 - knee), 0.0, 1.0) * u_phosphor_overdrive.x;
-	mixed = mix(mixed, vec3_splat(1.0), clamp(w, 0.0, 1.0));
+	mixed = mix(mixed, u_overdrive_color.rgb, clamp(w, 0.0, 1.0));
 
 	mixed = clamp(mixed, 0.0, 1.0);
 

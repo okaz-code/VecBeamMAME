@@ -15,6 +15,18 @@ $input v_color0, v_texcoord1, v_texcoord0
 
 #include "common.sh"
 
+// u_line_params.y = edge sharpness (super-gaussian order p). 1 = plain gaussian (unchanged); p>1
+// flattens the cross-section top and steepens its shoulder, so a WIDE line reads as a sharp-edged
+// bright band instead of a soft blob. Applied to the already-AA'd 0..1 profile as a pure reshape:
+//   sg = exp(-(-ln g)^p)   (g^1 -> g, so p=1 is identity and the erf box-integration AA is preserved).
+uniform vec4 u_line_params;
+
+float sharpen(float g, float p)
+{
+	if (p <= 1.0001) return g;
+	return exp(-pow(-log(max(g, 1e-6)), p));
+}
+
 // Abramowitz-Stegun 7.1.26 rational approximation, max abs error 1.5e-7
 float erf_approx(float x)
 {
@@ -62,7 +74,8 @@ void main()
 			float wd = 0.5 * (abs(dFdx(d)) + abs(dFdy(d))) + 0.5 * sqrt(dFdx(d) * dFdx(d) + dFdy(d) * dFdy(d));
 			float fa = (wa > 1e-4) ? (sg * 1.2533141 / wa) * (erf_approx((a + 0.5 * wa) * inv_pt) - erf_approx((a - 0.5 * wa) * inv_pt)) : exp(-a * a * inv_2s2);
 			float fd = (wd > 1e-4) ? (sg * 1.2533141 / wd) * (erf_approx((d + 0.5 * wd) * inv_pt) - erf_approx((d - 0.5 * wd) * inv_pt)) : exp(-d * d * inv_2s2);
-			fade = fa * fd;
+			// sharpen each axis so a fat dwell dot gets a flat core + crisp rim, same as wide lines
+			fade = sharpen(fa, u_line_params.y) * sharpen(fd, u_line_params.y);
 		}
 	}
 	else
@@ -89,6 +102,9 @@ void main()
 		{
 			perp = exp(-d * d * inv_2s2);
 		}
+		// Edge sharpness: reshape the perpendicular cross-section toward a flat-topped band (the axial
+		// end roll-off is left alone so stroke ends stay round). p=1 -> unchanged.
+		perp = sharpen(perp, u_line_params.y);
 		fade = perp * axial;
 	}
 

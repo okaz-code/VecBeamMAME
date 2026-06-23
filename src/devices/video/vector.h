@@ -70,6 +70,10 @@ public:
 	// Vectrex VIA Timer 1 latch = BIOS vector scale). Set just before add_point; -1 = none.
 	void set_dump_scale(int s) { m_dump_scale = s; }
 
+	// Optional per-point RAMP-active duration (us) recorded in the dump. Set just before add_point;
+	// -1 = none. For Vectrex this is how long RAMP had been active when the point was drawn.
+	void set_dump_ramp_us(double r) { m_dump_ramp_us = r; }
+
 	// Beam-event mode (opt-in by a timing-aware renderer): timed points are consumed by
 	// screen_update once emitted instead of being redrawn until the next clear_list, and
 	// clear_list leaves timed points alone so a list crossing a frame boundary is split
@@ -132,6 +136,7 @@ private:
 	bool m_beam_event_mode;
 	std::ofstream m_event_dump;
 	int m_dump_scale = -1;   // scale value for the next dumped point (set by the driver via set_dump_scale)
+	double m_dump_ramp_us = -1.0;   // RAMP-active duration for the next dumped point (set_dump_ramp_us)
 	// Generation counters for CRT-flicker detection: clear_list() bumps m_list_generation when the
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;

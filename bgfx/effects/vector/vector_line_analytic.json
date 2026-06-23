@@ -18,6 +18,7 @@
 	"vertex": "vector/vs_vector_line_analytic",
 	"fragment": "vector/fs_vector_line_analytic",
 	"uniforms": [
-		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_line_params",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]
 }
