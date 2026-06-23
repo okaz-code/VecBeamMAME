@@ -84,7 +84,7 @@ void vector_device::device_start()
 	{
 		m_event_dump.open(dump_path);
 		if (m_event_dump.is_open())
-			m_event_dump << "frame,t0,t1,draw_us,ramp_us,scale,x0,y0,x,y,length,intensity,beam_energy\n";   // frame=list generation; draw_us=segment draw time (us); ramp_us=RAMP-active time up to this point (us); scale=BIOS vector scale (VIA T1 latch)
+			m_event_dump << "frame,t0,t1,draw_us,ramp_us,scale,x0,y0,x,y,length,intensity,beam_energy,midchange\n";   // frame=list generation; draw_us=segment draw time (us); ramp_us=RAMP-active time up to this point (us); scale=BIOS vector scale (VIA T1 latch); midchange=curve mid-point (beam velocity changed mid-ramp)
 		else
 			osd_printf_warning("vector: could not open event dump file '%s'\n", dump_path);
 	}
@@ -203,9 +203,9 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 		const double seg_len = std::sqrt(double(x - newpoint->x0) * double(x - newpoint->x0)
 				+ double(y - newpoint->y0) * double(y - newpoint->y0));
 		const double draw_us = (t1 - t0).as_double() * 1e6;   // actual draw time = realized beam scale
-		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f\n",
+		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f,%d\n",
 				m_list_generation, t0.as_double(), t1.as_double(), draw_us, m_dump_ramp_us, m_dump_scale,
-				newpoint->x0, newpoint->y0, x, y, seg_len, intensity, newpoint->beam_energy);
+				newpoint->x0, newpoint->y0, x, y, seg_len, intensity, newpoint->beam_energy, m_dump_midchange ? 1 : 0);
 	}
 
 	m_vector_index++;

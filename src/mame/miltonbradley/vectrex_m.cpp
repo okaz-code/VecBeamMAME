@@ -50,7 +50,12 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::update_analog)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::update_blank)
 {
+	// BLANK turning off ends a lit stroke. Model the finite blanking rise time (VIDE blankOnDelay) by
+	// extending the emitted endpoint a little along the beam velocity in update_vector. Active only for
+	// this one segment; 0 (the default) = stock behaviour.
+	m_blank_delay_active = (m_blank != 0 && param == 0) ? double(m_io_blank_delay.read_safe(0)) : 0.0;
 	update_vector();
+	m_blank_delay_active = 0.0;
 	m_blank = param;
 }
 

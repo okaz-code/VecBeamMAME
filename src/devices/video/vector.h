@@ -74,6 +74,10 @@ public:
 	// -1 = none. For Vectrex this is how long RAMP had been active when the point was drawn.
 	void set_dump_ramp_us(double r) { m_dump_ramp_us = r; }
 
+	// Optional per-point "curve mid-point" flag recorded in the dump (Vectrex midChange: the beam
+	// velocity changed mid-ramp, i.e. a point along an intended curve). Set just before add_point.
+	void set_dump_midchange(bool m) { m_dump_midchange = m; }
+
 	// Beam-event mode (opt-in by a timing-aware renderer): timed points are consumed by
 	// screen_update once emitted instead of being redrawn until the next clear_list, and
 	// clear_list leaves timed points alone so a list crossing a frame boundary is split
@@ -137,6 +141,7 @@ private:
 	std::ofstream m_event_dump;
 	int m_dump_scale = -1;   // scale value for the next dumped point (set by the driver via set_dump_scale)
 	double m_dump_ramp_us = -1.0;   // RAMP-active duration for the next dumped point (set_dump_ramp_us)
+	bool m_dump_midchange = false;  // curve mid-point flag for the next dumped point (set_dump_midchange)
 	// Generation counters for CRT-flicker detection: clear_list() bumps m_list_generation when the
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;

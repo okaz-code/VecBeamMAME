@@ -1,0 +1,25 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Saturation spill: bleeds over-threshold beam energy into the 8 neighbouring pixels
+// (orthogonal 15%, diagonal 10%), ported from VIDE's spillShader.fs. Full-screen replace pass
+// (reads internal, writes internal). u_inv_screen_dims is auto-set by the chain system.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_spill",
+	"uniforms": [
+		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_spill_threshold", "type": "vec4", "values": [ 0.6, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_spill_strength",  "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+	]
+}

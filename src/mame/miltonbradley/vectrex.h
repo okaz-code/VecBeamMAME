@@ -45,6 +45,8 @@ protected:
 		m_io_beam_scale(*this, "BEAMSCALE"),
 		m_io_beam_max(*this, "BEAMMAX"),
 		m_io_beam_dwell(*this, "BEAMDWELL"),
+		m_io_blank_delay(*this, "BLANKDELAY"),
+		m_io_spline(*this, "SPLINE"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -117,6 +119,7 @@ private:
 		attotime t1 = attotime::never;
 		int scale = 0;   // VIA T1 latch at draw time (BIOS vector scale) - for the event dump
 		double ramp_us = 0.0;   // RAMP-active duration up to this point (us); 0 = drawn while RAMP inactive
+		bool midchange = false; // true = a curve "mid" point (beam velocity changed mid-ramp); see m_cur_midchange
 		int eye = 0;   // imager eye this vector was drawn for (0 = none, 1 = left, 2 = right)
 	};
 
@@ -180,6 +183,15 @@ private:
 	int m_dwell_x = 0;
 	int m_dwell_y = 0;
 	double m_dwell_accum = 0.0;
+	// BLANK-off tail (VIDE blankOnDelay): when blank turns off, the emitted lit segment endpoint is
+	// extended this many integrator-steps along the beam velocity (set transiently in update_blank).
+	double m_blank_delay_active = 0.0;
+	// midChange detection: within a run of connected lit RAMP-active segments, a vertex is a "curve
+	// point" when the beam velocity changed there. Used to reconstruct intended curves (Catmull-Rom).
+	int m_mid_prev_dx = 0;
+	int m_mid_prev_dy = 0;
+	bool m_mid_in_run = false;    // currently inside a connected lit ramp run
+	bool m_cur_midchange = false; // midChange flag for the next add_point
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
@@ -198,6 +210,8 @@ private:
 	optional_ioport m_io_beam_scale;     // ... draw-time normalizer (saturation midpoint)
 	optional_ioport m_io_beam_max;       // ... per-unit-area max beam_energy (phosphor saturation ceiling)
 	optional_ioport m_io_beam_dwell;     // same-location accumulation limit (parked-beam pile-up cap)
+	optional_ioport m_io_blank_delay;    // BLANK-off tail length (integrator steps); 0 = off (stock)
+	optional_ioport m_io_spline;         // Catmull-Rom subdivisions for midChange curve runs; 0 = off
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;
