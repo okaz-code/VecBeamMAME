@@ -89,7 +89,7 @@ static INPUT_PORTS_START(vectrex)
 	PORT_CONFSETTING(0x1000, DEF_STR(On))    // left = cyan, right = red
 
 	PORT_START("3DPHASE")
-	PORT_ADJUSTER(50, "3D color phase") // colour segments vs index hole; 50 = stock, <50 earlier, >50 later (coarse, 0.005/step)
+	PORT_ADJUSTER(42, "3D color phase") // colour segments vs index hole; 50 = stock, <50 earlier, >50 later (coarse, 0.005/step)
 
 	PORT_START("3DPHASEF")
 	PORT_ADJUSTER(50, "3D color phase (fine)") // sub-step trim, 50 = none; spans one coarse step (0.0001/step)
@@ -98,16 +98,18 @@ static INPUT_PORTS_START(vectrex)
 	PORT_ADJUSTER(50, "3D red phase") // shifts ONLY the red segment (its blue/red and red/green edges); 50 = stock
 
 	PORT_START("XSKEW")
-	PORT_ADJUSTER(0, "X skew delay") // Y-axis lead -> Vectrex glyph slant; ~80ns/step (0 = upright default, ~51 = ~4us, 100 = ~8us)
+	PORT_ADJUSTER(51, "X skew delay") // Y-axis lead -> Vectrex glyph slant; ~80ns/step (0 = upright, ~51 = ~4us default, 100 = ~8us)
 
 	PORT_START("BEAMINFL")
-	PORT_ADJUSTER(50, "Beam speed influence") // 0 = intensity only, 100 = up to ~2x boost for slow/short strokes
+	PORT_ADJUSTER(50, "Beam draw-time influence") // 0 = flat intensity, 100 = fully draw-time shaped (short=dim, long=bright)
 	PORT_START("BEAMCURVE")
-	PORT_ADJUSTER(50, "Beam speed curve")     // dt/length saturation gentleness (g = adj/50; 50 = 1.0)
+	PORT_ADJUSTER(10, "Beam draw-time curve")     // draw-time (dt) saturation gentleness (g = adj/50; 50 = 1.0)
 	PORT_START("BEAMSCALE")
-	PORT_ADJUSTER(50, "Beam speed scale")     // saturation midpoint (dt/length normalizer = adj x 10000)
+	PORT_ADJUSTER(50, "Beam draw-time scale")     // saturation midpoint (dt normalizer = adj x 10000)
+	PORT_START("BEAMMAX")
+	PORT_ADJUSTER(50, "Beam max energy")          // per-unit-area phosphor saturation ceiling (max = adj/100 x 8; 50 = 4.0)
 	PORT_START("BEAMDWELL")
-	PORT_ADJUSTER(50, "Dwell accum limit")    // cap same-spot pile-up; 0 = only first dot, 100 = ~unlimited (cap = adj/100 x 16)
+	PORT_ADJUSTER(5, "Dwell accum limit")    // cap same-spot pile-up; 0 = only first dot, 100 = ~unlimited (cap = adj/100 x 16)
 
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")

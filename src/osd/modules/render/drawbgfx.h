@@ -256,6 +256,17 @@ private:
 	// chain's phosphor-tail freeze: re-presents without emulation progress (pause, menu stills)
 	// must neither decay nor pump the slow tail pool.
 	bool m_vec_frame_advanced = false;
+	// gen-cache: m_vec_fb holds a validly-rendered vector frame. When the beam-list generation is
+	// unchanged this present (beam_list_stale), the lines are identical, so the FBO can be reused
+	// instead of rebuilt+rasterised. Reset whenever m_vec_fb is (re)created so we never reuse garbage.
+	bool m_vec_fb_primed = false;
+	// Resolution basis for beam width / bloom / defocus scaling. A ROT270 (portrait) vector screen is
+	// pillarboxed in a wide window/fullscreen, so the raw framebuffer width over-scales the beam in
+	// fullscreen vs a content-sized window. m_vec_extent_w peak-holds the vector bounding-box width (=
+	// the real content width in fb px); m_vec_res_w is the per-present 1920-reference basis used by the
+	// put_*_line magnitudes, so a given beam_width looks identical windowed and fullscreen.
+	float m_vec_extent_w = 0.0f;
+	float m_vec_res_w = 0.0f;
 	// Emulated time (seconds) at the previous present, used to time-calibrate the max-persist
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.

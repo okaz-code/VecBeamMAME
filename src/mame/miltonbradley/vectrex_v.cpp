@@ -181,6 +181,7 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 		for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
 		{
 			m_vector->set_dump_scale(m_points[i].scale);   // BIOS draw scale -> event dump
+			m_vector->set_dump_ramp_us(m_points[i].ramp_us);   // RAMP-active duration -> event dump
 			m_vector->add_point(m_points[i].x,
 								m_points[i].y,
 								m_points[i].col,
@@ -218,6 +219,7 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->scale = m_cur_scale;     // BIOS vector scale (VIA T1 latch) sampled in update_vector
+	newpoint->ramp_us = m_cur_ramp_us; // RAMP-active duration up to this point (for the event dump)
 	newpoint->eye = m_imager_status;   // tag with the eye currently being drawn (0 = imager off)
 }
 
@@ -250,25 +252,22 @@ float vectrex_base_state::calculate_beam_energy(int x0, int y0, int x1, int y1, 
 	// Base brightness = the displayed intensity (Z), normalized to 0..1.
 	const double I = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
 
-	// Gentle, bounded speed coefficient from dwell-per-length (dt/length): a slow / short stroke dwells
-	// longer per unit length and glows a little brighter, but via a SATURATING curve so halving the
-	// length does not double the brightness - it asymptotes. s = x^g/(x^g+1) in [0,1); coeff = 1 +
-	// influence*s stays in [1, 1+influence] (influence <= 1 -> at most ~2x). Params are cached per frame
-	// from the BEAMINFL / BEAMCURVE / BEAMSCALE adjusters; influence 0 -> pure intensity.
-	double coeff = 1.0;
-	if (m_beam_infl > 0.0)
-	{
-		const double dx = double(x1) - double(x0);
-		const double dy = double(y1) - double(y0);
-		const double length = std::max(0.001, std::hypot(dx, dy) / 65536.0);  // floor so dots don't blow up
-		const double dt = (t1 - t0).as_double();
-		const double x = (dt / length) * m_beam_scale;          // dwell per unit length, scaled
-		const double xg = std::pow(x, m_beam_curve);
-		const double s = xg / (xg + 1.0);                       // saturating 0..1
-		coeff = 1.0 + m_beam_infl * s;                          // in [1, 1+influence]
-	}
-
-	return float(std::clamp(I * coeff, 0.0, 1.0));
+	// Draw-time (dwell) model: the deposited energy grows with how LONG the beam spent drawing this
+	// segment (dt), not with its speed. A short / quickly-drawn stroke deposits little energy and stays
+	// dim; a long-drawn stroke climbs toward the phosphor's per-area saturation ceiling and "glows".
+	// s = x^g/(x^g+1) is a saturating 0..1 ramp of the scaled draw time (x = dt*scale). influence blends
+	// between flat intensity (infl 0 -> energy = I) and the fully draw-time-shaped energy that climbs to
+	// m_beam_max (infl 1 -> energy = I * s * max). Params cached per frame from BEAMINFL/BEAMCURVE/
+	// BEAMSCALE/BEAMMAX. The result is capped at m_beam_max = the per-unit-area phosphor saturation:
+	// the renderer's beam2 transfer saturates displayed BRIGHTNESS partway and pours the rest into WIDTH,
+	// so a long bright beam keeps thickening (and blooming) up to the ceiling.
+	const double dt = (t1 - t0).as_double();
+	const double x  = dt * m_beam_scale;                        // scaled draw time
+	const double xg = std::pow(std::max(0.0, x), m_beam_curve);
+	const double s  = xg / (xg + 1.0);                          // saturating 0..1 from draw time
+	const double dwell_drive = s * m_beam_max;                  // 0 .. max
+	const double drive = I * ((1.0 - m_beam_infl) + m_beam_infl * dwell_drive);
+	return float(std::clamp(drive, 0.0, m_beam_max));
 }
 
 
@@ -332,6 +331,7 @@ void vectrex_base_state::update_vector()
 		const int intensity = 2 * m_analog[A_Z] * m_blank;
 		const float e = apply_dwell_limit(m_x_int, m_y_int,
 				calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+		m_cur_ramp_us = (t1 - m_ramp_start_time).as_double() * 1e6;   // RAMP-active time up to this point
 		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
 	}
 	else
@@ -341,6 +341,7 @@ void vectrex_base_state::update_vector()
 			const int intensity = 2 * m_analog[A_Z];
 			const float e = apply_dwell_limit(m_x_int, m_y_int,
 					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+			m_cur_ramp_us = 0.0;   // drawn while RAMP inactive (parked dot), not part of a ramp
 			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
 		}
 	}

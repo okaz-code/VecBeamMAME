@@ -62,6 +62,8 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::update_mux_enable)
 TIMER_CALLBACK_MEMBER(vectrex_base_state::update_ramp)
 {
 	update_vector();
+	if ((m_ramp & 0x80) && param == 0)   // RAMP was inactive, now going active: stroke starts here
+		m_ramp_start_time = machine().time();
 	m_ramp = param;
 }
 
@@ -87,10 +89,11 @@ void vectrex_base_state::screen_configuration()
 	const ioport_value conf = m_io_3dconf->read();
 	unsigned char cport = (unsigned char)conf;
 
-	// Cache the beam_energy speed-coefficient params once per frame (used by calculate_beam_energy).
+	// Cache the beam_energy draw-time model params once per frame (used by calculate_beam_energy).
 	m_beam_infl  = m_io_beam_infl.read_safe(50) / 100.0;                    // 0..1 influence
 	m_beam_curve = std::max(0.05, m_io_beam_curve.read_safe(50) / 50.0);    // saturation exponent g
-	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 10000.0);  // dt/length normalizer
+	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 10000.0);  // draw-time (dt) normalizer
+	m_beam_max   = std::max(1.0, m_io_beam_max.read_safe(50) / 100.0 * 8.0);// per-area phosphor saturation ceiling
 	m_dwell_cap  = m_io_beam_dwell.read_safe(50) / 100.0 * 16.0;            // same-spot accumulation cap
 
 	/* Vectrex 'dipswitch' configuration */
