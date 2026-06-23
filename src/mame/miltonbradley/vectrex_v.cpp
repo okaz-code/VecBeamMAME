@@ -178,17 +178,69 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 							m_points[m_display_start].col,
 							0);
 
+		// Flatten this frame's ring-buffer slice into a contiguous index list so curve runs are easy
+		// to scan. (The source m_points[] is a ring; m_display_start..m_display_end is the live list.)
+		std::vector<int> idx;
 		for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
+			idx.push_back(i);
+
+		// Optional Catmull-Rom spline of intended curves (VIDE-style). The SPLINE adjuster is the number
+		// of subdivisions per curve segment (0 = off). Only RUNS of >= 3 consecutive midChange vertices
+		// (a sustained curve) are smoothed; an isolated midChange (an ordinary polygon corner) is left as
+		// a straight line, so deliberate polygons are not rounded off.
+		const int subdiv = std::min(16, int(m_io_spline.read_safe(0)));
+		const bool do_spline = subdiv > 0;
+
+		auto emit = [&](const vectrex_point &p, int x, int y, bool mid)
 		{
-			m_vector->set_dump_scale(m_points[i].scale);   // BIOS draw scale -> event dump
-			m_vector->set_dump_ramp_us(m_points[i].ramp_us);   // RAMP-active duration -> event dump
-			m_vector->add_point(m_points[i].x,
-								m_points[i].y,
-								m_points[i].col,
-								m_points[i].intensity,
-								m_points[i].beam_energy,
-								m_points[i].t0,
-								m_points[i].t1);
+			m_vector->set_dump_scale(p.scale);
+			m_vector->set_dump_ramp_us(p.ramp_us);
+			m_vector->set_dump_midchange(mid);
+			m_vector->add_point(x, y, p.col, p.intensity, p.beam_energy, p.t0, p.t1);
+		};
+
+		const size_t n = idx.size();
+		for (size_t k = 0; k < n; )
+		{
+			// length of the maximal midChange run starting at k
+			size_t run_end = k;
+			if (do_spline)
+				while (run_end < n && m_points[idx[run_end]].midchange) run_end++;
+
+			if (do_spline && (run_end - k) >= 3 && k > 0)
+			{
+				// Control points pass through the anchor before the run plus the run vertices; the beam
+				// is already parked at the anchor (added on the previous step), so we only emit the curve.
+				std::vector<int> cp;
+				cp.push_back(idx[k - 1]);
+				for (size_t r = k; r < run_end; r++) cp.push_back(idx[r]);
+				const int m = (int)cp.size();
+				for (int s = 0; s < m - 1; s++)
+				{
+					const vectrex_point &p0 = m_points[cp[std::max(0, s - 1)]];
+					const vectrex_point &p1 = m_points[cp[s]];
+					const vectrex_point &p2 = m_points[cp[s + 1]];
+					const vectrex_point &p3 = m_points[cp[std::min(m - 1, s + 2)]];
+					for (int t = 1; t <= subdiv; t++)
+					{
+						const double u = double(t) / subdiv, u2 = u * u, u3 = u2 * u;
+						auto cr = [&](double a, double b, double c, double d) -> double {
+							return 0.5 * ((2.0 * b) + (-a + c) * u
+									+ (2.0 * a - 5.0 * b + 4.0 * c - d) * u2
+									+ (-a + 3.0 * b - 3.0 * c + d) * u3);
+						};
+						emit(p2, (int)cr(p0.x, p1.x, p2.x, p3.x),
+								 (int)cr(p0.y, p1.y, p2.y, p3.y), true);
+					}
+				}
+				k = run_end;   // whole run consumed (curve ends exactly on the last vertex at u=1)
+			}
+			else
+			{
+				const vectrex_point &p = m_points[idx[k]];
+				emit(p, p.x, p.y, p.midchange);
+				k++;
+			}
 		}
 	}
 
@@ -220,6 +272,7 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	newpoint->t1 = t1;
 	newpoint->scale = m_cur_scale;     // BIOS vector scale (VIA T1 latch) sampled in update_vector
 	newpoint->ramp_us = m_cur_ramp_us; // RAMP-active duration up to this point (for the event dump)
+	newpoint->midchange = m_cur_midchange; // curve mid-point (beam velocity changed mid-ramp)
 	newpoint->eye = m_imager_status;   // tag with the eye currently being drawn (0 = imager off)
 }
 
@@ -297,6 +350,8 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 {
 	m_x_int = m_x_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
+	m_mid_in_run = false;   // zeroing breaks any connected lit-stroke run
+	m_cur_midchange = false;
 	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0, -1.0f, attotime::never, attotime::never);
 }
 
@@ -325,17 +380,48 @@ void vectrex_base_state::update_vector()
 		length = m_maincpu->clocks_to_cycles(m_maincpu->clock()) * INT_PER_CLOCK
 			* (t1 - t0).as_double();
 
-		m_x_int += length * (m_analog[A_X] + m_analog[A_ZR]);
-		m_y_int += length * (m_analog[A_Y] + m_analog[A_ZR]);
+		const int vx = m_analog[A_X] + m_analog[A_ZR];   // beam velocity (integrator step / unit length)
+		const int vy = m_analog[A_Y] + m_analog[A_ZR];
+		m_x_int += length * vx;
+		m_y_int += length * vy;
 
 		const int intensity = 2 * m_analog[A_Z] * m_blank;
-		const float e = apply_dwell_limit(m_x_int, m_y_int,
-				calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+
+		// midChange: within a run of connected LIT ramp segments, a vertex is a curve "mid" point when
+		// the beam velocity changed there (vs the previous lit segment). The first segment of a run and
+		// any blanked move are not mid points (and break the run).
+		if (intensity > 0)
+		{
+			m_cur_midchange = m_mid_in_run && (vx != m_mid_prev_dx || vy != m_mid_prev_dy);
+			m_mid_prev_dx = vx;
+			m_mid_prev_dy = vy;
+			m_mid_in_run = true;
+		}
+		else
+		{
+			m_cur_midchange = false;
+			m_mid_in_run = false;
+		}
+
+		// BLANK-off tail (VIDE blankOnDelay): when the lit stroke is ending because blank goes off, the
+		// beam keeps travelling briefly, so draw the EMITTED endpoint a little past the integrator. The
+		// integrator (m_x_int/m_y_int) is left at its true value so following geometry is unchanged.
+		int ex = m_x_int, ey = m_y_int;
+		if (m_blank_delay_active > 0.0 && intensity > 0)
+		{
+			ex += int(m_blank_delay_active * vx);
+			ey += int(m_blank_delay_active * vy);
+		}
+
+		const float e = apply_dwell_limit(ex, ey,
+				calculate_beam_energy(x0, y0, ex, ey, intensity, t0, t1));
 		m_cur_ramp_us = (t1 - m_ramp_start_time).as_double() * 1e6;   // RAMP-active time up to this point
-		(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
+		(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1);
 	}
 	else
 	{
+		m_mid_in_run = false;   // RAMP held: any lit-stroke run ends here
+		m_cur_midchange = false;
 		if (m_blank)
 		{
 			const int intensity = 2 * m_analog[A_Z];

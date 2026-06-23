@@ -110,6 +110,10 @@ static INPUT_PORTS_START(vectrex)
 	PORT_ADJUSTER(50, "Beam max energy")          // per-unit-area phosphor saturation ceiling (max = adj/100 x 8; 50 = 4.0)
 	PORT_START("BEAMDWELL")
 	PORT_ADJUSTER(5, "Dwell accum limit")    // cap same-spot pile-up; 0 = only first dot, 100 = ~unlimited (cap = adj/100 x 16)
+	PORT_START("BLANKDELAY")
+	PORT_ADJUSTER(0, "Blank-off tail")       // lit segment endpoint extension at blank-off (integrator steps); 0 = stock
+	PORT_START("SPLINE")
+	PORT_ADJUSTER(0, "Curve spline subdiv")  // Catmull-Rom subdivisions for runs of >=3 midChange vertices; 0 = off (straight lines)
 
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")
