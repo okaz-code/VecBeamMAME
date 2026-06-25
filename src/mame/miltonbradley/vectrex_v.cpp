@@ -201,6 +201,28 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 		};
 
 		const size_t n = idx.size();
+
+		// Junction dwell-dot suppression (JDOTFIX). When the BIOS splits a thick line into segments it
+		// parks the beam (RAMP off) at each split, emitting a length-0 LIT dot exactly on the line ends.
+		// The renderer draws that as a fat point that additively overlaps the abutting line caps -> a
+		// bright "bulge" at every split head. Drop such dots: a length-0 lit point coincident with a drawn
+		// line incident to the same position. Non-stroke = any such length-0; stroke = only RAMP-off parked
+		// dots (ramp_us == 0) - intentional standalone dots (not touching a line) are always kept.
+		auto pos_eq = [&](int a, int b) { return m_points[a].x == m_points[b].x && m_points[a].y == m_points[b].y; };
+		auto is_junction_dot = [&](size_t k) -> bool
+		{
+			if (!m_junction_fix) return false;
+			const int cur = idx[k];
+			if (m_points[cur].intensity <= 0) return false;          // blanked move, not a lit dot
+			if (k == 0 || !pos_eq(cur, idx[k - 1])) return false;    // not length-0 (the beam moved here)
+			if (m_stroke_mode && m_points[cur].ramp_us != 0.0) return false;   // stroke: only RAMP-off parked dots
+			// a lit line ENDS at this position (prev is lit, at P, and prev's own segment had length > 0)
+			const bool prev_line = (k >= 2) && (m_points[idx[k - 1]].intensity > 0)
+					&& pos_eq(idx[k - 1], cur) && !pos_eq(idx[k - 2], idx[k - 1]);
+			// a lit line LEAVES this position (next is lit and moves away from P)
+			const bool next_line = (k + 1 < n) && (m_points[idx[k + 1]].intensity > 0) && !pos_eq(idx[k + 1], cur);
+			return prev_line || next_line;
+		};
 		for (size_t k = 0; k < n; )
 		{
 			// length of the maximal midChange run starting at k
@@ -238,8 +260,11 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 			}
 			else
 			{
-				const vectrex_point &p = m_points[idx[k]];
-				emit(p, p.x, p.y, p.midchange);
+				if (!is_junction_dot(k))   // drop split-line junction dwell dots (JDOTFIX); geometry unchanged
+				{
+					const vectrex_point &p = m_points[idx[k]];
+					emit(p, p.x, p.y, p.midchange);
+				}
 				k++;
 			}
 		}

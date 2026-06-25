@@ -49,6 +49,7 @@ protected:
 		m_io_spline(*this, "SPLINE"),
 		m_io_beam_mode(*this, "BEAMMODE"),
 		m_io_beam_speed(*this, "BEAMSPEED"),
+		m_io_junction_fix(*this, "JDOTFIX"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -213,6 +214,7 @@ private:
 	std::vector<stroke_seg> m_stroke;   // current RAMP-ON stroke, flushed at RAMP-off / ZERO / refresh
 	bool m_stroke_mode = false;         // cached BEAMMODE (true = aggregate)
 	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
+	bool m_junction_fix = false;        // cached JDOTFIX: drop length-0 dwell dots coincident with a line end
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
@@ -235,6 +237,7 @@ private:
 	optional_ioport m_io_spline;         // Catmull-Rom subdivisions for midChange curve runs; 0 = off
 	optional_ioport m_io_beam_mode;      // 0 = legacy per-segment dt energy, 1 = RAMP-stroke aggregate energy
 	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
+	optional_ioport m_io_junction_fix;   // suppress length-0 dwell dots that sit on a line endpoint (junction bulge)
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;
