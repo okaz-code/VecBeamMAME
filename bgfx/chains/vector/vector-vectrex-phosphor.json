@@ -65,7 +65,14 @@
 		{ "type": "float", "name": "tail_strength",      "text": "Comet Tail Strength",       "default": 0.02,  "min": 0.0, "max": 0.25,  "step": 0.002, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "tail_decay",         "text": "Comet Tail Decay (length)", "default": 0.6, "min": 0.0, "max": 0.995, "step": 0.005, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "spill_threshold",    "text": "Spill Threshold",           "default": 0.6, "min": 0.1, "max": 2.0, "step": 0.02, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "spill_strength",     "text": "Spill (saturation bleed)",  "default": 0.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" }
+		{ "type": "float", "name": "spill_strength",     "text": "Spill (saturation bleed)",  "default": 0.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.20, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "cubic_distortion", "text": "Cubic Distortion Amount",   "default": 0.00, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "distort_corner",   "text": "Distorted Corner Amount",   "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "round_corner",     "text": "Rounded Corner Amount",     "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "smooth_border",    "text": "Smooth Border Amount",      "default": 0.05, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vignetting",       "text": "Vignetting Amount",         "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "reflection",       "text": "Reflection Amount",         "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" }
 	],
 
 	"parameters": [
@@ -246,6 +253,27 @@
 		{ "effect": "misc/blit", "name": "Frame Smooth Writeback",
 		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "frame_smooth", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "target": "smooth_pool" } ], "output": "internal" },
+
+		{ "effect": "hlsl/distortion", "name": "Distortion Pass (monitor sphere)",
+		  "_comment": "CRT screen curvature / rounded corners, same hlsl/distortion used by the other vector-*.json chains. internal -> internal (cleared, so the warped corners go black). Dimension uniforms (u_screen_dims/u_target_dims/u_quad_dims/u_swap_xy) are auto-set by the chain.",
+		  "disablewhen": [
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "distortion",       "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "cubic_distortion", "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "distort_corner",   "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "round_corner",     "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "smooth_border",    "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "vignetting",       "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "reflection",       "value": 0.0 } ],
+		  "uniforms": [
+			{ "uniform": "u_distortion",       "slider": "distortion" },
+			{ "uniform": "u_cubic_distortion", "slider": "cubic_distortion" },
+			{ "uniform": "u_distort_corner",   "slider": "distort_corner" },
+			{ "uniform": "u_round_corner",     "slider": "round_corner" },
+			{ "uniform": "u_smooth_border",    "slider": "smooth_border" },
+			{ "uniform": "u_vignetting",       "slider": "vignetting" },
+			{ "uniform": "u_reflection",       "slider": "reflection" } ],
+		  "input": [ { "sampler": "s_tex", "target": "internal" } ],
+		  "output": "internal" },
 
 		{ "effect": "misc/blit", "name": "Final Blit (-> screen_hdr, linear)",
 		  "input": [ { "sampler": "s_tex", "target": "internal" } ], "output": "screen_hdr" }
