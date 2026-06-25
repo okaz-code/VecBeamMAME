@@ -108,6 +108,14 @@ void vectrex_base_state::screen_configuration()
 	m_stroke_mode = m_io_beam_mode.read_safe(0) != 0;
 	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 90000.0);   // 3x: stronger time->brightness coupling
 	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // suppress split-line junction dwell dots
+	// Object-type lift curve (no hard threshold): beam_energy *= 1..m_obj_max as intensity rises past the knee.
+	m_obj_knee  = std::clamp(m_io_obj_knee.read_safe(75) / 100.0f, 0.0f, 0.999f);   // lift start (Z 0..1)
+	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)
+	m_obj_max   = std::max(0.0f, m_io_obj_max.read_safe(75) / 25.0f);               // max mult (25 = 1.0 off, 75 = 3.0)
+	m_obj_star  = std::max(0.0f, m_io_obj_star.read_safe(75) / 50.0f);              // star/point extra (50 = 1.0 off, 75 = 1.5)
+	// Text exclusion: clamp large-scale LINE strokes (BIOS text) back to a normal energy so they aren't lifted.
+	m_text_scale = float(m_io_text_scale.read_safe(25)) * 2.0f;                     // scale threshold (25 = 50, 100 = 200 = off)
+	m_text_cap   = std::max(0.05f, m_io_text_cap.read_safe(50) / 50.0f);            // text energy ceiling (50 = 1.0 = normal)
 
 	/* Vectrex 'dipswitch' configuration */
 

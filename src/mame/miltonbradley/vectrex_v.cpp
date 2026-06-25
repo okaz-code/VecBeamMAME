@@ -286,9 +286,29 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 
 *********************************************************************/
 
+// Per-object-type brightness/width lift. beam_energy is multiplied by a SMOOTH curve of the beam
+// intensity (Z) - no hard threshold: below the knee the factor is ~1 (normal: enemies/ship); past the
+// adjustable knee it rises (sharpness m_obj_sharp) toward m_obj_max (very prominent: bullets/explosions).
+// Parked dots (length-0) additionally get m_obj_star (stars stand out a touch). The renderer's two-regime
+// transfer turns the higher energy into extra WIDTH, so prominent objects become several times thicker.
+float vectrex_base_state::object_boost(int intensity, bool is_point) const
+{
+	const float zn = std::clamp(float(intensity) / 255.0f, 0.0f, 1.0f);
+	const float t  = std::clamp((zn - m_obj_knee) / std::max(1e-3f, 1.0f - m_obj_knee), 0.0f, 1.0f);
+	const float lift = (m_obj_sharp == 1.0f) ? t : powf(t, m_obj_sharp);
+	float b = 1.0f + (m_obj_max - 1.0f) * lift;
+	if (is_point)
+		b *= m_obj_star;
+	return b;
+}
+
+
 void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
 {
 	vectrex_point *newpoint;
+
+	const int prev_x = m_points[m_point_index].x;   // previous point (before advancing) - for length-0 test
+	const int prev_y = m_points[m_point_index].y;
 
 	m_point_index = (m_point_index+1) % NVECT;
 	newpoint = &m_points[m_point_index];
@@ -297,7 +317,16 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	newpoint->y = y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
-	newpoint->beam_energy = beam_energy;
+	// Object-type lift (length-0 here == a parked dot, e.g. a star/bullet). -1 (untimed) passes through.
+	float be = (beam_energy >= 0.0f)
+			? beam_energy * object_boost(intensity, x == prev_x && y == prev_y)
+			: beam_energy;
+	// Text exclusion: a large-scale LINE is BIOS raster text (its intensity matches a bullet/explosion, but
+	// its vector scale is far larger). Clamp it back to a normal energy so it gets no width lift, no
+	// brightness-cap release and no object boost. Points (x==prev) are never clamped (stars/bullets keep it).
+	if (be > m_text_cap && (x != prev_x || y != prev_y) && float(m_cur_scale) >= m_text_scale)
+		be = m_text_cap;
+	newpoint->beam_energy = be;
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->scale = m_cur_scale;     // BIOS vector scale (VIA T1 latch) sampled in update_vector

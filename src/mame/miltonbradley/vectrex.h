@@ -50,6 +50,12 @@ protected:
 		m_io_beam_mode(*this, "BEAMMODE"),
 		m_io_beam_speed(*this, "BEAMSPEED"),
 		m_io_junction_fix(*this, "JDOTFIX"),
+		m_io_obj_knee(*this, "OBJKNEE"),
+		m_io_obj_sharp(*this, "OBJSHARP"),
+		m_io_obj_max(*this, "OBJMAX"),
+		m_io_obj_star(*this, "OBJSTAR"),
+		m_io_text_scale(*this, "TEXTSCALE"),
+		m_io_text_cap(*this, "TEXTCAP"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -93,6 +99,7 @@ protected:
 	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
 			attotime t0 = attotime::never, attotime t1 = attotime::never);
 	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
+	float object_boost(int intensity, bool is_point) const;   // per-object-type beam_energy lift (see m_obj_*)
 	float stroke_density_energy(int intensity, double stroke_speed) const;   // BEAMMODE=1 stroke-aggregate energy
 	void flush_stroke();                                   // emit the buffered RAMP-ON stroke (BEAMMODE=1)
 	float apply_dwell_limit(int x, int y, float energy);   // cap same-location additive pile-up
@@ -215,6 +222,18 @@ private:
 	bool m_stroke_mode = false;         // cached BEAMMODE (true = aggregate)
 	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
 	bool m_junction_fix = false;        // cached JDOTFIX: drop length-0 dwell dots coincident with a line end
+	// Object-type brightness/width lift: beam_energy *= smooth curve of intensity (Z). Below the knee the
+	// factor is ~1 (normal: enemies/ship); past the adjustable knee it rises toward m_obj_max (very
+	// prominent: bullets/explosions). Parked dots (stars) get an extra m_obj_star. Cached per frame.
+	float m_obj_knee = 1.0f;            // intensity (0..1) where the lift starts; 1.0 = never (off)
+	float m_obj_sharp = 2.0f;           // curve sharpness past the knee
+	float m_obj_max = 1.0f;             // max multiplier at full intensity (1.0 = off)
+	float m_obj_star = 1.0f;            // extra multiplier for length-0 parked dots (1.0 = off)
+	// Text exclusion: bright BIOS text shares the intensity (Z) of bullets/explosions, but is drawn at a
+	// much larger vector scale. A LINE whose scale >= m_text_scale is clamped to m_text_cap so it stays
+	// "normal" (n<=1: no width lift, no brightness-cap release, no object boost). Points are never clamped.
+	float m_text_scale = 1.0e9f;        // scale threshold for "text" lines (large default = off)
+	float m_text_cap = 1.0f;            // beam_energy ceiling for text lines (n<=1 = normal)
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
@@ -238,6 +257,12 @@ private:
 	optional_ioport m_io_beam_mode;      // 0 = legacy per-segment dt energy, 1 = RAMP-stroke aggregate energy
 	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
 	optional_ioport m_io_junction_fix;   // suppress length-0 dwell dots that sit on a line endpoint (junction bulge)
+	optional_ioport m_io_obj_knee;       // object lift: intensity (Z) where the brightness/width lift begins
+	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
+	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)
+	optional_ioport m_io_obj_star;       // object lift: extra multiplier for parked dots (stars); 1.0 = off
+	optional_ioport m_io_text_scale;     // LINE scale at/above which a stroke is "text" and excluded from the lift
+	optional_ioport m_io_text_cap;       // beam_energy ceiling applied to those text lines (keeps them normal)
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;

@@ -1601,7 +1601,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// Width uses the UNCLAMPED energy n (which can exceed 1), so once brightness saturates the beam
 		// keeps getting thicker as energy rises (no width ceiling at n=1). bw_max = width at n=1.
 		const float below = std::min(n, T) / T;                            // 0..1 over [0,T]
-		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), 4.0f) : 0.0f;  // bounded growth; guards T->1 (denom) and n>>1 (cap) so the width can't explode and tank fill-rate
+		// Width growth beyond beam_width_max once the beam is driven past the threshold (e.g. an object-lifted
+		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
+		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
+		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
+		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
 		const float knee  = std::clamp(m_chains->slider_value(0, "width_knee", 0.3f), 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
 		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
@@ -1622,10 +1626,24 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_chains->slider_value(0, "bright_sigmoid_center", 0.5f));
 		const float wsig = m_chains->slider_value(0, "width_sigmoid", 0.0f);
 		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_chains->slider_value(0, "width_sigmoid_center", 0.5f));
+		// Normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
+		// object-lifted bullet/explosion). Brightness is clamped to bright_normal_cap for normal beams and
+		// the cap ramps back to 1.0 as n goes 1->2, so ordinary objects sit dimmer while lifted ones reach
+		// full white. 1.0 = off (no cap).
+		const float bcap = m_chains->slider_value(0, "bright_normal_cap", 1.0f);
+		if (bcap < 1.0f)
+		{
+			const float uncap = std::clamp(n - 1.0f, 0.0f, 1.0f);   // 0 = normal (n<=1), 1 = lifted (n>=2)
+			display_a = std::min(display_a, bcap + (1.0f - bcap) * uncap);
+		}
 	}
 	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
 	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
-	float beam_units = bw_min + wf * (bw_max - bw_min);
+	// Normal range maps wf 0..1 to bw_min..bw_max. The LIFT beyond bw_max (wf>1, e.g. an object-lifted
+	// bullet/explosion) is added as a multiple of bw_max, NOT of the (bw_max-bw_min) span - so a small
+	// min/max gap no longer shrinks the lift. For wf>1 this reduces exactly to width = bw_max * wf.
+	float beam_units = bw_min + std::min(wf, 1.0f) * (bw_max - bw_min);
+	if (wf > 1.0f) beam_units += (wf - 1.0f) * bw_max;
 	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
@@ -2185,7 +2203,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		// Width uses the UNCLAMPED energy n (which can exceed 1), so once brightness saturates the beam
 		// keeps getting thicker as energy rises (no width ceiling at n=1). bw_max = width at n=1.
 		const float below = std::min(n, T) / T;                            // 0..1 over [0,T]
-		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), 4.0f) : 0.0f;  // bounded growth; guards T->1 (denom) and n>>1 (cap) so the width can't explode and tank fill-rate
+		// Width growth beyond beam_width_max once the beam is driven past the threshold (e.g. an object-lifted
+		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
+		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
+		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
+		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
 		const float knee  = std::clamp(m_chains->slider_value(0, "width_knee", 0.3f), 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
 		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
@@ -2206,10 +2228,24 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_chains->slider_value(0, "bright_sigmoid_center", 0.5f));
 		const float wsig = m_chains->slider_value(0, "width_sigmoid", 0.0f);
 		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_chains->slider_value(0, "width_sigmoid_center", 0.5f));
+		// Normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
+		// object-lifted bullet/explosion). Brightness is clamped to bright_normal_cap for normal beams and
+		// the cap ramps back to 1.0 as n goes 1->2, so ordinary objects sit dimmer while lifted ones reach
+		// full white. 1.0 = off (no cap).
+		const float bcap = m_chains->slider_value(0, "bright_normal_cap", 1.0f);
+		if (bcap < 1.0f)
+		{
+			const float uncap = std::clamp(n - 1.0f, 0.0f, 1.0f);   // 0 = normal (n<=1), 1 = lifted (n>=2)
+			display_a = std::min(display_a, bcap + (1.0f - bcap) * uncap);
+		}
 	}
 	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
 	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
-	float beam_units = bw_min + wf * (bw_max - bw_min);
+	// Normal range maps wf 0..1 to bw_min..bw_max. The LIFT beyond bw_max (wf>1, e.g. an object-lifted
+	// bullet/explosion) is added as a multiple of bw_max, NOT of the (bw_max-bw_min) span - so a small
+	// min/max gap no longer shrinks the lift. For wf>1 this reduces exactly to width = bw_max * wf.
+	float beam_units = bw_min + std::min(wf, 1.0f) * (bw_max - bw_min);
+	if (wf > 1.0f) beam_units += (wf - 1.0f) * bw_max;
 	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
 	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
 	float width = beam_units * (m_vec_res_w / 1920.0f);
