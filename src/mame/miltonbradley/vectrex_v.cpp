@@ -216,12 +216,16 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 			if (m_points[cur].intensity <= 0) return false;          // blanked move, not a lit dot
 			if (k == 0 || !pos_eq(cur, idx[k - 1])) return false;    // not length-0 (the beam moved here)
 			if (m_stroke_mode && m_points[cur].ramp_us != 0.0) return false;   // stroke: only RAMP-off parked dots
-			// a lit line ENDS at this position (prev is lit, at P, and prev's own segment had length > 0)
-			const bool prev_line = (k >= 2) && (m_points[idx[k - 1]].intensity > 0)
-					&& pos_eq(idx[k - 1], cur) && !pos_eq(idx[k - 2], idx[k - 1]);
-			// a lit line LEAVES this position (next is lit and moves away from P)
-			const bool next_line = (k + 1 < n) && (m_points[idx[k + 1]].intensity > 0) && !pos_eq(idx[k + 1], cur);
-			return prev_line || next_line;
+			// A vertex can hold a RUN of several length-0 dwell dots at the same position P (the BIOS parks
+			// the beam there while it sets up the next edge). Walk the whole contiguous same-position run, so
+			// the MIDDLE dots (sandwiched between other dots, not directly touching a line) are caught too.
+			size_t a = k; while (a > 0 && pos_eq(idx[a - 1], cur)) a--;       // first index at P
+			size_t b = k; while (b + 1 < n && pos_eq(idx[b + 1], cur)) b++;   // last index at P
+			// A lit line ARRIVES at P (run's first point came from elsewhere with light = length>0 lit line)...
+			const bool line_in  = (a > 0) && (m_points[idx[a]].intensity > 0);
+			// ...or a lit line LEAVES P (first point after the run is elsewhere and lit).
+			const bool line_out = (b + 1 < n) && (m_points[idx[b + 1]].intensity > 0);
+			return line_in || line_out;   // P touches a drawn line -> drop every dwell dot in this run
 		};
 		for (size_t k = 0; k < n; )
 		{
