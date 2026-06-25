@@ -1493,6 +1493,19 @@ int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, d
 	return N;
 }
 
+// Symmetric S-curve / sigmoid mapping of a 0..1 value about a pivot c. g>0 = sigmoid (push values away
+// from c toward 0/1 -> sharper, snappier transition); g<0 = inverse-S (ease around c); g=0 = identity.
+// k = 2^g. Same shape as the put_packed_line gain() lambda, exposed here for the brightness/width curves.
+static float vec_scurve(float x, float g, float c)
+{
+	if (g == 0.0f) return x;
+	x = std::clamp(x, 0.0f, 1.0f);
+	c = std::clamp(c, 1e-3f, 1.0f - 1e-3f);
+	const float k = powf(2.0f, g);
+	return (x < c) ? c * powf(x / c, k)
+				   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
+}
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, float start_cap, float end_cap)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
@@ -1602,6 +1615,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// bw_min and bw_max stay fixed and the curve only bends the path between them - it must not
 		// rescale the max itself.
 		if (wcurve != 1.0f && wf > 0.0f && wf < 1.0f) wf = powf(wf, wcurve);
+		// Optional sigmoid (S-curve) shaping ON TOP of the power curves, for a snappier CRT-like
+		// brightness/width transition. bright_sigmoid/width_sigmoid > 0 = sigmoid (sharper contrast),
+		// < 0 = softer (ease); 0 = off. *_sigmoid_center sets the inflection. Width keeps 0->0 / 1->1.
+		const float bsig = m_chains->slider_value(0, "bright_sigmoid", 0.0f);
+		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_chains->slider_value(0, "bright_sigmoid_center", 0.5f));
+		const float wsig = m_chains->slider_value(0, "width_sigmoid", 0.0f);
+		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_chains->slider_value(0, "width_sigmoid_center", 0.5f));
 	}
 	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
 	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);
@@ -2179,6 +2199,13 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		// bw_min and bw_max stay fixed and the curve only bends the path between them - it must not
 		// rescale the max itself.
 		if (wcurve != 1.0f && wf > 0.0f && wf < 1.0f) wf = powf(wf, wcurve);
+		// Optional sigmoid (S-curve) shaping ON TOP of the power curves, for a snappier CRT-like
+		// brightness/width transition. bright_sigmoid/width_sigmoid > 0 = sigmoid (sharper contrast),
+		// < 0 = softer (ease); 0 = off. *_sigmoid_center sets the inflection. Width keeps 0->0 / 1->1.
+		const float bsig = m_chains->slider_value(0, "bright_sigmoid", 0.0f);
+		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_chains->slider_value(0, "bright_sigmoid_center", 0.5f));
+		const float wsig = m_chains->slider_value(0, "width_sigmoid", 0.0f);
+		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_chains->slider_value(0, "width_sigmoid_center", 0.5f));
 	}
 	const float bw_min = m_chains->slider_value(0, "beam_width_min", 1.0f);
 	const float bw_max = m_chains->slider_value(0, "beam_width_max", 1.5f);

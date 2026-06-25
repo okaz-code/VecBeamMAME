@@ -114,6 +114,12 @@ static INPUT_PORTS_START(vectrex)
 	PORT_ADJUSTER(0, "Blank-off tail")       // lit segment endpoint extension at blank-off (integrator steps); 0 = stock
 	PORT_START("SPLINE")
 	PORT_ADJUSTER(0, "Curve spline subdiv")  // Catmull-Rom subdivisions for runs of >=3 midChange vertices; 0 = off (straight lines)
+	PORT_START("BEAMMODE")
+	PORT_CONFNAME(0x01, 0x00, "Beam energy mode")   // discrete Off/On toggle (Machine Configuration menu), not a slider
+	PORT_CONFSETTING(0x00, "Per-segment dt (legacy)")
+	PORT_CONFSETTING(0x01, "RAMP-stroke aggregate")
+	PORT_START("BEAMSPEED")
+	PORT_ADJUSTER(50, "Stroke speed norm")   // stroke-mode inverse-speed normalizer (x = (1/speed) * adj*30000); only used when BEAMMODE>0
 
 	PORT_START("LPENCONF")
 	PORT_CONFNAME(0x03, 0x00, "Lightpen")

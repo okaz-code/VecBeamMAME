@@ -47,6 +47,8 @@ protected:
 		m_io_beam_dwell(*this, "BEAMDWELL"),
 		m_io_blank_delay(*this, "BLANKDELAY"),
 		m_io_spline(*this, "SPLINE"),
+		m_io_beam_mode(*this, "BEAMMODE"),
+		m_io_beam_speed(*this, "BEAMSPEED"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -90,6 +92,8 @@ protected:
 	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
 			attotime t0 = attotime::never, attotime t1 = attotime::never);
 	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
+	float stroke_density_energy(int intensity, double stroke_speed) const;   // BEAMMODE=1 stroke-aggregate energy
+	void flush_stroke();                                   // emit the buffered RAMP-ON stroke (BEAMMODE=1)
 	float apply_dwell_limit(int x, int y, float energy);   // cap same-location additive pile-up
 
 	unsigned char m_via_out[2];
@@ -192,6 +196,23 @@ private:
 	int m_mid_prev_dy = 0;
 	bool m_mid_in_run = false;    // currently inside a connected lit ramp run
 	bool m_cur_midchange = false; // midChange flag for the next add_point
+	// Stroke-aggregate energy model (BEAMMODE=1): a RAMP-ON stroke is collected, then at RAMP-off the
+	// whole stroke's speed (total moved distance / RAMP time) sets ONE brightness density applied to every
+	// visible sub-segment, so BLANK/SR act as a pure visibility mask. This stabilises BIOS raster text,
+	// where the per-segment dt model makes each tiny SR-gated dot dim and jittery. Cached per frame.
+	struct stroke_seg
+	{
+		int x0, y0, x1, y1;      // segment endpoints (x1,y1 already includes the blank-off tail)
+		attotime t0, t1;
+		int intensity;           // 0 = blank (invisible move); >0 = visible
+		rgb_t col;
+		bool midchange;
+		int scale;
+		double ramp_us;
+	};
+	std::vector<stroke_seg> m_stroke;   // current RAMP-ON stroke, flushed at RAMP-off / ZERO / refresh
+	bool m_stroke_mode = false;         // cached BEAMMODE (true = aggregate)
+	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
 
@@ -212,6 +233,8 @@ private:
 	optional_ioport m_io_beam_dwell;     // same-location accumulation limit (parked-beam pile-up cap)
 	optional_ioport m_io_blank_delay;    // BLANK-off tail length (integrator steps); 0 = off (stock)
 	optional_ioport m_io_spline;         // Catmull-Rom subdivisions for midChange curve runs; 0 = off
+	optional_ioport m_io_beam_mode;      // 0 = legacy per-segment dt energy, 1 = RAMP-stroke aggregate energy
+	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;

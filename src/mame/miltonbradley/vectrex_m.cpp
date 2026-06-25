@@ -66,9 +66,11 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::update_mux_enable)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::update_ramp)
 {
-	update_vector();
+	update_vector();   // finalises the current segment under the OLD ramp state (buffers it if BEAMMODE=1)
 	if ((m_ramp & 0x80) && param == 0)   // RAMP was inactive, now going active: stroke starts here
 		m_ramp_start_time = machine().time();
+	if (param != 0)    // RAMP going inactive ends the RAMP-ON stroke -> emit it with one shared density
+		flush_stroke();
 	m_ramp = param;
 }
 
@@ -100,6 +102,11 @@ void vectrex_base_state::screen_configuration()
 	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 10000.0);  // draw-time (dt) normalizer
 	m_beam_max   = std::max(1.0, m_io_beam_max.read_safe(50) / 100.0 * 8.0);// per-area phosphor saturation ceiling
 	m_dwell_cap  = m_io_beam_dwell.read_safe(50) / 100.0 * 16.0;            // same-spot accumulation cap
+	// Stroke-aggregate energy model (BEAMMODE=1): collect a whole RAMP-ON stroke and give every visible
+	// sub-segment one shared brightness density from the stroke speed. BEAMSPEED is the inverse-speed
+	// normalizer (x = (1/speed_px_per_s) * m_beam_speed feeding the same saturating curve as the legacy model).
+	m_stroke_mode = m_io_beam_mode.read_safe(0) != 0;
+	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 30000.0);
 
 	/* Vectrex 'dipswitch' configuration */
 

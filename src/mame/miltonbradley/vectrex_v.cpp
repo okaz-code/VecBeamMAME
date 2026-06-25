@@ -121,6 +121,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::refresh)
 {
 	/* Refresh only marks the range of vectors which will be drawn
 	 * during the next screen_update. */
+	flush_stroke();   // emit any stroke still buffered at the frame boundary (BEAMMODE=1; no-op otherwise)
 	m_display_start = m_display_end;
 	m_display_end = m_point_index;
 }
@@ -324,6 +325,61 @@ float vectrex_base_state::calculate_beam_energy(int x0, int y0, int x1, int y1, 
 }
 
 
+// Stroke-aggregate energy (BEAMMODE=1). The brightness DENSITY of a RAMP-ON stroke is set by the beam
+// SPEED of the whole stroke (one value), not by each tiny sub-segment's own draw time. A slow beam
+// deposits more energy per unit length (brighter); BLANK/SR only gate WHICH parts are visible. Because
+// the speed is the stroke average, every visible sub-segment of a constant-velocity sweep (e.g. a BIOS
+// raster text row) gets the SAME density, instead of each SR-gated dot getting a noisy per-segment dt.
+// stroke_speed is in screen pixels / second (0 = no movement -> full dwell density).
+float vectrex_base_state::stroke_density_energy(int intensity, double stroke_speed) const
+{
+	if (intensity <= 0)
+		return -1.0f;   // blank move: nothing drawn (renderer falls back, but intensity 0 draws no line)
+	const double I = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
+	if (stroke_speed <= 1e-6)
+		return float(std::clamp(I * m_beam_max, 0.0, m_beam_max));   // parked: maximum dwell density
+	// density grows with time-per-unit-length (1/speed); same saturating shape and ceiling as the legacy
+	// model so the renderer's two-regime transfer / beam_max still apply. BEAMSPEED is the normalizer.
+	const double x  = (1.0 / stroke_speed) * m_beam_speed;
+	const double xg = std::pow(std::max(0.0, x), m_beam_curve);
+	const double s  = xg / (xg + 1.0);
+	const double drive = I * ((1.0 - m_beam_infl) + m_beam_infl * s * m_beam_max);
+	return float(std::clamp(drive, 0.0, m_beam_max));
+}
+
+
+// Emit the buffered RAMP-ON stroke (BEAMMODE=1). Computes ONE speed from the whole stroke's moved
+// distance and elapsed RAMP time, then plays every collected sub-segment out through the normal
+// add_point path with that shared density. Called at RAMP-off, ZERO, refresh, or buffer overflow.
+void vectrex_base_state::flush_stroke()
+{
+	if (m_stroke.empty())
+		return;
+
+	// total path length (visible + blank moves) in screen pixels; integrator units are 16.16 fixed point
+	double path_len = 0.0;
+	for (const auto &s : m_stroke)
+	{
+		const double dx = double(s.x1 - s.x0) / 65536.0;
+		const double dy = double(s.y1 - s.y0) / 65536.0;
+		path_len += std::sqrt(dx * dx + dy * dy);
+	}
+	const double ramp_time = (m_stroke.back().t1 - m_stroke.front().t0).as_double();
+	const double speed = (path_len > 1e-6 && ramp_time > 1e-12) ? (path_len / ramp_time) : 0.0;
+
+	for (const auto &s : m_stroke)
+	{
+		// Restore the per-segment dump metadata the buffered point carried, then emit.
+		m_cur_scale     = s.scale;
+		m_cur_ramp_us   = s.ramp_us;
+		m_cur_midchange = s.midchange;
+		const float e = stroke_density_energy(s.intensity, speed);
+		(this->*vector_add_point_function)(s.x1, s.y1, s.col, s.intensity, e, s.t0, s.t1);
+	}
+	m_stroke.clear();
+}
+
+
 // Limit the additive brightness pile-up of repeated dots at the SAME parked location (the renderer
 // composites overlapping deposits with BLENDMODE_ADD). The first dot at a new spot is full; further
 // dots at the same (x,y) add only until the cumulative beam_energy reaches m_dwell_cap. Moving to a new
@@ -348,6 +404,7 @@ float vectrex_base_state::apply_dwell_limit(int x, int y, float energy)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 {
+	flush_stroke();   // ZERO ends any in-progress RAMP-ON stroke (BEAMMODE=1; no-op otherwise)
 	m_x_int = m_x_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_mid_in_run = false;   // zeroing breaks any connected lit-stroke run
@@ -413,10 +470,21 @@ void vectrex_base_state::update_vector()
 			ey += int(m_blank_delay_active * vy);
 		}
 
-		const float e = apply_dwell_limit(ex, ey,
-				calculate_beam_energy(x0, y0, ex, ey, intensity, t0, t1));
 		m_cur_ramp_us = (t1 - m_ramp_start_time).as_double() * 1e6;   // RAMP-active time up to this point
-		(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1);
+		if (m_stroke_mode)
+		{
+			// BEAMMODE=1: defer emission - collect the sub-segment; flush_stroke() at RAMP-off sets the
+			// shared stroke density. (x0,y0,ex,ey already include the blank-off tail; energy comes later.)
+			m_stroke.push_back({ x0, y0, ex, ey, t0, t1, intensity, m_beam_color, m_cur_midchange, m_cur_scale, m_cur_ramp_us });
+			if (m_stroke.size() > 8192)   // runaway guard: never let a stuck RAMP grow the buffer unbounded
+				flush_stroke();
+		}
+		else
+		{
+			const float e = apply_dwell_limit(ex, ey,
+					calculate_beam_energy(x0, y0, ex, ey, intensity, t0, t1));
+			(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1);
+		}
 	}
 	else
 	{
