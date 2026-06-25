@@ -99,14 +99,15 @@ void vectrex_base_state::screen_configuration()
 	// Cache the beam_energy draw-time model params once per frame (used by calculate_beam_energy).
 	m_beam_infl  = m_io_beam_infl.read_safe(50) / 100.0;                    // 0..1 influence
 	m_beam_curve = std::max(0.05, m_io_beam_curve.read_safe(50) / 50.0);    // saturation exponent g
-	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 10000.0);  // draw-time (dt) normalizer
+	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 30000.0);  // draw-time (dt) normalizer (3x: stronger time->brightness coupling)
 	m_beam_max   = std::max(1.0, m_io_beam_max.read_safe(50) / 100.0 * 8.0);// per-area phosphor saturation ceiling
 	m_dwell_cap  = m_io_beam_dwell.read_safe(50) / 100.0 * 16.0;            // same-spot accumulation cap
 	// Stroke-aggregate energy model (BEAMMODE=1): collect a whole RAMP-ON stroke and give every visible
 	// sub-segment one shared brightness density from the stroke speed. BEAMSPEED is the inverse-speed
 	// normalizer (x = (1/speed_px_per_s) * m_beam_speed feeding the same saturating curve as the legacy model).
 	m_stroke_mode = m_io_beam_mode.read_safe(0) != 0;
-	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 30000.0);
+	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 90000.0);   // 3x: stronger time->brightness coupling
+	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // suppress split-line junction dwell dots
 
 	/* Vectrex 'dipswitch' configuration */
 
