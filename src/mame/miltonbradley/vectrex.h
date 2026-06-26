@@ -51,6 +51,11 @@ protected:
 		m_io_beam_speed(*this, "BEAMSPEED"),
 		m_io_junction_fix(*this, "JDOTFIX"),
 		m_io_junction_level(*this, "JDOTLVL"),
+		m_io_bright(*this, "BRIGHT"),
+		m_io_bright_retr(*this, "BRTRETR"),
+		m_io_spotkill(*this, "SPOTKILL"),
+		m_io_spotkill_ms(*this, "SPOTKMS"),
+		m_io_spotkill_range(*this, "SPOTKRNG"),
 		m_io_obj_knee(*this, "OBJKNEE"),
 		m_io_obj_sharp(*this, "OBJSHARP"),
 		m_io_obj_max(*this, "OBJMAX"),
@@ -101,6 +106,7 @@ protected:
 			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
 	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
 	float object_boost(int intensity, bool is_point) const;   // per-object-type beam_energy lift (see m_obj_*)
+	int apply_brightness(int intensity) const;                // Brightness knob: scale intensity + retrace floor
 	float stroke_density_energy(int intensity, double stroke_speed) const;   // BEAMMODE=1 stroke-aggregate energy
 	void flush_stroke();                                   // emit the buffered RAMP-ON stroke (BEAMMODE=1)
 	float apply_dwell_limit(int x, int y, float energy);   // cap same-location additive pile-up
@@ -225,6 +231,17 @@ private:
 	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
 	bool m_junction_fix = false;        // cached JDOTFIX: detect length-0 dwell dots coincident with a line end
 	float m_junction_level = 0.0f;      // cached JDOTLVL: brightness of those dwell dots (0 = drop, 1 = full, between = dim)
+	// Brightness knob (BRIGHT): master intensity gain. 50 = x1 (normal), 100 = x2. At high brightness the
+	// blanked-beam retrace is lifted to m_bright_floor so it faintly glows (BRTRETR), like a real CRT.
+	float m_bright_mult = 1.0f;         // cached intensity multiplier
+	int m_bright_floor = 0;             // cached intensity floor for blanked (intensity-0) beams (0 = none)
+	// Spot killer (deflection protection): if the beam stops moving for m_spotkill_secs the beam is cut
+	// (screen goes black) to model the real Vectrex CRT-burn protection. m_last_move_time = last deflection.
+	bool m_spotkill = false;            // cached SPOTKILL enable
+	double m_spotkill_secs = 0.25;      // cached no-deflection time before the beam is cut
+	int m_spotkill_rx = 0;              // cached kill radius from centre (X, 16.16 units): beam beyond = active
+	int m_spotkill_ry = 0;              // cached kill radius from centre (Y)
+	attotime m_last_move_time;          // last time the beam swung beyond the kill radius (deflection active)
 	// Object-type brightness/width lift: beam_energy *= smooth curve of intensity (Z). Below the knee the
 	// factor is ~1 (normal: enemies/ship); past the adjustable knee it rises toward m_obj_max (very
 	// prominent: bullets/explosions). Parked dots (stars) get an extra m_obj_star. Cached per frame.
@@ -261,6 +278,11 @@ private:
 	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
 	optional_ioport m_io_junction_fix;   // suppress length-0 dwell dots that sit on a line endpoint (junction bulge)
 	optional_ioport m_io_junction_level; // brightness level for those dwell dots when JDOTFIX on (0 = drop)
+	optional_ioport m_io_bright;         // Brightness knob: 50 = normal (x1), 100 = x2 intensity
+	optional_ioport m_io_bright_retr;    // retrace floor: lift blanked (intensity 0) beams at high brightness
+	optional_ioport m_io_spotkill;       // spot killer: cut the beam when deflection stops (CRT burn protection)
+	optional_ioport m_io_spotkill_ms;    // spot killer time constant (no-deflection time before the beam is cut)
+	optional_ioport m_io_spotkill_range; // spot killer trigger range: 0 = centre only, 100 = full draw range
 	optional_ioport m_io_obj_knee;       // object lift: intensity (Z) where the brightness/width lift begins
 	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
 	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)

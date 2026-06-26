@@ -131,6 +131,17 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 {
 	screen_configuration();
 
+	// Spot killer (deflection protection): the real Vectrex cuts the beam if the deflection stops swinging,
+	// so a stationary lit beam cannot burn the phosphor. Model it by blanking the whole frame once the beam
+	// has not moved for m_spotkill_secs (e.g. a crashed / runaway program parks the beam). Any RAMP move or
+	// ZERO refreshes m_last_move_time, so normal drawing never triggers it.
+	if (m_spotkill && (machine().time() - m_last_move_time).as_double() > m_spotkill_secs)
+	{
+		m_vector->screen_update(screen, bitmap, cliprect);   // empty list -> black screen (beam cut)
+		m_vector->clear_list();
+		return 0;
+	}
+
 	// 3D imager stereo output. Both eyes' last completed frames (layer B per-eye retention) are redrawn
 	// together every refresh so the pair is stable (no left/right flicker). The 3DCONF "3D stereo out"
 	// field picks how to combine them:
@@ -307,6 +318,18 @@ float vectrex_base_state::object_boost(int intensity, bool is_point) const
 	if (is_point)
 		b *= m_obj_star;
 	return b;
+}
+
+
+// Brightness knob (front-panel "INTENSITY"): scale the displayed beam intensity. 50 = x1 (normal), 100 = x2.
+// Above ~75% the blanked beam (intensity 0) is lifted to m_bright_floor so the retrace faintly glows, as on a
+// real CRT with the brightness cranked. Returns the adjusted intensity (0..255).
+int vectrex_base_state::apply_brightness(int intensity) const
+{
+	if (m_bright_mult == 1.0f && m_bright_floor <= 0)
+		return intensity;   // neutral (knob at 50, no retrace floor)
+	const int i = (intensity > 0) ? int(intensity * m_bright_mult + 0.5f) : m_bright_floor;
+	return std::clamp(i, 0, 255);
 }
 
 
@@ -519,7 +542,7 @@ void vectrex_base_state::update_vector()
 		m_x_int += length * vx;
 		m_y_int += length * vy;
 
-		const int intensity = 2 * m_analog[A_Z] * m_blank;
+		const int intensity = apply_brightness(2 * m_analog[A_Z] * m_blank);
 
 		// midChange: within a run of connected LIT ramp segments, a vertex is a curve "mid" point when
 		// the beam velocity changed there (vs the previous lit segment). The first segment of a run and
@@ -569,13 +592,20 @@ void vectrex_base_state::update_vector()
 		m_cur_midchange = false;
 		if (m_blank)
 		{
-			const int intensity = 2 * m_analog[A_Z];
+			const int intensity = apply_brightness(2 * m_analog[A_Z]);
 			const float e = apply_dwell_limit(m_x_int, m_y_int,
 					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
 			m_cur_ramp_us = 0.0;   // drawn while RAMP inactive (parked dot), not part of a ramp
 			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1, 0);
 		}
 	}
+
+	// Spot killer: the beam is "active" only while it swings beyond the kill radius from screen centre
+	// (m_spotkill_rx/ry = range x half-extent; range 0 = centre only, 1 = the full draw range to the edge).
+	// A collapsed / parked beam that stays within the radius stops refreshing m_last_move_time, so
+	// screen_update cuts it after m_spotkill_secs. Normal drawing sweeps past the radius and stays alive.
+	if (std::abs(m_x_int - m_x_center) > m_spotkill_rx || std::abs(m_y_int - m_y_center) > m_spotkill_ry)
+		m_last_move_time = t1;
 
 	m_vector_start_time = t1;
 }
