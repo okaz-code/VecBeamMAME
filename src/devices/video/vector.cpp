@@ -161,6 +161,10 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	m_min_intensity = intensity > 0 ? std::min(m_min_intensity, intensity) : m_min_intensity;
 	m_max_intensity = intensity > 0 ? std::max(m_max_intensity, intensity) : m_max_intensity;
 
+	// True (pre-flicker) intensity for the event dump: the random -flicker reduction below is a display
+	// effect, so the analysis log should record the value the source actually produced (stable, not jittered).
+	const int dump_intensity = intensity;
+
 	// Legacy random flicker (-flicker). Skipped for timed points when a beam-event renderer is
 	// attached: those flicker physically through the time-window assignment, and the random
 	// jitter would only distort it. Untimed sources and classic-mode rendering keep the option.
@@ -205,7 +209,7 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 		const double draw_us = (t1 - t0).as_double() * 1e6;   // actual draw time = realized beam scale
 		util::stream_format(m_event_dump, "%u,%.9f,%.9f,%.3f,%.3f,%d,%d,%d,%d,%d,%.3f,%d,%.4f,%d\n",
 				m_list_generation, t0.as_double(), t1.as_double(), draw_us, m_dump_ramp_us, m_dump_scale,
-				newpoint->x0, newpoint->y0, x, y, seg_len, intensity, newpoint->beam_energy, m_dump_midchange ? 1 : 0);
+				newpoint->x0, newpoint->y0, x, y, seg_len, dump_intensity, newpoint->beam_energy, m_dump_midchange ? 1 : 0);
 	}
 
 	m_vector_index++;
