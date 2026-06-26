@@ -239,6 +239,7 @@ public:
 	u32                 flags = 0U;         // flags
 	float               width = 0.0F;       // width (for line primitives)
 	float               beam_energy = 0.0F; // normalized (0..1) beam energy for renderer overload/overdrive effects (0 = none; ignored by stock renderers)
+	u8                  cap_flags = 0U;     // line end-cap gating: bit0 = start is a stroke (RAMP) terminus, bit1 = end is; 0 = none (ignored by stock renderers)
 	double              t0 = -1.0;          // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
 	double              t1 = -1.0;          // absolute machine time (s) the beam finished drawing this line
 	render_texinfo      texture;            // texture info (for quad primitives)
@@ -421,7 +422,7 @@ public:
 	void empty() { m_item_allocator.reclaim_all(m_itemlist); }
 
 	// add items to the list
-	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy = 0.0f, double t0 = -1.0, double t1 = -1.0);
+	void add_line(float x0, float y0, float x1, float y1, float width, rgb_t argb, u32 flags, float beam_energy = 0.0f, double t0 = -1.0, double t1 = -1.0, u32 cap_flags = 0);
 	void add_quad(float x0, float y0, float x1, float y1, rgb_t argb, render_texture *texture, u32 flags);
 	void add_char(float x0, float y0, float height, float aspect, rgb_t argb, render_font &font, u16 ch);
 	void add_point(float x0, float y0, float diameter, rgb_t argb, u32 flags) { add_line(x0, y0, x0, y0, diameter, argb, flags); }
@@ -441,7 +442,7 @@ private:
 		friend class simple_list<item>;
 
 	public:
-		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_beam_energy(0), m_t0(-1.0), m_t1(-1.0), m_texture(nullptr) { }
+		item() : m_next(nullptr), m_type(0), m_flags(0), m_internal(0), m_width(0), m_beam_energy(0), m_t0(-1.0), m_t1(-1.0), m_cap_flags(0), m_texture(nullptr) { }
 
 		// getters
 		item *next() const { return m_next; }
@@ -454,6 +455,7 @@ private:
 		float beam_energy() const { return m_beam_energy; }
 		double t0() const { return m_t0; }
 		double t1() const { return m_t1; }
+		u8 cap_flags() const { return m_cap_flags; }
 		render_texture *texture() const { return m_texture; }
 
 	private:
@@ -468,6 +470,7 @@ private:
 		float               m_beam_energy;      // normalized (0..1) beam energy for renderer overload effects (lines only; 0 = none)
 		double              m_t0;               // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
 		double              m_t1;               // absolute machine time (s) the beam finished drawing this line
+		u8                  m_cap_flags;        // line end-cap terminus bits (bit0 start, bit1 end; lines only)
 		render_texture *    m_texture;          // pointer to the source texture (quads only)
 	};
 

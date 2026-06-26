@@ -192,12 +192,13 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 		const int subdiv = std::min(16, int(m_io_spline.read_safe(0)));
 		const bool do_spline = subdiv > 0;
 
-		auto emit = [&](const vectrex_point &p, int x, int y, bool mid)
+		auto emit = [&](const vectrex_point &p, int x, int y, bool mid, float escale = 1.0f)
 		{
 			m_vector->set_dump_scale(p.scale);
 			m_vector->set_dump_ramp_us(p.ramp_us);
 			m_vector->set_dump_midchange(mid);
-			m_vector->add_point(x, y, p.col, p.intensity, p.beam_energy, p.t0, p.t1);
+			const float be = (p.beam_energy >= 0.0f) ? p.beam_energy * escale : p.beam_energy;
+			m_vector->add_point(x, y, p.col, p.intensity, be, p.t0, p.t1, p.cap_flags);
 		};
 
 		const size_t n = idx.size();
@@ -264,11 +265,17 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 			}
 			else
 			{
-				if (!is_junction_dot(k))   // drop split-line junction dwell dots (JDOTFIX); geometry unchanged
+				const vectrex_point &p = m_points[idx[k]];
+				if (is_junction_dot(k))
 				{
-					const vectrex_point &p = m_points[idx[k]];
-					emit(p, p.x, p.y, p.midchange);
+					// split-line junction dwell dot (JDOTFIX). Real HW draws it, so keep it but dim by
+					// m_junction_level: the static dot is re-excited every frame and the phosphor persistence
+					// makes it pop, so a lower level tames it. 0 = drop entirely (old behaviour).
+					if (m_junction_level > 0.0f)
+						emit(p, p.x, p.y, p.midchange, m_junction_level);
 				}
+				else
+					emit(p, p.x, p.y, p.midchange);
 				k++;
 			}
 		}
@@ -303,7 +310,7 @@ float vectrex_base_state::object_boost(int intensity, bool is_point) const
 }
 
 
-void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
+void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1, u32 cap_flags)
 {
 	vectrex_point *newpoint;
 
@@ -327,6 +334,7 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	if (be > m_text_cap && (x != prev_x || y != prev_y) && float(m_cur_scale) >= m_text_scale)
 		be = m_text_cap;
 	newpoint->beam_energy = be;
+	newpoint->cap_flags = u8(cap_flags);   // RAMP on/off terminus bits for the renderer's line caps
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->scale = m_cur_scale;     // BIOS vector scale (VIA T1 latch) sampled in update_vector
@@ -336,7 +344,7 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 }
 
 
-void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
+void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1, u32 cap_flags)
 {
 	constexpr double SQRT1_2 = std::numbers::sqrt2 / 2.0;
 
@@ -352,7 +360,7 @@ void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensi
 	// (the un-swapped mapping showed the eyes reversed).
 	const bool to_right = (m_imager_status != 2);   /* left = 1, right = 2 */
 	add_point((int)(y * xs) + (to_right ? m_x_center : 0) + ctr,
-			(int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1);
+			(int)((m_x_max - x) * SQRT1_2), color, intensity, beam_energy, t0, t1, cap_flags);
 }
 
 
@@ -425,14 +433,25 @@ void vectrex_base_state::flush_stroke()
 	const double ramp_time = (m_stroke.back().t1 - m_stroke.front().t0).as_double();
 	const double speed = (path_len > 1e-6 && ramp_time > 1e-12) ? (path_len / ramp_time) : 0.0;
 
-	for (const auto &s : m_stroke)
+	// Line end-caps ONLY at the actual RAMP transition with the beam lit AT that instant: the stroke's
+	// FIRST sub-segment is the RAMP-on moment (cap its start only if it is lit), the LAST sub-segment is
+	// the RAMP-off moment (cap its end only if it is lit). A stroke that opens/closes blanked - e.g. BIOS
+	// text, which keeps RAMP on for the whole row and toggles intensity (SR/BLANK) to place dots - gets no
+	// cap, since intensity is not "set at RAMP on/off". Game shapes (lit straight from RAMP-on) still cap.
+	const int last_idx = int(m_stroke.size()) - 1;
+	const bool cap_start = m_stroke[0].intensity > 0;
+	const bool cap_end   = m_stroke[last_idx].intensity > 0;
+
+	for (int k = 0; k < int(m_stroke.size()); k++)
 	{
+		const auto &s = m_stroke[k];
 		// Restore the per-segment dump metadata the buffered point carried, then emit.
 		m_cur_scale     = s.scale;
 		m_cur_ramp_us   = s.ramp_us;
 		m_cur_midchange = s.midchange;
 		const float e = stroke_density_energy(s.intensity, speed);
-		(this->*vector_add_point_function)(s.x1, s.y1, s.col, s.intensity, e, s.t0, s.t1);
+		const u32 cap = (k == 0 && cap_start ? 1u : 0u) | (k == last_idx && cap_end ? 2u : 0u);   // bit0 start, bit1 end
+		(this->*vector_add_point_function)(s.x1, s.y1, s.col, s.intensity, e, s.t0, s.t1, cap);
 	}
 	m_stroke.clear();
 }
@@ -467,7 +486,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_mid_in_run = false;   // zeroing breaks any connected lit-stroke run
 	m_cur_midchange = false;
-	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0, -1.0f, attotime::never, attotime::never);
+	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0, -1.0f, attotime::never, attotime::never, 0);
 }
 
 
@@ -541,7 +560,7 @@ void vectrex_base_state::update_vector()
 		{
 			const float e = apply_dwell_limit(ex, ey,
 					calculate_beam_energy(x0, y0, ex, ey, intensity, t0, t1));
-			(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1);
+			(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1, 0);
 		}
 	}
 	else
@@ -554,7 +573,7 @@ void vectrex_base_state::update_vector()
 			const float e = apply_dwell_limit(m_x_int, m_y_int,
 					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
 			m_cur_ramp_us = 0.0;   // drawn while RAMP inactive (parked dot), not part of a ramp
-			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1);
+			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1, 0);
 		}
 	}
 

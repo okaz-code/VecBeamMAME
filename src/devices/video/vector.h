@@ -64,7 +64,7 @@ public:
 	// t0/t1 are the absolute machine times the beam spent drawing this point's line
 	// (attotime::never = untimed; only timing-aware vector generators supply them).
 	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
-			attotime t0 = attotime::never, attotime t1 = attotime::never);
+			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
 
 	// Optional per-point scale recorded in the -vector_event_dump CSV (driver-specific, e.g. the
 	// Vectrex VIA Timer 1 latch = BIOS vector scale). Set just before add_point; -1 = none.
@@ -120,7 +120,7 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), emitted(false) { }
+		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), cap_flags(0), emitted(false) { }
 
 		int x; int y;
 		int x0; int y0;     // segment start (previous beam position). Stored so a point retained across
@@ -130,6 +130,7 @@ private:
 		int intensity;
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
 		attotime t0, t1;    // absolute machine time the beam drew this line (never = untimed)
+		u32 cap_flags;      // line end-cap terminus bits passed through (bit0 start, bit1 end)
 		bool emitted;       // already emitted once (event mode): notifiers are not re-fired
 	};
 

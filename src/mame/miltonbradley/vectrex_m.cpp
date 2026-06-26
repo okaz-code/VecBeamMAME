@@ -107,7 +107,8 @@ void vectrex_base_state::screen_configuration()
 	// normalizer (x = (1/speed_px_per_s) * m_beam_speed feeding the same saturating curve as the legacy model).
 	m_stroke_mode = m_io_beam_mode.read_safe(0) != 0;
 	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 90000.0);   // 3x: stronger time->brightness coupling
-	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // suppress split-line junction dwell dots
+	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // detect split-line junction dwell dots
+	m_junction_level = std::clamp(m_io_junction_level.read_safe(0) / 100.0f, 0.0f, 1.0f);   // 0 = drop them, 1 = full, between = dim
 	// Object-type lift curve (no hard threshold): beam_energy *= 1..m_obj_max as intensity rises past the knee.
 	m_obj_knee  = std::clamp(m_io_obj_knee.read_safe(75) / 100.0f, 0.0f, 0.999f);   // lift start (Z 0..1)
 	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)

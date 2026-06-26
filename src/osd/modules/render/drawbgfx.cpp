@@ -2690,6 +2690,10 @@ int renderer_bgfx::draw(int update)
 			// per-endpoint factor scales the end-cap dot in put_analytic_line. vertex_dwell 0 = off
 			// (uniform caps, the old behaviour). Only meaningful for the analytic path (it draws caps).
 			const float vertex_dwell = m_line_analytic ? m_chains->slider_value(0, "vertex_dwell", 0.0f) : 0.0f;
+			// cap_ramp_only: when on, line end-caps appear ONLY at the source-flagged RAMP termini
+			// (prim->cap_flags bit0 = stroke start / RAMP-on, bit1 = stroke end / RAMP-off), overriding the
+			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
+			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
 			if (vertex_dwell > 0.0f)
 			{
@@ -2796,7 +2800,13 @@ int renderer_bgfx::draw(int update)
 									if (m_line_analytic)
 									{
 										float scap = 1.0f, ecap = 1.0f;
-										if (vertex_dwell > 0.0f)
+										if (cap_ramp_only > 0.5f)
+										{
+											// caps only at driver-flagged RAMP termini (bit0 start, bit1 end)
+											scap = (vprim->cap_flags & 1u) ? 1.0f : 0.0f;
+											ecap = (vprim->cap_flags & 2u) ? 1.0f : 0.0f;
+										}
+										else if (vertex_dwell > 0.0f)
 										{
 											auto it = vtx_boost.find(vprim);
 											if (it != vtx_boost.end())

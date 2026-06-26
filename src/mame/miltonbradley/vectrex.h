@@ -50,6 +50,7 @@ protected:
 		m_io_beam_mode(*this, "BEAMMODE"),
 		m_io_beam_speed(*this, "BEAMSPEED"),
 		m_io_junction_fix(*this, "JDOTFIX"),
+		m_io_junction_level(*this, "JDOTLVL"),
 		m_io_obj_knee(*this, "OBJKNEE"),
 		m_io_obj_sharp(*this, "OBJSHARP"),
 		m_io_obj_max(*this, "OBJMAX"),
@@ -95,9 +96,9 @@ protected:
 	void screen_configuration();
 	void multiplexer(int mux);
 	void add_point(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
-			attotime t0 = attotime::never, attotime t1 = attotime::never);
+			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
 	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
-			attotime t0 = attotime::never, attotime t1 = attotime::never);
+			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
 	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
 	float object_boost(int intensity, bool is_point) const;   // per-object-type beam_energy lift (see m_obj_*)
 	float stroke_density_energy(int intensity, double stroke_speed) const;   // BEAMMODE=1 stroke-aggregate energy
@@ -132,6 +133,7 @@ private:
 		int scale = 0;   // VIA T1 latch at draw time (BIOS vector scale) - for the event dump
 		double ramp_us = 0.0;   // RAMP-active duration up to this point (us); 0 = drawn while RAMP inactive
 		bool midchange = false; // true = a curve "mid" point (beam velocity changed mid-ramp); see m_cur_midchange
+		u8 cap_flags = 0;       // line end-cap terminus bits: bit0 = RAMP-on start of stroke, bit1 = RAMP-off end
 		int eye = 0;   // imager eye this vector was drawn for (0 = none, 1 = left, 2 = right)
 	};
 
@@ -221,7 +223,8 @@ private:
 	std::vector<stroke_seg> m_stroke;   // current RAMP-ON stroke, flushed at RAMP-off / ZERO / refresh
 	bool m_stroke_mode = false;         // cached BEAMMODE (true = aggregate)
 	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
-	bool m_junction_fix = false;        // cached JDOTFIX: drop length-0 dwell dots coincident with a line end
+	bool m_junction_fix = false;        // cached JDOTFIX: detect length-0 dwell dots coincident with a line end
+	float m_junction_level = 0.0f;      // cached JDOTLVL: brightness of those dwell dots (0 = drop, 1 = full, between = dim)
 	// Object-type brightness/width lift: beam_energy *= smooth curve of intensity (Z). Below the knee the
 	// factor is ~1 (normal: enemies/ship); past the adjustable knee it rises toward m_obj_max (very
 	// prominent: bullets/explosions). Parked dots (stars) get an extra m_obj_star. Cached per frame.
@@ -235,7 +238,7 @@ private:
 	float m_text_scale = 1.0e9f;        // scale threshold for "text" lines (large default = off)
 	float m_text_cap = 1.0f;            // beam_energy ceiling for text lines (n<=1 = normal)
 	uint8_t m_cb2 = 0;
-	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime);
+	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime, u32);
 
 	required_device<mc1408_device> m_dac;
 	required_device<ay8910_device> m_ay8912;
@@ -257,6 +260,7 @@ private:
 	optional_ioport m_io_beam_mode;      // 0 = legacy per-segment dt energy, 1 = RAMP-stroke aggregate energy
 	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
 	optional_ioport m_io_junction_fix;   // suppress length-0 dwell dots that sit on a line endpoint (junction bulge)
+	optional_ioport m_io_junction_level; // brightness level for those dwell dots when JDOTFIX on (0 = drop)
 	optional_ioport m_io_obj_knee;       // object lift: intensity (Z) where the brightness/width lift begins
 	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
 	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)
