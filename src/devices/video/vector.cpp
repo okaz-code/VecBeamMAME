@@ -152,7 +152,7 @@ float vector_device::normalized_sigmoid(float n, float k)
 // needs to call this.
 //-------------------------------------------------
 
-void vector_device::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1)
+void vector_device::add_point(int x, int y, rgb_t color, int intensity, float beam_energy, attotime t0, attotime t1, u32 cap_flags)
 {
 	point *newpoint;
 
@@ -200,6 +200,7 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 												  : float(intensity) / 255.0f;
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
+	newpoint->cap_flags = cap_flags;
 	newpoint->emitted = false;
 
 	if (m_event_dump.is_open() && !t0.is_never())
@@ -319,7 +320,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					flags,
 					curpoint->beam_energy,
 					curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
-					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double());
+					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double(),
+					curpoint->cap_flags);
 			// Points surviving into a second emission (window-boundary blend) re-emit their
 			// primitive but must not re-fire the notifiers: one beam event, one notification.
 			if (!curpoint->emitted)
