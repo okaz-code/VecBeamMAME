@@ -109,6 +109,17 @@ void vectrex_base_state::screen_configuration()
 	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 90000.0);   // 3x: stronger time->brightness coupling
 	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // detect split-line junction dwell dots
 	m_junction_level = std::clamp(m_io_junction_level.read_safe(0) / 100.0f, 0.0f, 1.0f);   // 0 = drop them, 1 = full, between = dim
+	// Brightness knob: 50 = x1, 100 = x2. Retrace floor lifts blanked beams, ramped in from 75% to 100%.
+	m_bright_mult = std::max(0.0f, m_io_bright.read_safe(50) / 50.0f);
+	const float retr_ramp = std::clamp((float(m_io_bright.read_safe(50)) - 75.0f) / 25.0f, 0.0f, 1.0f);
+	m_bright_floor = int(std::clamp(m_io_bright_retr.read_safe(50) / 100.0f, 0.0f, 1.0f) * 160.0f * retr_ramp);
+	// Spot killer (deflection-loss CRT protection). Range = how far from centre the beam must swing to
+	// count as active: 0 = centre only, 100 = the full draw range (half-extent) to the screen edge.
+	m_spotkill = m_io_spotkill.read_safe(0) != 0;
+	m_spotkill_secs = std::max(0.02, m_io_spotkill_ms.read_safe(25) * 0.01);   // adj x 10 ms
+	const double sk_rng = std::clamp(m_io_spotkill_range.read_safe(20) / 100.0, 0.0, 1.0);
+	m_spotkill_rx = int(sk_rng * m_x_center);   // m_x_center/m_y_center = half-extent in 16.16 units
+	m_spotkill_ry = int(sk_rng * m_y_center);
 	// Object-type lift curve (no hard threshold): beam_energy *= 1..m_obj_max as intensity rises past the knee.
 	m_obj_knee  = std::clamp(m_io_obj_knee.read_safe(75) / 100.0f, 0.0f, 0.999f);   // lift start (Z 0..1)
 	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)
