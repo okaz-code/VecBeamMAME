@@ -121,7 +121,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::refresh)
 {
 	/* Refresh only marks the range of vectors which will be drawn
 	 * during the next screen_update. */
-	flush_stroke();   // emit any stroke still buffered at the frame boundary (BEAMMODE=1; no-op otherwise)
+	flush_stroke();   // emit any stroke still buffered at the frame boundary
 	m_display_start = m_display_end;
 	m_display_end = m_point_index;
 }
@@ -190,105 +190,16 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 							m_points[m_display_start].col,
 							0);
 
-		// Flatten this frame's ring-buffer slice into a contiguous index list so curve runs are easy
-		// to scan. (The source m_points[] is a ring; m_display_start..m_display_end is the live list.)
-		std::vector<int> idx;
+		// Straight-line feed of this frame's ring-buffer slice. (The source m_points[] is a ring;
+		// m_display_start..m_display_end is the live list.) midChange is still recorded per point and
+		// forwarded to the dump (viewer), it just no longer drives any spline subdivision here.
 		for (int i = m_display_start; i != m_display_end; i = (i + 1) % NVECT)
-			idx.push_back(i);
-
-		// Optional Catmull-Rom spline of intended curves (VIDE-style). The SPLINE adjuster is the number
-		// of subdivisions per curve segment (0 = off). Only RUNS of >= 3 consecutive midChange vertices
-		// (a sustained curve) are smoothed; an isolated midChange (an ordinary polygon corner) is left as
-		// a straight line, so deliberate polygons are not rounded off.
-		const int subdiv = std::min(16, int(m_io_spline.read_safe(0)));
-		const bool do_spline = subdiv > 0;
-
-		auto emit = [&](const vectrex_point &p, int x, int y, bool mid, float escale = 1.0f)
 		{
+			const vectrex_point &p = m_points[i];
 			m_vector->set_dump_scale(p.scale);
 			m_vector->set_dump_ramp_us(p.ramp_us);
-			m_vector->set_dump_midchange(mid);
-			const float be = (p.beam_energy >= 0.0f) ? p.beam_energy * escale : p.beam_energy;
-			m_vector->add_point(x, y, p.col, p.intensity, be, p.t0, p.t1, p.cap_flags);
-		};
-
-		const size_t n = idx.size();
-
-		// Junction dwell-dot suppression (JDOTFIX). When the BIOS splits a thick line into segments it
-		// parks the beam (RAMP off) at each split, emitting a length-0 LIT dot exactly on the line ends.
-		// The renderer draws that as a fat point that additively overlaps the abutting line caps -> a
-		// bright "bulge" at every split head. Drop such dots: a length-0 lit point coincident with a drawn
-		// line incident to the same position. Non-stroke = any such length-0; stroke = only RAMP-off parked
-		// dots (ramp_us == 0) - intentional standalone dots (not touching a line) are always kept.
-		auto pos_eq = [&](int a, int b) { return m_points[a].x == m_points[b].x && m_points[a].y == m_points[b].y; };
-		auto is_junction_dot = [&](size_t k) -> bool
-		{
-			if (!m_junction_fix) return false;
-			const int cur = idx[k];
-			if (m_points[cur].intensity <= 0) return false;          // blanked move, not a lit dot
-			if (k == 0 || !pos_eq(cur, idx[k - 1])) return false;    // not length-0 (the beam moved here)
-			if (m_stroke_mode && m_points[cur].ramp_us != 0.0) return false;   // stroke: only RAMP-off parked dots
-			// A vertex can hold a RUN of several length-0 dwell dots at the same position P (the BIOS parks
-			// the beam there while it sets up the next edge). Walk the whole contiguous same-position run, so
-			// the MIDDLE dots (sandwiched between other dots, not directly touching a line) are caught too.
-			size_t a = k; while (a > 0 && pos_eq(idx[a - 1], cur)) a--;       // first index at P
-			size_t b = k; while (b + 1 < n && pos_eq(idx[b + 1], cur)) b++;   // last index at P
-			// A lit line ARRIVES at P (run's first point came from elsewhere with light = length>0 lit line)...
-			const bool line_in  = (a > 0) && (m_points[idx[a]].intensity > 0);
-			// ...or a lit line LEAVES P (first point after the run is elsewhere and lit).
-			const bool line_out = (b + 1 < n) && (m_points[idx[b + 1]].intensity > 0);
-			return line_in || line_out;   // P touches a drawn line -> drop every dwell dot in this run
-		};
-		for (size_t k = 0; k < n; )
-		{
-			// length of the maximal midChange run starting at k
-			size_t run_end = k;
-			if (do_spline)
-				while (run_end < n && m_points[idx[run_end]].midchange) run_end++;
-
-			if (do_spline && (run_end - k) >= 3 && k > 0)
-			{
-				// Control points pass through the anchor before the run plus the run vertices; the beam
-				// is already parked at the anchor (added on the previous step), so we only emit the curve.
-				std::vector<int> cp;
-				cp.push_back(idx[k - 1]);
-				for (size_t r = k; r < run_end; r++) cp.push_back(idx[r]);
-				const int m = (int)cp.size();
-				for (int s = 0; s < m - 1; s++)
-				{
-					const vectrex_point &p0 = m_points[cp[std::max(0, s - 1)]];
-					const vectrex_point &p1 = m_points[cp[s]];
-					const vectrex_point &p2 = m_points[cp[s + 1]];
-					const vectrex_point &p3 = m_points[cp[std::min(m - 1, s + 2)]];
-					for (int t = 1; t <= subdiv; t++)
-					{
-						const double u = double(t) / subdiv, u2 = u * u, u3 = u2 * u;
-						auto cr = [&](double a, double b, double c, double d) -> double {
-							return 0.5 * ((2.0 * b) + (-a + c) * u
-									+ (2.0 * a - 5.0 * b + 4.0 * c - d) * u2
-									+ (-a + 3.0 * b - 3.0 * c + d) * u3);
-						};
-						emit(p2, (int)cr(p0.x, p1.x, p2.x, p3.x),
-								 (int)cr(p0.y, p1.y, p2.y, p3.y), true);
-					}
-				}
-				k = run_end;   // whole run consumed (curve ends exactly on the last vertex at u=1)
-			}
-			else
-			{
-				const vectrex_point &p = m_points[idx[k]];
-				if (is_junction_dot(k))
-				{
-					// split-line junction dwell dot (JDOTFIX). Real HW draws it, so keep it but dim by
-					// m_junction_level: the static dot is re-excited every frame and the phosphor persistence
-					// makes it pop, so a lower level tames it. 0 = drop entirely (old behaviour).
-					if (m_junction_level > 0.0f)
-						emit(p, p.x, p.y, p.midchange, m_junction_level);
-				}
-				else
-					emit(p, p.x, p.y, p.midchange);
-				k++;
-			}
+			m_vector->set_dump_midchange(p.midchange);
+			m_vector->add_point(p.x, p.y, p.col, p.intensity, p.beam_energy, p.t0, p.t1, p.cap_flags);
 		}
 	}
 
@@ -351,11 +262,6 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	float be = (beam_energy >= 0.0f)
 			? beam_energy * object_boost(intensity, x == prev_x && y == prev_y)
 			: beam_energy;
-	// Text exclusion: a large-scale LINE is BIOS raster text (its intensity matches a bullet/explosion, but
-	// its vector scale is far larger). Clamp it back to a normal energy so it gets no width lift, no
-	// brightness-cap release and no object boost. Points (x==prev) are never clamped (stars/bullets keep it).
-	if (be > m_text_cap && (x != prev_x || y != prev_y) && float(m_cur_scale) >= m_text_scale)
-		be = m_text_cap;
 	newpoint->beam_energy = be;
 	newpoint->cap_flags = u8(cap_flags);   // RAMP on/off terminus bits for the renderer's line caps
 	newpoint->t0 = t0;
@@ -387,34 +293,31 @@ void vectrex_base_state::add_point_stereo(int x, int y, rgb_t color, int intensi
 }
 
 
-float vectrex_base_state::calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const
+// Parked-beam (dot) dwell energy. Real-hardware observation (intensity_test / persist_test carts,
+// 2026-07-02): a dwelling dot's dazzle onset sits on an I x dt contour - halve the intensity and
+// roughly double the dwell time and it dazzles the same - over the whole practical dwell range
+// (~30..200us+). So the response must stay near-LINEAR in dt there: x = dt / T_ref with T_ref well
+// above the range (default 250us) keeps s = x^g/(x^g+1) in its linear region (g = 1), and the
+// saturation (per-area phosphor ceiling) only bends far beyond. This is why "scale" dazzles a dot
+// on real hardware: a zero-delta RAMP draw parks the beam for the whole T1 (= scale) period, so
+// dt tracks the scale directly. Dots get their OWN ceiling (m_dot_max): a parked beam concentrates
+// all its energy in one spot and needs several times the moving-line headroom to span the
+// dim -> dazzling -> white-hot continuum the renderer's overdrive expects.
+float vectrex_base_state::dot_dwell_energy(int intensity, attotime t0, attotime t1) const
 {
 	if (t0.is_never() || t1.is_never() || t1 <= t0 || intensity <= 0)
 		return -1.0f;
-
-	// Base brightness = the displayed intensity (Z), normalized to 0..1.
 	const double I = std::clamp(double(intensity) / 255.0, 0.0, 1.0);
-
-	// Draw-time (dwell) model: the deposited energy grows with how LONG the beam spent drawing this
-	// segment (dt), not with its speed. A short / quickly-drawn stroke deposits little energy and stays
-	// dim; a long-drawn stroke climbs toward the phosphor's per-area saturation ceiling and "glows".
-	// s = x^g/(x^g+1) is a saturating 0..1 ramp of the scaled draw time (x = dt*scale). influence blends
-	// between flat intensity (infl 0 -> energy = I) and the fully draw-time-shaped energy that climbs to
-	// m_beam_max (infl 1 -> energy = I * s * max). Params cached per frame from BEAMINFL/BEAMCURVE/
-	// BEAMSCALE/BEAMMAX. The result is capped at m_beam_max = the per-unit-area phosphor saturation:
-	// the renderer's beam2 transfer saturates displayed BRIGHTNESS partway and pours the rest into WIDTH,
-	// so a long bright beam keeps thickening (and blooming) up to the ceiling.
 	const double dt = (t1 - t0).as_double();
-	const double x  = dt * m_beam_scale;                        // scaled draw time
-	const double xg = std::pow(std::max(0.0, x), m_beam_curve);
-	const double s  = xg / (xg + 1.0);                          // saturating 0..1 from draw time
-	const double dwell_drive = s * m_beam_max;                  // 0 .. max
-	const double drive = I * ((1.0 - m_beam_infl) + m_beam_infl * dwell_drive);
-	return float(std::clamp(drive, 0.0, m_beam_max));
+	const double x  = dt / m_dot_ref;                           // dwell normalized to the reference
+	const double xg = std::pow(std::max(0.0, x), m_dot_curve);
+	const double s  = xg / (xg + 1.0);                          // near-linear below T_ref, saturating far above
+	const double drive = I * ((1.0 - m_beam_infl) + m_beam_infl * s * m_dot_max);
+	return float(std::clamp(drive, 0.0, m_dot_max));
 }
 
 
-// Stroke-aggregate energy (BEAMMODE=1). The brightness DENSITY of a RAMP-ON stroke is set by the beam
+// Stroke-aggregate energy. The brightness DENSITY of a RAMP-ON stroke is set by the beam
 // SPEED of the whole stroke (one value), not by each tiny sub-segment's own draw time. A slow beam
 // deposits more energy per unit length (brighter); BLANK/SR only gate WHICH parts are visible. Because
 // the speed is the stroke average, every visible sub-segment of a constant-velocity sweep (e.g. a BIOS
@@ -437,7 +340,7 @@ float vectrex_base_state::stroke_density_energy(int intensity, double stroke_spe
 }
 
 
-// Emit the buffered RAMP-ON stroke (BEAMMODE=1). Computes ONE speed from the whole stroke's moved
+// Emit the buffered RAMP-ON stroke. Computes ONE speed from the whole stroke's moved
 // distance and elapsed RAMP time, then plays every collected sub-segment out through the normal
 // add_point path with that shared density. Called at RAMP-off, ZERO, refresh, or buffer overflow.
 void vectrex_base_state::flush_stroke()
@@ -456,6 +359,13 @@ void vectrex_base_state::flush_stroke()
 	const double ramp_time = (m_stroke.back().t1 - m_stroke.front().t0).as_double();
 	const double speed = (path_len > 1e-6 && ramp_time > 1e-12) ? (path_len / ramp_time) : 0.0;
 
+	// A (near-)zero-delta RAMP draw is a PARKED beam dumping its energy into one spot for the whole
+	// T1 (= scale) period - this is how games and carts make a dot dazzle with SCALE on real
+	// hardware. The speed model degenerates here (speed -> 0 gave a constant "max density"
+	// regardless of dwell), so route short-path strokes through the dot dwell-time model instead
+	// (per sub-segment lit time, so BLANK gating still masks correctly).
+	const bool dot_stroke = (path_len < 0.75);
+
 	// Line end-caps ONLY at the actual RAMP transition with the beam lit AT that instant: the stroke's
 	// FIRST sub-segment is the RAMP-on moment (cap its start only if it is lit), the LAST sub-segment is
 	// the RAMP-off moment (cap its end only if it is lit). A stroke that opens/closes blanked - e.g. BIOS
@@ -472,7 +382,8 @@ void vectrex_base_state::flush_stroke()
 		m_cur_scale     = s.scale;
 		m_cur_ramp_us   = s.ramp_us;
 		m_cur_midchange = s.midchange;
-		const float e = stroke_density_energy(s.intensity, speed);
+		const float e = dot_stroke ? dot_dwell_energy(s.intensity, s.t0, s.t1)
+								   : stroke_density_energy(s.intensity, speed);
 		const u32 cap = (k == 0 && cap_start ? 1u : 0u) | (k == last_idx && cap_end ? 2u : 0u);   // bit0 start, bit1 end
 		(this->*vector_add_point_function)(s.x1, s.y1, s.col, s.intensity, e, s.t0, s.t1, cap);
 	}
@@ -504,7 +415,7 @@ float vectrex_base_state::apply_dwell_limit(int x, int y, float energy)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 {
-	flush_stroke();   // ZERO ends any in-progress RAMP-ON stroke (BEAMMODE=1; no-op otherwise)
+	flush_stroke();   // ZERO ends any in-progress RAMP-ON stroke
 	m_x_int = m_x_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_mid_in_run = false;   // zeroing breaks any connected lit-stroke run
@@ -560,31 +471,12 @@ void vectrex_base_state::update_vector()
 			m_mid_in_run = false;
 		}
 
-		// BLANK-off tail (VIDE blankOnDelay): when the lit stroke is ending because blank goes off, the
-		// beam keeps travelling briefly, so draw the EMITTED endpoint a little past the integrator. The
-		// integrator (m_x_int/m_y_int) is left at its true value so following geometry is unchanged.
-		int ex = m_x_int, ey = m_y_int;
-		if (m_blank_delay_active > 0.0 && intensity > 0)
-		{
-			ex += int(m_blank_delay_active * vx);
-			ey += int(m_blank_delay_active * vy);
-		}
-
 		m_cur_ramp_us = (t1 - m_ramp_start_time).as_double() * 1e6;   // RAMP-active time up to this point
-		if (m_stroke_mode)
-		{
-			// BEAMMODE=1: defer emission - collect the sub-segment; flush_stroke() at RAMP-off sets the
-			// shared stroke density. (x0,y0,ex,ey already include the blank-off tail; energy comes later.)
-			m_stroke.push_back({ x0, y0, ex, ey, t0, t1, intensity, m_beam_color, m_cur_midchange, m_cur_scale, m_cur_ramp_us });
-			if (m_stroke.size() > 8192)   // runaway guard: never let a stuck RAMP grow the buffer unbounded
-				flush_stroke();
-		}
-		else
-		{
-			const float e = apply_dwell_limit(ex, ey,
-					calculate_beam_energy(x0, y0, ex, ey, intensity, t0, t1));
-			(this->*vector_add_point_function)(ex, ey, m_beam_color, intensity, e, t0, t1, 0);
-		}
+		// Defer emission - collect the sub-segment; flush_stroke() at RAMP-off sets the shared stroke
+		// density from the whole stroke's speed. Energy is filled in there.
+		m_stroke.push_back({ x0, y0, m_x_int, m_y_int, t0, t1, intensity, m_beam_color, m_cur_midchange, m_cur_scale, m_cur_ramp_us });
+		if (m_stroke.size() > 8192)   // runaway guard: never let a stuck RAMP grow the buffer unbounded
+			flush_stroke();
 	}
 	else
 	{
@@ -593,8 +485,11 @@ void vectrex_base_state::update_vector()
 		if (m_blank)
 		{
 			const int intensity = apply_brightness(2 * m_analog[A_Z]);
+			// RAMP inactive + beam on = a parked dot (e.g. the BIOS Dot routines): energy follows the
+			// lit dwell time through the calibrated dot model, independent of the T1 scale (matching
+			// real hardware, where fixed-dwell BIOS dots do not respond to scale).
 			const float e = apply_dwell_limit(m_x_int, m_y_int,
-					calculate_beam_energy(x0, y0, m_x_int, m_y_int, intensity, t0, t1));
+					dot_dwell_energy(intensity, t0, t1));
 			m_cur_ramp_us = 0.0;   // drawn while RAMP inactive (parked dot), not part of a ramp
 			(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, intensity, e, t0, t1, 0);
 		}
