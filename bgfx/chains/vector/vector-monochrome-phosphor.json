@@ -4,8 +4,9 @@
 // ported to generic vector sources. Same pipeline: per-pixel phosphor pool (rgb=peak, a=age, Hill
 // decay), flat-core analytic beam, overdrive hot-core/halation/starburst, analytic glow, HDR present
 // with hue-preserving roll-off + saturated-colour protection. No screen bloom (the glow path replaced
-// it). Sources without driver-supplied beam_energy fall back to n = intensity; dwell_brightness adds
-// the slow-beam-is-brighter physics renderer-side from the per-segment timestamps (AVG/DVG have them).
+// it). Sources without driver-supplied beam_energy fall back to n = intensity; the unified Energy Model
+// (energy_* sliders) derives the slow-sweep / dwelling-dot overdrive renderer-side from the per-segment
+// timestamps (AVG / DVG / Cinematronics have them), replacing the old dwell_* brightness knobs.
 // Line caps are unconditional here (cap_flags / RAMP termini are a Vectrex concept).
 {
 	"name": "Vector (Monochrome Phosphor, HDR)",
@@ -39,9 +40,14 @@
 		{ "type": "float", "name": "core_flat",         "text": "Line Core Flatness",        "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dot_flat",          "text": "Dot Core Flatness",         "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "dwell_brightness",  "text": "Dwell Brightness (slow=bright)", "default": 0.5, "min": 0.0, "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "dwell_speed_ref",   "text": "Dwell Speed Ref",           "default": 1.0, "min": 0.05, "max": 8.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "dwell_max",         "text": "Dwell Max (x)",             "default": 3.0, "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
+		{ "type": "float", "name": "energy_infl",        "text": "Energy Influence",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.8,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_curve",       "text": "Energy Curve",              "default": 1.0,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_line_max",    "text": "Energy Line Max",           "default": 4.0,  "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "energy_dot_ref",     "text": "Energy Dot Ref (us)",       "default": 30.0, "min": 2.0,  "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "energy_dot_curve",   "text": "Energy Dot Curve",          "default": 1.6,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_dot_max",     "text": "Energy Dot Max",            "default": 3.2,  "min": 1.0,  "max": 16.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold","text": "Line/Point Threshold (px)","default": 2.0, "min": 0.0,  "max": 8.0,  "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "point_width_scale",  "text": "Point Width Scale",         "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 

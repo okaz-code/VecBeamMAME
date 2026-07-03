@@ -969,11 +969,15 @@ int avg_starwars_device::handler_7() // starwars_strobe3
 		// Raw beam energy of the Quadrascan generator: the VCTR intensity (top 3 bits, mapped through
 		// the beam-current table below) times the STAT intensity (8 bits). This can exceed the value a
 		// display can show, which is what drives the overdrive/glow effect. Star Wars is the only avgdvg
-		// title that varies this. Normalized to 0..1 here; the display intensity (4th argument) is the
+		// title that varies this. Reported in the UNIFIED beam-energy convention (0..1 = normal display
+		// range, > 1 = overdrive), NOT 0..1-normalized: the reference is the nominal x1.96 current step
+		// (VCTR_X[2], the value the display is tuned to show at full STAT intensity), so an ordinary
+		// bright vector sits near 1.0 and the higher current steps read as genuine overdrive (up to
+		// ~3.5). The display intensity (4th argument) is the
 		// stock value and is left unchanged, so non-bgfx output is identical to stock.
 		static constexpr float VCTR_X[8] = { 0.00f, 1.00f, 1.96f, 2.96f, 3.91f, 4.91f, 5.87f, 6.87f };
 		const float raw_beam = VCTR_X[(m_int_latch >> 1) & 0x07] * float(m_intensity); // 0 .. 1751.85
-		const float beam_energy = raw_beam / 1751.85f;                                 // normalized 0..1
+		const float beam_energy = raw_beam / (VCTR_X[2] * 255.0f);                     // nominal x1.96 step -> ~1.0; range 0 .. ~3.5
 
 		vg_add_point_buf(
 				m_xpos,
