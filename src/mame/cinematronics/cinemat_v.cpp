@@ -35,16 +35,41 @@ void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, 
 	sy -= visarea.top();
 	ey -= visarea.top();
 
-	/* point intensity is determined by the shift value */
+	/* point intensity / dwell is determined by the shift value */
+	//
+	// A degenerate vector (sx==ex && sy==ey) is a dwelling dot: the beam parks at the spot and its
+	// brightness comes from how long it dwells there, which the CCPU encodes in the DV timer register T
+	// (passed here as `shift`; see ccpu.cpp:482 DV, delta >> m_T). The stock code turned shift straight
+	// into a display intensity `0x1ff * shift / 8` (511*shift/8) - which overflows the 8-bit intensity
+	// field for shift > 3 (e.g. shift 4 -> 255, shift 5 -> 319 -> wraps to 63) and, being frame-grained
+	// (t0==t1), carries NO dwell information for the renderer's unified energy model.
+	//
+	// Instead we (a) clamp the DISPLAY intensity to a valid 0..255 (removing the wrap bug) and (b) encode
+	// the dwell as a real time span t1-t0 so the renderer's per-dot energy model (drawbgfx generic_beam_energy,
+	// dot branch) derives the overdrive from it, in the unified convention.
+	//
+	// shift -> dwell time: the exact CCPU->CRT sweep time is not tracked by MAME (the DV op issues in one
+	// CPU cycle while the analog vector generator sweeps for a length/timer-dependent interval; see
+	// vector-engine-beam-timing-survey.md sec.5, which notes t0~=t1 for this hardware). We use the same
+	// LINEAR-in-shift relationship the stock brightness formula implied (brightness ~ dwell for a CRT dot),
+	// with an approximate base of DWELL_US_PER_SHIFT us per shift step chosen so the brightest dots
+	// (shift ~= 4) dwell ~120us, i.e. a few x the renderer's default dot reference (energy_dot_ref 30us) and
+	// thus read as genuine overdrive. This is an APPROXIMATION (base value, not a measured CCPU->sweep
+	// conversion); adjust DWELL_US_PER_SHIFT / the chain's energy_dot_ref to taste.
+	static constexpr double DWELL_US_PER_SHIFT = 30.0;
+	attotime t1 = now;
 	if (sx == ex && sy == ey)
-		intensity = 0x1ff * shift / 8;
+	{
+		intensity = std::min(0x1ff * shift / 8, 0xff);            // display intensity, clamped (was: 8-bit wrap bug)
+		t1 = now + attotime::from_usec(int(shift * DWELL_US_PER_SHIFT + 0.5)); // dwell span -> renderer dot energy
+	}
 
 	/* move to the starting position if we're not there already */
 	if (sx != m_lastx || sy != m_lasty)
 		m_vector->add_point(sx << 16, sy << 16, 0, 0, -1.0f, now, now);
 
 	/* draw the vector */
-	m_vector->add_point(ex << 16, ey << 16, m_vector_color, intensity, -1.0f, now, now);
+	m_vector->add_point(ex << 16, ey << 16, m_vector_color, intensity, -1.0f, now, t1);
 
 	/* remember the last point */
 	m_lastx = ex;

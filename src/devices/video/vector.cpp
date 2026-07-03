@@ -189,15 +189,16 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	newpoint->y0 = (m_vector_index > 0) ? m_vector_list[m_vector_index - 1].y : y;
 	newpoint->col = color;
 	newpoint->intensity = intensity;
-	// Normalized (0..1) beam energy carried on the primitive for renderer overdrive effects.
-	// When the device supplies a raw value (beam_energy >= 0) it is used as-is; otherwise
-	// the displayed intensity is used as the normalized value. This is pure data: the displayed
-	// intensity above is unchanged, so renderers that ignore it produce stock output.
-	// Upper bound 8.0 (not 1.0): a raw beam_energy can exceed peak (dwelling beam concentrates energy);
-	// the renderer clamps to 0..1 for the displayed core and uses the raw >1 part for the overdrive/HDR
-	// white-hot flare. Sources that never exceed 1.0 are unaffected.
+	// Beam energy carried on the primitive for renderer overdrive effects, in the unified convention:
+	//   0..1 = normal display range, 1..N = overdrive (slow sweeps / dwelling dots concentrate energy),
+	//   < 0  = "no information" (the source did not measure beam energy).
+	// When the device supplies a value (beam_energy >= 0) it is passed through unchanged (clamped to a
+	// sane upper bound only); a NEGATIVE value is preserved AS-IS so the renderer can tell "no info"
+	// apart from "energy 0" and derive its own energy from the per-segment timestamps (unified model).
+	// This is pure data: the displayed intensity above is untouched, so renderers that ignore beam_energy
+	// (and the renderer's own fallback, n = clamp(color.a)) produce identical stock output.
 	newpoint->beam_energy = (beam_energy >= 0.0f) ? std::clamp(beam_energy, 0.0f, 16.0f)
-												  : float(intensity) / 255.0f;
+												  : beam_energy;
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->cap_flags = cap_flags;

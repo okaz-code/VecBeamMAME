@@ -110,6 +110,13 @@ private:
 	// transparent edge, so it keeps uniform intensity regardless of line width and angle.
 	void put_solid_line(render_primitive *prim, ScreenVertex* vertex);
 
+	// Unified beam-energy model for sources that do NOT supply beam_energy (DVG / AVG / Cinematronics):
+	// derive it renderer-side from the per-segment timestamps, in the same convention as the Vectrex
+	// driver (0..1 = normal display range, > 1 = overdrive from slow sweeps / dwelling dots). Returns a
+	// value on the display-intensity scale (0..1 = normal, > 1 = overdrive). Returns the plain display
+	// intensity when the model is off or timestamps are unavailable.
+	float generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref);
+
 	void set_bgfx_state(uint32_t blend);
 
 	static uint32_t u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a);

@@ -1516,6 +1516,39 @@ static float vec_scurve(float x, float g, float c)
 				   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
 }
 
+// Unified beam-energy model for sources that do not supply beam_energy (DVG / AVG / Cinematronics):
+// derive it renderer-side from the per-segment timestamps, with the same convention as the Vectrex
+// driver (0..1 = normal display range, >1 = overdrive from slow sweeps / dwelling dots).
+// Lines: density ~ 1/speed through the saturating s = x^g/(x^g+1) (speed in screen-widths per ms,
+// so it is resolution-independent). Points: dwell time through the same curve family.
+// energy_model 0 = off (n = display intensity, prior behaviour - chains without the slider unchanged).
+float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref)
+{
+	const float I = std::clamp(prim->color.a, 0.0f, 1.0f);
+	if (m_chains->slider_value(0, "energy_model", 0.0f) <= 0.0f
+		|| !(prim->t0 >= 0.0 && prim->t1 > prim->t0) || I <= 0.0f)
+		return I;
+	const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
+	const float infl = std::clamp(m_chains->slider_value(0, "energy_infl", 0.6f), 0.0f, 1.0f);
+	double s, emax;
+	if (as_point)
+	{
+		const double x  = (dt_ms * 1000.0) / std::max(1.0, double(m_chains->slider_value(0, "energy_dot_ref", 30.0f)));   // dwell us / ref us
+		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_chains->slider_value(0, "energy_dot_curve", 1.6f))));
+		s = xg / (xg + 1.0);
+		emax = std::max(1.0f, m_chains->slider_value(0, "energy_dot_max", 3.2f));
+	}
+	else
+	{
+		const double v  = (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);   // screen-widths per ms
+		const double x  = double(std::max(0.01f, m_chains->slider_value(0, "energy_speed_norm", 0.8f))) / std::max(1e-6, v);
+		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_chains->slider_value(0, "energy_curve", 1.0f))));
+		s = xg / (xg + 1.0);
+		emax = std::max(1.0f, m_chains->slider_value(0, "energy_line_max", 4.0f));
+	}
+	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
+}
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, float start_cap, float end_cap)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
@@ -1559,9 +1592,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
 	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
 	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
+	// When the device supplies NO beam_energy (< 0) the renderer derives it from the per-segment
+	// timestamps (unified model, generic_beam_energy); with energy_model off that reduces to the plain
+	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
+	// preserving the existing e_ref semantics.
 	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	const float e_screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
 	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
-												: std::clamp(prim->color.a, 0.0f, 1.0f);
+												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
@@ -2400,9 +2438,14 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
 	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
 	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
+	// When the device supplies NO beam_energy (< 0) the renderer derives it from the per-segment
+	// timestamps (unified model, generic_beam_energy); with energy_model off that reduces to the plain
+	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
+	// preserving the existing e_ref semantics.
 	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	const float e_screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
 	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
-												: std::clamp(prim->color.a, 0.0f, 1.0f);
+												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
