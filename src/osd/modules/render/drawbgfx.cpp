@@ -1711,7 +1711,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// so there the flare alone cannot brighten the spot. With overdrive_core > 0 the same (1+z)
 	// overrange multiplies the core deposit itself into the float FBO, where it feeds the phosphor
 	// pool and the bloom cascade like any other light. 0 = off (flare-only, prior behaviour).
-	const float core_over = line_over * std::clamp(m_chains->slider_value(0, "overdrive_core", 0.0f), 0.0f, 1.0f);
+	float core_over = line_over * std::clamp(m_chains->slider_value(0, "overdrive_core", 0.0f), 0.0f, 1.0f);
+	// Colour-linear brightness (3D imager / colour sources): wheel-segment colour composition encodes
+	// the hue in the per-pass INTENSITY RATIOS, and the two-regime transfer erases them for bright
+	// objects - display_a saturates at T, so every channel of a bright ship deposits at 1.0 and the
+	// ship turns WHITE. At 1.0 the deposit is LINEAR in the beam energy instead (min(n,1) in the
+	// 8-bit alpha, the remainder in the (1+z) overrange - the float FBO / pool / present roll-off
+	// carry it), preserving channel ratios at any brightness. 0 = mono two-regime (unchanged).
+	const float lin_col = std::clamp(m_chains->slider_value(0, "linear_color", 0.0f), 0.0f, 1.0f);
+	if (lin_col > 0.0f)
+	{
+		display_a = display_a + lin_col * (std::min(n, 1.0f) - display_a);
+		core_over = core_over + lin_col * (std::max(n - 1.0f, 0.0f) - core_over);
+	}
 
 	// Length fade + flicker + window-blend weight, identical to the classic path.
 	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
@@ -1778,7 +1790,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const bool  flare_on   = (line_over > 0.0f);
 	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor;
 	const float flare_z    = std::max(0.0f, flare_peak - 1.0f);
-	const uint32_t flare_rgba = u32Color(255, 255, 255,
+	// Flare colour = the beam's own hue at full strength, NOT fixed white: the 3D imager (and any
+	// colour source) puts a colour filter in front of the whole tube, so even the white-hot overload
+	// flare arrives tinted - a fixed white flare injected achromatic light into pure-colour scenes
+	// and washed bright objects (the imager ship) toward white. A monochrome (white) beam yields
+	// exactly the old white flare, so mono chains are unchanged.
+	const float flare_pk = std::max(std::max(prim->color.r, prim->color.g), std::max(prim->color.b, 1e-4f));
+	const uint32_t flare_rgba = u32Color(
+		uint32_t(std::min(prim->color.r / flare_pk, 1.0f) * 255.0f + 0.5f),
+		uint32_t(std::min(prim->color.g / flare_pk, 1.0f) * 255.0f + 0.5f),
+		uint32_t(std::min(prim->color.b / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(1.0f, flare_peak) * 255.0f + 0.5f));
 
 	// sigma: width/3.2 keeps the gaussian core as tight as the classic parabola (a gaussian's
@@ -3419,7 +3440,7 @@ int renderer_bgfx::draw(int update)
 				float rov[4] = {
 					m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f),
 					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
-					0.0f, 0.0f };
+					m_chains->slider_value(0, "hdr_sat_protect", 0.0f), 0.0f };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
 			}
