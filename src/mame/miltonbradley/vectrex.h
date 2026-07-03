@@ -38,21 +38,16 @@ protected:
 		m_io_3dconf(*this, "3DCONF"),
 		m_io_3dphase(*this, "3DPHASE"),
 		m_io_3dphase_fine(*this, "3DPHASEF"),
-		m_io_3dredphase(*this, "3DREDPH"),
 		m_io_xskew(*this, "XSKEW"),
 		m_io_beam_infl(*this, "BEAMINFL"),
 		m_io_beam_curve(*this, "BEAMCURVE"),
-		m_io_beam_scale(*this, "BEAMSCALE"),
 		m_io_beam_max(*this, "BEAMMAX"),
+		m_io_dot_ref(*this, "DOTREF"),
+		m_io_dot_curve(*this, "DOTCURVE"),
+		m_io_dot_max(*this, "DOTMAX"),
 		m_io_beam_dwell(*this, "BEAMDWELL"),
-		m_io_blank_delay(*this, "BLANKDELAY"),
-		m_io_spline(*this, "SPLINE"),
-		m_io_beam_mode(*this, "BEAMMODE"),
 		m_io_beam_speed(*this, "BEAMSPEED"),
-		m_io_junction_fix(*this, "JDOTFIX"),
-		m_io_junction_level(*this, "JDOTLVL"),
 		m_io_bright(*this, "BRIGHT"),
-		m_io_bright_retr(*this, "BRTRETR"),
 		m_io_spotkill(*this, "SPOTKILL"),
 		m_io_spotkill_ms(*this, "SPOTKMS"),
 		m_io_spotkill_range(*this, "SPOTKRNG"),
@@ -60,8 +55,6 @@ protected:
 		m_io_obj_sharp(*this, "OBJSHARP"),
 		m_io_obj_max(*this, "OBJMAX"),
 		m_io_obj_star(*this, "OBJSTAR"),
-		m_io_text_scale(*this, "TEXTSCALE"),
-		m_io_text_cap(*this, "TEXTCAP"),
 		m_io_lpenconf(*this, "LPENCONF"),
 		m_io_lpenx(*this, "LPENX"),
 		m_io_lpeny(*this, "LPENY"),
@@ -104,11 +97,11 @@ protected:
 			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
 	void add_point_stereo(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f,
 			attotime t0 = attotime::never, attotime t1 = attotime::never, u32 cap_flags = 0);
-	float calculate_beam_energy(int x0, int y0, int x1, int y1, int intensity, attotime t0, attotime t1) const;
+	float dot_dwell_energy(int intensity, attotime t0, attotime t1) const;   // parked-beam (dot) dwell-time energy
 	float object_boost(int intensity, bool is_point) const;   // per-object-type beam_energy lift (see m_obj_*)
 	int apply_brightness(int intensity) const;                // Brightness knob: scale intensity + retrace floor
-	float stroke_density_energy(int intensity, double stroke_speed) const;   // BEAMMODE=1 stroke-aggregate energy
-	void flush_stroke();                                   // emit the buffered RAMP-ON stroke (BEAMMODE=1)
+	float stroke_density_energy(int intensity, double stroke_speed) const;   // stroke-aggregate energy
+	void flush_stroke();                                   // emit the buffered RAMP-ON stroke
 	float apply_dwell_limit(int x, int y, float energy);   // cap same-location additive pile-up
 
 	unsigned char m_via_out[2];
@@ -195,30 +188,31 @@ private:
 	// beam_energy draw-time model params, cached once per frame in screen_configuration()
 	double m_beam_infl = 0.5;        // influence (0..1): 0 = flat intensity, 1 = fully draw-time shaped
 	double m_beam_curve = 1.0;       // draw-time saturation exponent g (gentleness)
-	double m_beam_scale = 500000.0;  // draw-time (dt) normalizer (saturation midpoint)
 	double m_beam_max = 4.0;         // per-unit-area max beam_energy (phosphor saturation ceiling)
+	// Parked-dot dwell model params (dot_dwell_energy): real-hw calibrated - the dazzle onset of a
+	// dwelling dot sits on an I x dt contour, so the response must be near-linear over ~30..200us.
+	double m_dot_ref = 250e-6;       // dwell normalizer T_ref (seconds): x = dt / T_ref
+	double m_dot_curve = 1.0;        // dwell saturation exponent (1.0 = the I x dt product region is linear)
+	double m_dot_max = 12.8;         // parked-dot energy ceiling (independent of the line/stroke m_beam_max)
 	// Same-location dwell accumulation limit: caps the cumulative beam_energy deposited at one parked
 	// spot (the additive pile-up of repeated dots). First dot at a new spot is always full.
 	double m_dwell_cap = 8.0;        // cached per frame (0 = only the first dot, large = unlimited)
 	int m_dwell_x = 0;
 	int m_dwell_y = 0;
 	double m_dwell_accum = 0.0;
-	// BLANK-off tail (VIDE blankOnDelay): when blank turns off, the emitted lit segment endpoint is
-	// extended this many integrator-steps along the beam velocity (set transiently in update_blank).
-	double m_blank_delay_active = 0.0;
 	// midChange detection: within a run of connected lit RAMP-active segments, a vertex is a "curve
 	// point" when the beam velocity changed there. Used to reconstruct intended curves (Catmull-Rom).
 	int m_mid_prev_dx = 0;
 	int m_mid_prev_dy = 0;
 	bool m_mid_in_run = false;    // currently inside a connected lit ramp run
 	bool m_cur_midchange = false; // midChange flag for the next add_point
-	// Stroke-aggregate energy model (BEAMMODE=1): a RAMP-ON stroke is collected, then at RAMP-off the
-	// whole stroke's speed (total moved distance / RAMP time) sets ONE brightness density applied to every
-	// visible sub-segment, so BLANK/SR act as a pure visibility mask. This stabilises BIOS raster text,
-	// where the per-segment dt model makes each tiny SR-gated dot dim and jittery. Cached per frame.
+	// Stroke-aggregate energy model: a RAMP-ON stroke is collected, then at RAMP-off the whole stroke's
+	// speed (total moved distance / RAMP time) sets ONE brightness density applied to every visible
+	// sub-segment, so BLANK/SR act as a pure visibility mask. This stabilises BIOS raster text, where a
+	// per-segment dt model would make each tiny SR-gated dot dim and jittery. Cached per frame.
 	struct stroke_seg
 	{
-		int x0, y0, x1, y1;      // segment endpoints (x1,y1 already includes the blank-off tail)
+		int x0, y0, x1, y1;      // segment endpoints
 		attotime t0, t1;
 		int intensity;           // 0 = blank (invisible move); >0 = visible
 		rgb_t col;
@@ -227,12 +221,9 @@ private:
 		double ramp_us;
 	};
 	std::vector<stroke_seg> m_stroke;   // current RAMP-ON stroke, flushed at RAMP-off / ZERO / refresh
-	bool m_stroke_mode = false;         // cached BEAMMODE (true = aggregate)
 	double m_beam_speed = 100.0;        // cached BEAMSPEED inverse-speed normalizer
-	bool m_junction_fix = false;        // cached JDOTFIX: detect length-0 dwell dots coincident with a line end
-	float m_junction_level = 0.0f;      // cached JDOTLVL: brightness of those dwell dots (0 = drop, 1 = full, between = dim)
 	// Brightness knob (BRIGHT): master intensity gain. 50 = x1 (normal), 100 = x2. At high brightness the
-	// blanked-beam retrace is lifted to m_bright_floor so it faintly glows (BRTRETR), like a real CRT.
+	// blanked-beam retrace is lifted to m_bright_floor so it faintly glows, like a real CRT.
 	float m_bright_mult = 1.0f;         // cached intensity multiplier
 	int m_bright_floor = 0;             // cached intensity floor for blanked (intensity-0) beams (0 = none)
 	// Spot killer (deflection protection): if the beam stops moving for m_spotkill_secs the beam is cut
@@ -249,11 +240,6 @@ private:
 	float m_obj_sharp = 2.0f;           // curve sharpness past the knee
 	float m_obj_max = 1.0f;             // max multiplier at full intensity (1.0 = off)
 	float m_obj_star = 1.0f;            // extra multiplier for length-0 parked dots (1.0 = off)
-	// Text exclusion: bright BIOS text shares the intensity (Z) of bullets/explosions, but is drawn at a
-	// much larger vector scale. A LINE whose scale >= m_text_scale is clamped to m_text_cap so it stays
-	// "normal" (n<=1: no width lift, no brightness-cap release, no object boost). Points are never clamped.
-	float m_text_scale = 1.0e9f;        // scale threshold for "text" lines (large default = off)
-	float m_text_cap = 1.0f;            // beam_energy ceiling for text lines (n<=1 = normal)
 	uint8_t m_cb2 = 0;
 	void (vectrex_base_state::*vector_add_point_function)(int, int, rgb_t, int, float, attotime, attotime, u32);
 
@@ -265,21 +251,16 @@ private:
 	required_ioport m_io_3dconf;
 	optional_ioport m_io_3dphase;        // 3D imager colour-segment phase trim, coarse (absent on raaspec)
 	optional_ioport m_io_3dphase_fine;   // ... fine sub-step trim
-	optional_ioport m_io_3dredphase;     // ... red-segment-only phase shift
 	optional_ioport m_io_xskew;          // X-axis MUX extra-lag (glyph slant) adjuster
 	optional_ioport m_io_beam_infl;      // beam_energy draw-time influence (0..100): flat intensity -> draw-time shaped
 	optional_ioport m_io_beam_curve;     // ... draw-time (dt) saturation curve / gentleness
-	optional_ioport m_io_beam_scale;     // ... draw-time normalizer (saturation midpoint)
 	optional_ioport m_io_beam_max;       // ... per-unit-area max beam_energy (phosphor saturation ceiling)
+	optional_ioport m_io_dot_ref;        // parked-dot dwell normalizer T_ref (adj x 5us)
+	optional_ioport m_io_dot_curve;      // parked-dot dwell saturation exponent (adj/50)
+	optional_ioport m_io_dot_max;        // parked-dot energy ceiling (adj/100 x 16)
 	optional_ioport m_io_beam_dwell;     // same-location accumulation limit (parked-beam pile-up cap)
-	optional_ioport m_io_blank_delay;    // BLANK-off tail length (integrator steps); 0 = off (stock)
-	optional_ioport m_io_spline;         // Catmull-Rom subdivisions for midChange curve runs; 0 = off
-	optional_ioport m_io_beam_mode;      // 0 = legacy per-segment dt energy, 1 = RAMP-stroke aggregate energy
-	optional_ioport m_io_beam_speed;     // stroke-mode inverse-speed normalizer (only used when BEAMMODE=1)
-	optional_ioport m_io_junction_fix;   // suppress length-0 dwell dots that sit on a line endpoint (junction bulge)
-	optional_ioport m_io_junction_level; // brightness level for those dwell dots when JDOTFIX on (0 = drop)
+	optional_ioport m_io_beam_speed;     // stroke inverse-speed normalizer
 	optional_ioport m_io_bright;         // Brightness knob: 50 = normal (x1), 100 = x2 intensity
-	optional_ioport m_io_bright_retr;    // retrace floor: lift blanked (intensity 0) beams at high brightness
 	optional_ioport m_io_spotkill;       // spot killer: cut the beam when deflection stops (CRT burn protection)
 	optional_ioport m_io_spotkill_ms;    // spot killer time constant (no-deflection time before the beam is cut)
 	optional_ioport m_io_spotkill_range; // spot killer trigger range: 0 = centre only, 100 = full draw range
@@ -287,8 +268,6 @@ private:
 	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
 	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)
 	optional_ioport m_io_obj_star;       // object lift: extra multiplier for parked dots (stars); 1.0 = off
-	optional_ioport m_io_text_scale;     // LINE scale at/above which a stroke is "text" and excluded from the lift
-	optional_ioport m_io_text_cap;       // beam_energy ceiling applied to those text lines (keeps them normal)
 	required_ioport m_io_lpenconf;
 	required_ioport m_io_lpenx;
 	required_ioport m_io_lpeny;

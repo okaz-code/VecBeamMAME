@@ -50,12 +50,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::update_analog)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::update_blank)
 {
-	// BLANK turning off ends a lit stroke. Model the finite blanking rise time (VIDE blankOnDelay) by
-	// extending the emitted endpoint a little along the beam velocity in update_vector. Active only for
-	// this one segment; 0 (the default) = stock behaviour.
-	m_blank_delay_active = (m_blank != 0 && param == 0) ? double(m_io_blank_delay.read_safe(0)) : 0.0;
 	update_vector();
-	m_blank_delay_active = 0.0;
 	m_blank = param;
 }
 
@@ -66,7 +61,7 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::update_mux_enable)
 
 TIMER_CALLBACK_MEMBER(vectrex_base_state::update_ramp)
 {
-	update_vector();   // finalises the current segment under the OLD ramp state (buffers it if BEAMMODE=1)
+	update_vector();   // finalises the current segment under the OLD ramp state (buffers it)
 	if ((m_ramp & 0x80) && param == 0)   // RAMP was inactive, now going active: stroke starts here
 		m_ramp_start_time = machine().time();
 	if (param != 0)    // RAMP going inactive ends the RAMP-ON stroke -> emit it with one shared density
@@ -96,23 +91,24 @@ void vectrex_base_state::screen_configuration()
 	const ioport_value conf = m_io_3dconf->read();
 	unsigned char cport = (unsigned char)conf;
 
-	// Cache the beam_energy draw-time model params once per frame (used by calculate_beam_energy).
+	// Cache the beam_energy draw-time model params once per frame (used by the dwell/stroke energy models).
 	m_beam_infl  = m_io_beam_infl.read_safe(50) / 100.0;                    // 0..1 influence
 	m_beam_curve = std::max(0.05, m_io_beam_curve.read_safe(50) / 50.0);    // saturation exponent g
-	m_beam_scale = std::max(1.0, m_io_beam_scale.read_safe(50) * 30000.0);  // draw-time (dt) normalizer (3x: stronger time->brightness coupling)
 	m_beam_max   = std::max(1.0, m_io_beam_max.read_safe(50) / 100.0 * 8.0);// per-area phosphor saturation ceiling
+	// Parked-dot dwell model (dot_dwell_energy): dwell normalizer, curve and its OWN ceiling - dots
+	// need far more overdrive headroom than lines, and sharing BEAMMAX would rescale the tuned lines.
+	m_dot_ref    = std::max(1e-6, m_io_dot_ref.read_safe(50) * 5e-6);       // T_ref seconds (adj x 5us)
+	m_dot_curve  = std::max(0.05, m_io_dot_curve.read_safe(50) / 50.0);     // dwell exponent g
+	m_dot_max    = std::max(1.0, m_io_dot_max.read_safe(80) / 100.0 * 16.0);// parked-dot energy ceiling
 	m_dwell_cap  = m_io_beam_dwell.read_safe(50) / 100.0 * 16.0;            // same-spot accumulation cap
-	// Stroke-aggregate energy model (BEAMMODE=1): collect a whole RAMP-ON stroke and give every visible
-	// sub-segment one shared brightness density from the stroke speed. BEAMSPEED is the inverse-speed
-	// normalizer (x = (1/speed_px_per_s) * m_beam_speed feeding the same saturating curve as the legacy model).
-	m_stroke_mode = m_io_beam_mode.read_safe(0) != 0;
+	// Stroke-aggregate energy model: collect a whole RAMP-ON stroke and give every visible sub-segment one
+	// shared brightness density from the stroke speed. BEAMSPEED is the inverse-speed normalizer
+	// (x = (1/speed_px_per_s) * m_beam_speed feeding the saturating curve).
 	m_beam_speed  = std::max(1.0, m_io_beam_speed.read_safe(50) * 90000.0);   // 3x: stronger time->brightness coupling
-	m_junction_fix = m_io_junction_fix.read_safe(0) != 0;   // detect split-line junction dwell dots
-	m_junction_level = std::clamp(m_io_junction_level.read_safe(0) / 100.0f, 0.0f, 1.0f);   // 0 = drop them, 1 = full, between = dim
 	// Brightness knob: 50 = x1, 100 = x2. Retrace floor lifts blanked beams, ramped in from 75% to 100%.
 	m_bright_mult = std::max(0.0f, m_io_bright.read_safe(50) / 50.0f);
 	const float retr_ramp = std::clamp((float(m_io_bright.read_safe(50)) - 75.0f) / 25.0f, 0.0f, 1.0f);
-	m_bright_floor = int(std::clamp(m_io_bright_retr.read_safe(50) / 100.0f, 0.0f, 1.0f) * 160.0f * retr_ramp);
+	m_bright_floor = int(std::clamp(50 / 100.0f, 0.0f, 1.0f) * 160.0f * retr_ramp);
 	// Spot killer (deflection-loss CRT protection). Range = how far from centre the beam must swing to
 	// count as active: 0 = centre only, 100 = the full draw range (half-extent) to the screen edge.
 	m_spotkill = m_io_spotkill.read_safe(0) != 0;
@@ -125,9 +121,6 @@ void vectrex_base_state::screen_configuration()
 	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)
 	m_obj_max   = std::max(0.0f, m_io_obj_max.read_safe(75) / 25.0f);               // max mult (25 = 1.0 off, 75 = 3.0)
 	m_obj_star  = std::max(0.0f, m_io_obj_star.read_safe(75) / 50.0f);              // star/point extra (50 = 1.0 off, 75 = 1.5)
-	// Text exclusion: clamp large-scale LINE strokes (BIOS text) back to a normal energy so they aren't lifted.
-	m_text_scale = float(m_io_text_scale.read_safe(25)) * 2.0f;                     // scale threshold (25 = 50, 100 = 200 = off)
-	m_text_cap   = std::max(0.05f, m_io_text_cap.read_safe(50) / 50.0f);            // text energy ceiling (50 = 1.0 = normal)
 
 	/* Vectrex 'dipswitch' configuration */
 
@@ -317,10 +310,8 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::imager_eye)
 		// timers far past the window (no colour change -> the frame stuck on one colour).
 		const double phase = (int(m_io_3dphase.read_safe(50))      - 50) / 200.0      // coarse: +-0.25, 0.005/step
 		                   + (int(m_io_3dphase_fine.read_safe(50)) - 50) / 10000.0;   // fine:   +-0.005, 0.0001/step
-		// Red-segment-only phase: shifts both the blue->red and red->green edges (i.e. the whole red band)
-		// without touching the blue start or the green end, so the thin red window can be slid off a green
-		// character that the game happens to draw during it. 50 = stock, +-0.01 rotation, 0.0002/step.
-		const double red_off = (int(m_io_3dredphase.read_safe(50)) - 50) / 5000.0;
+		// Red-segment-only phase shift removed (fixed at the neutral stock value; no per-segment offset).
+		const double red_off = 0.0;
 
 		// Eye changing: the old eye's image is now complete. Copy it out (capped) so screen_update can
 		// redraw both eyes' last completed frames together. Copying (rather than holding a range into the
