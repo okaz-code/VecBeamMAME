@@ -737,6 +737,11 @@ renderer_bgfx::~renderer_bgfx()
 		bgfx::destroy(m_vec_glow_fb);
 		m_vec_glow_fb = BGFX_INVALID_HANDLE;
 	}
+	if (bgfx::isValid(m_vec_np_fb))
+	{
+		bgfx::destroy(m_vec_np_fb);
+		m_vec_np_fb = BGFX_INVALID_HANDLE;
+	}
 
 	bgfx::reset(0, 0, BGFX_RESET_NONE);
 
@@ -860,6 +865,11 @@ int renderer_bgfx::create()
 		bgfx::TextureHandle glow_color = bgfx::createTexture2D(
 			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
 		m_vec_glow_fb = bgfx::createFrameBuffer(1, &glow_color, true);
+
+		// No-persist FBO: colour-only, same size/format (additive draw, no depth needed).
+		bgfx::TextureHandle np_color = bgfx::createTexture2D(
+			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
+		m_vec_np_fb = bgfx::createFrameBuffer(1, &np_color, true);
 	}
 
 	// load the analytic-AA vector line effect
@@ -1506,7 +1516,7 @@ static float vec_scurve(float x, float g, float c)
 				   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, float start_cap, float end_cap)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, float start_cap, float end_cap)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -1990,9 +2000,35 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// (display_a in rgba) and point_width_scale sets only the spot size. No energy normalisation -
 		// scaling the peak by 1/sigma^2 made a larger dot dimmer, so point_width_scale brightened then
 		// darkened the dot instead of simply growing it.
-		set_dot(vertex, 0, cx, cy, sigma, rgba, core_over, wcore);
+		// Short-dwell (junction) dot no-persistence: a length-0 dot parked only a few us is the beam
+		// pausing between split line segments (BIOS) - real phosphor gets almost no extra energy
+		// there, but the pool's peak-hold let these dots outlast the line body in a moving object's
+		// trail (a dotted line of ghosts). Route them through the separate NO-PERSIST FBO (post-pool,
+		// like the caps): visible while drawn, no afterimage, and never fed into the glow cascade. Real
+		// object dots (bullets/stars, dwell tens of us and up) keep the normal pool path. 0 = off.
+		bool dot_np = false;
+		if (np_vertex != nullptr)
+		{
+			const float np_us = m_chains->slider_value(0, "dot_no_persist_dwell", 0.0f);
+			if (np_us > 0.0f && prim->t0 >= 0.0 && prim->t1 > prim->t0
+				&& (prim->t1 - prim->t0) * 1e6 < double(np_us))
+				dot_np = true;
+		}
+		if (dot_np)
+		{
+			// dedicated FBO: no combine-gain compensation, same z as the core spot (core_over)
+			set_dot(np_vertex, 0, cx, cy, sigma, rgba, core_over, wcore);
+			set_degenerate(vertex, 0);
+		}
+		else
+		{
+			set_dot(vertex, 0, cx, cy, sigma, rgba, core_over, wcore);
+			if (np_vertex) set_degenerate(np_vertex, 0);
+		}
 		for (int g = 1; g * 6 < int(m_vec_vpl); g++)
 			set_degenerate(vertex, g * 6);
+		// point path uses no cap slots in the no-persist buffer
+		if (np_vertex) { set_degenerate(np_vertex, 6); set_degenerate(np_vertex, 12); }
 
 		// GLOW buffer (composited AFTER the shadow mask, so this scattered light is not mask-patterned):
 		// the wide analytic glow dot + the halation ring + the inner fill.
@@ -2179,8 +2215,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// roll-off; these add the visible bright endpoint on top, until the dwell-time model
 	// (master plan 2-3) replaces them. In deflection mode the body uses DEFL_NOUT quads, so the
 	// caps move to the slots right after it.
-	const int cap0 = m_defl_on ? DEFL_NOUT * 6 : 6;
-	const int cap1 = cap0 + 6;
+	// cap_no_persist: caps live in the separate NO-PERSIST FBO (post-pool, no afterimage) instead
+	// of the core. That buffer's layout is fixed: slot [0] = no-persist dot (point path only, unused
+	// here), [6] = cap0, [12] = cap1. When off, caps stay in the core buffer at their usual offsets.
+	const bool caps_to_np = m_caps_glow && np_vertex != nullptr;
+	const int cap0 = caps_to_np ? 6 : (m_defl_on ? DEFL_NOUT * 6 : 6);
+	const int cap1 = caps_to_np ? 12 : (cap0 + 6);
+	AnalyticLineVertex *const cap_tgt = caps_to_np ? np_vertex : vertex;
+	// line path never uses the no-persist dot slot [0]; blank it so a stale value is not drawn
+	if (np_vertex != nullptr) set_degenerate(np_vertex, 0);
+	// Skip caps only when cap_no_persist is on but the np buffer could not be allocated this frame:
+	// the core buffer has no cap slots then (verts_per_line dropped by 12), so writing would overrun.
+	const bool cap_slots_ok = !(m_caps_glow && np_vertex == nullptr);
+	if (cap_tgt != nullptr && cap0 >= 0 && cap_slots_ok)
 	{
 		// End caps: a beam-spot dot at each true endpoint. Its size is intrinsic - the same gaussian
 		// sigma as the line cross-section (the dwelling beam spot), so it tracks the unified width
@@ -2205,13 +2252,17 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * s * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
-			set_dot(vertex, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), core_over, wcore);
-			set_dot(vertex, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), core_over, wcore);
+			// No brightness compensation: the dedicated no-persist FBO is combined 1:1 (the JSON's
+			// NoPersist Combine pass cancels the shader BLOOM_BRIGHTNESS_GAIN with scale 0.3745), so the
+			// cap carries the same z as the core spot (core_over) whether it went to the core or np FBO.
+			const float cap_z = core_over;
+			set_dot(cap_tgt, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), cap_z, wcore);
+			set_dot(cap_tgt, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), cap_z, wcore);
 		}
 		else
 		{
-			set_degenerate(vertex, cap0);
-			set_degenerate(vertex, cap1);
+			set_degenerate(cap_tgt, cap0);
+			set_degenerate(cap_tgt, cap1);
 		}
 	}
 
@@ -2722,6 +2773,8 @@ int renderer_bgfx::draw(int update)
 				bgfx::destroy(m_vec_fb);
 			if (bgfx::isValid(m_vec_glow_fb))
 				bgfx::destroy(m_vec_glow_fb);
+			if (bgfx::isValid(m_vec_np_fb))
+				bgfx::destroy(m_vec_np_fb);
 			m_vec_fb_w = target_fb_w;
 			m_vec_fb_h = target_fb_h;
 			// bilinear (no MSAA, for sampler compatibility)
@@ -2733,6 +2786,8 @@ int renderer_bgfx::draw(int update)
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
 			bgfx::TextureHandle gc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_glow_fb = bgfx::createFrameBuffer(1, &gc, true);
+			bgfx::TextureHandle npc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
+			m_vec_np_fb = bgfx::createFrameBuffer(1, &npc, true);
 			m_vec_fb_primed = false;   // fresh FBO has no valid frame to reuse yet (gen-cache)
 		}
 	}
@@ -2948,6 +3003,12 @@ int renderer_bgfx::draw(int update)
 			const bool g_flare = m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f;
 			const int  g_rays  = (m_chains->slider_value(0, "ray_gain", 0.0f) > 0.0f)
 					? int(std::clamp(m_chains->slider_value(0, "ray_count", 6.0f), 1.0f, 12.0f)) : 0;
+			// cap_no_persist: line end caps move from the core buffer to the glow buffer - the glow path
+			// is composited AFTER the phosphor pool, so the endpoint dot is bright at the drawing
+			// instant but leaves NO afterimage (the pool's peak-hold otherwise kept the slightly
+			// brighter/wider endpoints visible after the line body had decayed, turning a moving
+			// object's trail into a dotted line of cap ghosts).
+			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
 			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_rays > 0);
 			int goff = 0;
 			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = m_glow_off_rays = -1;
@@ -2962,13 +3023,22 @@ int renderer_bgfx::draw(int update)
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
 			// analytic core: body quad 6 + two end-cap dots 6+6 (or DEFL_NOUT*6 body + 12 caps with deflection)
-			const uint32_t verts_per_line = m_line_analytic ? (m_defl_on ? uint32_t(DEFL_NOUT * 6 + 12) : 18u) : uint32_t(LINE_VERTICES_PER_LINE);
+			const uint32_t verts_per_line = m_line_analytic
+					? ((m_defl_on ? uint32_t(DEFL_NOUT * 6) : 6u) + (m_caps_glow ? 0u : 12u))
+					: uint32_t(LINE_VERTICES_PER_LINE);
 			m_vec_vpl = verts_per_line;
 			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
 			bgfx::TransientVertexBuffer tvb = {};
 			bgfx::TransientVertexBuffer glow_tvb = {};
 			int glow_verts = 0;
 			bool glow_alloc = false;
+			// No-persist buffer: fixed 18 verts/line - slots [0..5] no-persist dot, [6..11] cap0,
+			// [12..17] cap1. Active only in cap_no_persist mode; drawn into m_vec_np_fb.
+			const bool np_on = m_line_analytic && m_caps_glow && bgfx::isValid(m_vec_np_fb);
+			static constexpr uint32_t NP_VPL = 18;
+			bgfx::TransientVertexBuffer np_tvb = {};
+			int np_verts = 0;
+			bool np_alloc = false;
 			if (visible_count > 0)
 			{
 				const uint32_t needed = uint32_t(visible_count) * verts_per_line;
@@ -2986,6 +3056,17 @@ int renderer_bgfx::draw(int update)
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
 								glow_alloc = (glow_tvb.data != nullptr);
+							}
+						}
+						// Best-effort separate no-persist buffer (18 verts/line). If it cannot be
+						// allocated the core still draws; the caps/dots are simply skipped this frame.
+						if (np_on)
+						{
+							const uint32_t npneeded = uint32_t(visible_count) * NP_VPL;
+							if (npneeded == bgfx::getAvailTransientVertexBuffer(npneeded, line_decl))
+							{
+								bgfx::allocTransientVertexBuffer(&np_tvb, npneeded, line_decl);
+								np_alloc = (np_tvb.data != nullptr);
 							}
 						}
 						render_primitive *vprim = window().m_primlist->first();
@@ -3018,8 +3099,10 @@ int renderer_bgfx::draw(int update)
 											}
 										}
 										AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
-										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, scap, ecap);
+										AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
+										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, scap, ecap);
 										if (gptr) glow_verts += m_glow_vpl;
+										if (npptr) np_verts += NP_VPL;
 									}
 									else
 										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
@@ -3127,6 +3210,45 @@ int renderer_bgfx::draw(int update)
 				}
 				line_eff->submit(glow_view);
 			}
+
+			// No-persist FBO: draw the caps / short-dwell dots into m_vec_np_fb (cleared, additive),
+			// then inject it as "npglow0" so a chain pass adds it back AFTER the phosphor pool - bright
+			// while drawn, no afterimage, and never fed into the narrow/wide glow cascade. Uses the same
+			// analytic line effect as the body view (line_sharpness in u_line_params), unlike the soft
+			// glow view. Only when caps are routed here and the buffer was allocated.
+			if (np_alloc && np_verts > 0 && bgfx::isValid(m_vec_np_fb))
+			{
+				const uint16_t np_view = uint16_t(s_current_view);
+				s_current_view++;
+				bgfx::setViewFrameBuffer(np_view, m_vec_np_fb);
+				bgfx::setViewRect(np_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
+				bgfx::setViewClear(np_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+				bgfx::setViewMode(np_view, bgfx::ViewMode::Sequential);
+				float npproj[16];
+				bx::mtxOrtho(npproj, 0.0f, float(s_width[window_index]), float(s_height[window_index]),
+					0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+				bgfx::setViewTransform(np_view, nullptr, npproj);
+				bgfx::setVertexBuffer(0, &np_tvb);
+				bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
+				bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
+				if (inv)
+				{
+					float values[2] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]) };
+					inv->set(values, sizeof(float) * 2);
+					inv->upload();
+				}
+				// same params as the body view (line_sharpness included): crisp dots, not soft halo
+				bgfx_uniform* lp = line_eff->uniform("u_line_params");
+				if (lp)
+				{
+					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
+									  m_chains->slider_value(0, "line_sharpness", 1.0f),
+									  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
+					lp->set(vals, sizeof(float) * 4);
+					lp->upload();
+				}
+				line_eff->submit(np_view);
+			}
 			}   // end else (!vec_reuse): full vector FBO rebuild
 		}
 	}
@@ -3149,6 +3271,13 @@ int renderer_bgfx::draw(int update)
 				bgfx::TextureHandle glow_color = bgfx::getTexture(m_vec_glow_fb, 0);
 				if (bgfx::isValid(glow_color))
 					m_chains->inject_vector_glow(glow_color, m_vec_fb_w, m_vec_fb_h);
+			}
+			// Expose the no-persist FBO as "npglow0" for the chain's post-pool cap/dot combine pass.
+			if (bgfx::isValid(m_vec_np_fb))
+			{
+				bgfx::TextureHandle np_color = bgfx::getTexture(m_vec_np_fb, 0);
+				if (bgfx::isValid(np_color))
+					m_chains->inject_vector_np(np_color, m_vec_fb_w, m_vec_fb_h);
 			}
 			// Restore slider values from config once, the first time, after the chain is loaded.
 			// For vector games num_screens=0, so the later `if (num_screens) { load_config }` block

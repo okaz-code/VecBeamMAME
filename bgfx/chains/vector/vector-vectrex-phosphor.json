@@ -16,8 +16,8 @@
 	"screen_type": "vector",
 
 	"sliders": [
-		{ "type": "float", "name": "phosphor_half_ms",  "text": "Phosphor Half-life (ms)",   "default": 5.0, "min": 1.0, "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
-		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 2.8, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_half_ms",  "text": "Phosphor Half-life (ms)",   "default": 12.0, "min": 1.0, "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 3.0, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_total_ms", "text": "Phosphor Total (ms)",       "default": 500.0,"min": 20.0,"max": 1500.0,"step": 10.0,"format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "color_saturation", "text": "Source Color Saturation",   "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "linear_color",     "text": "Color-Linear Brightness",   "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -33,8 +33,8 @@
 		{ "type": "float", "name": "width_sigmoid",         "text": "Width Sigmoid",             "default": 0.0, "min": -4.0, "max": 4.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_sigmoid_center",  "text": "Width Sigmoid Center",      "default": 0.5, "min": 0.05, "max": 0.95,"step": 0.01, "format": "%1.2f", "screen": "vector" },
 
-		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 6.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 6.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 0.5, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "core_flat",         "text": "Line Core Flatness",        "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dot_flat",          "text": "Dot Core Flatness",         "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -72,9 +72,11 @@
 		{ "type": "float", "name": "glow_narrow",        "text": "Glow Narrow (full-res)",    "default": 0.005, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "glow_wide",          "text": "Glow Wide (low-res)",       "default": 0.01, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 
-		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 1.0, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.5, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "cap_ramp_only",   "text": "Line Cap: RAMP termini only", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
+		{ "type": "intenum", "name": "cap_no_persist", "text": "Line Caps: No Persistence", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
+		{ "type": "float", "name": "dot_no_persist_dwell", "text": "Dot No-Persist Dwell (us)", "default": 20.0, "min": 0.0,  "max": 60.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
 
 		{ "type": "float", "name": "beam_peak_nits",    "text": "HDR Beam Peak (nits)",       "default": 600.0, "min": 80.0, "max": 2000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_knee",  "text": "HDR Highlight Knee (xpeak)", "default": 1.0, "min": 0.5,  "max": 2.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -142,6 +144,21 @@
 		  "_comment": "emit peak * S(age) from the pool into internal for the tint/glow path",
 		  "input": [ { "sampler": "s_tex", "target": "phos_pool" } ],
 		  "uniforms": [], "output": "internal" },
+
+		{ "effect": "vector/vector_bloom_apply", "name": "NoPersist Combine",
+		  "_comment": "line caps / short-dwell junction dots live in the separate no-persist FBO (bypassing the phosphor pool): added back here AFTER the pool - bright while drawn, no afterimage, and never fed into the narrow/wide glow cascade. bloom scale 0.3745 = 1/2.67 cancels the shader's BLOOM_BRIGHTNESS_GAIN for a net 1:1 add.",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "cap_no_persist", "value": 0 } ],
+		  "input": [ { "sampler": "s_base", "target": "internal" }, { "sampler": "s_bloom", "texture": "npglow" } ],
+		  "uniforms": [
+			{ "uniform": "u_bloom_base_weight", "value": [ 1.0, 1.0, 1.0, 1.0 ] },
+			{ "uniform": "u_bloom_scale",       "value": [ 0.3745, 1.0, 1.0, 1.0 ] },
+			{ "uniform": "u_bloom_overdrive",   "value": [ 0.0, 0.0, 0.0, 0.0 ] },
+			{ "uniform": "u_bloom_channel_gain","value": [ 1.0, 1.0, 1.0, 0.0 ] },
+			{ "uniform": "u_ambient_color",     "value": [ 0.0, 0.0, 0.0 ] },
+			{ "uniform": "u_ambient_level",     "value": [ 0.0 ] },
+			{ "uniform": "u_bloom_noise",       "value": [ 0.0, 0.0, 0.0, 0.0 ] },
+			{ "uniform": "u_time",              "parameter": "time" } ],
+		  "output": "internal" },
 
 		{ "effect": "vector/vector_color_mix", "name": "Phosphor Tint",
 		  "input": [ { "sampler": "s_tex", "target": "internal" } ],

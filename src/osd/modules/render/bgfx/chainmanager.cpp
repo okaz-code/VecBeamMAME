@@ -655,6 +655,15 @@ void chain_manager::inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t v
 	m_textures.add_provider("glow0", std::move(prov));
 }
 
+void chain_manager::inject_vector_np(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	// Register the no-persist FBO colour attachment as "npglow0"; a chain pass references it as
+	// texture "npglow" (chainentryreader treats "npglow" as a runtime provider, like "glow").
+	m_textures.remove_provider("npglow0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("npglow0", std::move(prov));
+}
+
 uint32_t chain_manager::count_screens(render_primitive* prim)
 {
 	uint32_t screen_count = 0;

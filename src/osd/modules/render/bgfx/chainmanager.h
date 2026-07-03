@@ -77,6 +77,11 @@ public:
 	// process_screen_chains() each frame when analytic glow is active.
 	void inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
 
+	// Register the no-persist FBO as "npglow0" - line caps / short-dwell junction dots drawn
+	// separately so a chain can add them back AFTER the phosphor pool (bright, no afterimage) without
+	// feeding them into the glow cascade. Must be called before process_screen_chains() each frame.
+	void inject_vector_np(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
+
 	// Getters
 	running_machine& machine() const { return m_machine; }
 	const osd_options& options() const { return m_options; }

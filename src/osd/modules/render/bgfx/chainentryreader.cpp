@@ -89,7 +89,7 @@ bgfx_chain_entry* chain_entry_reader::read_from_value(
 					texture_name = chains.options().value(option.c_str());
 				}
 
-				if (texture_name != "" && texture_name != "screen" && texture_name != "palette" && texture_name != "glow")
+				if (texture_name != "" && texture_name != "screen" && texture_name != "palette" && texture_name != "glow" && texture_name != "npglow")
 				{
 					if (selection == "")
 					{
