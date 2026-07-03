@@ -38,9 +38,18 @@ void main()
 		float ceil = u_hdr_rolloff.y * peak;
 		if (ceil > knee && m0 > knee)
 		{
+			// Saturated-colour protection (u_hdr_rolloff.z, 0 = off): a display renders WHITE at peak
+			// by summing all three emitters, but a saturated primary above peak asks ONE emitter for
+			// more light than it has - the panel clips or desaturates it (a blue line turns washed-out
+			// the moment glow lands on it). Blend the roll-off ceiling from the full headroom (neutral
+			// white) down to the knee (fully saturated colour): colour stays colour with its brightness
+			// capped near peak, while near-white highlights keep using the HDR headroom. Grayscale
+			// content has zero saturation, so monochrome chains are untouched.
+			float sat = (1.0 - min(L.r, min(L.g, L.b)) / max(m0, 1e-4)) * u_hdr_rolloff.z;
+			float ceil_eff = mix(ceil, knee, clamp(sat, 0.0, 1.0));
 			float over   = m0 - knee;
-			float range  = ceil - knee;
-			float rolled = knee + range * (over / (over + range));   // m0 -> inf asymptotes to ceil
+			float range  = max(ceil_eff - knee, 1e-4);
+			float rolled = knee + range * (over / (over + range));   // m0 -> inf asymptotes to ceil_eff
 			L *= rolled / m0;
 		}
 		// (Overload whitening is done per-vector in the renderer, tied to beam_energy overdrive, NOT here

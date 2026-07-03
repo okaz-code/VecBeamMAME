@@ -19,6 +19,8 @@
 		{ "type": "float", "name": "phosphor_half_ms",  "text": "Phosphor Half-life (ms)",   "default": 5.0, "min": 1.0, "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 2.8, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_total_ms", "text": "Phosphor Total (ms)",       "default": 500.0,"min": 20.0,"max": 1500.0,"step": 10.0,"format": "%4.0f", "screen": "vector" },
+		{ "type": "float", "name": "color_saturation", "text": "Source Color Saturation",   "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "linear_color",     "text": "Color-Linear Brightness",   "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "phosphor_color",    "text": "Phosphor Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		{ "type": "float", "name": "bright_threshold",  "text": "Brightness Threshold (T)", "default": 0.5, "min": 0.05, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -77,6 +79,7 @@
 		{ "type": "float", "name": "beam_peak_nits",    "text": "HDR Beam Peak (nits)",       "default": 600.0, "min": 80.0, "max": 2000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_knee",  "text": "HDR Highlight Knee (xpeak)", "default": 1.0, "min": 0.5,  "max": 2.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_max",   "text": "HDR Highlight Max (xpeak)",  "default": 1.0, "min": 0.5,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hdr_sat_protect",   "text": "HDR Saturated Color Protect", "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
@@ -118,14 +121,14 @@
 		  "input": [ { "sampler": "s_tex", "texture": "screen" } ], "output": "guest" },
 
 		{ "effect": "hlsl/color", "name": "Color Convolution",
-		  "_comment": "grayscale (saturation 0) for monochrome Vectrex; for colour sources this pass is removed so the beam colour reaches the phosphor pool",
+		  "_comment": "color_saturation slider: 0 = force grayscale (mono CRT), 1 = pass the source beam colour through to the phosphor pool (3D imager / colour sources)",
 		  "uniforms": [
 			{ "uniform": "u_red_ratios", "value": [ 1.0, 0.0, 0.0, 0.0 ] },
 			{ "uniform": "u_grn_ratios", "value": [ 0.0, 1.0, 0.0, 0.0 ] },
 			{ "uniform": "u_blu_ratios", "value": [ 0.0, 0.0, 1.0, 0.0 ] },
 			{ "uniform": "u_offset",     "value": [ 0.0, 0.0, 0.0, 0.0 ] },
 			{ "uniform": "u_scale",      "value": [ 1.0, 1.0, 1.0, 0.0 ] },
-			{ "uniform": "u_saturation", "value": [ 0.0 ] } ],
+			{ "uniform": "u_saturation", "slider": "color_saturation" } ],
 		  "input": [ { "sampler": "s_tex", "target": "guest" } ], "output": "guest" },
 
 		{ "effect": "hlsl/prescale", "name": "Prescale",
