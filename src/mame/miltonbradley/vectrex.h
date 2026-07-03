@@ -226,13 +226,17 @@ private:
 	// blanked-beam retrace is lifted to m_bright_floor so it faintly glows, like a real CRT.
 	float m_bright_mult = 1.0f;         // cached intensity multiplier
 	int m_bright_floor = 0;             // cached intensity floor for blanked (intensity-0) beams (0 = none)
-	// Spot killer (deflection protection): if the beam stops moving for m_spotkill_secs the beam is cut
-	// (screen goes black) to model the real Vectrex CRT-burn protection. m_last_move_time = last deflection.
+	// Spot killer (deflection protection): the beam is cut (screen black) when its TRAVEL DISTANCE
+	// within each m_spotkill_secs window stays below m_spotkill_dist - the deflection has (almost)
+	// stopped, e.g. a crashed / runaway program parking the beam. Distance-based, so a beam parked
+	// or jittering in place ANYWHERE (not just near the centre) is caught, while any real drawing
+	// exceeds the threshold by orders of magnitude.
 	bool m_spotkill = false;            // cached SPOTKILL enable
-	double m_spotkill_secs = 0.25;      // cached no-deflection time before the beam is cut
-	int m_spotkill_rx = 0;              // cached kill radius from centre (X, 16.16 units): beam beyond = active
-	int m_spotkill_ry = 0;              // cached kill radius from centre (Y)
-	attotime m_last_move_time;          // last time the beam swung beyond the kill radius (deflection active)
+	double m_spotkill_secs = 0.25;      // cached measurement window
+	double m_spotkill_dist = 0.0;       // cached travel threshold per window (16.16 integrator units)
+	double m_move_accum = 0.0;          // beam travel accumulated in the current window
+	attotime m_move_window_start;       // start of the current measurement window
+	bool m_spotkill_engaged = false;    // beam currently cut (evaluated once per window)
 	// Object-type brightness/width lift: beam_energy *= smooth curve of intensity (Z). Below the knee the
 	// factor is ~1 (normal: enemies/ship); past the adjustable knee it rises toward m_obj_max (very
 	// prominent: bullets/explosions). Parked dots (stars) get an extra m_obj_star. Cached per frame.
@@ -263,7 +267,7 @@ private:
 	optional_ioport m_io_bright;         // Brightness knob: 50 = normal (x1), 100 = x2 intensity
 	optional_ioport m_io_spotkill;       // spot killer: cut the beam when deflection stops (CRT burn protection)
 	optional_ioport m_io_spotkill_ms;    // spot killer time constant (no-deflection time before the beam is cut)
-	optional_ioport m_io_spotkill_range; // spot killer trigger range: 0 = centre only, 100 = full draw range
+	optional_ioport m_io_spotkill_range; // spot killer travel threshold (% of the draw width per window)
 	optional_ioport m_io_obj_knee;       // object lift: intensity (Z) where the brightness/width lift begins
 	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
 	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)

@@ -131,11 +131,18 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 {
 	screen_configuration();
 
-	// Spot killer (deflection protection): the real Vectrex cuts the beam if the deflection stops swinging,
-	// so a stationary lit beam cannot burn the phosphor. Model it by blanking the whole frame once the beam
-	// has not moved for m_spotkill_secs (e.g. a crashed / runaway program parks the beam). Any RAMP move or
-	// ZERO refreshes m_last_move_time, so normal drawing never triggers it.
-	if (m_spotkill && (machine().time() - m_last_move_time).as_double() > m_spotkill_secs)
+	// Spot killer (deflection protection): the real Vectrex cuts the beam if the deflection stops
+	// swinging, so a stationary lit beam cannot burn the phosphor. Model: the beam's total TRAVEL
+	// within each m_spotkill_secs window is compared against m_spotkill_dist - below it (deflection
+	// dead: crashed / runaway program) the frame is blanked until a window shows movement again.
+	const attotime sk_now = machine().time();
+	if ((sk_now - m_move_window_start).as_double() >= m_spotkill_secs)
+	{
+		m_spotkill_engaged = (m_move_accum < m_spotkill_dist);
+		m_move_accum = 0.0;
+		m_move_window_start = sk_now;
+	}
+	if (m_spotkill && m_spotkill_engaged)
 	{
 		m_vector->screen_update(screen, bitmap, cliprect);   // empty list -> black screen (beam cut)
 		m_vector->clear_list();
@@ -416,8 +423,14 @@ float vectrex_base_state::apply_dwell_limit(int x, int y, float energy)
 TIMER_CALLBACK_MEMBER(vectrex_base_state::zero_integrators)
 {
 	flush_stroke();   // ZERO ends any in-progress RAMP-ON stroke
+	// ZERO recentring is real deflection - count it toward the spot-killer travel accumulator
+	const int zx = m_x_int, zy = m_y_int;
 	m_x_int = m_x_center + (m_analog[A_ZR] * INT_PER_CLOCK);
 	m_y_int = m_y_center + (m_analog[A_ZR] * INT_PER_CLOCK);
+	{
+		const double zdx = double(m_x_int - zx), zdy = double(m_y_int - zy);
+		m_move_accum += std::sqrt(zdx * zdx + zdy * zdy);
+	}
 	m_mid_in_run = false;   // zeroing breaks any connected lit-stroke run
 	m_cur_midchange = false;
 	(this->*vector_add_point_function)(m_x_int, m_y_int, m_beam_color, 0, -1.0f, attotime::never, attotime::never, 0);
@@ -496,11 +509,13 @@ void vectrex_base_state::update_vector()
 	}
 
 	// Spot killer: the beam is "active" only while it swings beyond the kill radius from screen centre
-	// (m_spotkill_rx/ry = range x half-extent; range 0 = centre only, 1 = the full draw range to the edge).
-	// A collapsed / parked beam that stays within the radius stops refreshing m_last_move_time, so
-	// screen_update cuts it after m_spotkill_secs. Normal drawing sweeps past the radius and stays alive.
-	if (std::abs(m_x_int - m_x_center) > m_spotkill_rx || std::abs(m_y_int - m_y_center) > m_spotkill_ry)
-		m_last_move_time = t1;
+	// (travel model): accumulate this update's beam movement; screen_update compares the per-window
+	// total against m_spotkill_dist - deflection (almost) stopped means the beam is cut. A parked or
+	// in-place-jittering beam accumulates ~0, normal drawing accumulates many screen-widths per window.
+	{
+		const double mdx = double(m_x_int - x0), mdy = double(m_y_int - y0);
+		m_move_accum += std::sqrt(mdx * mdx + mdy * mdy);
+	}
 
 	m_vector_start_time = t1;
 }

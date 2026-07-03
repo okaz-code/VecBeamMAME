@@ -113,9 +113,9 @@ void vectrex_base_state::screen_configuration()
 	// count as active: 0 = centre only, 100 = the full draw range (half-extent) to the screen edge.
 	m_spotkill = m_io_spotkill.read_safe(0) != 0;
 	m_spotkill_secs = std::max(0.02, m_io_spotkill_ms.read_safe(25) * 0.01);   // adj x 10 ms
-	const double sk_rng = std::clamp(m_io_spotkill_range.read_safe(20) / 100.0, 0.0, 1.0);
-	m_spotkill_rx = int(sk_rng * m_x_center);   // m_x_center/m_y_center = half-extent in 16.16 units
-	m_spotkill_ry = int(sk_rng * m_y_center);
+	// Travel threshold: adj = full draw WIDTHS per window. Normal drawing sweeps hundreds of widths
+	// per window (a dozen or more per frame), a parked or in-place-jittering beam ~0.
+	m_spotkill_dist = double(m_io_spotkill_range.read_safe(20)) * 2.0 * m_x_center;   // m_x_center = half-extent in 16.16 units
 	// Object-type lift curve (no hard threshold): beam_energy *= 1..m_obj_max as intensity rises past the knee.
 	m_obj_knee  = std::clamp(m_io_obj_knee.read_safe(75) / 100.0f, 0.0f, 0.999f);   // lift start (Z 0..1)
 	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)
