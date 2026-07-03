@@ -60,6 +60,16 @@ void main()
 			float r = sqrt(a * a + d * d);
 			fade = exp(-((r - b) * (r - b)) * inv_2s2);
 		}
+		else if (v_texcoord0.y > 0.001)
+		{
+			// flat-core point: a SOLID disc of radius v_texcoord0.y with a thin gaussian skirt (sg)
+			// outside it. Width-lifted (overdriven) dots read as crisp bright discs instead of soft
+			// blobs. Flat dots are large by construction, so the box-integrated sub-pixel AA of the
+			// plain path below is not needed here.
+			float r = sqrt(a * a + d * d);
+			float rr = max(r - v_texcoord0.y, 0.0);
+			fade = sharpen(exp(-rr * rr * inv_2s2), u_line_params.y);
+		}
 		else
 		{
 			// point mode: 2D gaussian around the dwell position, box-integrated over the fragment
@@ -82,6 +92,16 @@ void main()
 	{
 		float inv_s_sqrt2 = 0.70710678 / sg;
 		float axial = 0.5 * (erf_approx(a * inv_s_sqrt2) - erf_approx(b * inv_s_sqrt2));
+		// Short-stroke peak normalisation (u_line_params.z blends 0..1): a stroke shorter than ~2
+		// sigma never reaches the swept peak - its two erf end roll-offs overlap - so a very short
+		// slow stroke read dim and soft. Dividing by the mid-stroke peak erf(len/(2 s sqrt2)) is ~1
+		// for long lines (no change) and restores the full dwell-dot peak as len -> 0.
+		float lpk = erf_approx((a - b) * 0.5 * inv_s_sqrt2);
+		axial /= max(mix(1.0, lpk, u_line_params.z), 1e-3);
+		// Flat core: carve a SOLID band of half-width v_texcoord0.y out of the cross-section - the
+		// gaussian applies to the distance OUTSIDE the band (dc), so a width-lifted line is a bright
+		// band with thin gaussian edges instead of one wide blur. 0 = plain gaussian (dc == |d|).
+		float dc = max(abs(d) - max(v_texcoord0.y, 0.0), 0.0);
 		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
 		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on
 		// a pixel centre (crisp, fat) while diagonals fell between pixels (thin). The footprint width
@@ -96,11 +116,11 @@ void main()
 		if (w > 1e-4)
 		{
 			float norm = sg * 1.2533141 / w;
-			perp = norm * (erf_approx((d + 0.5 * w) * inv_s_sqrt2) - erf_approx((d - 0.5 * w) * inv_s_sqrt2));
+			perp = norm * (erf_approx((dc + 0.5 * w) * inv_s_sqrt2) - erf_approx((dc - 0.5 * w) * inv_s_sqrt2));
 		}
 		else
 		{
-			perp = exp(-d * d * inv_2s2);
+			perp = exp(-dc * dc * inv_2s2);
 		}
 		// Edge sharpness: reshape the perpendicular cross-section toward a flat-topped band (the axial
 		// end roll-off is left alone so stroke ends stay round). p=1 -> unchanged.

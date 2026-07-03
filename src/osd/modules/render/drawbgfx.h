@@ -184,6 +184,9 @@ private:
 	int m_glow_off_ring  = -1;   // halation ring (ring_gain, point only)
 	int m_glow_off_fill  = -1;   // halation inner fill (ring_fill, point only)
 	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
+	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
+	int m_glow_off_rays  = -1;   // starburst rays (ray_gain, point only; m_glow_rays_n * GLOW_RAY_SEGS quads)
+	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
 	int m_glow_vpl = 0;          // 6 * (active glow components)
 
 	// Vector linearity calibration (integrator gain error, like the board's Linear pot): each vector
