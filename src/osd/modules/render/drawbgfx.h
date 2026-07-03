@@ -151,6 +151,11 @@ private:
 	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Same size as
 	// m_vec_fb; colour-only. Injected to the chain as "glow0" when analytic glow is active.
 	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
+	// No-persist FBO: line end caps and short-dwell junction dots are drawn here (bypassing the
+	// phosphor pool) so a chain pass can add them back AFTER the pool - bright while drawn, no
+	// afterimage - without ever feeding them into the narrow/wide glow cascade (which m_vec_glow_fb
+	// shares). Same size/format as m_vec_glow_fb; colour-only. Exposed to the chain as "npglow".
+	bgfx::FrameBufferHandle m_vec_np_fb = BGFX_INVALID_HANDLE;
 
 	// Analytic-AA vector line effect (fs_vector_line). Draws vector LINEs into m_vec_fb.
 	// The subsequent post-processing is handled by the chain (JSON).
@@ -158,7 +163,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f);
 
 	// Deflection-amplifier dynamics (master plan 3-3): the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -185,6 +190,7 @@ private:
 	int m_glow_off_fill  = -1;   // halation inner fill (ring_fill, point only)
 	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
 	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
+	bool m_caps_glow = false;    // cap_no_persist: line caps drawn into the separate no-persist FBO (bypass the phosphor pool)
 	int m_glow_off_rays  = -1;   // starburst rays (ray_gain, point only; m_glow_rays_n * GLOW_RAY_SEGS quads)
 	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
 	int m_glow_vpl = 0;          // 6 * (active glow components)
