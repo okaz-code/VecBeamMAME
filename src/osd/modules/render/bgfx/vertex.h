@@ -43,6 +43,8 @@ struct AnalyticLineVertex
 	float m_y;
 	float m_z;
 	uint32_t m_rgba;
+	float m_u;      // flat-core half-width in pixels (0 = plain gaussian cross-section)
+	float m_v;      // spare
 	float m_a;      // signed axial distance from p0
 	float m_b;      // signed axial distance from p1 (= a - len)
 	float m_d;      // perpendicular distance (line) / second axis offset (point)
@@ -53,6 +55,7 @@ struct AnalyticLineVertex
 		ms_decl.begin()
 			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
 			.end();
 	}

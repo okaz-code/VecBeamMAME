@@ -1,4 +1,4 @@
-$input a_position, a_color0, a_texcoord1
+$input a_position, a_color0, a_texcoord0, a_texcoord1
 $output v_color0, v_texcoord1, v_texcoord0
 
 // license:BSD-3-Clause
@@ -10,6 +10,9 @@ $output v_color0, v_texcoord1, v_texcoord0
 // its exact line-local coordinates.
 // a_position.z carries the per-vector intensity overrange (>=0); clip z is forced to 0 (2D ortho), so
 // the slot is otherwise unused. Passed through as v_texcoord0.x for the fragment to scale the deposit.
+// a_texcoord0.x carries the flat-core half-width (pixels, 0 = plain gaussian cross-section), passed
+// through as v_texcoord0.y: the fragment carves a SOLID band/disc of that half-width out of the
+// profile so a width-lifted beam reads as a bright band with thin edges instead of a wide blur.
 
 #include "common.sh"
 
@@ -23,5 +26,5 @@ void main()
 #endif
 	v_color0 = a_color0;
 	v_texcoord1 = a_texcoord1;
-	v_texcoord0 = vec2(a_position.z, 0.0);
+	v_texcoord0 = vec2(a_position.z, a_texcoord0.x);
 }
