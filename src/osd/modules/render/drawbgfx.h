@@ -170,7 +170,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f);
 
 	// Deflection-amplifier dynamics (master plan 3-3): the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -198,9 +198,13 @@ private:
 	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
 	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
 	bool m_caps_glow = false;    // cap_no_persist: line caps drawn into the separate no-persist FBO (bypass the phosphor pool)
-	int m_glow_off_rays  = -1;   // starburst rays (ray_gain, point only; m_glow_rays_n * GLOW_RAY_SEGS quads)
 	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
-	int m_glow_vpl = 0;          // 6 * (active glow components)
+	int m_glow_vpl = 0;          // 6 * (active glow components), NOT including rays (see m_ray_vpl)
+	// Starburst rays get their OWN buffer sized by POINT count (not visible_count like glow): a ray
+	// costs 6 * ray_count * GLOW_RAY_SEGS verts, drawn only for hot dwell points, but reserving that
+	// per LINE too (the old scheme) starved the transient vertex buffer in busy/text-heavy scenes
+	// (thousands of lines x >100 verts each) and froze the glow buffer for the whole scene.
+	int m_ray_vpl = 0;           // 6 * ray_count * GLOW_RAY_SEGS, 0 = rays off
 
 	// Vector linearity calibration (integrator gain error, like the board's Linear pot): each vector
 	// is drawn as (commanded vector) x gain from where the beam actually ended up, so the error
