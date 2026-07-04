@@ -250,32 +250,16 @@ private:
 	util::notifier_subscription m_mglow_frame_sub;
 
 	// CRT flicker: the vector device (if any) whose stale-frame flag is read, and the per-frame dim
-	// factor (1.0 = none) computed from it and the chain's vector_crt_flicker slider.
-	// Used only for untimed beam sources; timed lists flicker physically via the time window below.
+	// factor (1.0 = none) computed from it and the chain's vector_crt_flicker slider. A stale frame
+	// (the CPU did not refresh the beam list) is dimmed by vector_crt_flicker.
 	vector_device *m_vector_device = nullptr;
 	float m_crt_flicker_factor = 1.0f;
 
-	// Beam-event mode master switch, from -bgfx_vec_beam_events (default on). Off restores the
-	// classic behaviour: whole lists redrawn every frame, stale frames dimmed by the
-	// vector_crt_flicker slider.
-	bool m_vec_beam_events = true;
-	// Beam-event time window (machine time, seconds): each presented frame draws only the vector
-	// lines whose draw time falls in (m_vec_win_t0, m_vec_win_t1]. The window advances when the
-	// vector device starts a new emulated frame (m_vec_new_frame, set from its frame-begin
-	// notifier), so re-presents of the same primitives reproduce the same image instead of going
-	// dark. Lines from a list crossing a frame boundary land in the window they were actually
-	// drawn in - this is what produces the per-vector CRT flicker.
-	double m_vec_win_t0 = 0.0;
-	double m_vec_win_t1 = 0.0;
+	// True when a new emulated frame arrived at this present (set from the vector device's frame-begin
+	// notifier via m_vec_new_frame). Drives the chain's phosphor-tail freeze: re-presents without
+	// emulation progress (pause, menu stills) must neither decay nor pump the slow tail pool.
 	bool m_vec_new_frame = false;
-	// True when this present advanced the window (a new emulated frame arrived). Drives the
-	// chain's phosphor-tail freeze: re-presents without emulation progress (pause, menu stills)
-	// must neither decay nor pump the slow tail pool.
 	bool m_vec_frame_advanced = false;
-	// gen-cache: m_vec_fb holds a validly-rendered vector frame. When the beam-list generation is
-	// unchanged this present (beam_list_stale), the lines are identical, so the FBO can be reused
-	// instead of rebuilt+rasterised. Reset whenever m_vec_fb is (re)created so we never reuse garbage.
-	bool m_vec_fb_primed = false;
 	// Resolution basis for beam width / bloom / defocus scaling. A ROT270 (portrait) vector screen is
 	// pillarboxed in a wide window/fullscreen, so the raw framebuffer width over-scales the beam in
 	// fullscreen vs a content-sized window. m_vec_extent_w peak-holds the vector bounding-box width (=
@@ -287,11 +271,6 @@ private:
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
 	double m_vec_persist_prev_t = -1.0;
-	// Per-line energy weight (0..1) for the line being built by put_solid_line. Lines near a
-	// window boundary split their energy across the adjacent windows (vector_window_blend
-	// slider), which hides the temporal-aliasing blink when the list period beats against the
-	// refresh; 1.0 for lines fully inside the window.
-	float m_vec_line_weight = 1.0f;
 
 	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
 	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. m_hv_energy

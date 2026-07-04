@@ -158,7 +158,6 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_DEBUG,                      "0",               core_options::option_type::BOOLEAN,  "enable BGFX debugging statistics" },
 	{ OSDOPTION_BGFX_SCREEN_CHAINS,              "",                core_options::option_type::STRING,   "comma-delimited list of screen chain JSON names, colon-delimited per-window" },
 	{ OSDOPTION_BGFX_VEC_SUPERSAMPLE "(1-2)",    "2",               core_options::option_type::INTEGER,  "vector FBO supersampling factor (1 = window resolution, 2 = 2x)" },
-	{ OSDOPTION_BGFX_VEC_BEAM_EVENTS "(0-1)",    "1",               core_options::option_type::INTEGER,  "draw vector lines in the display frame they were beamed in (per-vector CRT flicker); 0 = classic whole-list frames" },
 	{ OSDOPTION_BGFX_VEC_LINE_SHADER,            "analytic",         core_options::option_type::STRING,   "vector line renderer (classic = quad + cap fans, analytic = gaussian line integral)" },
 	{ OSDOPTION_BGFX_HDR "(0-1)",                "0",                core_options::option_type::INTEGER,  "HDR10 output (PQ / Rec.2020, RGB10A2 backbuffer); requires Windows HDR on and d3d11/d3d12" },
 	{ OSDOPTION_BGFX_HDR_PAPER_WHITE,           "200",              core_options::option_type::INTEGER,  "UI/menu white level in nits for HDR mode" },

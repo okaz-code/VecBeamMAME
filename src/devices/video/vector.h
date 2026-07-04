@@ -78,13 +78,6 @@ public:
 	// velocity changed mid-ramp, i.e. a point along an intended curve). Set just before add_point.
 	void set_dump_midchange(bool m) { m_dump_midchange = m; }
 
-	// Beam-event mode (opt-in by a timing-aware renderer): timed points are consumed by
-	// screen_update once emitted instead of being redrawn until the next clear_list, and
-	// clear_list leaves timed points alone so a list crossing a frame boundary is split
-	// across the frames it was actually drawn in. Untimed points keep stock semantics.
-	void set_beam_event_mode(bool enable) { m_beam_event_mode = enable; }
-	bool beam_event_mode() const { return m_beam_event_mode; }
-
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 
@@ -123,22 +116,19 @@ private:
 		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), cap_flags(0), emitted(false) { }
 
 		int x; int y;
-		int x0; int y0;     // segment start (previous beam position). Stored so a point retained across
-							// a clear_list boundary (beam-event mode) re-emits its line with the correct
-							// start instead of a chain that may be broken by dropped (untimed) predecessors.
+		int x0; int y0;     // segment start (previous beam position), so a line re-emits with the correct start
 		rgb_t col;
 		int intensity;
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
 		attotime t0, t1;    // absolute machine time the beam drew this line (never = untimed)
 		u32 cap_flags;      // line end-cap terminus bits passed through (bit0 start, bit1 end)
-		bool emitted;       // already emitted once (event mode): notifiers are not re-fired
+		bool emitted;       // already emitted once: notifiers are not re-fired on a re-drawn stale list
 	};
 
 	std::unique_ptr<point[]> m_vector_list;
 	int m_vector_index;
 	int m_min_intensity;
 	int m_max_intensity;
-	bool m_beam_event_mode;
 	std::ofstream m_event_dump;
 	int m_dump_scale = -1;   // scale value for the next dumped point (set by the driver via set_dump_scale)
 	double m_dump_ramp_us = -1.0;   // RAMP-active duration for the next dumped point (set_dump_ramp_us)

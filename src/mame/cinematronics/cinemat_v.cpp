@@ -21,12 +21,9 @@ void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, 
 	const rectangle &visarea = m_screen->visible_area();
 	int intensity = 0xff;
 
-	// Beam-event timing: stamp each vector with the machine time it is drawn (this callback runs during
-	// CCPU execution). The CCPU redraw is VBLANK-locked, so the timestamp is frame-grained; that is
-	// enough for Cinematronics' characteristic OVERLOAD flicker - when the image needs more than one
-	// frame to draw, consecutive frames' vectors get distinct times, letting the bgfx beam-event
-	// renderer retain and composite the partial frames instead of dropping them. No-op when beam events
-	// are off (renderer enables them via -bgfx_vec_beam_events; the window weight ignores t0 then).
+	// Beam timing: stamp each vector with the machine time it is drawn (this callback runs during CCPU
+	// execution). The CCPU redraw is VBLANK-locked, so the timestamp is frame-grained. The t0/t1 span
+	// carries per-segment beam timing (dwell) used by the renderer's energy model and event dump.
 	const attotime now = machine().time();
 
 	/* adjust for slop */

@@ -6,14 +6,13 @@
 // values so each effect can be re-enabled with its single master slider. Identical pass structure
 // to vector-vectrex-phosphor.json, so a chain switch is a like-for-like A/B.
 //
-// RUN WITH  -bgfx_vec_beam_events 0  (full-frame mode). The model: each refresh the renderer draws the
-// COMPLETE current beam list at full brightness (no time-window slicing), and a per-pixel phosphor pool
-// (vector_phosphor: rgb=peak colour, a=age ms) decays whatever is no longer being redrawn along a Hill
-// sigmoid S(age): S(0)=1, S(half)=0.5, reaching 0 at total ms. So a static line is re-excited every frame
-// (held), and a bright fast dot stays full at its new position while its old positions fade over ~500ms.
-// The pool is purely per-pixel (no t0/t1), so the same engine extends to the 3D imager and Atari AVG
-// colour games later. With beam-event mode ON the renderer time-windows the points instead, which slices
-// the frame and is NOT what this chain wants - keep beam events off.
+// Full-frame operation (the old beam-event mode has been retired). The model: each refresh the renderer
+// draws the COMPLETE current beam list at full brightness (no time-window slicing), and a per-pixel
+// phosphor pool (vector_phosphor: rgb=peak colour, a=age ms) decays whatever is no longer being redrawn
+// along a Hill sigmoid S(age): S(0)=1, S(half)=0.5, reaching 0 at total ms. So a static line is re-excited
+// every frame (held), and a bright fast dot stays full at its new position while its old positions fade
+// over ~500ms. The pool is purely per-pixel (no t0/t1), so the same engine extends to the 3D imager and
+// Atari AVG colour games later.
 {
 	"name": "Vector (Vectrex Phosphor OFF-baseline, HDR)",
 	"author": "okaz",

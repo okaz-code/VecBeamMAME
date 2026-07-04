@@ -62,7 +62,6 @@ vector_device::vector_device(const machine_config &mconfig, const char *tag, dev
 		m_vector_list(nullptr),
 		m_min_intensity(255),
 		m_max_intensity(0),
-		m_beam_event_mode(false),
 		m_list_generation(0),
 		m_last_drawn_generation(~uint32_t(0)),
 		m_beam_list_stale(false)
@@ -165,11 +164,8 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	// effect, so the analysis log should record the value the source actually produced (stable, not jittered).
 	const int dump_intensity = intensity;
 
-	// Legacy random flicker (-flicker). Skipped for timed points when a beam-event renderer is
-	// attached: those flicker physically through the time-window assignment, and the random
-	// jitter would only distort it. Untimed sources and classic-mode rendering keep the option.
-	const bool physical_flicker = m_beam_event_mode && !t0.is_never();
-	if (vector_options::s_flicker && (intensity > 0) && !physical_flicker)
+	// Legacy random flicker (-flicker): applied to every drawn point in full-frame mode.
+	if (vector_options::s_flicker && (intensity > 0))
 	{
 		float random = float(machine().rand() & 255) / 255.0f; // random value between 0.0 and 1.0
 
@@ -183,8 +179,6 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	newpoint->y = y;
 	// Capture the segment start = the previous beam position (the immediately preceding point in draw
 	// order) while the chain is intact. A degenerate first point (no predecessor) starts at itself.
-	// In beam-event mode the predecessor of the first new-frame point is the retained tail's last entry,
-	// but that point is an intensity-0 move (no line drawn), so the chain re-anchors correctly from there.
 	newpoint->x0 = (m_vector_index > 0) ? m_vector_list[m_vector_index - 1].x : x;
 	newpoint->y0 = (m_vector_index > 0) ? m_vector_list[m_vector_index - 1].y : y;
 	newpoint->col = color;
@@ -230,23 +224,7 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 
 void vector_device::clear_list()
 {
-	if (m_beam_event_mode)
-	{
-		// Timed points are presentation-owned: they stay queued until screen_update has emitted
-		// them once, so a list crossing a frame boundary keeps its tail. Only untimed points
-		// (stock semantics) are dropped here.
-		int w = 0;
-		for (int r = 0; r < m_vector_index; r++)
-		{
-			if (!m_vector_list[r].t0.is_never())
-				m_vector_list[w++] = m_vector_list[r];
-		}
-		m_vector_index = w;
-	}
-	else
-	{
-		m_vector_index = 0;
-	}
+	m_vector_index = 0;
 	// A new beam list is starting; bump the generation so screen_update can tell this frame redrew.
 	m_list_generation++;
 }
@@ -340,25 +318,6 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		curpoint->emitted = true;
 
 		curpoint++;
-	}
-
-	if (m_beam_event_mode)
-	{
-		// Timed points are consumed once emitted, except those young enough to still carry
-		// energy into the next window (the renderer's beam-integration window, slider max 100ms):
-		// they survive until they age past `keep` so the integration window can still draw them. Their
-		// emitted flag keeps the notifiers above from firing twice for the same beam event.
-		// Untimed points keep stock semantics (redrawn until the next clear_list).
-		const attotime now = machine().time();
-		const attotime keep = attotime::from_msec(110);
-		int w = 0;
-		for (int i = 0; i < m_vector_index; i++)
-		{
-			const point &pt = m_vector_list[i];
-			if (pt.t0.is_never() || (pt.t0 + keep > now))
-				m_vector_list[w++] = pt;
-		}
-		m_vector_index = w;
 	}
 
 	m_frame_end_notifier();
