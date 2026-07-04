@@ -56,9 +56,8 @@ void avgdvg_device_base::apply_flipping(int &x, int &y) const
 void avgdvg_device_base::vg_flush()
 {
 	// Resumable flush: the clip window and beam position chain live in m_flush_* members so the
-	// buffer can be handed over in slice-sized batches (beam-event mode) without losing list
-	// state. vg_flush_list_end() re-primes the state at each list boundary, which reproduces the
-	// stock one-flush-per-list behaviour exactly when event mode is off.
+	// buffer state is not lost across calls. vg_flush_list_end() re-primes the state at each list
+	// boundary, giving the stock one-flush-per-list behaviour.
 	if (!m_flush_primed)
 	{
 		for (int j = 0; j < m_nvect; j++)
@@ -970,14 +969,14 @@ int avg_starwars_device::handler_7() // starwars_strobe3
 		// the beam-current table below) times the STAT intensity (8 bits). This can exceed the value a
 		// display can show, which is what drives the overdrive/glow effect. Star Wars is the only avgdvg
 		// title that varies this. Reported in the UNIFIED beam-energy convention (0..1 = normal display
-		// range, > 1 = overdrive), NOT 0..1-normalized: the reference is the nominal x1.96 current step
-		// (VCTR_X[2], the value the display is tuned to show at full STAT intensity), so an ordinary
-		// bright vector sits near 1.0 and the higher current steps read as genuine overdrive (up to
-		// ~3.5). The display intensity (4th argument) is the
-		// stock value and is left unchanged, so non-bgfx output is identical to stock.
+		// range, > 1 = overdrive), NOT 0..1-normalized: the reference is the x3.91 current step
+		// (VCTR_X[4]) - measured in-game (attract-mode event dump), 58% of all lit vectors use it, so
+		// it IS the game's standard beam and an ordinary bright vector sits near 0.9; the higher steps
+		// read as genuine overdrive (lasers / explosions, up to ~1.76). The display intensity (4th
+		// argument) is the stock value and is left unchanged, so non-bgfx output is identical to stock.
 		static constexpr float VCTR_X[8] = { 0.00f, 1.00f, 1.96f, 2.96f, 3.91f, 4.91f, 5.87f, 6.87f };
 		const float raw_beam = VCTR_X[(m_int_latch >> 1) & 0x07] * float(m_intensity); // 0 .. 1751.85
-		const float beam_energy = raw_beam / (VCTR_X[2] * 255.0f);                     // nominal x1.96 step -> ~1.0; range 0 .. ~3.5
+		const float beam_energy = raw_beam / (VCTR_X[4] * 255.0f);                     // nominal x3.91 step (the game's standard beam) -> ~0.9; range 0 .. ~1.76
 
 		vg_add_point_buf(
 				m_xpos,
@@ -1310,11 +1309,6 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 		m_state_latch = (m_halt << 4) | (m_state_latch & 0xf);
 		cycles += 8;
 	}
-
-	// In beam-event mode the renderer consumes timed events as they are drawn, so hand over what
-	// this slice produced instead of holding everything until the next list boundary.
-	if (m_vector->beam_event_mode())
-		vg_flush();
 
 	m_vg_run_timer->adjust(attotime::from_hz(MASTER_CLOCK) * cycles);
 }

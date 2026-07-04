@@ -42,7 +42,7 @@
 		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "float", "name": "energy_infl",        "text": "Energy Influence",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.8,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.6,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_curve",       "text": "Energy Curve",              "default": 1.0,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_line_max",    "text": "Energy Line Max",           "default": 4.0,  "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_ref",     "text": "Energy Dot Ref (us)",       "default": 30.0, "min": 2.0,  "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
