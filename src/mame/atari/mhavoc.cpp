@@ -1000,9 +1000,9 @@ void alphaone_state::alphaone(machine_config &config)
 	// video hardware
 	VECTOR(config, "vector");
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_VECTOR));
-	// The real XY monitor has no refresh rate; see starwars.cpp - with beam-event rendering
-	// the screen rate is only the presentation sampling window, and the IRQ is a free-running
-	// periodic timer (5K clock), so 60Hz changes pacing only, not game speed.
+	// The real XY monitor has no refresh rate; see starwars.cpp - the screen rate is only the
+	// presentation sampling window, and the IRQ is a free-running periodic timer (5K clock),
+	// so 60Hz changes pacing only, not game speed.
 	screen.set_refresh_hz(60);
 	screen.set_size(400, 300);
 	screen.set_visarea(0, 580, 0, 500);

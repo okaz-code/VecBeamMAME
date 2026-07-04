@@ -903,12 +903,9 @@ int renderer_bgfx::create()
 		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
 		{
 			m_vector_device = &vec;  // for the CRT-flicker stale-frame query
-			// Opt in to beam-event mode: timed points are consumed once presented, so each frame
-			// shows only the lines the beam actually drew during it (per-vector CRT flicker).
-			// Untimed vector sources (non-avgdvg drivers) keep stock list semantics.
-			// -bgfx_vec_beam_events 0 restores the classic whole-list behaviour entirely.
-			m_vec_beam_events = m_module().options().bgfx_vec_beam_events();
-			vec.set_beam_event_mode(m_vec_beam_events);
+			// Full-frame mode: each refresh the renderer draws the COMPLETE current beam list. The
+			// frame-begin notifier flags a new emulated frame (m_vec_new_frame) so the phosphor-tail
+			// freeze and time-calibrated persistence can tell running presents from pause/menu stills.
 			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_hv_energy = 0.0f; m_vec_new_frame = true; });
 			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
 				[this] (float x0, float y0, float x1, float y1, float beam_energy)
@@ -1597,7 +1594,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
 	// preserving the existing e_ref semantics.
 	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
-	const float e_screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
+	// Speed-normalisation basis = the vector CONTENT width (same basis as every px magnitude), NOT
+	// the window: a portrait game pillarboxed in a wide window would otherwise read its beam speeds
+	// ~2x too slow (window-relative lengths) and everything would run hot.
+	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
+			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
 												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
@@ -1773,7 +1774,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		core_over = core_over + lin_col * (std::max(n - 1.0f, 0.0f) - core_over);
 	}
 
-	// Length fade + flicker + window-blend weight, identical to the classic path.
+	// Length fade + flicker, identical to the classic path.
 	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
 	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
 	float length_factor = 1.0f;
@@ -1784,7 +1785,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
 		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
 	}
-	length_factor *= m_crt_flicker_factor * m_vec_line_weight;
+	length_factor *= m_crt_flicker_factor;
 	// Dot brightness compensation. A moving point deposits ONE beam event per position with no overlap,
 	// so the energy-conserving Beam Integration (weight = overlap/blend) leaves it dim as the window
 	// widens - while a static line accumulates to full. Points do not stack at the same pixel across
@@ -2443,7 +2444,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
 	// preserving the existing e_ref semantics.
 	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
-	const float e_screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
+	// Speed-normalisation basis = the vector CONTENT width (same basis as every px magnitude), NOT
+	// the window: a portrait game pillarboxed in a wide window would otherwise read its beam speeds
+	// ~2x too slow (window-relative lengths) and everything would run hot.
+	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
+			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
 												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
@@ -2558,9 +2563,8 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
 		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
 	}
-	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering) and the time-window
-	// energy weight of this line (< 1.0 only in the window-boundary blend zone).
-	length_factor *= m_crt_flicker_factor * m_vec_line_weight;
+	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering).
+	length_factor *= m_crt_flicker_factor;
 	// Dot brightness compensation. A moving point deposits ONE beam event per position with no overlap,
 	// so the energy-conserving Beam Integration (weight = overlap/blend) leaves it dim as the window
 	// widens - while a static line accumulates to full. Points do not stack at the same pixel across
@@ -2831,7 +2835,6 @@ int renderer_bgfx::draw(int update)
 			m_vec_glow_fb = bgfx::createFrameBuffer(1, &gc, true);
 			bgfx::TextureHandle npc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_np_fb = bgfx::createFrameBuffer(1, &npc, true);
-			m_vec_fb_primed = false;   // fresh FBO has no valid frame to reuse yet (gen-cache)
 		}
 	}
 
@@ -2845,66 +2848,13 @@ int renderer_bgfx::draw(int update)
 		// Only LINEs with PRIMFLAG_VECTOR go to the FBO, to keep UI lines out of the phosphor path
 		// (which would ghost them). UI / MAME-menu LINEs stay on the normal buffer_primitives path
 		// (View 0, cleared each frame).
-		// Advance the beam time window when the vector device started a new emulated frame.
-		// The machine-time basis makes pause and fast-forward transparent; time can regress on
-		// state load / rewind, in which case the window restarts from zero.
-		const double vec_now = window().machine().time().as_double();
+		// Track whether the vector device started a new emulated frame at this present, so pause / menu
+		// stills (no emulation progress) can freeze the phosphor tail and hold the persistence pools.
 		m_vec_frame_advanced = m_vec_new_frame;
-		if (m_vec_new_frame)
-		{
-			m_vec_win_t0 = (vec_now < m_vec_win_t1) ? 0.0 : m_vec_win_t1;
-			m_vec_win_t1 = vec_now;
-			m_vec_new_frame = false;
-		}
-		// While paused no new events arrive and m_vec_new_frame stays false, so the time window below is
-		// frozen at the last running frame's bounds. We deliberately keep applying that window even while
-		// paused: in beam-event mode the primitive list holds a whole persistence window of timestamped
-		// lines (several refreshes' worth), so showing all of them would overlay multiple frames into a
-		// ghosted still. Filtering by the frozen window shows exactly the single frame that was visible at
-		// the instant of the pause.
-		// Window-boundary blend: treat each event as a pulse of this width and give a boundary
-		// line the overlap fraction in each adjacent window (energy-conserving). This hides the
-		// temporal-aliasing blink when the list period beats against the refresh (a line would
-		// otherwise hop between "0 times in this window" and "twice in the next"). 0 = hard cut.
-		const double vec_blend = std::max(0.0, double(m_chains->slider_value(0, "vector_window_blend", 0.0f)) * 0.001);
-			// Minimum per-vector phosphor residence: each beam event is held at FULL brightness for this
-			// many ms after it was drawn (regardless of the energy-conserving integration). This is the
-			// phosphor's guaranteed glow time - it bridges the 50/60 refresh beat and short multiplex gaps
-			// WITHOUT the integration's energy-spreading dim (a fast bright dot stays full at its current
-			// position, leaving only a short trail = min_hold long). After min_hold the integration weight
-			// (vector_window_blend) takes over for a softer tail. 0 = off (pure integration). Set ~16-25ms
-			// (>= the refresh gap) so low Beam Integration no longer flickers.
-			const double vec_min_hold = std::max(0.0, double(m_chains->slider_value(0, "min_hold", 0.0f)) * 0.001);
-			// F5 pause: composite the whole retained beam window (several refreshes) instead of the single
-			// frozen frame, so a multiplexed/flicker image does not drop out into an incomplete still. Moving
-			// content ghosts slightly, but a paused image is static so it is normally invisible.
-			const bool vec_paused = window().machine().paused();
-			// pause_composite (default 1 = on): off -> a paused frame shows the single frozen frame
-			// instead of compositing the whole retained beam window (easier tuning, no pause ghosting).
-			const bool pause_comp = m_chains->slider_value(0, "pause_composite", 1.0f) > 0.5f;
-			auto vec_window_weight = [this, vec_blend, vec_min_hold, vec_paused, pause_comp] (const render_primitive &p) -> float
-			{
-				if (!m_vec_beam_events || p.t0 < 0.0)
-					return 1.0f;
-				if (vec_paused && pause_comp)
-					return 1.0f;
-				// Full-brightness hold for the first min_hold ms of the event's life (age from "now").
-				if (vec_min_hold > 0.0)
-				{
-					const double age = m_vec_win_t1 - p.t0;
-					if (age >= 0.0 && age < vec_min_hold)
-						return 1.0f;
-				}
-				if (vec_blend <= 0.0)
-					return ((p.t0 > m_vec_win_t0) && (p.t0 <= m_vec_win_t1)) ? 1.0f : 0.0f;
-				const double s = std::max(p.t0, m_vec_win_t0);
-				const double e = std::min(p.t0 + vec_blend, m_vec_win_t1);
-				return (e > s) ? float((e - s) / vec_blend) : 0.0f;
-			};
+		m_vec_new_frame = false;
 
 		int vector_count = 0;   // all vector lines (decides the FBO path)
-		int visible_count = 0;  // lines with nonzero energy in the current window
-		bool any_timed = false;
+		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
 		// Bounding box of the drawn vectors in framebuffer pixels = the actual displayed content rect.
 		// Used to scale beam width / bloom / defocus by the CONTENT width, not the raw framebuffer width:
 		// a ROT270 (portrait) screen is pillarboxed in a wide window/fullscreen, so s_width includes the
@@ -2916,10 +2866,7 @@ int renderer_bgfx::draw(int update)
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 			{
 				vector_count++;
-				if (scan->t0 >= 0.0)
-					any_timed = true;
-				if (vec_window_weight(*scan) > 0.0f)
-					visible_count++;
+				visible_count++;   // full-frame: every vector line is drawn
 				vminx = std::min(vminx, std::min(scan->bounds.x0, scan->bounds.x1));
 				vmaxx = std::max(vmaxx, std::max(scan->bounds.x0, scan->bounds.x1));
 				vminy = std::min(vminy, std::min(scan->bounds.y0, scan->bounds.y1));
@@ -2943,35 +2890,15 @@ int renderer_bgfx::draw(int update)
 
 		if (vector_count > 0)
 		{
-			// gen-cache (vector FBO reuse): when enabled and the beam-list generation did not change
-			// this present (beam_list_stale), the retained lines and their geometry are identical to
-			// last present, so the integrated FBO is the same image - skip the expensive vertex rebuild
-			// and gaussian-line rasterisation and reuse the cached m_vec_fb / m_vec_glow_fb. This pays
-			// the line-fill cost only once per beam-list generation; it saves the most exactly when the
-			// list redraws slower than the display refreshes (many vectors -> long generation). Excluded
-			// while paused (the pause-composite path must run) and until the FBO has a primed frame.
-			// gen_cache slider absent (other chains) -> 0 -> never reuses -> behaviour unchanged.
-			const bool vec_reuse = (m_chains->slider_value(0, "gen_cache", 0.0f) > 0.5f)
-				&& m_vec_beam_events && (m_vector_device != nullptr) && m_vector_device->beam_list_stale()
-				&& m_vec_fb_primed && !window().machine().paused();
-			if (vec_reuse)
-			{
-				// Reuse last present's vector FBO + glow FBO untouched; the chain below reads them.
-				m_vectors_in_fbo = true;
-			}
-			else
-			{
-			m_vec_fb_primed = true;
-			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame.
-			// Renderer-side (bgfx only); the amount comes from the chain's vector_crt_flicker slider.
-			// Untimed beam sources (and beam-event mode off) only: timed lists flicker physically
-			// via the time-window assignment.
-			m_crt_flicker_factor = ((!any_timed || !m_vec_beam_events) && m_vector_device != nullptr && m_vector_device->beam_list_stale())
+			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame (the
+			// CPU did not start a new list). Renderer-side (bgfx only); the amount comes from the
+			// chain's vector_crt_flicker slider.
+			m_crt_flicker_factor = (m_vector_device != nullptr && m_vector_device->beam_list_stale())
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
 
 			// HV supply droop load (master plan 3-4 / 6.2): peak-track this frame's total beam energy
-			// with gentle decay (so it does not flicker against vsync when a beam-event frame is stale),
+			// with gentle decay (so it does not flicker against vsync when a frame is stale),
 			// then normalise by hv_droop_ref to a 0..1 load that put_analytic_line turns into a global
 			// dim + defocus. Computed before the draw so this present's lines see the current load.
 			if (m_vec_frame_advanced)
@@ -3115,46 +3042,40 @@ int renderer_bgfx::draw(int update)
 						render_primitive *vprim = window().m_primlist->first();
 						while (vprim != nullptr)
 						{
-							// Write only LINEs with PRIMFLAG_VECTOR that fall in the beam time window.
-							// UI lines are drawn normally by buffer_primitives (to avoid phosphor ghosting).
+							// Write only LINEs with PRIMFLAG_VECTOR. UI lines are drawn normally by
+							// buffer_primitives (to avoid phosphor ghosting).
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
 							{
-								const float w = vec_window_weight(*vprim);
-								if (w > 0.0f)
+								if (m_line_analytic)
 								{
-									m_vec_line_weight = w;
-									if (m_line_analytic)
+									float scap = 1.0f, ecap = 1.0f;
+									if (cap_ramp_only > 0.5f)
 									{
-										float scap = 1.0f, ecap = 1.0f;
-										if (cap_ramp_only > 0.5f)
-										{
-											// caps only at driver-flagged RAMP termini (bit0 start, bit1 end)
-											scap = (vprim->cap_flags & 1u) ? 1.0f : 0.0f;
-											ecap = (vprim->cap_flags & 2u) ? 1.0f : 0.0f;
-										}
-										else if (vertex_dwell > 0.0f)
-										{
-											auto it = vtx_boost.find(vprim);
-											if (it != vtx_boost.end())
-											{
-												scap = 1.0f + vertex_dwell * (it->second.first  - 1.0f);
-												ecap = 1.0f + vertex_dwell * (it->second.second - 1.0f);
-											}
-										}
-										AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
-										AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
-										put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, scap, ecap);
-										if (gptr) glow_verts += m_glow_vpl;
-										if (npptr) np_verts += NP_VPL;
+										// caps only at driver-flagged RAMP termini (bit0 start, bit1 end)
+										scap = (vprim->cap_flags & 1u) ? 1.0f : 0.0f;
+										ecap = (vprim->cap_flags & 2u) ? 1.0f : 0.0f;
 									}
-									else
-										put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
-									vertices += verts_per_line;
+									else if (vertex_dwell > 0.0f)
+									{
+										auto it = vtx_boost.find(vprim);
+										if (it != vtx_boost.end())
+										{
+											scap = 1.0f + vertex_dwell * (it->second.first  - 1.0f);
+											ecap = 1.0f + vertex_dwell * (it->second.second - 1.0f);
+										}
+									}
+									AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
+									AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, scap, ecap);
+									if (gptr) glow_verts += m_glow_vpl;
+									if (npptr) np_verts += NP_VPL;
 								}
+								else
+									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
+								vertices += verts_per_line;
 							}
 							vprim = vprim->next();
 						}
-						m_vec_line_weight = 1.0f;
 					}
 				}
 			}
@@ -3292,7 +3213,6 @@ int renderer_bgfx::draw(int update)
 				}
 				line_eff->submit(np_view);
 			}
-			}   // end else (!vec_reuse): full vector FBO rebuild
 		}
 	}
 
@@ -3335,10 +3255,9 @@ int renderer_bgfx::draw(int update)
 			if (m_chains->has_applicable_chain(0))
 			{
 				// Feed the monitor-glow accumulation into the chain's glow pass (no-op without an
-				// "add_mglow" pass). In beam-event mode the per-frame energy drops to 0 on frames
-				// where the beam list was not refreshed (its timed points were already consumed),
-				// which made the glow flicker against vsync. The monitor glow physically persists,
-				// so track the peak and decay it gently instead of using the raw per-frame value.
+				// "add_mglow" pass). On a stale frame (the beam list was not refreshed) the per-frame
+				// energy can dip and make the glow flicker against vsync. The monitor glow physically
+				// persists, so track the peak and decay it gently instead of using the raw per-frame value.
 				if (m_vec_frame_advanced)
 					m_mglow_smoothed = std::max(m_mglow_amount, m_mglow_smoothed * 0.80f);
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };

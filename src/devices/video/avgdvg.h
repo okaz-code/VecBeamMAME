@@ -118,9 +118,8 @@ private:
 
 	bool m_flip_x, m_flip_y;
 
-	// Resumable vg_flush state (clip window + beam position chain). Persists across the
-	// slice-sized batch flushes of beam-event mode; re-primed at each list boundary so the
-	// stock one-flush-per-list behaviour is reproduced exactly when event mode is off.
+	// Resumable vg_flush state (clip window + beam position chain). Persists across vg_flush
+	// calls; re-primed at each list boundary for the stock one-flush-per-list behaviour.
 	int m_flush_cx0, m_flush_cy0, m_flush_cx1, m_flush_cy1;
 	int m_flush_xs, m_flush_ys;
 	bool m_flush_primed;
