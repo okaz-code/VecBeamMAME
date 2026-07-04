@@ -95,6 +95,7 @@
 
 		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.0, 0.0 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.20, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "cubic_distortion", "text": "Cubic Distortion Amount",   "default": 0.00, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "distort_corner",   "text": "Distorted Corner Amount",   "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -188,6 +189,20 @@
 			{ "uniform": "u_overdrive_color",         "slider": "overdrive_color" } ],
 		  "output": "internal" },
 
+		{   "effect": "hlsl/defocus",
+			"name": "Defocus Pass",
+			"_comment": "beam-spot optical defocus (9-tap blur) on the emitted beam+pool image, BEFORE the shadow mask so the softened beam is then modulated by the (crisp) mask, and before the glow composites. defocus [0,0] = off (pass skipped).",
+			"disablewhen": [
+				{ "type": "slider", "condition": "equal", "name": "defocus", "value": [ 0, 0 ] }
+			],
+			"uniforms": [
+				{ "uniform": "u_defocus", "slider": "defocus" }
+			],
+			"input": [
+				{ "sampler": "s_tex", "target": "internal" }
+			],
+			"output": "internal"
+		},
 		{   "effect": "vector/vector_shadow_mask",
 			"name": "Shadow Mask Pass",
 			"_comment": "shadow mask + non-excited phosphor body colour (ambient). Placed BEFORE the glow composites, so halation / starburst / caps / analytic glow are NOT mask-patterned (scattered light, post-mask by design).",
