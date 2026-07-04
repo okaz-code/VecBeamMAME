@@ -48,7 +48,7 @@
 		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "float", "name": "energy_infl",        "text": "Energy Influence",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.8,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.6,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_curve",       "text": "Energy Curve",              "default": 1.0,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_line_max",    "text": "Energy Line Max",           "default": 4.0,  "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_ref",     "text": "Energy Dot Ref (us)",       "default": 30.0, "min": 2.0,  "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
@@ -114,6 +114,11 @@
 		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "ambient_mask",            "text": "Ambient Shadow-Mask (0=flat,1=masked)", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "reflection",       "text": "Reflection Amount",         "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_threshold",        "text": "Monitor Glow Threshold",       "default": 0.7,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_min_distance",     "text": "Monitor Glow Off-screen Dist", "default": 0.30, "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_coefficient",      "text": "Monitor Glow Coefficient",     "default": 0.0,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.5,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 
 		{ "type": "intenum", "name": "pause_composite", "text": "Pause Frame Composite", "default": 0, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] }
 	],
@@ -131,6 +136,7 @@
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
 		  "_comment": "linear chain output; its presence makes the renderer present this as an HDR chain (PQ/EDR, SDR fallback)" },
+		{ "name": "mglow_out", "mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F" },
 		{ "name": "glow_lo0", "mode": "native", "scale": 0.5,     "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "wide local glow: the per-line glow buffer cascaded down to low-res, then upscaled+added. Bounded spread (only down to 1/16) = wide but still LOCAL (does not reach the whole screen like the bloom ladder)." },
 		{ "name": "glow_lo1", "mode": "native", "scale": 0.25,    "doublebuffer": false, "format": "RGBA16F" },
@@ -319,7 +325,15 @@
 		  "input": [ { "sampler": "s_tex", "target": "internal" } ],
 		  "output": "internal" },
 
+		{ "effect": "misc/blit", "name": "mglow_seed",
+		  "_comment": "seed mglow_out with the final image; add_mglow additively blends the radial monitor glow (u_mglow_amount injected by the renderer from off-screen beam energy - Star Wars fires the beam far off-screen and the tube face glows). Both passes always run; mglow_coefficient 0 = adds zero.",
+		  "input": [ { "sampler": "s_tex", "target": "internal" } ],
+		  "output": "mglow_out" },
+		{ "effect": "vector/vector_monitor_glow", "name": "add_mglow", "clear": {},
+		  "input": [ { "sampler": "s_tex", "target": "mglow_out" } ],
+		  "uniforms": [ { "uniform": "u_mglow_brightness", "slider": "mglow_brightness" }, { "uniform": "u_mglow_edge_diff", "slider": "mglow_center_edge_diff" } ],
+		  "output": "mglow_out" },
 		{ "effect": "misc/blit", "name": "Final Blit (-> screen_hdr, linear)",
-		  "input": [ { "sampler": "s_tex", "target": "internal" } ], "output": "screen_hdr" }
+		  "input": [ { "sampler": "s_tex", "target": "mglow_out" } ], "output": "screen_hdr" }
 	]
 }
