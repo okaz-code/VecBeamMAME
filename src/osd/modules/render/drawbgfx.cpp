@@ -3007,9 +3007,18 @@ int renderer_bgfx::draw(int update)
 		// "how busy was the scene," so this trades an exact result for skipping a full O(n) traversal.
 		const bool flicker_on = (m_vector_device != nullptr) && m_vector_device->avg_timing();
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
-		const int flicker_thresh = flicker_on ? int(m_chains->slider_value(0, "flicker_thresh", 150.0f) + 0.5f) : 0x7fffffff;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
-		const bool flicker_busy = flicker_on && m_flicker_prev_count > flicker_thresh && last_t1 > first_t0;
+		// "Busy" is judged by the REAL DRAW-TIME SPAN this present's list took to sweep (last_t1 -
+		// first_t0, already tracked below for the bucket span anyway), not raw vector count: a
+		// text-heavy scene (Star Wars attract-mode scores) has a huge vector COUNT from many short
+		// strokes without a proportional increase in actual beam sweep time, while a scene with fewer
+		// but much LONGER vectors can take just as long (or longer) to sweep with a small count - count
+		// doesn't track the physical constraint (how much of a refresh period the beam spent drawing)
+		// that this feature is meant to approximate, and is not comparable across games with very
+		// different average line lengths. flicker_thresh_ms is in real elapsed ms (t0/t1 are seconds).
+		const double flicker_thresh_ms = flicker_on ? double(m_chains->slider_value(0, "flicker_thresh_ms", 12.0f)) : 1e18;
+		const double flicker_draw_ms = (last_t1 > first_t0) ? (last_t1 - first_t0) * 1000.0 : 0.0;
+		const bool flicker_busy = flicker_on && flicker_draw_ms > flicker_thresh_ms;
 		// Real-time-paced cycling (not once-per-PRESENT): advancing by a fixed +1 per present ties the
 		// perceived flicker rate directly to whatever the ACTUAL achieved present rate happens to be -
 		// a busy/heavy scene that runs below full rate (GPU-bound) cycles slower than a light one, and
@@ -3096,7 +3105,17 @@ int renderer_bgfx::draw(int update)
 		// decay. This is a display-scale basis for beam width / bloom / defocus (the 1920-ref), so it must
 		// not follow the per-frame drawn amount: a decaying peak made beam_bloom lag the busyness (blur
 		// fading over ~0.3s when a busy screen went sparse). Monotonic peak-hold settles to the screen
-		// width and stays put; it is reset to 0 on FBO (re)create so a resolution change re-learns it.
+		// width and stays put; reset when the active chain changes (see m_vec_extent_chain's comment in
+		// drawbgfx.h) so a chain switch re-learns the content width instead of carrying over whatever
+		// peak the OTHER chain's frames happened to draw while it was active.
+		{
+			bgfx_chain *cur_chain = m_chains->screen_chain(0);
+			if (cur_chain != m_vec_extent_chain)
+			{
+				m_vec_extent_chain = cur_chain;
+				m_vec_extent_w = 0.0f;
+			}
+		}
 		if (vmaxx > vminx)
 		{
 			const float cur_w = vmaxx - vminx;

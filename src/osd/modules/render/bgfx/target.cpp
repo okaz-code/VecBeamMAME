@@ -10,6 +10,8 @@
 
 #include "target.h"
 
+#include <cstring>
+
 bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
 	uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen)
 	: m_name(name)
@@ -44,9 +46,24 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 
 		m_textures = new bgfx::TextureHandle[m_page_count * 2];
 		m_targets = new bgfx::FrameBufferHandle[m_page_count];
+		// Zero-initialize the colour texture's backing memory explicitly: bgfx::createTexture2D with no
+		// _mem leaves the GPU texture's content genuinely undefined (not guaranteed zero by any backend
+		// or driver). For most targets a full-screen pass overwrites every pixel before it's ever read,
+		// so this never matters - but a target that's READ by a self-referential feedback pass before
+		// anything has ever WRITTEN it (e.g. the vector phosphor pool's "previous frame" sampler, read
+		// on the very first frame after this target is freshly (re)created by a chain switch/reload/
+		// resolution change) would otherwise see arbitrary garbage, which that pass's own logic could
+		// misinterpret as legitimate held content for a long time (phosphor_total_ms) before naturally
+		// clearing. All-zero bytes are exactly 0.0 in every bgfx texture format used here (integer
+		// normalized, half-float, and float all represent 0 as an all-zero bit pattern), so a single
+		// generic zero-fill is correct regardless of which of this class's callers/formats is in use.
+		bgfx::TextureInfo tex_info;
+		bgfx::calcTextureSize(tex_info, m_width * xprescale, m_height * yprescale, 1, false, false, 1, format);
 		for (int page = 0; page < m_page_count; page++)
 		{
-			m_textures[page] = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT);
+			const bgfx::Memory *zero_mem = bgfx::alloc(tex_info.storageSize);
+			std::memset(zero_mem->data, 0, zero_mem->size);
+			m_textures[page] = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT, zero_mem);
 			assert(m_textures[page].idx != 0xffff);
 
 			m_textures[m_page_count + page] = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, bgfx::TextureFormat::D32F, depth_flags | BGFX_TEXTURE_RT);

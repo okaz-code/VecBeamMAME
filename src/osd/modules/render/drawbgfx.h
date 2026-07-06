@@ -30,6 +30,7 @@ class effect_manager;
 class bgfx_texture;
 class bgfx_effect;
 class bgfx_target;
+class bgfx_chain;
 class bgfx_view;
 class osd_options;
 class avi_write;
@@ -288,6 +289,17 @@ private:
 	// put_*_line magnitudes, so a given beam_width looks identical windowed and fullscreen.
 	float m_vec_extent_w = 0.0f;
 	float m_vec_res_w = 0.0f;
+	// Identity of the active bgfx_chain the last time m_vec_extent_w was updated. The peak-hold's own
+	// comment says it should "reset to 0 on FBO (re)create so a resolution change re-learns it" - but
+	// no such reset actually existed anywhere in this file, so it never re-learned anything: switching
+	// the active chain (e.g. color-phosphor -> monochrome-phosphor -> back to color-phosphor) does NOT
+	// touch this peak (chain reload only recreates the CHAIN's own declared targets, not this renderer-
+	// owned value), but the underlying game keeps running/drawing throughout, so if it happened to draw
+	// wider content while a DIFFERENT chain was active, that peak silently carries over and permanently
+	// changes color-phosphor's own width/bloom/defocus scale after switching back - with no game/
+	// resolution change at all. Comparing screen_chain(0)'s pointer (changes on every reload_chains())
+	// lets the peak-hold re-learn from scratch on any chain switch, matching the documented intent.
+	bgfx_chain *m_vec_extent_chain = nullptr;
 	// Emulated time (seconds) at the previous present, used to time-calibrate the max-persist
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
