@@ -1378,6 +1378,13 @@ void avgdvg_device_base::device_start()
 	if (!m_vector->started())
 		throw device_missing_dependencies();
 
+	// t0/t1 on every add_point come from run_state_machine's cycle-accurate VGO timing (see below) -
+	// a real per-vector beam sweep duration, unlike Vectrex (its own distinct timing) or Cinematronics
+	// (t0==t1 for most segments). Lets a renderer reproduce the real "too many vectors overrun one
+	// beam sweep" flicker for the whole Atari AVG/DVG family (dvg/avg/tempest/mhavoc/starwars/quantum/
+	// bzone all derive from this base).
+	m_vector->set_avg_timing(true);
+
 	m_vg_halt_timer = timer_alloc(FUNC(avgdvg_device_base::vg_set_halt_callback), this);
 	m_vg_run_timer = timer_alloc(FUNC(avgdvg_device_base::run_state_machine), this);
 

@@ -24,6 +24,7 @@
 		{ "name": "u_phosphor_overdrive",      "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_phosphor_overdrive_knee", "type": "vec4", "values": [ 0.6, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_overdrive_color",    "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
+		{ "name": "u_phosphor_overdrive_curve","type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_inv_view_dims",      "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]
 }

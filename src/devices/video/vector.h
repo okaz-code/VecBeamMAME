@@ -57,6 +57,15 @@ public:
 	// new list). A renderer can use this to reproduce CRT flicker; the emulation does not act on it.
 	bool beam_list_stale() const { return m_beam_list_stale; }
 
+	// True for vector generators whose per-point t0/t1 come from real cycle-accurate sweep timing
+	// (the Atari AVG/DVG state machine), so the ELAPSED TIME across a list is physically meaningful -
+	// a renderer can use it to reproduce the real "too many vectors for one beam sweep" flicker (a
+	// budget-overrun cutoff), which requires timing where t1-t0 truly reflects beam dwell/travel time.
+	// False (default) for generators whose t0/t1 do not model that (Vectrex: its own distinct timing
+	// the renderer already uses for other purposes; Cinematronics: t0==t1 for most segments).
+	void set_avg_timing(bool v) { m_avg_timing = v; }
+	bool avg_timing() const { return m_avg_timing; }
+
 	// beam_energy is the normalized (0..1) raw beam energy for renderer overdrive effects.
 	// Pass < 0 (the default) when the device has no raw beam-energy signal; the display
 	// intensity is then used as the normalized value instead. The displayed intensity is
@@ -138,6 +147,7 @@ private:
 	uint32_t m_list_generation;
 	uint32_t m_last_drawn_generation;
 	bool m_beam_list_stale;
+	bool m_avg_timing = false;   // set_avg_timing(): this device's t0/t1 model real AVG/DVG sweep time
 
 	// notify interested parties about vector-drawing activities
 	util::notifier<> m_frame_begin_notifier;

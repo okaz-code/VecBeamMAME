@@ -196,6 +196,7 @@ private:
 	int m_glow_off_ring  = -1;   // halation ring (ring_gain, point only)
 	int m_glow_off_fill  = -1;   // halation inner fill (ring_fill, point only)
 	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
+	int m_glow_off_oglow = -1;   // overload-only bloom halo (overload_glow_gain)
 	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
 	bool m_caps_glow = false;    // cap_no_persist: line caps drawn into the separate no-persist FBO (bypass the phosphor pool)
 	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
@@ -258,6 +259,22 @@ private:
 	// (the CPU did not refresh the beam list) is dimmed by vector_crt_flicker.
 	vector_device *m_vector_device = nullptr;
 	float m_crt_flicker_factor = 1.0f;
+	// Cyclic per-vector flicker (real AVG/DVG only): advances at a fixed real-time cadence
+	// (flicker_period_ms) while the feature is active (busy scene), NOT once per present - so the
+	// perceived flicker rate stays the same regardless of the actually-achieved present rate (a busy
+	// scene running below full rate would otherwise cycle slower than a light one) and is comparable
+	// across different machines/drivers. A paused/static busy scene still rotates through all
+	// flicker_buckets over real elapsed time. See the "Cyclic per-vector flicker" comment in draw().
+	uint64_t m_flicker_cycle = 0;
+	int64_t m_flicker_last_hpc = 0;   // bx::getHPCounter() at the previous present (0 = not yet set)
+	double m_flicker_accum_ms = 0.0;  // real ms accumulated toward the next bucket-cycle step
+	// Perf: previous present's busyness/time-span stats, used INSTEAD of a dedicated pre-pass to
+	// decide this present's flicker_busy/bucket (a one-present-stale count is imperceptible for a
+	// chaotic cyclic effect). Updated from this frame's own primitive scan (drawbgfx.cpp, no extra
+	// list traversal).
+	int m_flicker_prev_count = 0;
+	double m_flicker_prev_t0 = -1.0;
+	double m_flicker_prev_t1 = -1.0;
 
 	// True when a new emulated frame arrived at this present (set from the vector device's frame-begin
 	// notifier via m_vec_new_frame). Drives the chain's phosphor-tail freeze: re-presents without

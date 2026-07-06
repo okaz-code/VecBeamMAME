@@ -1196,6 +1196,19 @@ float chain_manager::slider_value(uint32_t screen, const std::string& name, floa
 	return default_value;
 }
 
+float chain_manager::slider_value_indexed(uint32_t screen, const std::string& name, int index, float default_value)
+{
+	if (screen >= m_screen_chains.size() || m_screen_chains[screen] == nullptr)
+		return default_value;
+	const std::string suffixed = name + std::to_string(index);
+	for (bgfx_slider* slider : m_screen_chains[screen]->sliders())
+	{
+		if (slider->name() == suffixed)
+			return slider->value();
+	}
+	return default_value;
+}
+
 std::vector<std::vector<float>> chain_manager::slider_settings()
 {
 	std::vector<std::vector<float>> curr;

@@ -96,6 +96,12 @@ public:
 	// Returns default_value when the chain or slider is absent, so a renderer can read
 	// optional per-chain parameters by name without the chain having to define them.
 	float slider_value(uint32_t screen, const std::string& name, float default_value);
+	// Like slider_value, but for one component of a multi-component slider (vec2/vec4/color), which
+	// sliderreader.cpp registers as separate named sliders "name0", "name1", ... (NOT reachable via
+	// slider_value, which always appends "0" to whatever name it's given). Returns default_value when
+	// that component isn't registered (e.g. a plain float slider has no "name1") - callers can pass a
+	// sensible per-chain fallback so older chains with a scalar version of a slider degrade gracefully.
+	float slider_value_indexed(uint32_t screen, const std::string& name, int index, float default_value);
 	// Override a named uniform on a named pass of a screen's active chain (for per-frame CPU values).
 	// Returns false when the chain or pass is absent. No-op if the pass does not use the uniform.
 	bool inject_entry_uniform(uint32_t screen, const std::string& entry_name,
