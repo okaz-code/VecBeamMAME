@@ -15,6 +15,7 @@ SAMPLER2D(s_tex, 0);
 uniform vec4 u_hdr_params;
 uniform vec4 u_phosphor_gamut;   // (blend 0..1, 0, 0, 0) 0 = Rec.709 primaries, 1 = P22 phosphor primaries
 uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, 0, 0) hue-preserving highlight roll-off; max<=knee disables
+uniform vec4 u_sdr_rolloff;      // (knee, ceiling, shadow_curve, 0) SDR-only, paper_white units; see SDR branch below
 
 void main()
 {
@@ -91,7 +92,34 @@ void main()
 	}
 	else
 	{
-		outc = pow(L / max(paper_white, 1.0), vec3_splat(1.0 / 2.2));
+		vec3 Ln = L / max(paper_white, 1.0);   // 1.0 = SDR reference white
+
+		// SDR-only highlight shoulder: the roll-off above (u_hdr_rolloff) is anchored to beam_peak,
+		// tuned for HDR's absolute-nits headroom - it typically still leaves values above paper_white
+		// for SDR, which then hard-clip at the 8/10-bit UNORM swapchain the instant gl_FragColor > 1.0.
+		// Same hue-preserving asymptotic formula as the beam_peak roll-off above, re-anchored to
+		// paper_white units so overload/glow headroom compresses gracefully into SDR white instead of
+		// clipping abruptly. u_sdr_rolloff = (knee, ceiling, shadow_curve, 0); ceiling<=knee disables
+		// (same convention as u_hdr_rolloff). Default knee=ceiling=1.0 (off) so this doesn't change any
+		// existing SDR calibration until deliberately tuned by eye against the HDR look.
+		float sd_knee = u_sdr_rolloff.x;
+		float sd_ceil = u_sdr_rolloff.y;
+		float m0s = max(Ln.r, max(Ln.g, Ln.b));
+		if (sd_ceil > sd_knee && m0s > sd_knee)
+		{
+			float over   = m0s - sd_knee;
+			float range  = max(sd_ceil - sd_knee, 1e-4);
+			float rolled = sd_knee + range * (over / (over + range));
+			Ln *= rolled / m0s;
+		}
+
+		// Optional shadow/midtone reshape on top of the plain 1/2.2 gamma - bends the exponent, so
+		// 0 and 1 stay fixed and only the path between changes (same "curve" convention used elsewhere
+		// in this renderer). shadow_curve=1.0 (default) is the exact previous behaviour (pure 1/2.2).
+		// >1 = darker mids (compresses near-black lift), <1 = brighter mids. Tune by eye comparing an
+		// HDR/SDR toggle at fixed slider values, per vector-phosphor-overload-response-plan.md.
+		float sd_curve = max(u_sdr_rolloff.z, 1e-3);
+		outc = pow(Ln, vec3_splat(sd_curve / 2.2));
 	}
 
 	gl_FragColor = vec4(outc, 1.0) * v_color0;

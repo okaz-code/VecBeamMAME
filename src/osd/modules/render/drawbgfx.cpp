@@ -47,6 +47,7 @@
 
 #include <bx/math.h>
 #include <bx/readerwriter.h>
+#include <bx/timer.h>
 
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 // standard windows headers
@@ -1654,7 +1655,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
 		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
 		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
-		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
+		float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
+		// width_over_curve shapes the overload-lift region ("above", the growth beyond beam_width_max)
+		// the same way width_curve shapes the sub-threshold ramp below - width_curve deliberately excludes
+		// this region (see the "leave the >1 region ... linear" note below), so without this the beam's
+		// thickness always grew linearly with overload no matter how the OTHER overload-driven effects
+		// (colour saturation, Overload Glow) were curved. pow(above/w_overmax, curve)*w_overmax keeps 0
+		// and w_overmax fixed (only bends the path between), matching the wcurve convention.
+		const float wocurve = m_chains->slider_value(0, "width_over_curve", 1.0f);
+		if (wocurve != 1.0f && above > 0.0f && w_overmax > 0.0f) above = powf(above / w_overmax, wocurve) * w_overmax;
 		const float knee  = std::clamp(m_chains->slider_value(0, "width_knee", 0.3f), 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
 		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
@@ -1692,7 +1701,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// bullet/explosion) is added as a multiple of bw_max, NOT of the (bw_max-bw_min) span - so a small
 	// min/max gap no longer shrinks the lift. For wf>1 this reduces exactly to width = bw_max * wf.
 	float beam_units = bw_min + std::min(wf, 1.0f) * (bw_max - bw_min);
-	if (wf > 1.0f) beam_units += (wf - 1.0f) * bw_max;
+	// beam_width_over_scale lets the overload-lift term (wf>1, i.e. n past bright_threshold) use its
+	// OWN scale instead of reusing bw_max - so the overload maximum can be raised independently of the
+	// normal (non-overloaded) range's own width, which bw_max alone also governs via the "below" blend
+	// above. -1 (default) = inherit bw_max, reproducing the previous behaviour exactly.
+	const float w_over_scale_slider = m_chains->slider_value(0, "beam_width_over_scale", -1.0f);
+	const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
+	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
 	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
@@ -1826,11 +1841,47 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Overdrive white-out lives in the glow buffer (post shadow-mask), NOT here: a beam driven past
 	// intensity_clip_high deposits an UNMASKED white flare (below) so the white bloom is not patterned by
 	// the shadow mask. The masked core stays the ordinary coloured line at its normal intensity.
+
+	// Per-vector phosphor-tint white-pull (moved here from the old "Phosphor Tint" chain pass, which
+	// drove it from the COMPOSITED pixel brightness sampled after all of this frame's additive line
+	// draws had already summed - so several ordinary, non-overloaded vectors overlapping the same
+	// pixel (dense debris/explosion combos) could read as "past the knee" and blow out white even
+	// though no single vector was ever in overload. Gating on line_over>0 (a per-vector, pre-blend
+	// signal, exactly like the flare/width overload paths) fixes that while keeping the SAME
+	// knee/ceiling/curve/amount/colour calibration - just decided per-vector instead of per-pixel.
+	float core_sat_r = prim->color.r, core_sat_g = prim->color.g, core_sat_b = prim->color.b;
+	if (line_over > 0.0f)
+	{
+		const float sat_amt = m_chains->slider_value(0, "phosphor_overdrive", 0.0f);
+		if (sat_amt > 0.0f)
+		{
+			const float sat_knee = m_chains->slider_value_indexed(0, "overdrive_knee", 0, 0.6f);
+			// Component 1 (ceiling) is absent on chains where overdrive_knee is still a plain float
+			// (e.g. monochrome) - fall back to knee+eps, reproducing that chain's original hard-step
+			// (division-guard-only) behaviour exactly.
+			const float sat_ceil = std::max(m_chains->slider_value_indexed(0, "overdrive_knee", 1, sat_knee + 1e-4f), sat_knee + 1e-4f);
+			float sw = std::clamp((n - sat_knee) / (sat_ceil - sat_knee), 0.0f, 1.0f);
+			const float sat_curve = m_chains->slider_value(0, "overdrive_sat_curve", 1.0f);
+			if (sat_curve != 1.0f) sw = powf(sw, sat_curve);
+			sw *= sat_amt;
+			if (sw > 0.0f)
+			{
+				const float ov_r = m_chains->slider_value_indexed(0, "overdrive_color", 0, 1.0f);
+				const float ov_g = m_chains->slider_value_indexed(0, "overdrive_color", 1, 1.0f);
+				const float ov_b = m_chains->slider_value_indexed(0, "overdrive_color", 2, 1.0f);
+				const float mag = std::max({ core_sat_r, core_sat_g, core_sat_b, 1e-4f });
+				core_sat_r += (ov_r * mag - core_sat_r) * sw;
+				core_sat_g += (ov_g * mag - core_sat_g) * sw;
+				core_sat_b += (ov_b * mag - core_sat_b) * sw;
+			}
+		}
+	}
+
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		std::min<uint32_t>(uint32_t(prim->color.r * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(prim->color.g * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(prim->color.b * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f));
 
 	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
@@ -1850,6 +1901,23 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		uint32_t(std::min(prim->color.g / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(prim->color.b / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(1.0f, flare_peak) * 255.0f + 0.5f));
+
+	// Overload Glow (bloom that fires ONLY on overload, distinct from the generic per-line
+	// "analytic_glow" which scales with plain brightness regardless of overdrive state, and from
+	// "Overload Bloom" which only widens the beam's OWN sigma - a bigger/softer spot, not a halo
+	// reaching pixels well away from the geometry). This reuses the SAME wide-cascade glow FBO
+	// pipeline as analytic_glow (glow_narrow/glow_wide), just with its own heat-gated magnitude and
+	// an independently wide sigma, so a hot dwell dot or overdriven line gets a real screen-space
+	// bloom that ordinary (non-overloaded) content never triggers. 0 = off.
+	const float oglow_gain = m_chains->slider_value(0, "overload_glow_gain", 0.0f);
+	const bool  oglow_on   = flare_on && oglow_gain > 0.0f;
+	const float oglow_mag  = flare_peak * oglow_gain;
+	const float oglow_z    = std::max(0.0f, oglow_mag - 1.0f);
+	const uint32_t oglow_rgba = u32Color(
+		uint32_t(std::min(prim->color.r / flare_pk, 1.0f) * 255.0f + 0.5f),
+		uint32_t(std::min(prim->color.g / flare_pk, 1.0f) * 255.0f + 0.5f),
+		uint32_t(std::min(prim->color.b / flare_pk, 1.0f) * 255.0f + 0.5f),
+		uint32_t(std::min(1.0f, oglow_mag) * 255.0f + 0.5f));
 
 	// sigma: width/3.2 keeps the gaussian core as tight as the classic parabola (a gaussian's
 	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
@@ -1942,6 +2010,18 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		sigma = (flat_edge > 0.0f) ? std::max(0.2f, flat_edge * (m_vec_res_w / 1920.0f))
 								   : std::max(sig_floor, sigma * (1.0f - flat_f));
 	}
+	// Overload Glow (bloom) sigma: sigma is now final, so add the wide-halo width on top of it (same
+	// pattern as analytic_glow's glow_sig = sigma + glow_w). The width term is scaled by oglow_ramp
+	// (0..1, saturating with how deep into overload this vector is - same saturation point as the
+	// glow's own alpha, oglow_mag) rather than added flat: without this, a vector that barely crosses
+	// overload_threshold (line_over ~ 0.001, near-invisible glow) still paid the FULL wide-quad
+	// rasterization cost (width~40px -> ~300px quad side, ~90K px^2) as a vector deep in overload. In
+	// a mass-overload scene (explosion) most vectors are only marginally over threshold, so this was
+	// spending near-max fill-rate on near-zero-alpha quads across potentially hundreds of vectors -
+	// the actual cause of the Death Star explosion frame-rate drop. Ramping footprint with intensity
+	// keeps the dramatic wide halo for genuinely hot vectors while making barely-overloaded ones cheap.
+	const float oglow_ramp = std::min(1.0f, oglow_mag);
+	const float oglow_sig = sigma + std::max(0.0f, m_chains->slider_value(0, "overload_glow_width", 40.0f) * (m_vec_res_w / 1920.0f)) * oglow_ramp;
 	const float pad = wcore + 3.5f * sigma + 0.5f;
 
 	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
@@ -2154,6 +2234,17 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					set_dot(glow_vertex, m_glow_off_flare, cx, cy, sigma, flare_rgba, flare_z, wcore);
 				else
 					set_degenerate(glow_vertex, m_glow_off_flare);
+			}
+			// Overload Glow (bloom): a wide soft halo, gated on the SAME heat as the flare, feeding the
+			// existing glow_narrow/glow_wide cascade for a real screen-space spread ordinary brightness
+			// never triggers (see the oglow_* comment above for why this differs from analytic_glow /
+			// Overload Bloom).
+			if (m_glow_off_oglow >= 0)
+			{
+				if (oglow_on)
+					set_dot(glow_vertex, m_glow_off_oglow, cx, cy, oglow_sig, oglow_rgba, oglow_z, 0.0f);
+				else
+					set_degenerate(glow_vertex, m_glow_off_oglow);
 			}
 			// Starburst rays: the straight radial streaks the EYE sees around a genuinely dazzling
 			// point light (lash / lens diffraction) - the display cannot reach that luminance, so the
@@ -2410,6 +2501,27 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 		else if (m_glow_off_flare >= 0)
 			set_degenerate(glow_vertex, m_glow_off_flare);
+		// Overload Glow (bloom): same wide-halo mechanism as the point path above.
+		if (m_glow_off_oglow >= 0 && oglow_on)
+		{
+			const float opad = 3.5f * oglow_sig + 0.5f;
+			const float osx0 = x0 - dx * opad, osy0 = y0 - dy * opad;
+			const float osx1 = x1 + dx * opad, osy1 = y1 + dy * opad;
+			const float oa0 = -opad, oa1 = seg_len + opad;
+			auto ov = [&](int i, float x, float y, float a, float b, float d) {
+				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = oglow_z; glow_vertex[i].m_rgba = oglow_rgba;
+				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = 0.0f;
+				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
+			};
+			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
+			ov(m_glow_off_oglow + 1, osx1 + nx * opad, osy1 + ny * opad, oa1, oa1 - seg_len,  opad);
+			ov(m_glow_off_oglow + 2, osx1 - nx * opad, osy1 - ny * opad, oa1, oa1 - seg_len, -opad);
+			ov(m_glow_off_oglow + 3, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
+			ov(m_glow_off_oglow + 4, osx1 - nx * opad, osy1 - ny * opad, oa1, oa1 - seg_len, -opad);
+			ov(m_glow_off_oglow + 5, osx0 - nx * opad, osy0 - ny * opad, oa0, oa0 - seg_len, -opad);
+		}
+		else if (m_glow_off_oglow >= 0)
+			set_degenerate(glow_vertex, m_glow_off_oglow);
 	}
 }
 
@@ -2503,7 +2615,15 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
 		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
 		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
-		const float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
+		float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
+		// width_over_curve shapes the overload-lift region ("above", the growth beyond beam_width_max)
+		// the same way width_curve shapes the sub-threshold ramp below - width_curve deliberately excludes
+		// this region (see the "leave the >1 region ... linear" note below), so without this the beam's
+		// thickness always grew linearly with overload no matter how the OTHER overload-driven effects
+		// (colour saturation, Overload Glow) were curved. pow(above/w_overmax, curve)*w_overmax keeps 0
+		// and w_overmax fixed (only bends the path between), matching the wcurve convention.
+		const float wocurve = m_chains->slider_value(0, "width_over_curve", 1.0f);
+		if (wocurve != 1.0f && above > 0.0f && w_overmax > 0.0f) above = powf(above / w_overmax, wocurve) * w_overmax;
 		const float knee  = std::clamp(m_chains->slider_value(0, "width_knee", 0.3f), 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
 		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
@@ -2541,7 +2661,13 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// bullet/explosion) is added as a multiple of bw_max, NOT of the (bw_max-bw_min) span - so a small
 	// min/max gap no longer shrinks the lift. For wf>1 this reduces exactly to width = bw_max * wf.
 	float beam_units = bw_min + std::min(wf, 1.0f) * (bw_max - bw_min);
-	if (wf > 1.0f) beam_units += (wf - 1.0f) * bw_max;
+	// beam_width_over_scale lets the overload-lift term (wf>1, i.e. n past bright_threshold) use its
+	// OWN scale instead of reusing bw_max - so the overload maximum can be raised independently of the
+	// normal (non-overloaded) range's own width, which bw_max alone also governs via the "below" blend
+	// above. -1 (default) = inherit bw_max, reproducing the previous behaviour exactly.
+	const float w_over_scale_slider = m_chains->slider_value(0, "beam_width_over_scale", -1.0f);
+	const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
+	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
 	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
 	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
 	float width = beam_units * (m_vec_res_w / 1920.0f);
@@ -2862,6 +2988,60 @@ int renderer_bgfx::draw(int update)
 		int point_count = 0;
 		const float pt_thresh = m_line_analytic
 				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
+		// Cyclic per-vector flicker (real AVG/DVG only, see vector_device::avg_timing): reproduces the
+		// beam-event-mode effect lost in the phase-3 removal - real vector hardware re-traces EVERY
+		// vector EVERY refresh (there is no "static image"), so a busy scene (more vectors than the
+		// beam can visit before it must restart the sweep) makes a DIFFERENT rotating subset miss its
+		// redraw each individual refresh, even for otherwise-unchanging content. Modelled as: divide
+		// this frame's list, by GENERATION-TIME ORDER (t0, i.e. how far into the sweep each vector was
+		// drawn - not list position, though the two strongly correlate for a sequential VGO), into
+		// flicker_buckets equal time-slices; one bucket rotates out of the draw each PRESENT (not each
+		// emulated frame - a static/paused scene still cycles through all buckets over flicker_buckets
+		// presents). Only engages once the scene is busier than flicker_thresh vectors, so light scenes
+		// are exactly as before (thresh 0 = always on, for testing). The excluded bucket's vectors are
+		// simply not drawn this present; the existing full-frame phosphor pool decays them exactly as
+		// if the CPU had not generated them - no new persistence code needed.
+		// Perf: the busyness/time-span stats use the PREVIOUS present's numbers (m_flicker_prev_*),
+		// updated from THIS frame's own scan below, instead of a dedicated pre-pass over the whole
+		// primitive list - a chaotic, cyclic effect like this cannot perceive a one-present lag in
+		// "how busy was the scene," so this trades an exact result for skipping a full O(n) traversal.
+		const bool flicker_on = (m_vector_device != nullptr) && m_vector_device->avg_timing();
+		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
+		const int flicker_thresh = flicker_on ? int(m_chains->slider_value(0, "flicker_thresh", 150.0f) + 0.5f) : 0x7fffffff;
+		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
+		const bool flicker_busy = flicker_on && m_flicker_prev_count > flicker_thresh && last_t1 > first_t0;
+		// Real-time-paced cycling (not once-per-PRESENT): advancing by a fixed +1 per present ties the
+		// perceived flicker rate directly to whatever the ACTUAL achieved present rate happens to be -
+		// a busy/heavy scene that runs below full rate (GPU-bound) cycles slower than a light one, and
+		// a perf optimisation that makes busy scenes faster (e.g. the Overload Glow footprint fix, or
+		// removing halation/starburst from the colour chain) silently speeds the flicker up even though
+		// no flicker slider changed. Wall-clock (bx::getHPCounter, real elapsed ms - NOT emulated time,
+		// so pause/slow-motion don't affect it either) with an accumulator gives a fixed cadence in Hz
+		// regardless of present rate or which machine/driver is running, so flicker_period_ms means the
+		// same thing on every game. Accumulator resets when inactive so a later busy stretch starts
+		// clean rather than replaying a stale fractional step from long ago.
+		const int64_t flicker_hpc_now = bx::getHPCounter();
+		const double flicker_dt_ms = (m_flicker_last_hpc != 0)
+				? double(flicker_hpc_now - m_flicker_last_hpc) * 1000.0 / double(bx::getHPFrequency()) : 0.0;
+		m_flicker_last_hpc = flicker_hpc_now;
+		if (flicker_busy)
+		{
+			m_flicker_accum_ms += flicker_dt_ms;
+			const double flicker_period_ms = std::max(1.0, double(m_chains->slider_value(0, "flicker_period_ms", 16.7f)));
+			while (m_flicker_accum_ms >= flicker_period_ms)
+			{
+				m_flicker_accum_ms -= flicker_period_ms;
+				m_flicker_cycle++;
+			}
+		}
+		else
+			m_flicker_accum_ms = 0.0;
+		const double flicker_span = flicker_busy ? std::max(1e-9, (last_t1 - first_t0) / double(flicker_n)) : 1.0;
+		const int flicker_active_bucket = int(m_flicker_cycle % uint64_t(flicker_n));
+		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
+		// cached for use as next present's first_t0/last_t1/raw_count.
+		double cur_first_t0 = -1.0, cur_last_t1 = -1.0;
+		int cur_raw_count = 0;
 		// Bounding box of the drawn vectors in framebuffer pixels = the actual displayed content rect.
 		// Used to scale beam width / bloom / defocus by the CONTENT width, not the raw framebuffer width:
 		// a ROT270 (portrait) screen is pillarboxed in a wide window/fullscreen, so s_width includes the
@@ -2873,10 +3053,37 @@ int renderer_bgfx::draw(int update)
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 			{
 				vector_count++;
-				visible_count++;   // full-frame: every vector line is drawn
-				const float sdx = scan->bounds.x1 - scan->bounds.x0, sdy = scan->bounds.y1 - scan->bounds.y0;
-				if (std::sqrt(sdx * sdx + sdy * sdy) <= pt_thresh)
-					point_count++;
+				// Gather this frame's own busyness stats here (free - already walking every vector for
+				// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
+				if (flicker_on)
+				{
+					cur_raw_count++;
+					if (scan->t0 >= 0.0)
+					{
+						if (cur_first_t0 < 0.0) cur_first_t0 = scan->t0;
+						cur_last_t1 = std::max(cur_last_t1, scan->t1);
+					}
+				}
+				// This present's rotating bucket is excluded (not drawn) - the phosphor pool decays it;
+				// vector_count (list membership / staleness) still counts it so a flicker-only frame is
+				// not mistaken for a stale/empty one.
+				bool flicker_excluded = false;
+				if (flicker_busy && scan->t0 >= 0.0)
+				{
+					const int bucket = std::clamp(int((scan->t0 - first_t0) / flicker_span), 0, flicker_n - 1);
+					flicker_excluded = (bucket == flicker_active_bucket);
+				}
+				if (!flicker_excluded)
+				{
+					visible_count++;
+					// Squared-distance point/dot classification (no sqrt): pt_thresh is a threshold
+					// compare, so comparing squares is equivalent and cheaper - same test as the write
+					// loop's r_is_point below (must stay IDENTICAL, it decides ray-buffer sizing here vs
+					// ray routing there).
+					const float sdx = scan->bounds.x1 - scan->bounds.x0, sdy = scan->bounds.y1 - scan->bounds.y0;
+					if (sdx * sdx + sdy * sdy <= pt_thresh * pt_thresh)
+						point_count++;
+				}
 				vminx = std::min(vminx, std::min(scan->bounds.x0, scan->bounds.x1));
 				vmaxx = std::max(vmaxx, std::max(scan->bounds.x0, scan->bounds.x1));
 				vminy = std::min(vminy, std::min(scan->bounds.y0, scan->bounds.y1));
@@ -2884,6 +3091,7 @@ int renderer_bgfx::draw(int update)
 			}
 			scan = scan->next();
 		}
+		if (flicker_on) { m_flicker_prev_count = cur_raw_count; m_flicker_prev_t0 = cur_first_t0; m_flicker_prev_t1 = cur_last_t1; }
 		// Peak-hold the MAX content width ever drawn (= the effective screen extent, ~constant) with NO
 		// decay. This is a display-scale basis for beam width / bloom / defocus (the 1920-ref), so it must
 		// not follow the per-frame drawn amount: a decaying peak made beam_bloom lag the busyness (blur
@@ -2981,6 +3189,7 @@ int renderer_bgfx::draw(int update)
 			const bool g_ring  = m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f;
 			const bool g_fill  = m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f;
 			const bool g_flare = m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f;
+			const bool g_oglow = g_flare && m_chains->slider_value(0, "overload_glow_gain", 0.0f) > 0.0f;
 			const int  g_rays  = (m_chains->slider_value(0, "ray_gain", 0.0f) > 0.0f)
 					? int(std::clamp(m_chains->slider_value(0, "ray_count", 6.0f), 1.0f, 12.0f)) : 0;
 			// cap_no_persist: line end caps move from the core buffer to the glow buffer - the glow path
@@ -2989,14 +3198,15 @@ int renderer_bgfx::draw(int update)
 			// brighter/wider endpoints visible after the line body had decayed, turning a moving
 			// object's trail into a dotted line of cap ghosts).
 			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
-			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_rays > 0);
+			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_oglow || g_rays > 0);
 			int goff = 0;
-			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = -1;
+			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = m_glow_off_oglow = -1;
 			m_glow_rays_n = 0;
 			if (g_glow)  { m_glow_off_glow  = goff; goff += 6; }
 			if (g_ring)  { m_glow_off_ring  = goff; goff += 6; }
 			if (g_fill)  { m_glow_off_fill  = goff; goff += 6; }
 			if (g_flare) { m_glow_off_flare = goff; goff += 6; }
+			if (g_oglow) { m_glow_off_oglow = goff; goff += 6; }
 			m_glow_vpl = goff;
 			// Rays: own budget, sized by point_count (see below), not folded into m_glow_vpl.
 			m_glow_rays_n = g_rays;
@@ -3072,8 +3282,13 @@ int renderer_bgfx::draw(int update)
 						while (vprim != nullptr)
 						{
 							// Write only LINEs with PRIMFLAG_VECTOR. UI lines are drawn normally by
-							// buffer_primitives (to avoid phosphor ghosting).
-							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
+							// buffer_primitives (to avoid phosphor ghosting). Cyclic flicker exclusion
+							// (see flicker_busy above) MUST match the visible_count scan exactly (that
+							// count sized the allocation), so an excluded vector is skipped here too -
+							// not drawn this present, same as if the CPU had not generated it.
+							const bool vp_flicker_excluded = flicker_busy && vprim->t0 >= 0.0
+								&& std::clamp(int((vprim->t0 - first_t0) / flicker_span), 0, flicker_n - 1) == flicker_active_bucket;
+							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
 								if (m_line_analytic)
 								{
@@ -3099,7 +3314,7 @@ int renderer_bgfx::draw(int update)
 									// seg_len <= point_threshold test used for the point_count pre-scan and
 									// put_analytic_line's internal as_point, so the reservation matches usage.
 									const float rdx = vprim->bounds.x1 - vprim->bounds.x0, rdy = vprim->bounds.y1 - vprim->bounds.y0;
-									const bool r_is_point = std::sqrt(rdx * rdx + rdy * rdy) <= pt_thresh;
+									const bool r_is_point = (rdx * rdx + rdy * rdy) <= (pt_thresh * pt_thresh);
 									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
 									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap);
 									if (gptr) glow_verts += m_glow_vpl;
@@ -3603,6 +3818,19 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "hdr_sat_protect", 0.0f), 0.0f };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
+			}
+			// SDR-only highlight shoulder + optional shadow reshape (paper_white-relative; see
+			// fs_vector_hdr_present.sc's SDR branch). Defaults [1,1,1] = off (ceiling<=knee disables
+			// the roll-off, shadow_curve=1.0 is plain 1/2.2) so this is inert until tuned by eye.
+			bgfx_uniform *sr = m_hdr_present_effect->uniform("u_sdr_rolloff");
+			if (sr)
+			{
+				float srv[4] = {
+					m_chains->slider_value(0, "sdr_rolloff_knee", 1.0f),
+					m_chains->slider_value(0, "sdr_rolloff_ceiling", 1.0f),
+					m_chains->slider_value(0, "sdr_shadow_curve", 1.0f), 0.0f };
+				sr->set(srv, sizeof(float) * 4);
+				sr->upload();
 			}
 			bgfx_uniform *st = m_hdr_present_effect->uniform("s_tex");
 			if (st) bgfx::setTexture(0, st->handle(), m_hdr_work->texture());

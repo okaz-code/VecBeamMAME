@@ -1,11 +1,11 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
-// Monitor glow - full-screen radial additive composite. Used by the OLDER vector-color*/
-// vector-monochrome*/vector-vectrex*.json chains, which route this through their own single-buffer
-// "mglow_out" target (seeded by a separate blit pass) - additive blend hardware accumulates onto it
-// safely without a shader-side texture read. The current vector-color-phosphor.json chain uses the
-// sibling vector_monitor_glow_replace.json instead (samples+replaces in-place on the doublebuffered
-// "internal" target directly, no separate mglow_out/seed pass needed).
+// Monitor glow - full-screen radial glow added onto the base image IN THE SHADER (samples s_tex
+// itself), so this writes internal in-place (replace blend) rather than relying on additive blend
+// state onto a separate accumulation target - safe on the DOUBLEBUFFERED "internal" target only.
+// Used by the current vector-color-phosphor.json chain. Do NOT point this at a single-buffer target
+// (the older chains' "mglow_out") - see vector_monitor_glow.json (the plain additive-only sibling used
+// by those chains) for why.
 // uniforms:
 //   u_mglow_amount:     accumulated off-screen overload energy (injected each frame by the renderer)
 //   u_mglow_brightness: overall brightness multiplier slider
@@ -14,16 +14,17 @@
 	"blend": {
 		"equation": "add",
 		"srcColor": "1",
-		"dstColor": "1",
+		"dstColor": "0",
 		"srcAlpha": "1",
-		"dstAlpha": "1"
+		"dstAlpha": "0"
 	},
 	"depth": { "function": "always" },
 	"cull": { "mode": "none" },
 	"write": { "rgb": true, "alpha": true },
 	"vertex": "vs_gui",
-	"fragment": "vector/fs_vector_monitor_glow",
+	"fragment": "vector/fs_vector_monitor_glow_replace",
 	"uniforms": [
+		{ "name": "s_tex",              "type": "int",  "values": [ 0.0 ] },
 		{ "name": "u_mglow_amount",     "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_mglow_brightness", "type": "vec4", "values": [ 0.5, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_mglow_edge_diff",  "type": "vec4", "values": [ 0.5, 0.0, 0.0, 0.0 ] },
