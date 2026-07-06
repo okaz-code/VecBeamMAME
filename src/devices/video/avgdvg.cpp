@@ -82,6 +82,7 @@ void avgdvg_device_base::vg_flush()
 			int xe = m_vectbuf[i].x;
 			int ye = m_vectbuf[i].y;
 			int x0 = m_flush_xs, y0 = m_flush_ys, x1 = xe, y1 = ye;
+			const int ox0 = x0, oy0 = y0, ox1 = x1, oy1 = y1;   // pre-clip endpoints, for the t0/t1 rescale below
 
 			m_flush_xs = xe;
 			m_flush_ys = ye;
@@ -134,8 +135,29 @@ void avgdvg_device_base::vg_flush()
 				y1 = cy1;
 			}
 
-			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0, -1.0f, m_vectbuf[i].t0, m_vectbuf[i].t1);
-			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].beam_energy, m_vectbuf[i].t0, m_vectbuf[i].t1);
+			// Rescale t0/t1 to match how much of the ORIGINAL (pre-clip) length survived clipping,
+			// assuming a constant-velocity beam sweep (real AVG/DVG hardware within one draw op): the
+			// time to traverse a fraction of the vector is that same fraction of the total draw
+			// duration. Without this, a vector clipped down to a short visible fragment (mhavoc's
+			// ymin clip, bzone's clip window) kept its UNCLIPPED full draw duration attached to the
+			// now-short geometry - the renderer's speed-density energy model (drawbgfx.cpp
+			// generic_beam_energy, used here since these games never supply beam_energy directly) reads
+			// "short length swept over a normal/long duration" as an artificially slow, dwelling beam,
+			// producing a spuriously bright short segment exactly at every clip boundary.
+			attotime seg_t0 = m_vectbuf[i].t0, seg_t1 = m_vectbuf[i].t1;
+			const double orig_dx = double(ox1 - ox0), orig_dy = double(oy1 - oy0);
+			const double orig_len2 = orig_dx * orig_dx + orig_dy * orig_dy;
+			if (orig_len2 > 0.0 && seg_t1 > seg_t0)
+			{
+				const double frac_start = std::clamp((double(x0 - ox0) * orig_dx + double(y0 - oy0) * orig_dy) / orig_len2, 0.0, 1.0);
+				const double frac_end   = std::clamp((double(x1 - ox0) * orig_dx + double(y1 - oy0) * orig_dy) / orig_len2, 0.0, 1.0);
+				const double dur_s = (seg_t1 - seg_t0).as_double();
+				seg_t1 = seg_t0 + attotime::from_double(dur_s * frac_end);
+				seg_t0 = seg_t0 + attotime::from_double(dur_s * frac_start);
+			}
+
+			m_vector->add_point(x0, y0, m_vectbuf[i].color, 0, -1.0f, seg_t0, seg_t1);
+			m_vector->add_point(x1, y1, m_vectbuf[i].color, m_vectbuf[i].intensity, m_vectbuf[i].beam_energy, seg_t0, seg_t1);
 		}
 
 		if (m_vectbuf[i].status == VGCLIP)

@@ -87,8 +87,21 @@ void main()
 			dot(L, vec3(-0.001794, 0.088115, 0.913679)));
 		vec3 c2020 = max(mix(c709, cp22, u_phosphor_gamut.x), vec3_splat(0.0));
 		vec3 Ln = c2020 * 0.0001;
-		vec3 Lm = pow(Ln, vec3_splat(0.1593017578125));
-		outc = pow((vec3_splat(0.8359375) + 18.8515625 * Lm) / (vec3_splat(1.0) + 18.6875 * Lm), vec3_splat(78.84375));
+
+		// PQ (ST.2084) applied to the MAGNITUDE only, then rescaled back onto Ln - NOT per-channel,
+		// same reasoning as the SDR branch's gamma fix below. The PQ OETF is a rational function, not
+		// a pure power law, but it is still NOT ratio-preserving when applied independently per
+		// channel: a small channel (e.g. the ~1-2% R/G leakage the Phosphor Chromaticity Conversion
+		// pass introduces into an otherwise-pure saturated colour, real phosphor primaries are not
+		// perfectly spectrally pure) gets pulled disproportionately toward the dominant channel's
+		// code-value once encoded, desaturating bright saturated content (most visibly where two
+		// same-hue non-overloaded vector lines cross and add, e.g. a blue intersection reading washed-
+		// out/whitish) that should have stayed a clean, deeply saturated colour. Encoding the scalar
+		// magnitude and rescaling every channel by the SAME ratio keeps R:G:B exactly as it went in.
+		float mag     = max(Ln.r, max(Ln.g, max(Ln.b, 1e-8)));
+		float Lm_mag  = pow(mag, 0.1593017578125);
+		float pq_mag  = pow((0.8359375 + 18.8515625 * Lm_mag) / (1.0 + 18.6875 * Lm_mag), 78.84375);
+		outc = Ln * (pq_mag / mag);
 	}
 	else
 	{
@@ -118,8 +131,22 @@ void main()
 		// in this renderer). shadow_curve=1.0 (default) is the exact previous behaviour (pure 1/2.2).
 		// >1 = darker mids (compresses near-black lift), <1 = brighter mids. Tune by eye comparing an
 		// HDR/SDR toggle at fixed slider values, per vector-phosphor-overload-response-plan.md.
+		//
+		// Gamma applied to MAGNITUDE only, then rescaled back onto Ln - NOT per-channel pow(Ln,...).
+		// A per-channel gamma does not preserve chromaticity: gamma's power-law curve lifts small
+		// values much more than large ones (e.g. 1/2.2 turns a 1% linear ratio into a ~14% ratio), so
+		// even the small (~1-2%), physically-realistic cross-channel leakage from the Phosphor
+		// Chromaticity Conversion pass (real phosphor primaries are not perfectly spectrally pure)
+		// gets amplified into a visibly desaturated/whitish tinge on saturated content once its
+		// dominant channel is bright enough to matter (e.g. two overlapping same-hue, non-overloaded
+		// vector lines crossing at a shared pixel) - a genuinely blue crossing reading as washed-out or
+		// near-white. Gamma-encoding the scalar magnitude and rescaling every channel by the SAME
+		// ratio keeps the R:G:B ratio exactly as it was going in, matching the hue-preserving
+		// convention already used by the roll-off above.
 		float sd_curve = max(u_sdr_rolloff.z, 1e-3);
-		outc = pow(Ln, vec3_splat(sd_curve / 2.2));
+		float mag      = max(Ln.r, max(Ln.g, max(Ln.b, 1e-6)));
+		float mag_out  = pow(mag, sd_curve / 2.2);
+		outc = Ln * (mag_out / mag);
 	}
 
 	gl_FragColor = vec4(outc, 1.0) * v_color0;
