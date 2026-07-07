@@ -156,6 +156,10 @@ private:
 	uint16_t m_vec_fb_w = 0;
 	uint16_t m_vec_fb_h = 0;
 	bool m_vectors_in_fbo = false;  // whether vector LINEs were drawn into the FBO this frame
+	// Chain-driven opt-in: true while the active screen-0 chain declares "vector_engine":
+	// "analytic" (see bgfx_chain::vector_engine). While false the vector FBOs are released and
+	// vector LINE primitives take the stock buffer_primitives path untouched.
+	bool m_vec_engine_active = false;
 	// Emulated time (ms) at this present, cached once per frame for the Energy Jitter time axis.
 	double m_vec_time_ms = 0.0;
 	// Junction-dot geometry: this frame's visible non-point vector strokes (x0,y0,x1,y1), collected

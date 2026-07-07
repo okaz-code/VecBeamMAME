@@ -837,47 +837,14 @@ int renderer_bgfx::create()
 	memset(m_white, 0xff, sizeof(uint32_t) * 16 * 16);
 	m_texinfo.push_back(rectangle_packer::packable_rectangle(WHITE_HASH, PRIMFLAG_TEXFORMAT(TEXFORMAT_ARGB32), 16, 16, 16, nullptr, m_white));
 
-	// Create the vector-drawing FBO (window 0 only).
-	// Managed purely through the BGFX API, not via chain_manager / target_manager.
-	// Use two attachments, color + depth (BGFX sometimes assumes a depth attachment exists when
-	// drawing). Follows how bgfx_target.cpp creates them.
+	// The vector-drawing FBOs (window 0 only) are created lazily by draw()'s recreate-on-mismatch
+	// logic, and only while the active chain opts into the analytic vector engine (the chain JSON's
+	// "vector_engine": "analytic" key - chains are not loaded yet at this point). Chains without
+	// the key never allocate them and vector games render through the stock path untouched.
 	if (window().index() == 0)
 	{
 		const int ss = m_module().options().bgfx_vec_supersample();
 		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
-		m_vec_fb_w = uint16_t(wdim.width() * m_vec_supersample);
-		m_vec_fb_h = uint16_t(wdim.height() * m_vec_supersample);
-		// draw() recreates this when the size no longer matches (only the initial creation is here;
-		// draw()'s recreation logic uses equivalent code).
-		// POINT filter flags omitted -> default bilinear.
-		// MSAA can't be sampled by a standard sampler, so it's avoided; supersample + fs_vector_line instead.
-		const uint64_t color_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
-			BGFX_TEXTURE_RT;
-		const uint64_t depth_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
-			BGFX_TEXTURE_RT;
-		// RG11B10F: same 32bpp as BGRA8 but float - additive blending no longer clamps at 1.0,
-		// so line crossings and end caps keep their real energy for the chain (and for HDR).
-		bgfx::TextureHandle tex_color = bgfx::createTexture2D(
-			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
-		bgfx::TextureHandle tex_depth = bgfx::createTexture2D(
-			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, depth_flags);
-		bgfx::TextureHandle attachments[2] = { tex_color, tex_depth };
-		m_vec_fb = bgfx::createFrameBuffer(2, attachments, true);  // true=textures owned by FBO
-
-		// Analytic-glow FBO: colour-only, same format (additive draw, no depth needed). Created at
-		// full size here - the chain (and its optional glow_fbo_scale slider) is not loaded yet;
-		// draw()'s recreate-on-mismatch logic resizes it on the first frame if the chain asks for a
-		// reduced glow raster.
-		m_vec_glow_fb_w = m_vec_fb_w;
-		m_vec_glow_fb_h = m_vec_fb_h;
-		bgfx::TextureHandle glow_color = bgfx::createTexture2D(
-			m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
-		m_vec_glow_fb = bgfx::createFrameBuffer(1, &glow_color, true);
-
-		// No-persist FBO: colour-only, same size/format (additive draw, no depth needed).
-		bgfx::TextureHandle np_color = bgfx::createTexture2D(
-			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
-		m_vec_np_fb = bgfx::createFrameBuffer(1, &np_color, true);
 	}
 
 	// load the analytic-AA vector line effect
@@ -2959,7 +2926,13 @@ int renderer_bgfx::draw(int update)
 	// Per-frame refresh of the vector slider cache (screen 0 chain; harmless no-op defaults
 	// when no chain is active). Must precede everything that reads m_vs.
 	if (window_index == 0)
+	{
 		refresh_vec_slider_cache();
+		// Chain-driven opt-in for the analytic vector engine (see m_vec_engine_active): only a
+		// chain declaring "vector_engine": "analytic" routes vector LINEs through the FBO path.
+		bgfx_chain *const vchain = (m_chains != nullptr) ? m_chains->screen_chain(0) : nullptr;
+		m_vec_engine_active = (vchain != nullptr) && vchain->vector_engine();
+	}
 
 	// All sliders come from the chain JSON and are restored via chain_manager's standard load_config.
 
@@ -3014,10 +2987,23 @@ int renderer_bgfx::draw(int update)
 
 	}
 
-	// Recreate the vector FBO if its size no longer matches the current window.
-	// Avoids clipping vertices outside the FBO when the size at create() differs from the size at
-	// draw() (mid window-init, user resize, etc.).
-	if (window_index == 0)
+	// Release the vector FBOs while a chain without the analytic-engine opt-in is active: the
+	// stock buffer_primitives path then draws vector LINEs untouched, with no idle GPU resources
+	// left behind. (bgfx::destroy is deferred to frame end, so in-flight views stay valid.)
+	if (window_index == 0 && !m_vec_engine_active)
+	{
+		if (bgfx::isValid(m_vec_fb))      { bgfx::destroy(m_vec_fb);      m_vec_fb = BGFX_INVALID_HANDLE; }
+		if (bgfx::isValid(m_vec_glow_fb)) { bgfx::destroy(m_vec_glow_fb); m_vec_glow_fb = BGFX_INVALID_HANDLE; }
+		if (bgfx::isValid(m_vec_np_fb))   { bgfx::destroy(m_vec_np_fb);   m_vec_np_fb = BGFX_INVALID_HANDLE; }
+		m_vec_fb_w = m_vec_fb_h = 0;
+		m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
+		m_crt_flicker_factor = 1.0f;   // owned by the engine path; neutral for the stock path
+	}
+
+	// Create/recreate the vector FBOs while the analytic engine is active. Initial creation is
+	// lazy (every size tracker starts at 0, so the first engine frame mismatches and creates);
+	// a size or glow-scale mismatch after a resize or chain switch recreates the same way.
+	if (window_index == 0 && m_vec_engine_active)
 	{
 		const uint16_t cur_w = uint16_t(s_width[window_index]);
 		const uint16_t cur_h = uint16_t(s_height[window_index]);
