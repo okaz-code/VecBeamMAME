@@ -1605,18 +1605,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
-	auto transfer = [](float x, float lo, float hi, float g) -> float {
-		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
-		return (g == 1.0f) ? t : powf(t, g);
-	};
-	float display_a = transfer(drive,
-		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
-		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
-		m_chains->slider_value(0, "intensity_curve",     1.0f));
-	float wf = transfer(drive,
-		m_chains->slider_value(0, "width_clip_low",  0.0f),
-		m_chains->slider_value(0, "width_clip_high", 1.0f),
-		m_chains->slider_value(0, "width_curve",     1.0f));
+	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
+	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
+	// (their last user, vector-vectrex-3d.json, was retired with the legacy chains); the two-regime
+	// beam2 transfer below overrides both values on every phosphor chain.
+	float display_a = drive;
+	float wf = drive;
 	// Two-regime "beam2" transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
 	// brightness rises to max at the threshold T then SATURATES; energy above T is poured into the WIDTH
 	// instead (a gentle width slope below T, a steep one above). width_knee = the width fraction reached
@@ -1694,18 +1688,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Intensity overrange (overdrive): display_a clamps at 1.0, so a single vector tops out at the beam
 	// peak no matter how high beam_energy is - on its own it can only exceed peak by additive overlap.
 	// To let a genuinely overdriven beam push past peak by itself (and so trip the present's overload
-	// whitening), drive past intensity_clip_high adds a >1 factor carried per-vertex in the unused z
+	// whitening), drive past the overload threshold adds a >1 factor carried per-vertex in the unused z
 	// slot; fs_vector_line_analytic multiplies the deposit by (1+z), landing it in the float FBO above
 	// 1.0. 0 = off (z stays 0 -> x1).
-	// intensity_overdrive_curve shapes the ramp from intensity_clip_high (t=0) to full drive (t=1):
+	// intensity_overdrive_curve shapes the ramp from the threshold (t=0) to full drive (t=1):
 	// out = ov_gain * t^curve. curve > 1 keeps the white flare near zero until drive approaches 1.0 and
 	// then rises sharply, so only the very brightest beams blow out white. curve = 1 is linear.
-	const float i_clip_high = m_chains->slider_value(0, "intensity_clip_high", 1.0f);
 	const float ov_gain     = m_chains->slider_value(0, "intensity_overdrive", 0.0f);
 	// Overload (white-hot) threshold: a beam with normalized energy n above this trips the flare.
-	// Independent of the display clip; defaults to intensity_clip_high so chains without the slider
-	// behave as before (e.g. overload_threshold 0.9 -> beam_energy >= 0.9 vectors blow out).
-	const float ov_thresh   = m_chains->slider_value(0, "overload_threshold", i_clip_high);
+	// Defaults to 1.0 (= peak) for chains without the slider.
+	const float ov_thresh   = m_chains->slider_value(0, "overload_threshold", 1.0f);
 	// Overload ramp: the n-span over which the overdrive/bloom ramp from the threshold toward full.
 	// 0 = legacy (1 - threshold), which collapses to the 1e-3 guard (a step) once the threshold is at
 	// or above 1.0 - set an explicit span to use thresholds > 1 (only object-lifted vectors overdrive,
@@ -1780,7 +1772,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		length_factor *= (1.0f - hv_droop * 0.4f * m_hv_load_norm);
 
 	// Overdrive white-out lives in the glow buffer (post shadow-mask), NOT here: a beam driven past
-	// intensity_clip_high deposits an UNMASKED white flare (below) so the white bloom is not patterned by
+	// the overload threshold deposits an UNMASKED white flare (below) so the white bloom is not patterned by
 	// the shadow mask. The masked core stays the ordinary coloured line at its normal intensity.
 
 	// Per-vector phosphor-tint white-pull (moved here from the old "Phosphor Tint" chain pass, which
@@ -1928,13 +1920,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	if (flat_f > 0.0f)
 	{
 		wcore = flat_f * 0.5f * width;
-		// Edge skirt sigma: flat_edge > 0 sets it DIRECTLY in 1920-ref pixels (decoupled from the
-		// flat fraction, so the solid width and the edge softness tune independently); 0 derives it
-		// from the remaining (1 - F) share of the gaussian as before. 0.2 px floor keeps the erf
-		// box integration stable.
-		const float flat_edge = m_chains->slider_value(0, "flat_edge", 0.0f);
-		sigma = (flat_edge > 0.0f) ? std::max(0.2f, flat_edge * (m_vec_res_w / 1920.0f))
-								   : std::max(sig_floor, sigma * (1.0f - flat_f));
+		// Edge skirt sigma from the remaining (1 - F) share of the gaussian (the direct flat_edge
+		// override knob was retired).
+		sigma = std::max(sig_floor, sigma * (1.0f - flat_f));
 	}
 	// Overload Glow (bloom) sigma: sigma is now final, so add the wide-halo width on top of it (same
 	// pattern as analytic_glow's glow_sig = sigma + glow_w). The width term is scaled by oglow_ramp
@@ -2484,18 +2472,12 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
-	auto transfer = [](float x, float lo, float hi, float g) -> float {
-		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
-		return (g == 1.0f) ? t : powf(t, g);
-	};
-	float display_a = transfer(drive,
-		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
-		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
-		m_chains->slider_value(0, "intensity_curve",     1.0f));
-	float wf = transfer(drive,
-		m_chains->slider_value(0, "width_clip_low",  0.0f),
-		m_chains->slider_value(0, "width_clip_high", 1.0f),
-		m_chains->slider_value(0, "width_curve",     1.0f));
+	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
+	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
+	// (their last user, vector-vectrex-3d.json, was retired with the legacy chains); the two-regime
+	// beam2 transfer below overrides both values on every phosphor chain.
+	float display_a = drive;
+	float wf = drive;
 	// Two-regime "beam2" transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
 	// brightness rises to max at the threshold T then SATURATES; energy above T is poured into the WIDTH
 	// instead (a gentle width slope below T, a steep one above). width_knee = the width fraction reached
@@ -3285,7 +3267,7 @@ int renderer_bgfx::draw(int update)
 				if (lp)
 				{
 					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
-									  m_chains->slider_value(0, "line_sharpness", 1.0f),
+									  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
 									  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
@@ -3363,7 +3345,7 @@ int renderer_bgfx::draw(int update)
 			// No-persist FBO: draw the caps / short-dwell dots into m_vec_np_fb (cleared, additive),
 			// then inject it as "npglow0" so a chain pass adds it back AFTER the phosphor pool - bright
 			// while drawn, no afterimage, and never fed into the narrow/wide glow cascade. Uses the same
-			// analytic line effect as the body view (line_sharpness in u_line_params), unlike the soft
+			// analytic line effect as the body view (same u_line_params), unlike the soft
 			// glow view. Only when caps are routed here and the buffer was allocated.
 			// Gated on the buffer ALLOCATION (see the glow block): a successful alloc means we own the
 			// no-persist FBO this frame and clear it - even with no caps / junction dots - so the chain's
@@ -3392,12 +3374,12 @@ int renderer_bgfx::draw(int update)
 						inv->set(values, sizeof(float) * 2);
 						inv->upload();
 					}
-					// same params as the body view (line_sharpness included): crisp dots, not soft halo
+					// same params as the body view: crisp dots, not soft halo
 					bgfx_uniform* lp = line_eff->uniform("u_line_params");
 					if (lp)
 					{
 						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
-										  m_chains->slider_value(0, "line_sharpness", 1.0f),
+										  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
 										  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
