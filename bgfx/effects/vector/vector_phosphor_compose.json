@@ -1,0 +1,28 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Phosphor compose: pool emit (peak * S(age)) + no-persist FBO add + phosphor tint gain in one
+// full-res pass, replacing the former Phosphor Apply / NoPersist Combine / Phosphor Tint trio.
+// u_phos = (dt_ms, half_ms, curve, total_ms), injected by the renderer into the "Phosphor Apply"
+// chain entry by name. u_np_gain default 0 = no-persist add off.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_phosphor_compose",
+	"uniforms": [
+		{ "name": "s_tex",               "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_np",                "type": "int",  "values": [ 1.0 ] },
+		{ "name": "u_phos",              "type": "vec4", "values": [ 0.0, 42.0, 1.2, 500.0 ] },
+		{ "name": "u_np_gain",           "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_line_channel_gain", "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
+		{ "name": "u_inv_view_dims",     "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
