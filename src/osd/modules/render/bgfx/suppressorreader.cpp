@@ -54,7 +54,14 @@ bgfx_suppressor* suppressor_reader::read_from_value(const Value& value, const st
 			break;
 	}
 
-	int values[4];
+	// Comparison values are stored as FLOAT bit patterns: bgfx_suppressor::suppress() reads the
+	// current slider values via bgfx_slider::value() (always float, for every slider type including
+	// int/intenum) and memcmp()s them against this buffer. Storing raw ints here (as this reader
+	// originally did) meant any comparison against a non-zero value could never match - int 1 is
+	// 0x00000001 but float 1.0f is 0x3F800000 - so conditions like "color_saturation == 1.0" or
+	// "chroma_mode == 3" silently never suppressed their pass. Only zero survived (all-zero bit
+	// pattern is shared by int 0 and float 0.0f), which is why every ==0 disablewhen worked.
+	float values[4];
 	if (slider_count > 1)
 	{
 		get_values(value, prefix, "value", values, slider_count);
@@ -66,7 +73,7 @@ bgfx_suppressor* suppressor_reader::read_from_value(const Value& value, const st
 	}
 	else
 	{
-		values[0] = get_int(value, "value", 0);
+		values[0] = get_float(value, "value", 0.0f);
 	}
 
 	return new bgfx_suppressor(std::move(check_sliders), condition, mode, values);
@@ -82,13 +89,13 @@ bool suppressor_reader::validate_parameters(const Value& value, const std::strin
 	return true;
 }
 
-bool suppressor_reader::get_values(const Value& value, std::string prefix, std::string name, int* values, const int count)
+bool suppressor_reader::get_values(const Value& value, std::string prefix, std::string name, float* values, const int count)
 {
 	const Value& value_array = value[name.c_str()];
 	for (uint32_t i = 0; i < value_array.Size() && i < count; i++)
 	{
-		if (!READER_CHECK(value_array[i].IsInt(), "%svalue[%u] must be an integer\n", prefix, i)) return false;
-		values[i] = value_array[i].GetInt();
+		if (!READER_CHECK(value_array[i].IsNumber(), "%svalue[%u] must be a number\n", prefix, i)) return false;
+		values[i] = float(value_array[i].GetDouble());
 	}
 	return true;
 }
