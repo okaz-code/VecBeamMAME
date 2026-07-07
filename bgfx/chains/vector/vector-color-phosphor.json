@@ -73,6 +73,8 @@
 		{ "type": "float", "name": "vector_linearity_x", "text": "Vector Linearity X (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "vector_linearity_y", "text": "Vector Linearity Y (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "vector_crt_flicker", "text": "Vector CRT Flicker (stale-frame dim)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hv_droop_ref",       "text": "HV Droop Load Ref",         "default": 10.0, "min": 1.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
 		{ "type": "float", "name": "intensity_overdrive",      "text": "Overdrive (hot core)",      "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "intensity_overdrive_curve","text": "Overdrive Curve",           "default": 2.0, "min": 0.25, "max": 8.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -254,6 +256,8 @@
 		  "output": "internal" },
 
 		{ "effect": "vector/vector_color_mix", "name": "Phosphor Tint",
+		  "_comment": "at phosphor_color==[1,1,1] (this chain's default) this pass is a provable identity (mix matrices are fixed identity literals, gain=1, and the legacy overdrive uniforms sit at their JSON defaults of 0 - guaranteed every submit by the effect-uniform reset mechanism), so it is skipped outright - one full-res pass saved.",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "phosphor_color", "value": [ 1.0, 1.0, 1.0 ] } ],
 		  "input": [ { "sampler": "s_tex", "target": "internal" } ],
 		  "uniforms": [
 			{ "uniform": "u_red_mix",           "value":  [ 1.0, 0.0, 0.0, 0.0 ] },
