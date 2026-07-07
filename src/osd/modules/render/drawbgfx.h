@@ -163,6 +163,111 @@ private:
 	// (games that jump back to deposit the dot separately - list adjacency does not catch those).
 	// Member (not a local) so the capacity persists across frames instead of reallocating.
 	std::vector<std::array<float, 4>> m_j_segments;
+
+public:
+	// Per-frame cache of every chain slider the per-vector hot paths read. slider_value() is a
+	// string concatenation plus a linear scan over every chain slider; put_analytic_line reads
+	// dozens of sliders per vector, so on a busy scene that was >100k lookups per frame. The
+	// cache is refreshed once per draw() (~80 lookups), and the hot paths read plain floats.
+	// Field defaults mirror the read sites' fallback values, so frames rendered before the
+	// first refresh (or without a chain) behave exactly like the old chain-less reads.
+	struct vec_slider_cache
+	{
+		float analytic_glow = 0.0f;
+		float analytic_glow_width = 8.0f;
+		float beam_width_max = 1.5f;
+		float beam_width_min = 1.0f;
+		float beam_width_over_scale = -1.0f;
+		float beam_width_overmax = 4.0f;
+		float bright_curve = 1.0f;
+		float bright_normal_cap = 1.0f;
+		float bright_sigmoid = 0.0f;
+		float bright_sigmoid_center = 0.5f;
+		float bright_threshold = 0.0f;
+		float core_flat = 0.0f;
+		float deflection_damping = 0.5f;
+		float deflection_dynamics = 0.0f;
+		float deflection_settle = 5.0f;
+		float dot_flat = 0.0f;
+		float dot_no_persist_dwell = 0.0f;
+		float edge_defocus = 0.0f;
+		float edge_defocus_curve = 2.0f;
+		float energy_curve = 1.0f;
+		float energy_dot_curve = 1.6f;
+		float energy_dot_max = 3.2f;
+		float energy_dot_ref = 30.0f;
+		float energy_infl = 0.6f;
+		float energy_jitter = 0.0f;
+		float energy_jitter_hz = 15.0f;
+		float energy_jitter_onset = 0.8f;
+		float energy_jitter_ramp = 0.5f;
+		float energy_line_max = 4.0f;
+		float energy_model = 0.0f;
+		float energy_speed_norm = 0.8f;
+		float glow_curve = 1.0f;
+		float glow_narrow = 0.0f;
+		float glow_threshold = 0.0f;
+		float hv_droop = 0.0f;
+		float intensity_overdrive = 0.0f;
+		float intensity_overdrive_curve = 2.0f;
+		float junction_dot_scale = 1.0f;
+		float junction_dot_thresh = 1.0f;
+		float line_cap_brightness = 1.0f;
+		float line_cap_intensity_curve = 0.0f;
+		float line_cap_min_size = 0.0f;
+		float line_cap_size = 2.0f;         // = LINE_CAP_SIZE_PX
+		float line_cap_width = 1.5f;
+		float line_point_threshold = 2.0f;  // = LINE_POINT_THRESHOLD
+		float linear_color = 0.0f;
+		float overdrive_core = 0.0f;
+		float overdrive_sat_curve = 1.0f;
+		float overload_bloom = 0.0f;
+		float overload_dot_gain = 1.0f;
+		float overload_gain = 0.0f;
+		float overload_gain_center = 0.5f;
+		float overload_glow_gain = 0.0f;
+		float overload_glow_width = 40.0f;
+		float overload_max = 0.0f;
+		float overload_ramp = 0.0f;
+		float overload_threshold = 1.0f;
+		float phosphor_overdrive = 0.0f;
+		float point_width_scale = 1.0f;
+		float ray_angle = 15.0f;
+		float ray_gain = 0.0f;
+		float ray_length = 60.0f;
+		float ray_var = 0.6f;
+		float ray_width = 1.2f;
+		float ring_fill = 0.0f;
+		float ring_gain = 0.0f;
+		float ring_min_dwell = 0.0f;
+		float ring_over_gain = 0.0f;
+		float ring_radius = 24.0f;
+		float ring_threshold = 0.0f;
+		float ring_width = 3.0f;
+		float vector_linearity_x = 1.0f;
+		float vector_linearity_y = 1.0f;
+		float width_curve = 1.0f;
+		float width_knee = 0.3f;
+		float width_over_curve = 1.0f;
+		float width_sigmoid = 0.0f;
+		float width_sigmoid_center = 0.5f;
+		// overdrive_knee is a vec2 (knee, ceiling); the ceiling is pre-guarded to knee + eps in
+		// the refresh so chains still carrying a plain float knee keep the hard-step behaviour.
+		float overdrive_knee = 0.6f;
+		float overdrive_ceil = 0.6001f;
+		float overdrive_color[3] = { 1.0f, 1.0f, 1.0f };
+	};
+
+private:
+	vec_slider_cache m_vs;
+	void refresh_vec_slider_cache();
+	void rebuild_vec_slider_map();
+	// name->pointer map for the cache refresh, rebuilt when the screen-0 chain changes
+	std::vector<std::pair<float vec_slider_cache::*, bgfx_slider*>> m_vs_map;
+	bgfx_chain *m_vs_src_chain = nullptr;
+	bgfx_slider *m_vs_knee0 = nullptr;
+	bgfx_slider *m_vs_knee1 = nullptr;
+	bgfx_slider *m_vs_ovcol[3] = { nullptr, nullptr, nullptr };
 	// Analytic glow FBO: the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
 	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Colour-only.
 	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active
