@@ -1712,7 +1712,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float w_over_scale_slider = m_chains->slider_value(0, "beam_width_over_scale", -1.0f);
 	const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
 	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
-	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
+	if (as_point)
+	{
+		// point_width_scale eased by beam energy: the full scale applies to a WEAK dot (n = 0) and
+		// fades to neutral (x1) as the dot approaches saturation (n >= 1). Taming conspicuous
+		// low-intensity mid-line dots (scale < 1) therefore does not shrink genuinely hot dwell
+		// dots (bullets / stars), whose width keeps coming from the transfer + overload widening.
+		const float p_scale = m_chains->slider_value(0, "point_width_scale", 1.0f);
+		beam_units *= p_scale + (1.0f - p_scale) * std::clamp(n, 0.0f, 1.0f);
+	}
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
@@ -2611,7 +2619,15 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float w_over_scale_slider = m_chains->slider_value(0, "beam_width_over_scale", -1.0f);
 	const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
 	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
-	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
+	if (as_point)
+	{
+		// point_width_scale eased by beam energy: the full scale applies to a WEAK dot (n = 0) and
+		// fades to neutral (x1) as the dot approaches saturation (n >= 1). Taming conspicuous
+		// low-intensity mid-line dots (scale < 1) therefore does not shrink genuinely hot dwell
+		// dots (bullets / stars), whose width keeps coming from the transfer + overload widening.
+		const float p_scale = m_chains->slider_value(0, "point_width_scale", 1.0f);
+		beam_units *= p_scale + (1.0f - p_scale) * std::clamp(n, 0.0f, 1.0f);
+	}
 	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
