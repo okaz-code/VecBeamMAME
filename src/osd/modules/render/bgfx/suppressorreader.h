@@ -25,7 +25,7 @@ public:
 	static bgfx_suppressor* read_from_value(const Value& value, const std::string &prefix, std::map<std::string, bgfx_slider*>& sliders);
 
 private:
-	static bool get_values(const Value& value, std::string prefix, std::string name, int* values, const int count);
+	static bool get_values(const Value& value, std::string prefix, std::string name, float* values, const int count);
 	static bool validate_parameters(const Value& value, const std::string &prefix);
 
 	static const int CONDITION_COUNT = 2;
