@@ -156,9 +156,15 @@ private:
 	uint16_t m_vec_fb_h = 0;
 	bool m_vectors_in_fbo = false;  // whether vector LINEs were drawn into the FBO this frame
 	// Analytic glow FBO (案A): the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
-	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Same size as
-	// m_vec_fb; colour-only. Injected to the chain as "glow0" when analytic glow is active.
+	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Colour-only.
+	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active
+	// chain's glow_fbo_scale slider (1.0 when the chain has no such slider): glow content is smooth
+	// wide gaussians evaluated analytically from interpolated line-local varyings (no gl_FragCoord),
+	// so a reduced raster just samples the same function at lower density - a fast-variant chain sets
+	// 0.5 to quarter the fill cost of the biggest fill-rate consumer (up to 200px oglow footprints).
 	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
+	uint16_t m_vec_glow_fb_w = 0;
+	uint16_t m_vec_glow_fb_h = 0;
 	// No-persist FBO: line end caps and short-dwell junction dots are drawn here (bypassing the
 	// phosphor pool) so a chain pass can add them back AFTER the pool - bright while drawn, no
 	// afterimage - without ever feeding them into the narrow/wide glow cascade (which m_vec_glow_fb
