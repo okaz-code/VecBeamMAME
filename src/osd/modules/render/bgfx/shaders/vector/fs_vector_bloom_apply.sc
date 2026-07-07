@@ -82,7 +82,7 @@ void main()
 	vec3 noise_factor = vec3_splat(1.0) + r * max(vec3_splat(0.0), vec3_splat(u_bloom_noise.x) * exp(-8.0 * bloom));
 	bloom *= noise_factor;
 
-	// Ambient / non-excited phosphor body colour (master plan 2-7): room light reflected off the dark
+	// Ambient / non-excited phosphor body colour: room light reflected off the dark
 	// phosphor and metal-back raises the "black" to the body tint. A flat additive floor; the later
 	// tint / vignette / HDR-encode passes shape it through the same optics. u_ambient_level 0 = off,
 	// so chains without the uniform are unaffected. The slider is in milli-units (0..20 reads nicer

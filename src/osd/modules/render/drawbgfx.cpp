@@ -1640,10 +1640,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
 	// (their last user, vector-vectrex-3d.json, was retired with the legacy chains); the two-regime
-	// beam2 transfer below overrides both values on every phosphor chain.
+	// two-regime transfer below overrides both values on every phosphor chain.
 	float display_a = drive;
 	float wf = drive;
-	// Two-regime "beam2" transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
+	// Two-regime transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
 	// brightness rises to max at the threshold T then SATURATES; energy above T is poured into the WIDTH
 	// instead (a gentle width slope below T, a steep one above). width_knee = the width fraction reached
 	// at T. b is the normalized beam energy (drive). This overrides display_a and wf computed above.
@@ -1656,7 +1656,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// keeps getting thicker as energy rises (no width ceiling at n=1). bw_max = width at n=1.
 		const float below = std::min(n, T) / T;                            // 0..1 over [0,T]
 		// Width growth beyond beam_width_max once the beam is driven past the threshold (e.g. an object-lifted
-		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
+		// bullet/explosion). The cap is the beam_width_overmax slider (multiple of the bw_min->bw_max span that the
 		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
 		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
 		float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
@@ -1815,7 +1815,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// energy model (speed / dwell derived from the per-segment timestamps) covers all three.
 	float length_factor = m_crt_flicker_factor;
 
-	// HV supply droop (master plan 3-4 / 6.2): a bright/busy frame sags the EHT supply, dimming the
+	// HV supply droop: a bright/busy frame sags the EHT supply, dimming the
 	// whole picture (here) and defocusing the spot (sigma, below). m_hv_load_norm is the smoothed 0..1
 	// frame load; hv_droop scales the effect (0 = off). The dim is capped at 0.4 of full brightness.
 	const float hv_droop = m_chains->slider_value(0, "hv_droop", 0.0f);
@@ -1930,7 +1930,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			sigma += overload_bloom * obres * over_e * 4.0f;   // overload_bloom (0..4) x4 = up to ~16px spot widen
 		}
 	}
-	// Edge defocus (vgens / master plan 3-5): at large deflection angles the spot defocuses
+	// Edge defocus (per jmargolin.com/vgens): at large deflection angles the spot defocuses
 	// astigmatically, so sigma grows toward the screen edges. The segment midpoint's radius is
 	// normalised to the half-diagonal (0 at centre, 1 at a corner) and raised to edge_defocus_curve
 	// (2 = quadratic, matching deflection-angle growth). edge_defocus 0 = off.
@@ -2308,7 +2308,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// End caps: gaussian dots driven by the same line_cap sliders as the classic path
 	// (size/min/intensity-curve/brightness). The erf already gives the physical 50% end
 	// roll-off; these add the visible bright endpoint on top, until the dwell-time model
-	// (master plan 2-3) replaces them. In deflection mode the body uses DEFL_NOUT quads, so the
+	// (vertex_dwell) replaces them. In deflection mode the body uses DEFL_NOUT quads, so the
 	// caps move to the slots right after it.
 	// cap_no_persist: caps live in the separate NO-PERSIST FBO (post-pool, no afterimage) instead
 	// of the core. That buffer's layout is fixed: slot [0] = no-persist dot (point path only, unused
@@ -2558,10 +2558,10 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
 	// (their last user, vector-vectrex-3d.json, was retired with the legacy chains); the two-regime
-	// beam2 transfer below overrides both values on every phosphor chain.
+	// two-regime transfer below overrides both values on every phosphor chain.
 	float display_a = drive;
 	float wf = drive;
-	// Two-regime "beam2" transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
+	// Two-regime transfer (bright_threshold > 0 enables it; 0 = stock, other chains unaffected):
 	// brightness rises to max at the threshold T then SATURATES; energy above T is poured into the WIDTH
 	// instead (a gentle width slope below T, a steep one above). width_knee = the width fraction reached
 	// at T. b is the normalized beam energy (drive). This overrides display_a and wf computed above.
@@ -2574,7 +2574,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		// keeps getting thicker as energy rises (no width ceiling at n=1). bw_max = width at n=1.
 		const float below = std::min(n, T) / T;                            // 0..1 over [0,T]
 		// Width growth beyond beam_width_max once the beam is driven past the threshold (e.g. an object-lifted
-		// bullet/explosion). The cap is the beam_width_overmax slider (× of the bw_min->bw_max span that the
+		// bullet/explosion). The cap is the beam_width_overmax slider (multiple of the bw_min->bw_max span that the
 		// "above" region can add): raise it so "lifted" objects get several times the normal width. Default 4.
 		const float w_overmax = std::max(0.0f, m_chains->slider_value(0, "beam_width_overmax", 4.0f));
 		float above = (n > T) ? std::min((n - T) / std::max(0.05f, 1.0f - T), w_overmax) : 0.0f;
@@ -2642,7 +2642,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// knobs are gone (superseded by the unified energy model on the analytic path).
 	float length_factor = m_crt_flicker_factor;
 
-	// Pack the line color: hue from the primitive (× length fade × flicker), alpha = display intensity.
+	// Pack the line color: hue from the primitive (x length fade x flicker), alpha = display intensity.
 	const uint32_t rgba = u32Color(
 		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
 		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
@@ -2945,7 +2945,7 @@ int renderer_bgfx::draw(int update)
 		const float pt_thresh = m_line_analytic
 				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
 		// Cyclic per-vector flicker (real AVG/DVG only, see vector_device::avg_timing): reproduces the
-		// beam-event-mode effect lost in the phase-3 removal - real vector hardware re-traces EVERY
+		// effect lost when the windowed beam-event draw mode was retired - real vector hardware re-traces EVERY
 		// vector EVERY refresh (there is no "static image"), so a busy scene (more vectors than the
 		// beam can visit before it must restart the sweep) makes a DIFFERENT rotating subset miss its
 		// redraw each individual refresh, even for otherwise-unchanging content. Modelled as: divide
@@ -3108,7 +3108,7 @@ int renderer_bgfx::draw(int update)
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
 			m_vec_time_ms = window().machine().time().as_double() * 1000.0;
 
-			// HV supply droop load (master plan 3-4 / 6.2): peak-track this frame's total beam energy
+			// HV supply droop load: peak-track this frame's total beam energy
 			// with gentle decay (so it does not flicker against vsync when a frame is stale),
 			// then normalise by hv_droop_ref to a 0..1 load that put_analytic_line turns into a global
 			// dim + defocus. Computed before the draw so this present's lines see the current load.
@@ -3117,7 +3117,7 @@ int renderer_bgfx::draw(int update)
 			const float hv_ref = std::max(0.01f, m_chains->slider_value(0, "hv_droop_ref", 10.0f));
 			m_hv_load_norm = std::clamp(m_hv_smoothed / hv_ref, 0.0f, 1.0f);
 
-			// Vertex-dwell endpoint dots (master plan 2-3): neighbour-aware pass over the vector list in
+			// Vertex-dwell endpoint dots: neighbour-aware pass over the vector list in
 			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
 			// proportion to how sharply it turns (straight joint -> no dwell, sharp corner / reversal ->
 			// full dwell); an unshared point is a stroke terminus where the beam stops (full dwell). The
@@ -3159,7 +3159,7 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
-			// Deflection-amplifier dynamics (master plan 3-3): when on, each analytic line is drawn as a
+			// Deflection-amplifier dynamics: when on, each analytic line is drawn as a
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
 			// DEFL_NOUT*6 verts (+ the two caps). The beam integrator state is reset at the start of each
 			// frame's draw. Needs the analytic path; 0 = off (exact straight lines, 18 verts as before).
@@ -3427,7 +3427,7 @@ int renderer_bgfx::draw(int update)
 			}
 			m_vectors_in_fbo = true;
 
-			// Analytic glow (案A): draw the separate glow buffer into m_vec_glow_fb (cleared, additive),
+			// Analytic glow: draw the separate glow buffer into m_vec_glow_fb (cleared, additive),
 			// then inject it as "glow0" so a chain pass can add it after the shadow mask. Starburst rays
 			// share this SAME FBO/view via a second submit from their own buffer (ray_tvb, sized by
 			// point_count - see m_ray_vpl), so no chain/JSON wiring is needed for them.
@@ -3794,7 +3794,7 @@ int renderer_bgfx::draw(int update)
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
 			}
-			// Phosphor gamut blend (master plan 2-6): push the Rec.709 primaries toward the P22
+			// Phosphor gamut blend: push the Rec.709 primaries toward the P22
 			// phosphor chromaticities in the Rec.2020 container. 0 = off (exact 709 -> 2020).
 			bgfx_uniform *pg = m_hdr_present_effect->uniform("u_phosphor_gamut");
 			if (pg)

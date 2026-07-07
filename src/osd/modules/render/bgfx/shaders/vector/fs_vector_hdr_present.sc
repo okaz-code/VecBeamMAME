@@ -76,7 +76,7 @@ void main()
 		// Rec.709 -> Rec.2020 (standard). Blended with a game-RGB -> P22-phosphor-primaries matrix
 		// (same Rec.2020 container) so phosphor_gamut pushes colours toward the real CRT phosphor
 		// chromaticities - mainly a more saturated Eu red that sRGB/709 cannot reach but Rec.2020 can
-		// (master plan 2-6). Both preserve the white point; blend 0 = exact current behaviour.
+		// Both preserve the white point; blend 0 = exact current behaviour.
 		vec3 c709 = vec3(
 			dot(L, vec3(0.627402, 0.329292, 0.043306)),
 			dot(L, vec3(0.069095, 0.919544, 0.011360)),
