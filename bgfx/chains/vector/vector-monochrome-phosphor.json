@@ -14,34 +14,75 @@
 	"screen_type": "vector",
 
 	"sliders": [
+		// ---- Phosphor persistence ----
 		{ "type": "float", "name": "phosphor_half_ms",  "text": "Phosphor Half-life (ms)",   "default": 12.0, "min": 1.0, "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 3.0, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_total_ms", "text": "Phosphor Total (ms)",       "default": 500.0,"min": 20.0,"max": 1500.0,"step": 10.0,"format": "%4.0f", "screen": "vector" },
-		{ "type": "float", "name": "color_saturation", "text": "Source Color Saturation",   "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "linear_color",     "text": "Color-Linear Brightness",   "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "phosphor_color",    "text": "Phosphor Color ",           "default": [ 0.90, 0.90, 1.00 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "phosphor_overdrive", "text": "Overdrive (white at peak)",  "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "vec2",  "name": "overdrive_knee",     "text": "Overdrive Knee/Ceiling (xpeak) ", "default": [ 0.6, 0.6 ], "max": [ 4.0, 4.0 ], "min": [ 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overdrive_sat_curve", "text": "Overdrive Saturation Curve", "default": 1.0, "min": 0.2, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "color", "name": "overdrive_color",    "text": "Overdrive Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
+		// ---- Brightness (two-regime transfer) ----
 		{ "type": "float", "name": "bright_threshold",  "text": "Brightness Threshold (T)", "default": 0.5, "min": 0.05, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "bright_curve",      "text": "Brightness Curve",          "default": 1.0, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.5, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "bright_sigmoid",        "text": "Brightness Sigmoid",        "default": 0.0, "min": -4.0, "max": 4.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "bright_sigmoid_center", "text": "Brightness Sigmoid Center", "default": 0.4, "min": 0.05, "max": 0.95,"step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "linear_color",     "text": "Color-Linear Brightness",   "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+
+		// ---- Beam width / shape / focus ----
 		{ "type": "float", "name": "width_knee",        "text": "Width at Threshold",        "default": 0.8, "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "width_curve",       "text": "Width Curve",               "default": 1.0, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "width_sigmoid",         "text": "Width Sigmoid",             "default": 0.0, "min": -4.0, "max": 4.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_sigmoid_center",  "text": "Width Sigmoid Center",      "default": 0.5, "min": 0.05, "max": 0.95,"step": 0.01, "format": "%1.2f", "screen": "vector" },
-
 		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 0.5, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "width_over_curve",  "text": "Width Overload Curve",     "default": 1.0, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "core_flat",         "text": "Line Core Flatness",        "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "dot_flat",          "text": "Dot Core Flatness",         "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "line_point_threshold","text": "Line/Point Threshold (px)","default": 2.0, "min": 0.0,  "max": 8.0,  "step": 0.5,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "point_width_scale",  "text": "Point Width Scale",         "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.0, 0.0 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+
+		// ---- Line caps ----
+		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "intenum", "name": "cap_no_persist", "text": "Line Caps: No Persistence", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
+		{ "type": "float", "name": "dot_no_persist_dwell", "text": "Dot No-Persist Dwell (us)", "default": 20.0, "min": 0.0,  "max": 60.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+
+		// ---- Overload / overdrive ----
+		{ "type": "float", "name": "overload_threshold","text": "Overload Threshold",        "default": 0.55, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_ramp",            "text": "Overload Ramp (n span)",    "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "intensity_overdrive",      "text": "Overdrive (hot core)",      "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "intensity_overdrive_curve","text": "Overdrive Curve",           "default": 2.0, "min": 0.25, "max": 8.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_dot_gain",        "text": "Overdrive Dot Gain",        "default": 2.0, "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "overload_max",             "text": "Overdrive Max (x peak)",    "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "overdrive_core",           "text": "Overdrive to Core",         "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_gain",            "text": "Overdrive Gain (S-curve)",  "default": 0.0, "min": -4.0, "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "overload_gain_center",     "text": "Overdrive Gain Center",     "default": 0.5, "min": 0.05, "max": 0.95, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.7, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 0.5, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "width_over_curve",  "text": "Width Overload Curve",     "default": 1.0, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_overdrive", "text": "Overdrive (white at peak)",  "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "vec2",  "name": "overdrive_knee",     "text": "Overdrive Knee/Ceiling (xpeak) ", "default": [ 0.6, 0.6 ], "max": [ 4.0, 4.0 ], "min": [ 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overdrive_sat_curve", "text": "Overdrive Saturation Curve", "default": 1.0, "min": 0.2, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "color", "name": "overdrive_color",    "text": "Overdrive Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
+
+		// ---- Halation / starburst (overdrive-driven) ----
+		{ "type": "float", "name": "ring_over_gain",           "text": "Halation from Overdrive",   "default": 1.0,  "min": 0.0,  "max": 20.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "ring_gain",                "text": "Halation Rim",              "default": 0.005, "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "ring_fill",                "text": "Halation Fill",             "default": 0.015,  "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "ring_radius",              "text": "Halation Radius (px)",      "default": 44.0, "min": 4.0,  "max": 80.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "ring_width",               "text": "Halation Width (px)",       "default": 3.0,  "min": 0.75, "max": 12.0, "step": 0.25, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ring_min_dwell",           "text": "Halation Min Dwell (us)",   "default": 20.0, "min": 0.0,  "max": 200.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "ray_gain",                 "text": "Starburst Gain",            "default": 0.005, "min": 0.0,  "max": 0.5,  "step": 0.001, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "ray_var",                  "text": "Starburst Uneven",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ray_count",                "text": "Starburst Rays",            "default": 6.0,  "min": 2.0,  "max": 12.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "ray_length",               "text": "Starburst Length (px)",     "default": 60.0, "min": 8.0,  "max": 300.0, "step": 2.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "ray_width",                "text": "Starburst Width (px)",      "default": 0.8,  "min": 0.5,  "max": 6.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "ray_angle",                "text": "Starburst Angle (deg)",     "default": 15.0, "min": 0.0,  "max": 180.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
+
+		// ---- Energy model (speed / dwell / frame load) ----
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "float", "name": "energy_infl",        "text": "Energy Influence",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_speed_norm",  "text": "Energy Speed Norm (scr/ms)","default": 0.6,  "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -50,42 +91,10 @@
 		{ "type": "float", "name": "energy_dot_ref",     "text": "Energy Dot Ref (us)",       "default": 30.0, "min": 2.0,  "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_curve",   "text": "Energy Dot Curve",          "default": 1.6,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_max",     "text": "Energy Dot Max",            "default": 3.2,  "min": 1.0,  "max": 16.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 12.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
-		{ "type": "float", "name": "flicker_buckets", "text": "Cyclic Flicker Buckets (N)",         "default": 6.0,   "min": 2.0, "max": 16.0,   "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 16.7,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
-		{ "type": "float", "name": "line_point_threshold","text": "Line/Point Threshold (px)","default": 2.0, "min": 0.0,  "max": 8.0,  "step": 0.5,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "point_width_scale",  "text": "Point Width Scale",         "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "vector_linearity_x", "text": "Vector Linearity X (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "vector_linearity_y", "text": "Vector Linearity Y (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "vector_crt_flicker", "text": "Vector CRT Flicker (stale-frame dim)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop_ref",       "text": "HV Droop Load Ref",         "default": 10.0, "min": 1.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
-		{ "type": "float", "name": "intensity_overdrive",      "text": "Overdrive (hot core)",      "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "intensity_overdrive_curve","text": "Overdrive Curve",           "default": 2.0, "min": 0.25, "max": 8.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_threshold","text": "Overload Threshold",        "default": 0.55, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_ramp",            "text": "Overload Ramp (n span)",    "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_dot_gain",        "text": "Overdrive Dot Gain",        "default": 2.0, "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "overload_max",             "text": "Overdrive Max (x peak)",    "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "overdrive_core",           "text": "Overdrive to Core",         "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_gain",            "text": "Overdrive Gain (S-curve)",  "default": 0.0, "min": -4.0, "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "overload_gain_center",     "text": "Overdrive Gain Center",     "default": 0.5, "min": 0.05, "max": 0.95, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.7, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-
-		{ "type": "float", "name": "ring_over_gain",           "text": "Halation from Overdrive",   "default": 1.0,  "min": 0.0,  "max": 20.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
-		{ "type": "float", "name": "ring_gain",                "text": "Halation Rim",              "default": 0.005, "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "ring_fill",                "text": "Halation Fill",             "default": 0.015,  "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "ring_radius",              "text": "Halation Radius (px)",      "default": 44.0, "min": 4.0,  "max": 80.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "ring_width",               "text": "Halation Width (px)",       "default": 3.0,  "min": 0.75, "max": 12.0, "step": 0.25, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ring_min_dwell",           "text": "Halation Min Dwell (us)",   "default": 20.0, "min": 0.0,  "max": 200.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
-
-		{ "type": "float", "name": "ray_gain",                 "text": "Starburst Gain",            "default": 0.005, "min": 0.0,  "max": 0.5,  "step": 0.001, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "ray_var",                  "text": "Starburst Uneven",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ray_count",                "text": "Starburst Rays",            "default": 6.0,  "min": 2.0,  "max": 12.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "ray_length",               "text": "Starburst Length (px)",     "default": 60.0, "min": 8.0,  "max": 300.0, "step": 2.0, "format": "%3.0f", "screen": "vector" },
-		{ "type": "float", "name": "ray_width",                "text": "Starburst Width (px)",      "default": 0.8,  "min": 0.5,  "max": 6.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "ray_angle",                "text": "Starburst Angle (deg)",     "default": 15.0, "min": 0.0,  "max": 180.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
-
+		// ---- Analytic glow ----
 		{ "type": "float", "name": "analytic_glow",       "text": "Glow Source (per-line)",    "default": 0.08, "min": 0.0, "max": 1.0,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "analytic_glow_width", "text": "Glow Source Width (px)",    "default": 15.0, "min": 1.0, "max": 160.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "glow_threshold",     "text": "Glow Source Threshold",     "default": 0.5, "min": 0.0,  "max": 2.0, "step": 0.02, "format": "%1.2f", "screen": "vector" },
@@ -93,11 +102,13 @@
 		{ "type": "float", "name": "glow_narrow",        "text": "Glow Narrow (full-res)",    "default": 0.005, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "glow_wide",          "text": "Glow Wide (low-res)",       "default": 0.01, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 
-		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "intenum", "name": "cap_no_persist", "text": "Line Caps: No Persistence", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
-		{ "type": "float", "name": "dot_no_persist_dwell", "text": "Dot No-Persist Dwell (us)", "default": 20.0, "min": 0.0,  "max": 60.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		// ---- Flicker ----
+		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 12.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "flicker_buckets", "text": "Cyclic Flicker Buckets (N)",         "default": 6.0,   "min": 2.0, "max": 16.0,   "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 16.7,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "vector_crt_flicker", "text": "Vector CRT Flicker (stale-frame dim)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
+		// ---- HDR / SDR presentation ----
 		{ "type": "float", "name": "beam_peak_nits",    "text": "HDR Beam Peak (nits)",       "default": 600.0, "min": 80.0, "max": 2000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_knee",  "text": "HDR Highlight Knee (xpeak)", "default": 1.0, "min": 0.5,  "max": 2.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_max",   "text": "HDR Highlight Max (xpeak)",  "default": 1.0, "min": 0.5,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -106,23 +117,29 @@
 		{ "type": "float", "name": "sdr_rolloff_ceiling","text": "SDR Highlight Ceiling (xwhite)","default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "sdr_shadow_curve",   "text": "SDR Shadow Curve",             "default": 1.0, "min": 0.3, "max": 3.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
-		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 3.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.0, 0.0 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		// ---- Colour (set-and-forget) ----
+		{ "type": "float", "name": "color_saturation", "text": "Source Color Saturation",   "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+
+		// ---- Geometry (set-and-forget) ----
+		{ "type": "float", "name": "vector_linearity_x", "text": "Vector Linearity X (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "vector_linearity_y", "text": "Vector Linearity Y (gain)", "default": 1.0, "min": 0.8,  "max": 1.2,  "step": 0.005,"format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vector_pincushion_y_quad",  "text": "Vector Pincushion Y (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vector_pincushion_y_cubic", "text": "Vector Pincushion Y (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.20, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "cubic_distortion", "text": "Cubic Distortion Amount",   "default": 0.00, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "distort_corner",   "text": "Distorted Corner Amount",   "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "round_corner",     "text": "Rounded Corner Amount",     "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "smooth_border",    "text": "Smooth Border Amount",      "default": 0.0, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vignetting",       "text": "Vignetting Amount",         "default": 0.80, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "vector_pincushion_x_quad",  "text": "Vector Pincushion X (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "vector_pincushion_y_quad",  "text": "Vector Pincushion Y (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "vector_pincushion_y_cubic", "text": "Vector Pincushion Y (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "color", "name": "ambient_color",           "text": "Ambient Color ",               "default": [ 0.35, 0.45, 0.38 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "reflection",       "text": "Reflection Amount",         "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
+		// ---- Ambient (set-and-forget) ----
+		{ "type": "color", "name": "ambient_color",           "text": "Ambient Color ",               "default": [ 0.35, 0.45, 0.38 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
+
+		// ---- Utility ----
 		{ "type": "intenum", "name": "pause_composite", "text": "Pause Frame Composite", "default": 0, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] }
 	],
 
