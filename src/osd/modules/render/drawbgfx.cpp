@@ -1716,17 +1716,20 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		// point_width_scale: plain size multiplier for EVERY dot (stars / bullets included).
 		beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
-		// Junction dots - points endpoint-connected to a neighbouring vector stroke (a dot
-		// deposited ON a line, e.g. a mid-stroke intensity dot) - get their own width scale:
-		// beam energy CANNOT separate them from a starfield (a dot at the same displayed
-		// intensity has the same low n as an equally-dim star), but connectivity can (stars are
-		// isolated points). The scale is still eased by the dot's energy so a genuinely hot
-		// connected dot keeps its size: full scale at n = 0, neutral at n >= junction_dot_thresh.
+		// Junction dots - points lying ON a neighbouring vector stroke (mid-stroke intensity
+		// dots) - get their own width scale: beam energy CANNOT separate them from a starfield
+		// (a dot at the same displayed intensity has the same low n as an equally-dim star), but
+		// the geometric on-line test can (stars are isolated points). Energy still PROTECTS hot
+		// dots, as a gate rather than a blend: the FULL scale applies to any junction dot with
+		// n below junction_dot_thresh, then eases to neutral (x1) between thresh and 2x thresh -
+		// so the slider bites at full strength on the ordinary dim dots it targets (the old
+		// 0->thresh blend diluted it by the dot's own n and 0.0 barely shrank anything).
 		if (junction_dot)
 		{
 			const float j_scale  = m_chains->slider_value(0, "junction_dot_scale", 1.0f);
 			const float j_thresh = std::max(0.05f, m_chains->slider_value(0, "junction_dot_thresh", 1.0f));
-			beam_units *= j_scale + (1.0f - j_scale) * std::clamp(n / j_thresh, 0.0f, 1.0f);
+			const float j_w = std::clamp((n - j_thresh) / j_thresh, 0.0f, 1.0f);   // 0 below thresh, 1 at 2x
+			beam_units *= j_scale + (1.0f - j_scale) * j_w;
 		}
 	}
 	float width = beam_units * (m_vec_res_w / 1920.0f);
