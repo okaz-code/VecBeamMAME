@@ -18,6 +18,7 @@
 	"name": "Vector (Color Phosphor LITE, HDR)",
 	"author": "okaz",
 	"screen_type": "vector",
+	"vector_engine": "analytic",
 
 	"sliders": [
 		// ---- Phosphor persistence ----

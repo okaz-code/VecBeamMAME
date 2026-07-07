@@ -41,10 +41,16 @@ public:
 	bool transform() const { return m_transform; }
 	bool has_converter() const { return m_has_converter; }
 	bool has_adjuster() const { return m_has_adjuster; }
+	// Opt-in flag from the chain JSON's top-level "vector_engine": "analytic" key. The OSD renderer
+	// routes vector LINE primitives through its analytic beam FBO path (phosphor pool inputs,
+	// glow / no-persist FBOs, beam-energy model) only while a chain declaring this is active;
+	// chains without it keep the stock render path untouched.
+	bool vector_engine() const { return m_vector_engine; }
 
 	// Setters
 	void set_has_converter(bool has_converter) { m_has_converter = has_converter; }
 	void set_has_adjuster(bool has_adjuster) { m_has_adjuster = has_adjuster; }
+	void set_vector_engine(bool vector_engine) { m_vector_engine = vector_engine; }
 	void insert_effect(uint32_t index, bgfx_effect *effect, const bool apply_tint, std::string name, std::string source, chain_manager &chains);
 
 private:
@@ -62,6 +68,7 @@ private:
 	uint32_t                            m_screen_index;
 	bool                                m_has_converter;
 	bool                                m_has_adjuster;
+	bool                                m_vector_engine = false;
 };
 
 #endif // MAME_RENDER_BGFX_CHAIN_H

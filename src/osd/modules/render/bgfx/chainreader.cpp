@@ -126,7 +126,7 @@ std::unique_ptr<bgfx_chain> chain_reader::read_from_value(
 		}
 	}
 
-	return std::make_unique<bgfx_chain>(
+	auto chain = std::make_unique<bgfx_chain>(
 			std::move(name),
 			std::move(author),
 			transform,
@@ -136,6 +136,12 @@ std::unique_ptr<bgfx_chain> chain_reader::read_from_value(
 			std::move(entries),
 			std::move(target_list),
 			screen_index);
+
+	// Optional opt-in for the renderer-side analytic vector engine (see bgfx_chain::vector_engine).
+	if (value.HasMember("vector_engine") && value["vector_engine"].IsString())
+		chain->set_vector_engine(std::string(value["vector_engine"].GetString()) == "analytic");
+
+	return chain;
 }
 
 bool chain_reader::validate_parameters(const Value& value, const std::string &prefix)

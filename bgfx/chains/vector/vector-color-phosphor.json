@@ -14,6 +14,7 @@
 	"name": "Vector (Color Phosphor, HDR)",
 	"author": "okaz",
 	"screen_type": "vector",
+	"vector_engine": "analytic",
 
 	"sliders": [
 		// ---- Phosphor persistence ----
