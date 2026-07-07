@@ -1554,7 +1554,7 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, bool junction_dot)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -1714,15 +1714,20 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
 	if (as_point)
 	{
-		// point_width_scale eased by beam energy: the full scale applies to a WEAK dot (n = 0) and
-		// fades to neutral (x1) as the dot's energy reaches point_width_thresh. Taming conspicuous
-		// low-intensity mid-line dots (scale < 1) therefore does not shrink genuinely hot dwell
-		// dots (bullets / stars), whose width keeps coming from the transfer + overload widening.
-		// Lower the threshold to protect moderately-bright dots (e.g. starfields) sooner; 1.0
-		// reaches neutral exactly at saturation.
-		const float p_scale  = m_chains->slider_value(0, "point_width_scale", 1.0f);
-		const float p_thresh = std::max(0.05f, m_chains->slider_value(0, "point_width_thresh", 1.0f));
-		beam_units *= p_scale + (1.0f - p_scale) * std::clamp(n / p_thresh, 0.0f, 1.0f);
+		// point_width_scale: plain size multiplier for EVERY dot (stars / bullets included).
+		beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
+		// Junction dots - points endpoint-connected to a neighbouring vector stroke (a dot
+		// deposited ON a line, e.g. a mid-stroke intensity dot) - get their own width scale:
+		// beam energy CANNOT separate them from a starfield (a dot at the same displayed
+		// intensity has the same low n as an equally-dim star), but connectivity can (stars are
+		// isolated points). The scale is still eased by the dot's energy so a genuinely hot
+		// connected dot keeps its size: full scale at n = 0, neutral at n >= junction_dot_thresh.
+		if (junction_dot)
+		{
+			const float j_scale  = m_chains->slider_value(0, "junction_dot_scale", 1.0f);
+			const float j_thresh = std::max(0.05f, m_chains->slider_value(0, "junction_dot_thresh", 1.0f));
+			beam_units *= j_scale + (1.0f - j_scale) * std::clamp(n / j_thresh, 0.0f, 1.0f);
+		}
 	}
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
@@ -2622,18 +2627,9 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float w_over_scale_slider = m_chains->slider_value(0, "beam_width_over_scale", -1.0f);
 	const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
 	if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
-	if (as_point)
-	{
-		// point_width_scale eased by beam energy: the full scale applies to a WEAK dot (n = 0) and
-		// fades to neutral (x1) as the dot's energy reaches point_width_thresh. Taming conspicuous
-		// low-intensity mid-line dots (scale < 1) therefore does not shrink genuinely hot dwell
-		// dots (bullets / stars), whose width keeps coming from the transfer + overload widening.
-		// Lower the threshold to protect moderately-bright dots (e.g. starfields) sooner; 1.0
-		// reaches neutral exactly at saturation.
-		const float p_scale  = m_chains->slider_value(0, "point_width_scale", 1.0f);
-		const float p_thresh = std::max(0.05f, m_chains->slider_value(0, "point_width_thresh", 1.0f));
-		beam_units *= p_scale + (1.0f - p_scale) * std::clamp(n / p_thresh, 0.0f, 1.0f);
-	}
+	// point_width_scale: plain size multiplier for every dot (the analytic path additionally has
+	// the junction-dot scale; this legacy path keeps the simple behaviour).
+	if (as_point) beam_units *= m_chains->slider_value(0, "point_width_scale", 1.0f);
 	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
@@ -3259,6 +3255,10 @@ int renderer_bgfx::draw(int update)
 							}
 						}
 						render_primitive *vprim = window().m_primlist->first();
+						// Junction-dot detection state: the previous vector LINE primitive in list order
+						// (tracked across flicker exclusion - an excluded neighbour is still part of the
+						// beam geometry).
+						render_primitive *vp_prev_line = nullptr;
 						while (vprim != nullptr)
 						{
 							// Write only LINEs with PRIMFLAG_VECTOR. UI lines are drawn normally by
@@ -3296,7 +3296,34 @@ int renderer_bgfx::draw(int update)
 									const float rdx = vprim->bounds.x1 - vprim->bounds.x0, rdy = vprim->bounds.y1 - vprim->bounds.y0;
 									const bool r_is_point = (rdx * rdx + rdy * rdy) <= (pt_thresh * pt_thresh);
 									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap);
+									// Junction-dot test (see put_analytic_line): a point whose position meets
+									// the previous stroke's end or the next stroke's start is a dot deposited
+									// ON a line (mid-stroke intensity dot), not an isolated starfield/bullet
+									// dot. Endpoints coming from the same vector-generator coordinates match
+									// exactly, so a small epsilon suffices.
+									bool j_dot = false;
+									if (r_is_point)
+									{
+										constexpr float J_EPS2 = 0.5f * 0.5f;
+										const float jx = vprim->bounds.x0, jy = vprim->bounds.y0;
+										if (vp_prev_line != nullptr)
+										{
+											const float pdx = vp_prev_line->bounds.x1 - jx, pdy = vp_prev_line->bounds.y1 - jy;
+											j_dot = (pdx * pdx + pdy * pdy) <= J_EPS2;
+										}
+										if (!j_dot)
+										{
+											for (render_primitive *jnext = vprim->next(); jnext != nullptr; jnext = jnext->next())
+											{
+												if (jnext->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(jnext->flags))
+													continue;
+												const float ndx = jnext->bounds.x0 - jx, ndy = jnext->bounds.y0 - jy;
+												j_dot = (ndx * ndx + ndy * ndy) <= J_EPS2;
+												break;   // only the immediately following stroke counts
+											}
+										}
+									}
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, j_dot);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (npptr) np_verts += NP_VPL;
 									if (rptr) ray_verts += m_ray_vpl;
@@ -3305,6 +3332,10 @@ int renderer_bgfx::draw(int update)
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								vertices += verts_per_line;
 							}
+							// Track the previous vector stroke for the junction-dot test, INCLUDING
+							// flicker-excluded ones (they are still part of the beam geometry).
+							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
+								vp_prev_line = vprim;
 							vprim = vprim->next();
 						}
 					}
