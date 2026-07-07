@@ -160,8 +160,8 @@ private:
 	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active
 	// chain's glow_fbo_scale slider (1.0 when the chain has no such slider): glow content is smooth
 	// wide gaussians evaluated analytically from interpolated line-local varyings (no gl_FragCoord),
-	// so a reduced raster just samples the same function at lower density - a fast-variant chain sets
-	// 0.5 to quarter the fill cost of the biggest fill-rate consumer (up to 200px oglow footprints).
+	// so a reduced raster just samples the same function at lower density - the -lite variant chain
+	// sets 0.5 to quarter the fill cost of the biggest fill-rate consumer (200px oglow footprints).
 	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_glow_fb_w = 0;
 	uint16_t m_vec_glow_fb_h = 0;

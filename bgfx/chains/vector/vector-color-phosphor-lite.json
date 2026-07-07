@@ -1,19 +1,19 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz
-// LITE variant of vector-color-phosphor.json for low-spec machines - the FAST variant's two
-// degradations PLUS the whole working chain at half window resolution. Exactly three deliberate
+// LITE variant of vector-color-phosphor.json for low-spec machines. Exactly three deliberate
 // differences from the main chain:
-//   1. (from FAST) glow_fbo_scale slider (default 0.5): the renderer draws the analytic glow /
-//      Overload Glow geometry (fill-rate king, up to 200px oglow footprints) into a HALF-resolution
-//      glow FBO, and the glow_accum target is halved to match.
-//   2. (from FAST) the wide-glow cascade stops at 1/16 instead of 1/64 (glow_lo4/lo5 and 4 passes
-//      removed), so the farthest-reaching part of the wide halo is gone.
-//   3. (LITE only) the internal working target and the phosphor pool run at scale 0.5 - every
-//      full-res chain pass now touches a quarter of the pixels. The beam core itself visibly
-//      softens (this is the accepted trade of this tier). guest and screen_hdr stay at scale 1 so
-//      the input blit and the HDR present path are untouched; the Final Blit does the one upsample.
+//   1. glow_fbo_scale slider (default 0.5): the renderer draws the analytic glow / Overload Glow
+//      geometry (fill-rate king, up to 200px oglow footprints) into a HALF-resolution glow FBO,
+//      and the glow_accum target is halved to match - the glow content is smooth analytic
+//      gaussians, so the reduced raster only softens the narrow (15px) glow slightly.
+//   2. the wide-glow cascade stops at 1/16 instead of 1/64 (glow_lo4/lo5 and 4 passes removed),
+//      so the farthest-reaching part of the wide halo is gone.
+//   3. the internal working target and the phosphor pool run at scale 0.5 - every full-res chain
+//      pass now touches a quarter of the pixels. The beam core itself visibly softens (this is the
+//      accepted trade of this tier). guest and screen_hdr stay at scale 1 so the input blit and
+//      the HDR present path are untouched; the Final Blit does the one upsample.
 // Everything else must be kept byte-identical to vector-color-phosphor.json - when tuning the main
-// chain, re-apply the change here and in the FAST variant (or regenerate both from it).
+// chain, re-apply the change here (or regenerate this file from it).
 {
 	"name": "Vector (Color Phosphor LITE, HDR)",
 	"author": "okaz",
@@ -49,8 +49,6 @@
 		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.6, 0.6 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 1.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "line_sharpness",      "text": "Line Edge Sharpness (p)",     "default": 1.0, "min": 1.0, "max": 6.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "flat_edge",           "text": "Flat Core Edge Skirt (px)",   "default": 0.0, "min": 0.0, "max": 8.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 
 		// ---- Line caps ----
 		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -60,7 +58,7 @@
 		{ "type": "float", "name": "vertex_dwell",     "text": "Vertex Dwell (corner dots)",  "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Deflection dynamics (AVG) ----
-		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "deflection_settle",   "text": "Deflection Settle (us)",    "default": 5.0, "min": 0.5,  "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "deflection_damping",  "text": "Deflection Damping",        "default": 0.5, "min": 0.05, "max": 1.5,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
