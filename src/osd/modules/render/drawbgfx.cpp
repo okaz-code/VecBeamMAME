@@ -1602,8 +1602,40 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// ~2x too slow (window-relative lengths) and everything would run hot.
 	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
-	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
-												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
+	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
+										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
+	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
+	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
+	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
+	// itself, BEFORE the transfer/overload chain, so below the two-regime threshold the brightness
+	// wobbles, and above it the core stays saturated while width / white-pull / flare / Overload
+	// Glow / halation shimmer - a bright beam that stays bright but trembles. The time axis is
+	// emulated time quantized to energy_jitter_hz steps with smoothstep value-noise between steps
+	// (bounded speed, freezes on pause); the per-vector seed hashes the quantized endpoints, so the
+	// wobble is stable within a frame and independent between vectors, with no RNG state.
+	const float jit = m_chains->slider_value(0, "energy_jitter", 0.0f);
+	if (jit > 0.0f)
+	{
+		const float j_onset = m_chains->slider_value(0, "energy_jitter_onset", 0.8f);
+		const float j_ramp  = std::max(0.05f, m_chains->slider_value(0, "energy_jitter_ramp", 0.5f));
+		const float j_w = std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f);
+		if (j_w > 0.0f)
+		{
+			const float j_hz = std::max(1.0f, m_chains->slider_value(0, "energy_jitter_hz", 15.0f));
+			const double j_t = m_vec_time_ms * double(j_hz) * 0.001;
+			const uint32_t j_step = uint32_t(int64_t(j_t));
+			const float j_frac = float(j_t - double(j_step));
+			auto jhash = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
+			const uint32_t j_seed = jhash(uint32_t(int32_t(x0 * 8.0f)) * 0x9e3779b9U)
+								  ^ jhash(uint32_t(int32_t(y0 * 8.0f)) + 0x85ebca6bU)
+								  ^ jhash(uint32_t(int32_t(x1 * 8.0f)) + 0xc2b2ae35U)
+								  ^ jhash(uint32_t(int32_t(y1 * 8.0f)) + 0x27d4eb2fU);
+			const float j_r0 = float(jhash(j_seed ^ jhash(j_step))      & 0xffffffu) / float(0x800000) - 1.0f;
+			const float j_r1 = float(jhash(j_seed ^ jhash(j_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
+			const float j_sm = j_frac * j_frac * (3.0f - 2.0f * j_frac);
+			n *= std::max(0.0f, 1.0f + jit * j_w * (j_r0 + (j_r1 - j_r0) * j_sm));
+		}
+	}
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
@@ -2469,8 +2501,40 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// ~2x too slow (window-relative lengths) and everything would run hot.
 	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
-	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
-												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
+	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
+										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
+	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
+	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
+	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
+	// itself, BEFORE the transfer/overload chain, so below the two-regime threshold the brightness
+	// wobbles, and above it the core stays saturated while width / white-pull / flare / Overload
+	// Glow / halation shimmer - a bright beam that stays bright but trembles. The time axis is
+	// emulated time quantized to energy_jitter_hz steps with smoothstep value-noise between steps
+	// (bounded speed, freezes on pause); the per-vector seed hashes the quantized endpoints, so the
+	// wobble is stable within a frame and independent between vectors, with no RNG state.
+	const float jit = m_chains->slider_value(0, "energy_jitter", 0.0f);
+	if (jit > 0.0f)
+	{
+		const float j_onset = m_chains->slider_value(0, "energy_jitter_onset", 0.8f);
+		const float j_ramp  = std::max(0.05f, m_chains->slider_value(0, "energy_jitter_ramp", 0.5f));
+		const float j_w = std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f);
+		if (j_w > 0.0f)
+		{
+			const float j_hz = std::max(1.0f, m_chains->slider_value(0, "energy_jitter_hz", 15.0f));
+			const double j_t = m_vec_time_ms * double(j_hz) * 0.001;
+			const uint32_t j_step = uint32_t(int64_t(j_t));
+			const float j_frac = float(j_t - double(j_step));
+			auto jhash = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
+			const uint32_t j_seed = jhash(uint32_t(int32_t(x0 * 8.0f)) * 0x9e3779b9U)
+								  ^ jhash(uint32_t(int32_t(y0 * 8.0f)) + 0x85ebca6bU)
+								  ^ jhash(uint32_t(int32_t(x1 * 8.0f)) + 0xc2b2ae35U)
+								  ^ jhash(uint32_t(int32_t(y1 * 8.0f)) + 0x27d4eb2fU);
+			const float j_r0 = float(jhash(j_seed ^ jhash(j_step))      & 0xffffffu) / float(0x800000) - 1.0f;
+			const float j_r1 = float(jhash(j_seed ^ jhash(j_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
+			const float j_sm = j_frac * j_frac * (3.0f - 2.0f * j_frac);
+			n *= std::max(0.0f, 1.0f + jit * j_w * (j_r0 + (j_r1 - j_r0) * j_sm));
+		}
+	}
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
@@ -3004,6 +3068,10 @@ int renderer_bgfx::draw(int update)
 			m_crt_flicker_factor = (m_vector_device != nullptr && m_vector_device->beam_list_stale())
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
+
+			// Emulated time for this present, cached for the per-vector Energy Jitter time axis
+			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
+			m_vec_time_ms = window().machine().time().as_double() * 1000.0;
 
 			// HV supply droop load (master plan 3-4 / 6.2): peak-track this frame's total beam energy
 			// with gentle decay (so it does not flicker against vsync when a frame is stale),

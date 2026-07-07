@@ -155,6 +155,8 @@ private:
 	uint16_t m_vec_fb_w = 0;
 	uint16_t m_vec_fb_h = 0;
 	bool m_vectors_in_fbo = false;  // whether vector LINEs were drawn into the FBO this frame
+	// Emulated time (ms) at this present, cached once per frame for the Energy Jitter time axis.
+	double m_vec_time_ms = 0.0;
 	// Analytic glow FBO (案A): the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
 	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Colour-only.
 	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active
