@@ -2440,6 +2440,11 @@ void render_target::add_container_primitives(render_primitive_list &list, const 
 	// first update the palette for the container, if it is dirty
 	container.update_palette();
 
+	// propagate vector-game frame statistics from the container onto the list (a non-zero
+	// frame_id means a vector device published stats; see render_vector_stats)
+	if (container.vector_stats().frame_id != 0)
+		list.m_vector_stats = container.vector_stats();
+
 	// compute the clip rect
 	render_bounds cliprect;
 	cliprect.x0 = xform.xoffs;

@@ -147,6 +147,9 @@ private:
 	uint32_t m_list_generation;
 	uint32_t m_last_drawn_generation;
 	bool m_beam_list_stale;
+	// render_vector_stats frame counter: increments every screen_update (i.e. every emulated frame
+	// the device drew), so a renderer can tell running frames from pause / menu re-presents.
+	uint32_t m_stats_frame_id = 0;
 	bool m_avg_timing = false;   // set_avg_timing(): this device's t0/t1 model real AVG/DVG sweep time
 
 	// notify interested parties about vector-drawing activities

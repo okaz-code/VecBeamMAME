@@ -119,8 +119,6 @@
 		{ "type": "float", "name": "vector_crt_flicker", "text": "Vector CRT Flicker (stale-frame dim)", "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Monitor glow (off-screen beam) ----
-		{ "type": "float", "name": "mglow_threshold",        "text": "Monitor Glow Threshold",       "default": 0.7,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
-		{ "type": "float", "name": "mglow_min_distance",     "text": "Monitor Glow Off-screen Dist", "default": 0.30, "min": 0.0, "max": 0.5,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_coefficient",      "text": "Monitor Glow Coefficient",     "default": 0.05,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.06,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },

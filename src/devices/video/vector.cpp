@@ -34,6 +34,14 @@
 // 20000 is needed for mhavoc (see MT 06668) 10000 is enough for other games
 #define MAX_POINTS 20000
 
+// Off-screen beam shaping for render_vector_stats::offscreen_energy (monitor glow): a segment
+// contributes when its beam energy exceeds the floor AND an endpoint is at least this far outside
+// the visible area (in screen fractions). These match the defaults of the renderer sliders they
+// replace (mglow_threshold / mglow_min_distance); baking them keeps the device -> renderer
+// interface a plain per-frame aggregate.
+static constexpr float OFFSCREEN_ENERGY_MIN = 0.7f;
+static constexpr float OFFSCREEN_MARGIN     = 0.30f;
+
 float vector_options::s_flicker = 0.0f;
 float vector_options::s_beam_width_min = 0.0f;
 float vector_options::s_beam_width_max = 0.0f;
@@ -256,6 +264,12 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	m_beam_list_stale = (m_list_generation == m_last_drawn_generation);
 	m_last_drawn_generation = m_list_generation;
 
+	// Per-frame statistics for the render container (see render_vector_stats): total beam energy
+	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam
+	// event (window-boundary re-emissions do not recount, matching the notifiers).
+	float stats_total_energy = 0.0f;
+	float stats_offscreen_energy = 0.0f;
+
 	for (int i = 0; i < m_vector_index; i++)
 	{
 		render_bounds coords;
@@ -308,6 +322,23 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				m_line_notifier(curpoint->x0, curpoint->y0, curpoint->x, curpoint->y, curpoint->col, curpoint->intensity, visarea.width(), visarea.height());
 				// Parallel notifier: normalized-space endpoints + beam energy, for off-screen beam effects.
 				m_beam_energy_line_notifier(coords.x0, coords.y0, coords.x1, coords.y1, curpoint->beam_energy);
+
+				if (curpoint->beam_energy > 0.0f)
+				{
+					// total beam energy = current (beam_energy) x draw time (proportional to
+					// normalized length at constant velocity), summed over the frame
+					const float lx = coords.x1 - coords.x0, ly = coords.y1 - coords.y0;
+					stats_total_energy += curpoint->beam_energy * sqrtf(lx * lx + ly * ly);
+					// shaped off-screen contribution (see OFFSCREEN_ENERGY_MIN / OFFSCREEN_MARGIN)
+					auto outside = [] (float x, float y) {
+						const float dx = (x < 0.0f) ? -x : (x > 1.0f) ? (x - 1.0f) : 0.0f;
+						const float dy = (y < 0.0f) ? -y : (y > 1.0f) ? (y - 1.0f) : 0.0f;
+						return std::max(dx, dy);
+					};
+					if (curpoint->beam_energy > OFFSCREEN_ENERGY_MIN
+						&& std::max(outside(coords.x0, coords.y0), outside(coords.x1, coords.y1)) > OFFSCREEN_MARGIN)
+						stats_offscreen_energy += curpoint->beam_energy - OFFSCREEN_ENERGY_MIN;
+				}
 			}
 		}
 		else if (!curpoint->emitted)
@@ -321,6 +352,17 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	}
 
 	m_frame_end_notifier();
+
+	// Publish this frame's statistics into the screen container; render_target propagates them
+	// onto the primitive list, where a renderer can read them without touching this device.
+	render_vector_stats stats;
+	stats.frame_id = ++m_stats_frame_id;
+	stats.list_generation = m_list_generation;
+	stats.list_stale = m_beam_list_stale;
+	stats.timed = m_avg_timing;
+	stats.total_energy = stats_total_energy;
+	stats.offscreen_energy = stats_offscreen_energy;
+	screen.container().set_vector_stats(stats);
 
 	return 0;
 }
