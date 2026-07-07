@@ -72,6 +72,11 @@ public:
 	void inject_vector_screen(bgfx::TextureHandle color_tex, uint16_t width, uint16_t height,
 		uint16_t vec_fb_w, uint16_t vec_fb_h);
 
+	// Bootstrap / keep alive the screen-0 chain slot for a vector game without injecting the
+	// vector FBO: keeps the chain-selection slider available while the active chain does not opt
+	// into the analytic vector engine (selecting an engine chain then re-engages the FBO path).
+	void ensure_vector_screen_slot();
+
 	// Register a second GPU-rendered FBO as "glow0" - the analytic glow drawn separately so a chain
 	// can composite it AFTER the shadow mask (scattered light is not masked). Must be called before
 	// process_screen_chains() each frame when analytic glow is active.
