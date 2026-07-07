@@ -18,6 +18,7 @@
 
 #include <bgfx/bgfx.h>
 
+#include <array>
 #include <map>
 #include <memory>
 #include <vector>
@@ -157,6 +158,11 @@ private:
 	bool m_vectors_in_fbo = false;  // whether vector LINEs were drawn into the FBO this frame
 	// Emulated time (ms) at this present, cached once per frame for the Energy Jitter time axis.
 	double m_vec_time_ms = 0.0;
+	// Junction-dot geometry: this frame's visible non-point vector strokes (x0,y0,x1,y1), collected
+	// in the pre-scan when junction_dot_scale is active, so a dot can be tested for lying ON a line
+	// (games that jump back to deposit the dot separately - list adjacency does not catch those).
+	// Member (not a local) so the capacity persists across frames instead of reallocating.
+	std::vector<std::array<float, 4>> m_j_segments;
 	// Analytic glow FBO (案A): the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
 	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Colour-only.
 	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active

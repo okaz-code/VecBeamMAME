@@ -3009,12 +3009,26 @@ int renderer_bgfx::draw(int update)
 		// a ROT270 (portrait) screen is pillarboxed in a wide window/fullscreen, so s_width includes the
 		// side bars and would over-thicken the beam in fullscreen. The content box tracks the real width.
 		float vminx = 1e9f, vminy = 1e9f, vmaxx = -1e9f, vmaxy = -1e9f;
+		// Junction-dot geometry: when junction_dot_scale is active, collect this frame's visible
+		// non-point strokes (gathered for free in this scan) so the write loop can test each dot
+		// for lying ON a line - games that jump back and deposit the dot separately are not list-
+		// adjacent to their line, so endpoint adjacency alone misses them. Flicker-excluded strokes
+		// are included (still beam geometry; keeps a dot's size from pulsing with the buckets).
+		const bool j_scan = m_line_analytic
+				&& m_chains->slider_value(0, "junction_dot_scale", 1.0f) != 1.0f;
+		m_j_segments.clear();
 		render_primitive *scan = window().m_primlist->first();
 		while (scan != nullptr)
 		{
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 			{
 				vector_count++;
+				if (j_scan && scan->color.a > 0.004f)
+				{
+					const float jdx = scan->bounds.x1 - scan->bounds.x0, jdy = scan->bounds.y1 - scan->bounds.y0;
+					if (jdx * jdx + jdy * jdy > pt_thresh * pt_thresh)
+						m_j_segments.push_back({ scan->bounds.x0, scan->bounds.y0, scan->bounds.x1, scan->bounds.y1 });
+				}
 				// Gather this frame's own busyness stats here (free - already walking every vector for
 				// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
 				if (flicker_on)
@@ -3296,15 +3310,19 @@ int renderer_bgfx::draw(int update)
 									const float rdx = vprim->bounds.x1 - vprim->bounds.x0, rdy = vprim->bounds.y1 - vprim->bounds.y0;
 									const bool r_is_point = (rdx * rdx + rdy * rdy) <= (pt_thresh * pt_thresh);
 									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
-									// Junction-dot test (see put_analytic_line): a point whose position meets
-									// the previous stroke's end or the next stroke's start is a dot deposited
-									// ON a line (mid-stroke intensity dot), not an isolated starfield/bullet
-									// dot. Endpoints coming from the same vector-generator coordinates match
-									// exactly, so a small epsilon suffices.
+									// Junction-dot test (see put_analytic_line): a dot LYING ON a visible
+									// stroke is a mid-stroke intensity dot, not an isolated starfield/bullet
+									// dot. Geometric point-to-segment test against this frame's stroke list
+									// (m_j_segments, built in the pre-scan): games jump back and deposit the
+									// dot separately, so list adjacency alone misses them. Game-space
+									// collinear points stay collinear through the affine transform, so a
+									// small epsilon suffices. Fast path first: endpoint-connected to the
+									// previous stroke (polyline dots, O(1)).
 									bool j_dot = false;
-									if (r_is_point)
+									if (r_is_point && j_scan)
 									{
-										constexpr float J_EPS2 = 0.5f * 0.5f;
+										constexpr float J_EPS  = 0.5f;
+										constexpr float J_EPS2 = J_EPS * J_EPS;
 										const float jx = vprim->bounds.x0, jy = vprim->bounds.y0;
 										if (vp_prev_line != nullptr)
 										{
@@ -3313,13 +3331,17 @@ int renderer_bgfx::draw(int update)
 										}
 										if (!j_dot)
 										{
-											for (render_primitive *jnext = vprim->next(); jnext != nullptr; jnext = jnext->next())
+											for (const auto &sg : m_j_segments)
 											{
-												if (jnext->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(jnext->flags))
+												// cheap bbox reject before the exact distance test
+												if (jx < std::min(sg[0], sg[2]) - J_EPS || jx > std::max(sg[0], sg[2]) + J_EPS
+													|| jy < std::min(sg[1], sg[3]) - J_EPS || jy > std::max(sg[1], sg[3]) + J_EPS)
 													continue;
-												const float ndx = jnext->bounds.x0 - jx, ndy = jnext->bounds.y0 - jy;
-												j_dot = (ndx * ndx + ndy * ndy) <= J_EPS2;
-												break;   // only the immediately following stroke counts
+												const float sdx2 = sg[2] - sg[0], sdy2 = sg[3] - sg[1];
+												const float slen2 = sdx2 * sdx2 + sdy2 * sdy2;
+												const float t = std::clamp(((jx - sg[0]) * sdx2 + (jy - sg[1]) * sdy2) / std::max(slen2, 1e-6f), 0.0f, 1.0f);
+												const float ex = sg[0] + t * sdx2 - jx, ey = sg[1] + t * sdy2 - jy;
+												if (ex * ex + ey * ey <= J_EPS2) { j_dot = true; break; }
 											}
 										}
 									}
