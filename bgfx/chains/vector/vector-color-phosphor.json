@@ -45,12 +45,20 @@
 		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.6, 0.6 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 1.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "line_sharpness",      "text": "Line Edge Sharpness (p)",     "default": 1.0, "min": 1.0, "max": 6.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "flat_edge",           "text": "Flat Core Edge Skirt (px)",   "default": 0.0, "min": 0.0, "max": 8.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 
 		// ---- Line caps ----
 		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "cap_no_persist", "text": "Line Caps: No Persistence", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "float", "name": "dot_no_persist_dwell", "text": "Dot No-Persist Dwell (us)", "default": 20.0, "min": 0.0,  "max": 60.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "vertex_dwell",     "text": "Vertex Dwell (corner dots)",  "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+
+		// ---- Deflection dynamics (AVG) ----
+		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_settle",   "text": "Deflection Settle (us)",    "default": 5.0, "min": 0.5,  "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "deflection_damping",  "text": "Deflection Damping",        "default": 0.5, "min": 0.05, "max": 1.5,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Overload / overdrive ----
 		{ "type": "float", "name": "overload_threshold","text": "Overload Threshold",        "default": 1.05, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -63,6 +71,7 @@
 		{ "type": "float", "name": "overload_gain",            "text": "Overdrive Gain (S-curve)",  "default": 0.0, "min": -4.0, "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "overload_gain_center",     "text": "Overdrive Gain Center",     "default": 0.5, "min": 0.05, "max": 0.95, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.7, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_softness",   "text": "Overload Softness (legacy line)", "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 32.0, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_over_scale","text": "Beam Width Overload Scale (px)","default": 8.0, "min": -1.0, "max": 24.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_over_curve",  "text": "Width Overload Curve",     "default": 0.9, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -114,6 +123,8 @@
 		{ "type": "float", "name": "sdr_rolloff_knee",   "text": "SDR Highlight Knee (xwhite)",   "default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "sdr_rolloff_ceiling","text": "SDR Highlight Ceiling (xwhite)","default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "sdr_shadow_curve",   "text": "SDR Shadow Curve",             "default": 1.0, "min": 0.3, "max": 3.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "edr_sdr_level",       "text": "EDR SDR Level (UI/Art, macOS)",   "default": 1.0, "min": 0.1, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_gamut",      "text": "Phosphor Gamut (P22, HDR)",       "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Colour science (set-and-forget) ----
 		{ "type": "float", "name": "color_saturation", "text": "Source Color Saturation",   "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },

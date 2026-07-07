@@ -1510,7 +1510,7 @@ int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, d
 
 // Symmetric S-curve / sigmoid mapping of a 0..1 value about a pivot c. g>0 = sigmoid (push values away
 // from c toward 0/1 -> sharper, snappier transition); g<0 = inverse-S (ease around c); g=0 = identity.
-// k = 2^g. Same shape as the put_packed_line gain() lambda, exposed here for the brightness/width curves.
+// k = 2^g. Shared by the brightness/width curves and the overload_gain shaping.
 static float vec_scurve(float x, float g, float c)
 {
 	if (g == 0.0f) return x;
@@ -1592,56 +1592,27 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// are two independent clipped power curves: out = clamp((drive-lo)/(hi-lo),0,1)^gamma. Decoupling
 	// them lets brightness saturate early while width keeps growing - this subsumes the old overload
 	// model (now removed). lo=0 / hi=1 / curve=1 reproduces the plain intensity-linear response.
-	// beam_energy_ref = the beam_energy that maps to full display brightness. Dividing by it spreads the
-	// (now wide, >1) beam_energy across the 0..1 display gradient, so e.g. a dwell point at energy 8 reads
-	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
-	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
-	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
-	// When the device supplies NO beam_energy (< 0) the renderer derives it from the per-segment
-	// timestamps (unified model, generic_beam_energy); with energy_model off that reduces to the plain
-	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
-	// preserving the existing e_ref semantics.
-	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	// n = the normalized beam energy; n > 1 is the genuine overload that drives the white flare/bloom.
+	// (The legacy beam_energy_ref divisor is gone - the unified energy model's energy_speed_norm and
+	// overload_threshold cover its role.) When the device supplies NO beam_energy (< 0) the renderer
+	// derives it from the per-segment timestamps (unified model, generic_beam_energy); with energy_model
+	// off that reduces to the plain display intensity clamp(color.a) = the prior behaviour.
 	// Speed-normalisation basis = the vector CONTENT width (same basis as every px magnitude), NOT
 	// the window: a portrait game pillarboxed in a wide window would otherwise read its beam speeds
 	// ~2x too slow (window-relative lengths) and everything would run hot.
 	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
-	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
-												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
+	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
+												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
 	};
-	// gain function: reshapes a 0..1 value. g>0 -> S-curve (sigmoid / contrast: pushes values away from
-	// the pivot c, carving a 'valley' there); g<0 -> inverse-S (logit: expands around c); g=0 -> identity.
-	// c is the pivot (default 0.5). k = 2^g. Lets a contrast valley be placed at a chosen brightness.
-	auto gain = [](float x, float g, float c) -> float {
-		if (g == 0.0f) return x;
-		x = std::clamp(x, 0.0f, 1.0f);
-		c = std::clamp(c, 1e-3f, 1.0f - 1e-3f);
-		const float k = powf(2.0f, g);
-		return (x < c) ? c * powf(x / c, k)
-					   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
-	};
 	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
-	// Intensity gain (sigmoid/logit about a movable centre): shapes a contrast valley, e.g. near
-	// beam_energy_ref. 0 = identity (no change for chains without the slider).
-	display_a = gain(display_a,
-		m_chains->slider_value(0, "intensity_gain", 0.0f),
-		m_chains->slider_value(0, "intensity_gain_center", 0.5f));
-	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
-	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
-	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
-	{
-		const float i_min = m_chains->slider_value(0, "intensity_min", 0.0f);
-		const float i_max = m_chains->slider_value(0, "intensity_max", 1.0f);
-		display_a = std::clamp(i_min + display_a * (i_max - i_min), 0.0f, 1.0f);
-	}
 	float wf = transfer(drive,
 		m_chains->slider_value(0, "width_clip_low",  0.0f),
 		m_chains->slider_value(0, "width_clip_high", 1.0f),
@@ -1765,7 +1736,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// (0 = identity). The >1 (past-ref) part keeps its linear growth.
 			const float og = m_chains->slider_value(0, "overload_gain", 0.0f);
 			if (og != 0.0f)
-				shaped = gain(std::min(shaped, 1.0f), og,
+				shaped = vec_scurve(std::min(shaped, 1.0f), og,
 						m_chains->slider_value(0, "overload_gain_center", 0.5f)) + std::max(0.0f, shaped - 1.0f);
 			line_over = ov_gain * shaped;
 			// Cap the overdrive multiplier: dwell points reach several x peak energy, and uncapped the
@@ -1796,47 +1767,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		core_over = core_over + lin_col * (std::max(n - 1.0f, 0.0f) - core_over);
 	}
 
-	// Length fade + flicker, identical to the classic path.
-	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
-	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
-	float length_factor = 1.0f;
-	if (vls_scale > 0.0001f && vls_ratio > 0.0001f)
-	{
-		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
-		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
-		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
-		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
-	}
-	length_factor *= m_crt_flicker_factor;
-	// Dot brightness compensation. A moving point deposits ONE beam event per position with no overlap,
-	// so the energy-conserving Beam Integration (weight = overlap/blend) leaves it dim as the window
-	// widens - while a static line accumulates to full. Points do not stack at the same pixel across
-	// presents, so boosting them does NOT reintroduce the integration's count-beat flicker. dot_boost
-	// 1 = off; raise (~blend/present) to bring fast bright dots (bullets) back to full under a wide window.
-	if (as_point) length_factor *= std::max(1.0f, m_chains->slider_value(0, "dot_boost", 1.0f));
-
-	// Dwell-time brightness (real DVG behaviour, per jmargolin.com/vgens): a vector is drawn in a
-	// roughly length-independent time, so a shorter/slower-drawn beam concentrates its energy over
-	// a shorter path and glows brighter - dots (near-zero length) brightest. Uses the per-vector
-	// draw interval (t1-t0) carried by the timestamped beam events. dwell_brightness 0 = off, so
-	// chains without the slider (and untimed sources) are unaffected.
-	const float dwell_str = m_chains->slider_value(0, "dwell_brightness", 0.0f);
-	if (dwell_str > 0.0f && prim->t0 >= 0.0 && prim->t1 > prim->t0)
-	{
-		const float dmax = m_chains->slider_value(0, "dwell_max", 3.0f);
-		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
-		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
-		const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
-		float mul = dmax;
-		if (norm_len > 1e-4f && dt_ms > 0.0)
-		{
-			// draw speed in screen-fractions per millisecond; brightness ~ ref / speed
-			const float v = norm_len / float(dt_ms);
-			const float ref = m_chains->slider_value(0, "dwell_speed_ref", 1.0f);
-			mul = std::clamp((v > 1e-6f) ? (ref / v) : dmax, 0.3f, dmax);
-		}
-		length_factor *= (1.0f + dwell_str * (mul - 1.0f));
-	}
+	// Per-frame CRT-flicker dim (1.0 when not flickering). The legacy length-fade
+	// (vector_length_scale/ratio), dot_boost and dwell_* brightness knobs are gone - the unified
+	// energy model (speed / dwell derived from the per-segment timestamps) covers all three.
+	float length_factor = m_crt_flicker_factor;
 
 	// HV supply droop (master plan 3-4 / 6.2): a bright/busy frame sags the EHT supply, dimming the
 	// whole picture (here) and defocusing the spot (sigma, below). m_hv_load_norm is the smoothed 0..1
@@ -1930,23 +1864,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// tails read as soft focus at equal FWHM); the overload defocus widens it (the classic
 	// path's parabola->gaussian blend reached about 2x at full overload).
 	float sigma = (width / 3.2f) * (1.0f + ovld);
-	// Intensity-driven blooming (vgens: overdriving the beam draws more current, sagging the HV
-	// and defocusing the spot - a brighter line/dot has a physically wider core). sigma grows with
-	// the rendered peak brightness, which already folds in the dwell-time boost, so the brightest
-	// dots (bullets) bloom most. Applied only to the core spot here, not the caps/ring. The slider
-	// strength is in 1920-reference pixels (scaled to the actual resolution). beam_bloom_strength
-	// 0 = off, so chains without the slider are unaffected.
-	const float beam_bloom = m_chains->slider_value(0, "beam_bloom_strength", 0.0f);
-	if (beam_bloom > 0.0f)
-	{
-		const float bloom_p = m_chains->slider_value(0, "beam_bloom_curve", 1.0f);
-		const float bI = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
-		if (bI > 0.0f)
-		{
-			const float bres = m_vec_res_w / 1920.0f;
-			sigma += beam_bloom * bres * powf(std::min(bI, 4.0f), bloom_p);
-		}
-	}
+	// (The legacy intensity-driven beam_bloom_strength widening is gone - the overload-proportional
+	// blooming below and the two-regime width transfer cover it.)
 	// Overload-proportional spot blooming: a beam driven past peak (line_over > 0) physically defocuses
 	// and the spot widens (CRT in-tube blooming under saturation), so a white-hot dwell point / overdriven
 	// line blooms big and soft instead of staying a tiny bright speck. sigma grows with the raw overdrive
@@ -2552,56 +2471,27 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// when the device supplies it, else the display intensity. Brightness and width are two independent
 	// clipped power curves out = clamp((drive-lo)/(hi-lo),0,1)^gamma, decoupled so brightness can
 	// saturate while width keeps growing - this replaces the old renderer-side overload model.
-	// beam_energy_ref = the beam_energy that maps to full display brightness. Dividing by it spreads the
-	// (now wide, >1) beam_energy across the 0..1 display gradient, so e.g. a dwell point at energy 8 reads
-	// as the brightest NORMAL point instead of saturating and being treated as overload. n is the
-	// normalized energy; n > 1 (energy > ref) is the genuine overload that drives the white flare/bloom.
-	// ref defaults to 1.0 -> identical to the old clamp(beam_energy,0,1) (AVG/DVG chains unaffected).
-	// When the device supplies NO beam_energy (< 0) the renderer derives it from the per-segment
-	// timestamps (unified model, generic_beam_energy); with energy_model off that reduces to the plain
-	// display intensity clamp(color.a) = the prior behaviour. e_ref is applied to the model output too,
-	// preserving the existing e_ref semantics.
-	const float e_ref = std::max(1e-3f, m_chains->slider_value(0, "beam_energy_ref", 1.0f));
+	// n = the normalized beam energy; n > 1 is the genuine overload that drives the white flare/bloom.
+	// (The legacy beam_energy_ref divisor is gone - the unified energy model's energy_speed_norm and
+	// overload_threshold cover its role.) When the device supplies NO beam_energy (< 0) the renderer
+	// derives it from the per-segment timestamps (unified model, generic_beam_energy); with energy_model
+	// off that reduces to the plain display intensity clamp(color.a) = the prior behaviour.
 	// Speed-normalisation basis = the vector CONTENT width (same basis as every px magnitude), NOT
 	// the window: a portrait game pillarboxed in a wide window would otherwise read its beam speeds
 	// ~2x too slow (window-relative lengths) and everything would run hot.
 	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
-	const float n = (prim->beam_energy >= 0.0f) ? (prim->beam_energy / e_ref)
-												: (generic_beam_energy(prim, seg_len, as_point, e_screen_ref) / e_ref);
+	const float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
+												: generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	auto transfer = [](float x, float lo, float hi, float g) -> float {
 		const float t = std::clamp((x - lo) / std::max(1e-4f, hi - lo), 0.0f, 1.0f);
 		return (g == 1.0f) ? t : powf(t, g);
 	};
-	// gain function: reshapes a 0..1 value. g>0 -> S-curve (sigmoid / contrast: pushes values away from
-	// the pivot c, carving a 'valley' there); g<0 -> inverse-S (logit: expands around c); g=0 -> identity.
-	// c is the pivot (default 0.5). k = 2^g. Lets a contrast valley be placed at a chosen brightness.
-	auto gain = [](float x, float g, float c) -> float {
-		if (g == 0.0f) return x;
-		x = std::clamp(x, 0.0f, 1.0f);
-		c = std::clamp(c, 1e-3f, 1.0f - 1e-3f);
-		const float k = powf(2.0f, g);
-		return (x < c) ? c * powf(x / c, k)
-					   : c + (1.0f - c) * (1.0f - powf(1.0f - (x - c) / (1.0f - c), k));
-	};
 	float display_a = transfer(drive,
 		m_chains->slider_value(0, "intensity_clip_low",  0.0f),
 		m_chains->slider_value(0, "intensity_clip_high", 1.0f),
 		m_chains->slider_value(0, "intensity_curve",     1.0f));
-	// Intensity gain (sigmoid/logit about a movable centre): shapes a contrast valley, e.g. near
-	// beam_energy_ref. 0 = identity (no change for chains without the slider).
-	display_a = gain(display_a,
-		m_chains->slider_value(0, "intensity_gain", 0.0f),
-		m_chains->slider_value(0, "intensity_gain_center", 0.5f));
-	// Output intensity range (mirrors beam_width_min/max for width): remap the transfer result into
-	// [intensity_min, intensity_max] - a floor for the dimmest lines and a ceiling for the brightest.
-	// Defaults 0..1 = no change, so chains without these sliders are unaffected.
-	{
-		const float i_min = m_chains->slider_value(0, "intensity_min", 0.0f);
-		const float i_max = m_chains->slider_value(0, "intensity_max", 1.0f);
-		display_a = std::clamp(i_min + display_a * (i_max - i_min), 0.0f, 1.0f);
-	}
 	float wf = transfer(drive,
 		m_chains->slider_value(0, "width_clip_low",  0.0f),
 		m_chains->slider_value(0, "width_clip_high", 1.0f),
@@ -2681,28 +2571,9 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
-	// Length fade (port of the HLSL vector.fx length modulation): longer segments lose intensity,
-	// reproducing the electron-beam current load. Folded into the line colour here.
-	//   norm_len = pixel_len / max(window_w, window_h)
-	//   length_factor = lerp(1, 1 - clamp(norm_len / ratio, 0, 1), scale)
-	const float vls_scale = m_chains->slider_value(0, "vector_length_scale", 0.0f);
-	const float vls_ratio = m_chains->slider_value(0, "vector_length_ratio", 0.5f);
-	float length_factor = 1.0f;
-	if (vls_scale > 0.0001f && vls_ratio > 0.0001f)
-	{
-		const float screen_ref = float(std::max(s_width[window().index()], s_height[window().index()]));
-		const float norm_len = (screen_ref > 0.0f) ? (seg_len / screen_ref) : 0.0f;
-		const float length_modulate = 1.0f - std::min(norm_len / vls_ratio, 1.0f);
-		length_factor = 1.0f + vls_scale * (length_modulate - 1.0f);
-	}
-	// Fold in the per-frame CRT-flicker dim (1.0 when not flickering).
-	length_factor *= m_crt_flicker_factor;
-	// Dot brightness compensation. A moving point deposits ONE beam event per position with no overlap,
-	// so the energy-conserving Beam Integration (weight = overlap/blend) leaves it dim as the window
-	// widens - while a static line accumulates to full. Points do not stack at the same pixel across
-	// presents, so boosting them does NOT reintroduce the integration's count-beat flicker. dot_boost
-	// 1 = off; raise (~blend/present) to bring fast bright dots (bullets) back to full under a wide window.
-	if (as_point) length_factor *= std::max(1.0f, m_chains->slider_value(0, "dot_boost", 1.0f));
+	// Per-frame CRT-flicker dim (1.0 when not flickering). The legacy length-fade and dot_boost
+	// knobs are gone (superseded by the unified energy model on the analytic path).
+	float length_factor = m_crt_flicker_factor;
 
 	// Pack the line color: hue from the primitive (× length fade × flicker), alpha = display intensity.
 	const uint32_t rgba = u32Color(
@@ -3586,33 +3457,16 @@ int renderer_bgfx::draw(int update)
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 
-				// Freeze the phosphor-tail pool on presents that did not advance emulation
-				// (pause, menu stills): no decay, no injection. No-op without a "tail_accum" pass.
-				const float tail_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
-				m_chains->inject_entry_uniform(0, "tail_accum", "u_tail_freeze", tail_freeze, 4);
-
-				// Time-calibrated max-persist (Flicker Persist) decay. The pass does out=max(cur,prev*decay);
-				// instead of binding decay to the slider directly (a raw per-frame factor, refresh-dependent
-				// and meaningless in real time) we drive it here so flicker_persist reads in MILLISECONDS:
-				// decay = exp(-dt_ms / persist_ms), dt = emulated time advanced since the previous present.
-				// This is the cheap persistence path: keep the beam draw window small (vector_window_blend)
-				// so only the fresh frame is re-rasterised, and let this FBO max-persist hold the light for
-				// the desired duration - cost becomes independent of the persistence length. dt==0 while
-				// paused so the image is held (no decay). No-op without a "Flicker Persist" pass.
+				// Colour phosphor-decay pool. The "Phosphor" update pass and the "Phosphor Apply"
+				// compose pass share u_phos = (dt_ms, half_ms, curve, total_ms): the pool holds
+				// rgb=peak/a=age and decays via the Hill sigmoid S(age). dt = emulated time advanced
+				// since the previous present (0 while paused -> frozen). No-op for chains without those
+				// passes. (The retired chains' tail_accum / Flicker Persist / Scan Accumulate /
+				// Bloom Apply injections lived here; they went with those chains.)
 				const double persist_now = window().machine().time().as_double();
 				const double persist_dt  = (m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
 					? (persist_now - m_vec_persist_prev_t) : 0.0;
 				m_vec_persist_prev_t = persist_now;
-				const float persist_ms = m_chains->slider_value(0, "flicker_persist", 0.0f);
-				const float persist_decay = (persist_ms > 0.0f)
-					? expf(-float(persist_dt * 1000.0) / persist_ms) : 0.0f;
-				const float persist_vals[4] = { persist_decay, 0.0f, 0.0f, 0.0f };
-				m_chains->inject_entry_uniform(0, "Flicker Persist", "u_persist_decay", persist_vals, 4);
-
-				// Colour phosphor-decay pool (vector-vectrex-phosphor chain). The "Phosphor" update pass
-				// and "Phosphor Apply" emit pass share u_phos = (dt_ms, half_ms, curve, total_ms): the pool
-				// holds rgb=peak/a=age and decays via the Hill sigmoid S(age). dt = emulated time since the
-				// previous present (0 while paused -> frozen). No-op for chains without those passes.
 				const float phos_vals[4] = {
 					float(persist_dt * 1000.0),
 					m_chains->slider_value(0, "phosphor_half_ms",  42.0f),
@@ -3620,28 +3474,6 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "phosphor_total_ms", 500.0f) };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos", phos_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos", phos_vals, 4);
-
-				// Scan-sim physical phosphor accumulator (vector-vectrex-scansim chain). The persistent
-				// HDR accumulator pass "Scan Accumulate" (vector_phosphor_tail) does out = prev*decay + cur;
-				// drive its decay in real time the same way as Flicker Persist above: decay =
-				// exp(-dt_ms / phosphor_tau_ms), reusing persist_dt (emulated time since the previous
-				// present). On non-advancing presents (pause) dt==0 -> decay==1, but u_tail_freeze=1 then
-				// forces retain=1/inject=0 so the held image is neither decayed nor re-added. No-op without
-				// a "Scan Accumulate" pass.
-				const float scan_tau_ms = m_chains->slider_value(0, "phosphor_tau_ms", 20.0f);
-				const float scan_decay  = (scan_tau_ms > 0.0f)
-					? expf(-float(persist_dt * 1000.0) / scan_tau_ms) : 0.0f;
-				const float scan_decay_vals[4] = { scan_decay, 0.0f, 0.0f, 0.0f };
-				m_chains->inject_entry_uniform(0, "Scan Accumulate", "u_tail_decay", scan_decay_vals, 4);
-				const float scan_freeze[4] = { m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f, 0.0f };
-				m_chains->inject_entry_uniform(0, "Scan Accumulate", "u_tail_freeze", scan_freeze, 4);
-
-				// Bloom dark-area noise: strength from the slider, and freeze the pattern (y=1) on
-				// presents that did not advance emulation so the shimmer stops while paused (F5).
-				const float bloom_noise[4] = {
-					m_chains->slider_value(0, "bloom_noise", 0.10f),
-					m_vec_frame_advanced ? 0.0f : 1.0f, 0.0f, 0.0f };
-				m_chains->inject_entry_uniform(0, "Bloom Apply", "u_bloom_noise", bloom_noise, 4);
 
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
