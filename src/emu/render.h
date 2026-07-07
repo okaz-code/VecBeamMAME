@@ -252,6 +252,22 @@ private:
 };
 
 
+// ======================> render_vector_stats
+
+// render_vector_stats - per-frame statistics a vector-type screen device publishes into its
+// render container (and which propagate onto the primitive list), so a renderer can implement
+// CRT load / afterglow effects without reaching into the device. Stock renderers ignore it.
+struct render_vector_stats
+{
+	u32   frame_id = 0U;            // increments every emulated frame the device drew (0 = no vector device)
+	u32   list_generation = 0U;     // increments when the CPU starts a NEW beam list
+	bool  list_stale = false;       // this frame re-showed the previous beam list (no new list started)
+	bool  timed = false;            // per-segment t0/t1 model real cycle-accurate sweep timing (AVG/DVG)
+	float total_energy = 0.0F;      // sum of beam_energy x normalized segment length this frame (EHT load)
+	float offscreen_energy = 0.0F;  // shaped off-screen beam energy this frame (monitor-glow source)
+};
+
+
 // ======================> render_primitive_list
 
 // render_primitive_list - an object containing a list head plus a lock
@@ -266,6 +282,7 @@ class render_primitive_list
 public:
 	// getters
 	render_primitive *first() const { return m_primlist.first(); }
+	const render_vector_stats &vector_stats() const { return m_vector_stats; }
 
 	// range iterators
 	using auto_iterator = simple_list<render_primitive>::auto_iterator;
@@ -299,6 +316,7 @@ private:
 	// internal state
 	simple_list<render_primitive> m_primlist;               // list of primitives
 	simple_list<reference> m_reflist;                       // list of references
+	render_vector_stats m_vector_stats;                     // vector frame statistics (set by render_target)
 
 	fixed_allocator<render_primitive> m_primitive_allocator;// allocator for primitives
 	fixed_allocator<reference> m_reference_allocator;       // allocator for references
@@ -413,10 +431,13 @@ public:
 	float yoffset() const { return m_user.m_yoffset; }
 	bool is_empty() const { return m_itemlist.empty(); }
 	const user_settings &get_user_settings() const { return m_user; }
+	// vector-game frame statistics (published by a vector screen device; zeroed otherwise)
+	const render_vector_stats &vector_stats() const { return m_vector_stats; }
 
 	// setters
 	void set_overlay(bitmap_argb32 *bitmap);
 	void set_user_settings(const user_settings &settings);
+	void set_vector_stats(const render_vector_stats &stats) { m_vector_stats = stats; }
 
 	// empty the item list
 	void empty() { m_item_allocator.reclaim_all(m_itemlist); }
@@ -489,6 +510,7 @@ private:
 	fixed_allocator<item>   m_item_allocator;       // free container items
 	screen_device *         m_screen;               // the screen device
 	user_settings           m_user;                 // user settings
+	render_vector_stats     m_vector_stats;         // vector frame statistics (see render_vector_stats)
 	bitmap_argb32 *         m_overlaybitmap;        // overlay bitmap
 	render_texture *        m_overlaytexture;       // overlay texture
 	std::unique_ptr<palette_client> m_palclient;    // client to the screen palette

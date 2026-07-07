@@ -35,7 +35,6 @@ class bgfx_chain;
 class bgfx_view;
 class osd_options;
 class avi_write;
-class vector_device;
 
 /* renderer_bgfx is the information about BGFX for the current screen */
 class renderer_bgfx : public osd_renderer, public slider_dirty_notifier
@@ -371,17 +370,14 @@ private:
 	const util::notifier_subscription m_load_sub;
 	const util::notifier_subscription m_save_sub;
 
-	// Monitor glow: off-screen overload energy accumulated for the current frame from the vector
-	// device's overload-line notifier, then injected into the chain's monitor-glow pass each frame.
-	float m_mglow_amount = 0.0f;
-	float m_mglow_smoothed = 0.0f;  // temporally smoothed glow (peak + slow decay), avoids vsync flicker
-	util::notifier_subscription m_mglow_line_sub;
-	util::notifier_subscription m_mglow_frame_sub;
+	// Monitor glow: the vector device publishes the frame's shaped off-screen beam energy through
+	// render_vector_stats; scaled by the chain's coefficient and injected into the monitor-glow
+	// pass each frame. m_mglow_smoothed peak-tracks it (slow decay) to avoid vsync flicker.
+	float m_mglow_smoothed = 0.0f;
 
-	// CRT flicker: the vector device (if any) whose stale-frame flag is read, and the per-frame dim
-	// factor (1.0 = none) computed from it and the chain's vector_crt_flicker slider. A stale frame
-	// (the CPU did not refresh the beam list) is dimmed by vector_crt_flicker.
-	vector_device *m_vector_device = nullptr;
+	// CRT flicker: per-frame dim factor (1.0 = none) computed from render_vector_stats::list_stale
+	// and the chain's vector_crt_flicker slider. A stale frame (the CPU did not refresh the beam
+	// list) is dimmed by vector_crt_flicker.
 	float m_crt_flicker_factor = 1.0f;
 	// Cyclic per-vector flicker (real AVG/DVG only): advances at a fixed real-time cadence
 	// (flicker_period_ms) while the feature is active (busy scene), NOT once per present - so the
@@ -400,10 +396,10 @@ private:
 	double m_flicker_prev_t0 = -1.0;
 	double m_flicker_prev_t1 = -1.0;
 
-	// True when a new emulated frame arrived at this present (set from the vector device's frame-begin
-	// notifier via m_vec_new_frame). Drives the chain's phosphor-tail freeze: re-presents without
-	// emulation progress (pause, menu stills) must neither decay nor pump the slow tail pool.
-	bool m_vec_new_frame = false;
+	// True when a new emulated frame arrived at this present (render_vector_stats::frame_id
+	// advanced since the previous present). Drives the chain's phosphor-tail freeze: re-presents
+	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.
+	uint32_t m_vec_prev_frame_id = 0;
 	bool m_vec_frame_advanced = false;
 	// Resolution basis for beam width / bloom / defocus scaling. A ROT270 (portrait) vector screen is
 	// pillarboxed in a wide window/fullscreen, so the raw framebuffer width over-scales the beam in
@@ -429,12 +425,10 @@ private:
 	double m_vec_persist_prev_t = -1.0;
 
 	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
-	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. m_hv_energy
-	// is this frame's total beam energy (beam_energy x length, summed by the beam-energy notifier over
-	// the whole list, reset each frame); m_hv_smoothed peak-tracks it with gentle decay (like the
-	// monitor glow) so it does not flicker against vsync; m_hv_load_norm is the 0..1 normalised load
-	// the renderer applies. 0 load / hv_droop 0 = no effect.
-	float m_hv_energy = 0.0f;
+	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. The
+	// frame total comes from render_vector_stats::total_energy; m_hv_smoothed peak-tracks it with
+	// gentle decay (like the monitor glow) so it does not flicker against vsync; m_hv_load_norm is
+	// the 0..1 normalised load the renderer applies. 0 load / hv_droop 0 = no effect.
 	float m_hv_smoothed = 0.0f;
 	float m_hv_load_norm = 0.0f;
 

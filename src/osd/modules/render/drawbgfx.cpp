@@ -32,7 +32,6 @@
 #include "emu.h"
 #include "config.h"
 #include "render.h"
-#include "video/vector.h"
 #include "rendutil.h"
 
 // complete slider_state type (for core->description access)
@@ -870,43 +869,10 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
 
-		// Subscribe to the vector device's beam notifiers for the monitor-glow effect.
-		// frame_begin resets the per-frame accumulator; the beam-energy-line notifier accumulates
-		// off-screen beam energy weighted by how far the beam runs past the screen edge. The
-		// thresholds/coefficient come from the active chain's sliders, so a chain that does not
-		// define them (coefficient defaults to 0) accumulates nothing.
-		for (vector_device &vec : device_type_enumerator<vector_device>(window().machine().root_device()))
-		{
-			m_vector_device = &vec;  // for the CRT-flicker stale-frame query
-			// Full-frame mode: each refresh the renderer draws the COMPLETE current beam list. The
-			// frame-begin notifier flags a new emulated frame (m_vec_new_frame) so the phosphor-tail
-			// freeze and time-calibrated persistence can tell running presents from pause/menu stills.
-			m_mglow_frame_sub = vec.add_frame_begin_notifier([this] () { m_mglow_amount = 0.0f; m_hv_energy = 0.0f; m_vec_new_frame = true; });
-			m_mglow_line_sub = vec.add_beam_energy_line_notifier(
-				[this] (float x0, float y0, float x1, float y1, float beam_energy)
-				{
-					// HV supply droop load: total beam energy = current (beam_energy) x draw time
-					// (proportional to length at constant velocity), summed over the whole frame.
-					if (beam_energy > 0.0f)
-					{
-						const float lx = x1 - x0, ly = y1 - y0;
-						m_hv_energy += beam_energy * sqrtf(lx * lx + ly * ly);
-					}
-					const float coeff = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
-					const float thr   = m_chains->slider_value(0, "mglow_threshold", 0.7f);
-					if (coeff <= 0.0f || beam_energy <= thr)
-						return;
-					const float mind = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
-					auto outside = [] (float x, float y) {
-						const float dx = (x < 0.0f) ? -x : (x > 1.0f) ? (x - 1.0f) : 0.0f;
-						const float dy = (y < 0.0f) ? -y : (y > 1.0f) ? (y - 1.0f) : 0.0f;
-						return std::max(dx, dy);
-					};
-					if (std::max(outside(x0, y0), outside(x1, y1)) > mind)
-						m_mglow_amount += (beam_energy - thr) * coeff;
-				});
-			break;
-		}
+		// Vector frame statistics (frame counter, list staleness, total / off-screen beam energy)
+		// arrive through the render layer (render_vector_stats, published by the vector device
+		// into its container and propagated onto the primitive list) - the renderer no longer
+		// reaches into the device itself.
 	}
 
 	return 0;
@@ -3081,10 +3047,14 @@ int renderer_bgfx::draw(int update)
 		// Only LINEs with PRIMFLAG_VECTOR go to the FBO, to keep UI lines out of the phosphor path
 		// (which would ghost them). UI / MAME-menu LINEs stay on the normal buffer_primitives path
 		// (View 0, cleared each frame).
-		// Track whether the vector device started a new emulated frame at this present, so pause / menu
-		// stills (no emulation progress) can freeze the phosphor tail and hold the persistence pools.
-		m_vec_frame_advanced = m_vec_new_frame;
-		m_vec_new_frame = false;
+		// Vector frame statistics, published by the vector device through the render layer
+		// (render_vector_stats on the primitive list) - the render-layer replacement for the
+		// former direct device queries and notifiers.
+		const render_vector_stats vstats = window().m_primlist->vector_stats();
+		// Track whether the device drew a new emulated frame since the previous present, so pause /
+		// menu stills (no emulation progress) can freeze the phosphor tail and persistence pools.
+		m_vec_frame_advanced = (vstats.frame_id != m_vec_prev_frame_id);
+		m_vec_prev_frame_id = vstats.frame_id;
 
 		int vector_count = 0;   // all vector lines (decides the FBO path)
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
@@ -3096,7 +3066,7 @@ int renderer_bgfx::draw(int update)
 		int point_count = 0;
 		const float pt_thresh = m_line_analytic
 				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
-		// Cyclic per-vector flicker (real AVG/DVG only, see vector_device::avg_timing): reproduces the
+		// Cyclic per-vector flicker (real AVG/DVG only, see render_vector_stats::timed): reproduces the
 		// effect lost when the windowed beam-event draw mode was retired - real vector hardware re-traces EVERY
 		// vector EVERY refresh (there is no "static image"), so a busy scene (more vectors than the
 		// beam can visit before it must restart the sweep) makes a DIFFERENT rotating subset miss its
@@ -3113,7 +3083,7 @@ int renderer_bgfx::draw(int update)
 		// updated from THIS frame's own scan below, instead of a dedicated pre-pass over the whole
 		// primitive list - a chaotic, cyclic effect like this cannot perceive a one-present lag in
 		// "how busy was the scene," so this trades an exact result for skipping a full O(n) traversal.
-		const bool flicker_on = (m_vector_device != nullptr) && m_vector_device->avg_timing();
+		const bool flicker_on = vstats.timed;
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// "Busy" is judged by the REAL DRAW-TIME SPAN this present's list took to sweep (last_t1 -
@@ -3252,7 +3222,7 @@ int renderer_bgfx::draw(int update)
 			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame (the
 			// CPU did not start a new list). Renderer-side (bgfx only); the amount comes from the
 			// chain's vector_crt_flicker slider.
-			m_crt_flicker_factor = (m_vector_device != nullptr && m_vector_device->beam_list_stale())
+			m_crt_flicker_factor = vstats.list_stale
 				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
 				: 1.0f;
 
@@ -3265,7 +3235,7 @@ int renderer_bgfx::draw(int update)
 			// then normalise by hv_droop_ref to a 0..1 load that put_analytic_line turns into a global
 			// dim + defocus. Computed before the draw so this present's lines see the current load.
 			if (m_vec_frame_advanced)
-				m_hv_smoothed = std::max(m_hv_energy, m_hv_smoothed * 0.82f);
+				m_hv_smoothed = std::max(vstats.total_energy, m_hv_smoothed * 0.82f);
 			const float hv_ref = std::max(0.01f, m_chains->slider_value(0, "hv_droop_ref", 10.0f));
 			m_hv_load_norm = std::clamp(m_hv_smoothed / hv_ref, 0.0f, 1.0f);
 
@@ -3695,6 +3665,7 @@ int renderer_bgfx::draw(int update)
 	// The chain does a passthrough blit and writes directly to the backbuffer.
 	if (m_vectors_in_fbo && window_index == 0)
 	{
+		const render_vector_stats vstats = window().m_primlist->vector_stats();
 		bgfx::TextureHandle vec_color = bgfx::getTexture(m_vec_fb, 0);
 		if (bgfx::isValid(vec_color))
 		{
@@ -3728,12 +3699,16 @@ int renderer_bgfx::draw(int update)
 			// Guard against null chain (e.g. chain change from menu, or failed load).
 			if (m_chains->has_applicable_chain(0))
 			{
-				// Feed the monitor-glow accumulation into the chain's glow pass (no-op without an
-				// "add_mglow" pass). On a stale frame (the beam list was not refreshed) the per-frame
-				// energy can dip and make the glow flicker against vsync. The monitor glow physically
-				// persists, so track the peak and decay it gently instead of using the raw per-frame value.
+				// Feed the monitor glow into the chain's glow pass (no-op without an "add_mglow"
+				// pass). The device publishes the shaped off-screen beam energy
+				// (render_vector_stats; the old mglow_threshold / mglow_min_distance shaping now
+				// lives there with the same values baked in); the chain's coefficient scales it
+				// here. On a stale frame the per-frame energy can dip and make the glow flicker
+				// against vsync - the monitor glow physically persists, so track the peak and
+				// decay it gently.
+				const float mglow_amount = vstats.offscreen_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
 				if (m_vec_frame_advanced)
-					m_mglow_smoothed = std::max(m_mglow_amount, m_mglow_smoothed * 0.80f);
+					m_mglow_smoothed = std::max(mglow_amount, m_mglow_smoothed * 0.80f);
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 
