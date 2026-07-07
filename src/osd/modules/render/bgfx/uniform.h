@@ -37,6 +37,12 @@ public:
 	bgfx_uniform* set_mat4(float* value);
 	bgfx_uniform* set(void* data, size_t size);
 
+	// Captures the effect JSON's declared "values" as this uniform's default (called once, right
+	// after construction, by uniform_reader - see its comment for why this exists).
+	void set_default(void* data, size_t size);
+	// Restores the current value to the captured default. See bgfx_effect::reset_uniforms_to_default.
+	void reset_to_default();
+
 	static size_t get_size_for_type(bgfx::UniformType::Enum type);
 
 protected:
@@ -44,6 +50,7 @@ protected:
 	std::string             m_name;
 	bgfx::UniformType::Enum m_type;
 	uint8_t*                m_data;
+	uint8_t*                m_default_data;
 	size_t                  m_data_size;
 };
 

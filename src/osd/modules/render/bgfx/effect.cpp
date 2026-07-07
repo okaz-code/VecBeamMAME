@@ -60,3 +60,11 @@ bgfx_uniform* bgfx_effect::uniform(const std::string &name)
 	const auto iter = m_uniforms.find(name);
 	return (iter != m_uniforms.end()) ? iter->second.get() : nullptr;
 }
+
+void bgfx_effect::reset_uniforms_to_default()
+{
+	for (auto &[name, uniform] : m_uniforms)
+	{
+		uniform->reset_to_default();
+	}
+}

@@ -14,12 +14,15 @@
 bgfx_uniform::bgfx_uniform(std::string &&name, bgfx::UniformType::Enum type)
 	: m_name(std::move(name))
 	, m_type(type)
+	, m_default_data(nullptr)
 {
 	m_handle = BGFX_INVALID_HANDLE;
 	m_data_size = get_size_for_type(type);
 	if (m_data_size > 0)
 	{
 		m_data = new uint8_t[m_data_size];
+		m_default_data = new uint8_t[m_data_size];
+		memset(m_default_data, 0, m_data_size);
 	}
 }
 
@@ -30,6 +33,7 @@ bgfx_uniform::~bgfx_uniform()
 		bgfx::destroy(m_handle);
 	}
 	delete [] m_data;
+	delete [] m_default_data;
 }
 
 void bgfx_uniform::create()
@@ -70,6 +74,21 @@ bgfx_uniform* bgfx_uniform::set(void* data, size_t size)
 	int min_size = (size < m_data_size) ? size : m_data_size;
 	memcpy(m_data, data, min_size);
 	return this;
+}
+
+void bgfx_uniform::set_default(void* data, size_t size)
+{
+	if (m_default_data == nullptr)
+		return;
+	int min_size = (size < m_data_size) ? size : m_data_size;
+	memcpy(m_default_data, data, min_size);
+}
+
+void bgfx_uniform::reset_to_default()
+{
+	if (m_default_data == nullptr || m_data == nullptr)
+		return;
+	memcpy(m_data, m_default_data, m_data_size);
 }
 
 size_t bgfx_uniform::get_size_for_type(bgfx::UniformType::Enum type)
