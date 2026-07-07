@@ -45,6 +45,12 @@ std::unique_ptr<bgfx_uniform> uniform_reader::read_from_value(const Value& value
 
 	auto uniform = std::make_unique<bgfx_uniform>(name, type);
 	uniform->set(data, type_size);
+	// Capture the same JSON-declared "values" as this uniform's default, so it can be restored every
+	// submit before per-pass overrides are applied - see bgfx_effect::reset_uniforms_to_default's
+	// comment for why (this effect instance is shared/cached by name across every chain that
+	// references it, so a value left set by one chain's pass would otherwise silently leak into
+	// another chain's pass that doesn't rebind this same uniform).
+	uniform->set_default(data, type_size);
 	std::free(data);
 
 	return uniform;

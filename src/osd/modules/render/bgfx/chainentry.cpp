@@ -73,6 +73,12 @@ void bgfx_chain_entry::submit(int view, chain_manager::screen_prim &prim, textur
 		return;
 	}
 
+	// Restore every uniform on this pass's (possibly shared/cached, see the comment on
+	// reset_uniforms_to_default) effect to its JSON-declared default BEFORE applying this pass's own
+	// bindings below - otherwise a uniform this pass doesn't explicitly rebind could keep whatever
+	// value a different pass/chain last left on the shared effect instance.
+	m_effect->reset_uniforms_to_default();
+
 	for (bgfx_input_pair* input : m_inputs)
 	{
 		input->bind(m_effect, screen);
