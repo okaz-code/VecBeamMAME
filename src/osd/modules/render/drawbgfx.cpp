@@ -1858,6 +1858,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 	}
 
+	// junction_dot_debug: paint every dot by its classification (junction = magenta, isolated =
+	// green, full brightness) so the on-line test can be verified live on screen. Lines untouched.
+	if (as_point && m_chains->slider_value(0, "junction_dot_debug", 0.0f) > 0.5f)
+	{
+		core_sat_r = junction_dot ? 1.0f : 0.0f;
+		core_sat_g = junction_dot ? 0.0f : 1.0f;
+		core_sat_b = junction_dot ? 1.0f : 0.0f;
+		display_a  = 1.0f;
+	}
+
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
 		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * 255.0f + 0.5f), 255),
@@ -3015,7 +3025,8 @@ int renderer_bgfx::draw(int update)
 		// adjacent to their line, so endpoint adjacency alone misses them. Flicker-excluded strokes
 		// are included (still beam geometry; keeps a dot's size from pulsing with the buckets).
 		const bool j_scan = m_line_analytic
-				&& m_chains->slider_value(0, "junction_dot_scale", 1.0f) != 1.0f;
+				&& (m_chains->slider_value(0, "junction_dot_scale", 1.0f) != 1.0f
+					|| m_chains->slider_value(0, "junction_dot_debug", 0.0f) > 0.5f);
 		m_j_segments.clear();
 		render_primitive *scan = window().m_primlist->first();
 		while (scan != nullptr)
