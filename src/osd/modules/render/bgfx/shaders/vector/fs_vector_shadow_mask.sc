@@ -52,7 +52,7 @@ void main()
 	vec3 boosted_mask = mask * (1.0 + brightboost);
 	vec3 mask_factor  = mix(vec3(1.0, 1.0, 1.0), boosted_mask, strength);
 
-	// Ambient / non-excited phosphor body colour (master plan 2-7): room light reflected off the dark
+	// Ambient / non-excited phosphor body colour: room light reflected off the dark
 	// phosphor raises "black" to the body tint. On a real shadow-mask CRT that reflection is modulated
 	// by the mask/aperture structure, so with the lights up the mask is faintly visible in the dark.
 	// Apply it here (in the mask pass) so it can carry the mask pattern. u_ambient_mask blends the floor

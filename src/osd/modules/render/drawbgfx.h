@@ -163,7 +163,7 @@ private:
 	// (games that jump back to deposit the dot separately - list adjacency does not catch those).
 	// Member (not a local) so the capacity persists across frames instead of reallocating.
 	std::vector<std::array<float, 4>> m_j_segments;
-	// Analytic glow FBO (案A): the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
+	// Analytic glow FBO: the wide-gaussian glow is drawn here, separate from the core m_vec_fb,
 	// so a chain pass can add it AFTER the shadow mask (scattered light is unmasked). Colour-only.
 	// Injected to the chain as "glow0" when analytic glow is active. Sized m_vec_fb * the active
 	// chain's glow_fbo_scale slider (1.0 when the chain has no such slider): glow content is smooth
@@ -187,7 +187,7 @@ private:
 	bool m_line_analytic = false;
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, bool junction_dot = false);
 
-	// Deflection-amplifier dynamics (master plan 3-3): the AVG X/Y deflection amps are second-order
+	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
 	// "hooks", curved starts after a jump). When enabled, the beam position/velocity are integrated
 	// continuously across the draw-ordered vector list and each segment is drawn as a short polyline
