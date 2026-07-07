@@ -743,6 +743,8 @@ renderer_bgfx::~renderer_bgfx()
 		bgfx::destroy(m_vec_np_fb);
 		m_vec_np_fb = BGFX_INVALID_HANDLE;
 	}
+	m_vec_fb_w = m_vec_fb_h = 0;
+	m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
 
 	bgfx::reset(0, 0, BGFX_RESET_NONE);
 
@@ -862,9 +864,14 @@ int renderer_bgfx::create()
 		bgfx::TextureHandle attachments[2] = { tex_color, tex_depth };
 		m_vec_fb = bgfx::createFrameBuffer(2, attachments, true);  // true=textures owned by FBO
 
-		// Analytic-glow FBO: colour-only, same size/format (additive draw, no depth needed).
+		// Analytic-glow FBO: colour-only, same format (additive draw, no depth needed). Created at
+		// full size here - the chain (and its optional glow_fbo_scale slider) is not loaded yet;
+		// draw()'s recreate-on-mismatch logic resizes it on the first frame if the chain asks for a
+		// reduced glow raster.
+		m_vec_glow_fb_w = m_vec_fb_w;
+		m_vec_glow_fb_h = m_vec_fb_h;
 		bgfx::TextureHandle glow_color = bgfx::createTexture2D(
-			m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
+			m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, color_flags);
 		m_vec_glow_fb = bgfx::createFrameBuffer(1, &glow_color, true);
 
 		// No-persist FBO: colour-only, same size/format (additive draw, no depth needed).
@@ -2939,7 +2946,16 @@ int renderer_bgfx::draw(int update)
 		const uint16_t cur_h = uint16_t(s_height[window_index]);
 		const uint16_t target_fb_w = uint16_t(cur_w * m_vec_supersample);
 		const uint16_t target_fb_h = uint16_t(cur_h * m_vec_supersample);
-		if (cur_w > 0 && cur_h > 0 && (target_fb_w != m_vec_fb_w || target_fb_h != m_vec_fb_h))
+		// glow_fbo_scale: the active chain's glow-FBO resolution factor (a fast-variant chain sets 0.5
+		// to quarter the glow fill cost; chains without the slider get 1.0). The glow content is smooth
+		// analytic gaussians computed from interpolated line-local varyings, so a reduced raster only
+		// samples the same function at lower density. Tracked separately so a chain switch that changes
+		// only this factor recreates the FBOs.
+		const float glow_scale = std::clamp(m_chains->slider_value(0, "glow_fbo_scale", 1.0f), 0.25f, 1.0f);
+		const uint16_t target_glow_w = std::max<uint16_t>(1, uint16_t(target_fb_w * glow_scale));
+		const uint16_t target_glow_h = std::max<uint16_t>(1, uint16_t(target_fb_h * glow_scale));
+		if (cur_w > 0 && cur_h > 0 && (target_fb_w != m_vec_fb_w || target_fb_h != m_vec_fb_h
+			|| target_glow_w != m_vec_glow_fb_w || target_glow_h != m_vec_glow_fb_h))
 		{
 			if (bgfx::isValid(m_vec_fb))
 				bgfx::destroy(m_vec_fb);
@@ -2949,6 +2965,8 @@ int renderer_bgfx::draw(int update)
 				bgfx::destroy(m_vec_np_fb);
 			m_vec_fb_w = target_fb_w;
 			m_vec_fb_h = target_fb_h;
+			m_vec_glow_fb_w = target_glow_w;
+			m_vec_glow_fb_h = target_glow_h;
 			// bilinear (no MSAA, for sampler compatibility)
 			const uint64_t cf = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
 				BGFX_TEXTURE_RT;
@@ -2956,7 +2974,7 @@ int renderer_bgfx::draw(int update)
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
 			bgfx::TextureHandle at[2] = { tc, td };
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
-			bgfx::TextureHandle gc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
+			bgfx::TextureHandle gc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_glow_fb = bgfx::createFrameBuffer(1, &gc, true);
 			bgfx::TextureHandle npc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_np_fb = bgfx::createFrameBuffer(1, &npc, true);
@@ -3425,7 +3443,9 @@ int renderer_bgfx::draw(int update)
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
 				bgfx::setViewFrameBuffer(glow_view, m_vec_glow_fb);
-				bgfx::setViewRect(glow_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
+				// viewport = the (possibly reduced) glow FBO; the ortho below still maps SCREEN
+				// coordinates, so the geometry lands scaled onto the smaller raster automatically.
+				bgfx::setViewRect(glow_view, 0, 0, m_vec_glow_fb_w, m_vec_glow_fb_h);
 				bgfx::setViewClear(glow_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
 				bgfx::setViewMode(glow_view, bgfx::ViewMode::Sequential);
 				float gproj[16];
