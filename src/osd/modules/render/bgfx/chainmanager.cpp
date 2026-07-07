@@ -572,35 +572,9 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 	else
 		m_screen_prims[0] = prim;
 
-	// (4) Trigger chain loading on first call (no-op on subsequent frames).
-	update_screen_count(1);
-
-	// (5) If the current chain is incompatible with vector, swap to the first vector chain.
-	//     The old code hardcoded the "vector-starwars" string; this is replaced by a screen_type-tag
-	//     based check, so any chain JSON carrying a "screen_type": "vector" tag becomes a candidate.
-	if (!m_screen_chains.empty() && m_current_chain[0] != CHAIN_NONE)
-	{
-		const size_t cur = size_t(m_current_chain[0]);
-		if (cur < m_available_chains.size() && !m_available_chains[cur].m_is_vector)
-		{
-			// swap to the first vector chain
-			for (size_t i = 0; i < m_available_chains.size(); i++)
-			{
-				if (m_available_chains[i].m_is_vector)
-				{
-					if (m_screen_chains[0] != nullptr)
-					{
-						delete m_screen_chains[0];
-						m_screen_chains[0] = nullptr;
-					}
-					m_current_chain[0] = int32_t(i);
-					m_chain_names[0] = m_available_chains[i].m_name;
-					load_chains();
-					break;
-				}
-			}
-		}
-	}
+	// (4)+(5) Trigger chain loading on first call (no-op on subsequent frames) and swap a
+	// vector-incompatible selection to the first vector chain.
+	ensure_vector_screen_slot();
 
 	// (6) Create/recreate the dynamically-sized bloom mip targets when dimensions change.
 	// These are sized relative to the window (window/2 .. window/256), so they cannot be declared
@@ -642,6 +616,43 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 			// bandwidth is negligible.
 			m_targets.create_target(bloom_names[i], bgfx::TextureFormat::RGBA16F,
 				bloom_lvl_w[i], bloom_lvl_h[i], 1, 1, TARGET_STYLE_CUSTOM, false, true, 1, 0);
+		}
+	}
+}
+
+// Bootstrap / keep alive the screen-0 chain slot for a vector game WITHOUT injecting the vector
+// FBO. The chain-selection slider for a vector game is created by update_screen_count(1), which
+// otherwise only happens inside inject_vector_screen on the analytic-engine path - without this,
+// launching with a non-engine chain active would never surface the chain selection at all (the
+// bootstrap deadlock: the engine only runs when an engine chain is active, but vector chains only
+// load when this slot exists). Also swaps a vector-incompatible chain selection to the first
+// vector-tagged chain, exactly as inject_vector_screen does (any chain JSON carrying a
+// "screen_type": "vector" tag is a candidate).
+void chain_manager::ensure_vector_screen_slot()
+{
+	update_screen_count(1);
+
+	if (!m_screen_chains.empty() && m_current_chain[0] != CHAIN_NONE)
+	{
+		const size_t cur = size_t(m_current_chain[0]);
+		if (cur < m_available_chains.size() && !m_available_chains[cur].m_is_vector)
+		{
+			// swap to the first vector chain
+			for (size_t i = 0; i < m_available_chains.size(); i++)
+			{
+				if (m_available_chains[i].m_is_vector)
+				{
+					if (m_screen_chains[0] != nullptr)
+					{
+						delete m_screen_chains[0];
+						m_screen_chains[0] = nullptr;
+					}
+					m_current_chain[0] = int32_t(i);
+					m_chain_names[0] = m_available_chains[i].m_name;
+					load_chains();
+					break;
+				}
+			}
 		}
 	}
 }

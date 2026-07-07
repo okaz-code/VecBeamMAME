@@ -3044,6 +3044,33 @@ int renderer_bgfx::draw(int update)
 		}
 	}
 
+	// Chain bootstrap / keep-alive while the analytic engine is OFF: for a vector game the
+	// chain-selection slider is created by update_screen_count(1), which otherwise only happens
+	// inside the engine path's inject_vector_screen - without this, launching with a non-engine
+	// chain active (or before the first chain loads) would never surface the chain selection at
+	// all, so there would be no way to select an engine chain (the bootstrap deadlock). The chain
+	// itself is NOT processed here: its texture providers may be stale while the engine is off,
+	// and the stock buffer_primitives path draws the vector LINEs directly.
+	if (window_index == 0 && !m_vec_engine_active && atlas_valid)
+	{
+		bool have_vectors = false;
+		for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
+			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags)) { have_vectors = true; break; }
+		if (have_vectors)
+		{
+			m_chains->ensure_vector_screen_slot();
+			// Restore slider values from config once, the first time, after the chain is loaded
+			// (same reason as the engine path below: vector games have num_screens == 0, so the
+			// generic restore never fires).
+			if (m_config && m_chains->has_applicable_chain(0))
+			{
+				osd_printf_verbose("BGFX: Applying configuration (vector mode) for window %d\n", window().index());
+				m_chains->load_config(*m_config->get_first_child());
+				m_config.reset();
+			}
+		}
+	}
+
 	// ===== draw vector LINEs into the FBO =====
 	// Draw directly into the FBO purely through the BGFX API, not via chain_manager / bgfx_ortho_view.
 	// On success, set m_vectors_in_fbo=true; buffer_primitives skips those LINEs, and right after we
