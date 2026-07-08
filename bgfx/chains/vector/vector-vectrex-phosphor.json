@@ -106,6 +106,8 @@
 		{ "type": "float", "name": "energy_dot_ref",     "text": "Energy Dot Ref (us)",       "default": 30.0, "min": 2.0,  "max": 300.0,"step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_curve",   "text": "Energy Dot Curve",          "default": 1.6,  "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_dot_max",     "text": "Energy Dot Max",            "default": 3.2,  "min": 1.0,  "max": 16.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "intenum", "name": "energy_stroke_agg", "text": "Energy Stroke Aggregation", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
+		{ "type": "float", "name": "energy_dwell_cap",   "text": "Energy Dwell Cap",          "default": 1.6,  "min": 0.0,  "max": 16.0, "step": 0.1,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop_ref",       "text": "HV Droop Load Ref",         "default": 10.0, "min": 1.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter",       "text": "Energy Jitter (near saturation)", "default": 0.0,  "min": 0.0, "max": 0.5,  "step": 0.005, "format": "%1.3f", "screen": "vector" },

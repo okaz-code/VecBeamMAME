@@ -1483,6 +1483,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_dot_curve", &renderer_bgfx::vec_slider_cache::energy_dot_curve, 1.6f },
 	{ "energy_dot_max", &renderer_bgfx::vec_slider_cache::energy_dot_max, 3.2f },
 	{ "energy_dot_ref", &renderer_bgfx::vec_slider_cache::energy_dot_ref, 30.0f },
+	{ "energy_dwell_cap", &renderer_bgfx::vec_slider_cache::energy_dwell_cap, 16.0f },
 	{ "energy_infl", &renderer_bgfx::vec_slider_cache::energy_infl, 0.6f },
 	{ "energy_jitter", &renderer_bgfx::vec_slider_cache::energy_jitter, 0.0f },
 	{ "energy_jitter_hz", &renderer_bgfx::vec_slider_cache::energy_jitter_hz, 15.0f },
@@ -1491,6 +1492,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
 	{ "energy_speed_norm", &renderer_bgfx::vec_slider_cache::energy_speed_norm, 0.8f },
+	{ "energy_stroke_agg", &renderer_bgfx::vec_slider_cache::energy_stroke_agg, 1.0f },
 	{ "glow_curve", &renderer_bgfx::vec_slider_cache::glow_curve, 1.0f },
 	{ "glow_narrow", &renderer_bgfx::vec_slider_cache::glow_narrow, 0.0f },
 	{ "glow_threshold", &renderer_bgfx::vec_slider_cache::glow_threshold, 0.0f },
@@ -1595,8 +1597,11 @@ void renderer_bgfx::refresh_vec_slider_cache()
 // driver (0..1 = normal display range, >1 = overdrive from slow sweeps / dwelling dots).
 // Lines: density ~ 1/speed through the saturating s = x^g/(x^g+1) (speed in screen-widths per ms,
 // so it is resolution-independent). Points: dwell time through the same curve family.
+// stroke_px_per_ms >= 0 overrides the per-segment speed with the WHOLE-STROKE aggregate (see the
+// energy_stroke_agg pre-pass in draw()): a curve drawn as many short sub-segments then reads one
+// uniform speed instead of per-segment noise (matching the driver model's whole-stroke density).
 // energy_model 0 = off (n = display intensity, prior behaviour - chains without the slider unchanged).
-float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref)
+float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms)
 {
 	const float I = std::clamp(prim->color.a, 0.0f, 1.0f);
 	if (m_vs.energy_model <= 0.0f
@@ -1614,7 +1619,9 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 	}
 	else
 	{
-		const double v  = (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);   // screen-widths per ms
+		const double v  = (stroke_px_per_ms >= 0.0f)
+				? double(stroke_px_per_ms) / std::max(1.0f, screen_ref)                              // aggregate stroke speed
+				: (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);            // screen-widths per ms
 		const double x  = double(std::max(0.01f, m_vs.energy_speed_norm)) / std::max(1e-6, v);
 		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_curve)));
 		s = xg / (xg + 1.0);
@@ -1623,7 +1630,7 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, bool junction_dot)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, bool junction_dot, float stroke_px_per_ms, float dwell_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -1672,7 +1679,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float e_screen_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
-										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
+										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
+	// Same-spot dwell cap (energy_dwell_cap pre-pass in draw()): a run of dots deposited on ONE spot
+	// piles energy up only to the cap - the later dots' MODEL-DERIVED energy is scaled down by the
+	// pre-computed factor. Applies only when the renderer derived n itself (beam_energy < 0); a
+	// device-supplied energy (e.g. the Vectrex driver model) already caps its own pile-up.
+	if (prim->beam_energy < 0.0f && dwell_scale < 1.0f)
+		n *= dwell_scale;
 	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
 	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
 	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
@@ -3231,6 +3244,92 @@ int renderer_bgfx::draw(int update)
 			const float hv_ref = std::max(0.01f, m_chains->slider_value(0, "hv_droop_ref", 10.0f));
 			m_hv_load_norm = std::clamp(m_hv_smoothed / hv_ref, 0.0f, 1.0f);
 
+			// Whole-stroke energy pre-pass (renderer-side counterparts of the Vectrex driver model's
+			// two list-order behaviours; only meaningful for MODEL-DERIVED energy, so both gate on
+			// energy_model, and both walk the FULL list including flicker-excluded vectors - exclusion
+			// is a display artifact, the beam still swept them).
+			// - energy_stroke_agg: a contiguous stroke (cap_flags bit0 RAMP-on .. bit1 RAMP-off run)
+			//   reads ONE aggregate speed = lit px / lit ms across the whole run, so a curve drawn as
+			//   many short sub-segments gets uniform brightness instead of per-segment speed noise.
+			//   Assigned only when the run has 2+ line segments (a single segment reads the same either
+			//   way); dot members keep the dwell model.
+			// - energy_dwell_cap: dots piled on ONE parked spot accumulate model energy only up to the
+			//   cap - the first dot at a new spot is always full (a dazzle spot still dazzles), later
+			//   same-spot dots emit what remains. Any real beam travel (a line segment) resets the spot.
+			m_stroke_speed.clear();
+			m_dwell_scale.clear();
+			const bool stroke_agg_on = m_line_analytic && m_vs.energy_model > 0.0f && m_vs.energy_stroke_agg > 0.5f;
+			const bool dwell_cap_on  = m_line_analytic && m_vs.energy_model > 0.0f && m_vs.energy_dwell_cap < 15.99f;
+			if (stroke_agg_on || dwell_cap_on)
+			{
+				const float e_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
+						: float(std::max(s_width[window_index], s_height[window_index]));
+				std::vector<render_primitive*> run;   // line-segment members of the current stroke run
+				double run_px = 0.0, run_ms = 0.0;
+				bool in_run = false;
+				auto flush_run = [&]() {
+					if (run.size() >= 2 && run_px > 0.0 && run_ms > 1e-6)
+					{
+						const float v = float(run_px / run_ms);
+						for (render_primitive *rp : run)
+							m_stroke_speed.emplace(rp, v);
+					}
+					run.clear(); run_px = 0.0; run_ms = 0.0; in_run = false;
+				};
+				constexpr int SPOT_NONE = -0x40000000;
+				int spot_x = SPOT_NONE, spot_y = SPOT_NONE;   // current parked spot (0.5 px quantized)
+				float spot_accum = 0.0f;                      // model energy already emitted at that spot
+				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+				{
+					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags))
+						continue;
+					const float ddx = p->bounds.x1 - p->bounds.x0, ddy = p->bounds.y1 - p->bounds.y0;
+					const float len = sqrtf(ddx * ddx + ddy * ddy);
+					const bool is_pt = (len <= pt_thresh);
+					if (stroke_agg_on && p->beam_energy < 0.0f)
+					{
+						if (p->cap_flags & 1u)   // RAMP-on: a new stroke begins here
+							{ flush_run(); in_run = true; }
+						if (in_run)
+						{
+							if (p->t0 >= 0.0 && p->t1 > p->t0)
+								run_ms += (p->t1 - p->t0) * 1000.0;
+							if (!is_pt)
+							{
+								run_px += double(len);
+								run.push_back(p);
+							}
+							if (p->cap_flags & 2u)   // RAMP-off: the stroke ends with this segment
+								flush_run();
+						}
+					}
+					if (dwell_cap_on)
+					{
+						if (!is_pt)
+							{ spot_x = spot_y = SPOT_NONE; spot_accum = 0.0f; }   // beam travelled: pile-up over
+						else if (p->beam_energy < 0.0f)
+						{
+							const int qx = int(p->bounds.x0 * 2.0f), qy = int(p->bounds.y0 * 2.0f);
+							if (qx == spot_x && qy == spot_y)
+							{
+								const float predicted = generic_beam_energy(p, len, true, e_ref);
+								const float remaining = std::max(0.0f, m_vs.energy_dwell_cap - spot_accum);
+								const float dscale = (predicted > 1e-6f) ? std::min(1.0f, remaining / predicted) : 1.0f;
+								if (dscale < 1.0f)
+									m_dwell_scale.emplace(p, dscale);
+								spot_accum += predicted * dscale;
+							}
+							else
+							{
+								spot_x = qx; spot_y = qy;
+								spot_accum = generic_beam_energy(p, len, true, e_ref);   // first dot: full
+							}
+						}
+					}
+				}
+				flush_run();   // a stroke still open at the list end (no RAMP-off seen)
+			}
+
 			// Vertex-dwell endpoint dots: neighbour-aware pass over the vector list in
 			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
 			// proportion to how sharply it turns (straight joint -> no dwell, sharp corner / reversal ->
@@ -3462,7 +3561,20 @@ int renderer_bgfx::draw(int update)
 											}
 										}
 									}
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, j_dot);
+									// Whole-stroke energy pre-pass results (see above): aggregate stroke
+									// speed and same-spot dwell scale, if this vector received either.
+									float sps = -1.0f, dsc = 1.0f;
+									if (!m_stroke_speed.empty())
+									{
+										auto sit = m_stroke_speed.find(vprim);
+										if (sit != m_stroke_speed.end()) sps = sit->second;
+									}
+									if (!m_dwell_scale.empty())
+									{
+										auto dit = m_dwell_scale.find(vprim);
+										if (dit != m_dwell_scale.end()) dsc = dit->second;
+									}
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, j_dot, sps, dsc);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (npptr) np_verts += NP_VPL;
 									if (rptr) ray_verts += m_ray_vpl;
