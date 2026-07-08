@@ -21,6 +21,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 
@@ -115,8 +116,9 @@ private:
 	// derive it renderer-side from the per-segment timestamps, in the same convention as the Vectrex
 	// driver (0..1 = normal display range, > 1 = overdrive from slow sweeps / dwelling dots). Returns a
 	// value on the display-intensity scale (0..1 = normal, > 1 = overdrive). Returns the plain display
-	// intensity when the model is off or timestamps are unavailable.
-	float generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref);
+	// intensity when the model is off or timestamps are unavailable. stroke_px_per_ms (>= 0) replaces
+	// the per-segment sweep speed with the whole stroke's aggregate (see m_stroke_speed).
+	float generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms = -1.0f);
 
 	void set_bgfx_state(uint32_t blend);
 
@@ -166,6 +168,14 @@ private:
 	// (games that jump back to deposit the dot separately - list adjacency does not catch those).
 	// Member (not a local) so the capacity persists across frames instead of reallocating.
 	std::vector<std::array<float, 4>> m_j_segments;
+	// Renderer energy-model aids, rebuilt by a per-frame pre-pass when active (see draw()):
+	// - m_stroke_speed: per-primitive stroke-aggregate beam speed (px/ms) from cap_flags-delimited
+	//   stroke runs (Vectrex RAMP strokes; sources without cap_flags never populate it), smoothing
+	//   per-segment quantization noise along curves.
+	// - m_dwell_scale: per-primitive energy scale (< 1) capping the additive pile-up of consecutive
+	//   dots parked at one spot (the Vectrex driver model's "Dwell accum limit" equivalent).
+	std::unordered_map<const render_primitive*, float> m_stroke_speed;
+	std::unordered_map<const render_primitive*, float> m_dwell_scale;
 
 public:
 	// Per-frame cache of every chain slider the per-vector hot paths read. slider_value() is a
@@ -199,6 +209,7 @@ public:
 		float energy_dot_curve = 1.6f;
 		float energy_dot_max = 3.2f;
 		float energy_dot_ref = 30.0f;
+		float energy_dwell_cap = 16.0f;   // 16 = no cap (chains without the slider)
 		float energy_infl = 0.6f;
 		float energy_jitter = 0.0f;
 		float energy_jitter_hz = 15.0f;
@@ -207,6 +218,7 @@ public:
 		float energy_line_max = 4.0f;
 		float energy_model = 0.0f;
 		float energy_speed_norm = 0.8f;
+		float energy_stroke_agg = 1.0f;
 		float glow_curve = 1.0f;
 		float glow_narrow = 0.0f;
 		float glow_threshold = 0.0f;
@@ -293,7 +305,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, bool junction_dot = false);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, bool junction_dot = false, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
