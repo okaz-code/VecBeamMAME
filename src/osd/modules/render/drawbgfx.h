@@ -375,10 +375,6 @@ private:
 	// pass each frame. m_mglow_smoothed peak-tracks it (slow decay) to avoid vsync flicker.
 	float m_mglow_smoothed = 0.0f;
 
-	// CRT flicker: per-frame dim factor (1.0 = none) computed from render_vector_stats::list_stale
-	// and the chain's vector_crt_flicker slider. A stale frame (the CPU did not refresh the beam
-	// list) is dimmed by vector_crt_flicker.
-	float m_crt_flicker_factor = 1.0f;
 	// Cyclic per-vector flicker (real AVG/DVG only): advances at a fixed real-time cadence
 	// (flicker_period_ms) while the feature is active (busy scene), NOT once per present - so the
 	// perceived flicker rate stays the same regardless of the actually-achieved present rate (a busy

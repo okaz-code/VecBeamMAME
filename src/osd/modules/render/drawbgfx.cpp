@@ -1879,10 +1879,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		core_over = core_over + lin_col * (std::max(n - 1.0f, 0.0f) - core_over);
 	}
 
-	// Per-frame CRT-flicker dim (1.0 when not flickering). The legacy length-fade
-	// (vector_length_scale/ratio), dot_boost and dwell_* brightness knobs are gone - the unified
-	// energy model (speed / dwell derived from the per-segment timestamps) covers all three.
-	float length_factor = m_crt_flicker_factor;
+	// The legacy length-fade (vector_length_scale/ratio), dot_boost and dwell_* brightness knobs
+	// are gone - the unified energy model (speed / dwell derived from the per-segment timestamps)
+	// covers all three.
+	float length_factor = 1.0f;
 
 	// HV supply droop: a bright/busy frame sags the EHT supply, dimming the
 	// whole picture (here) and defocusing the spot (sigma, below). m_hv_load_norm is the smoothed 0..1
@@ -2705,11 +2705,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
-	// Per-frame CRT-flicker dim (1.0 when not flickering). The legacy length-fade and dot_boost
-	// knobs are gone (superseded by the unified energy model on the analytic path).
-	float length_factor = m_crt_flicker_factor;
+	// The legacy length-fade and dot_boost knobs are gone (superseded by the unified energy model
+	// on the analytic path).
+	float length_factor = 1.0f;
 
-	// Pack the line color: hue from the primitive (x length fade x flicker), alpha = display intensity.
+	// Pack the line color: hue from the primitive, alpha = display intensity.
 	const uint32_t rgba = u32Color(
 		uint32_t(prim->color.r * length_factor * 255.0f + 0.5f),
 		uint32_t(prim->color.g * length_factor * 255.0f + 0.5f),
@@ -2963,7 +2963,6 @@ int renderer_bgfx::draw(int update)
 		if (bgfx::isValid(m_vec_np_fb))   { bgfx::destroy(m_vec_np_fb);   m_vec_np_fb = BGFX_INVALID_HANDLE; }
 		m_vec_fb_w = m_vec_fb_h = 0;
 		m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
-		m_crt_flicker_factor = 1.0f;   // owned by the engine path; neutral for the stock path
 	}
 
 	// Create/recreate the vector FBOs while the analytic engine is active. Initial creation is
@@ -3219,13 +3218,6 @@ int renderer_bgfx::draw(int update)
 
 		if (vector_count > 0)
 		{
-			// CRT flicker: dim the whole frame when the beam list was not refreshed this frame (the
-			// CPU did not start a new list). Renderer-side (bgfx only); the amount comes from the
-			// chain's vector_crt_flicker slider.
-			m_crt_flicker_factor = vstats.list_stale
-				? std::max(0.0f, 1.0f - m_chains->slider_value(0, "vector_crt_flicker", 0.0f))
-				: 1.0f;
-
 			// Emulated time for this present, cached for the per-vector Energy Jitter time axis
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
 			m_vec_time_ms = window().machine().time().as_double() * 1000.0;
