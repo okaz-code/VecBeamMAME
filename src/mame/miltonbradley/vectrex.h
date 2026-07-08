@@ -48,6 +48,7 @@ protected:
 		m_io_beam_dwell(*this, "BEAMDWELL"),
 		m_io_beam_speed(*this, "BEAMSPEED"),
 		m_io_bright(*this, "BRIGHT"),
+		m_io_beam_model(*this, "BEAMMODEL"),
 		m_io_spotkill(*this, "SPOTKILL"),
 		m_io_spotkill_ms(*this, "SPOTKMS"),
 		m_io_spotkill_range(*this, "SPOTKRNG"),
@@ -226,6 +227,11 @@ private:
 	// blanked-beam retrace is lifted to m_bright_floor so it faintly glows, like a real CRT.
 	float m_bright_mult = 1.0f;         // cached intensity multiplier
 	int m_bright_floor = 0;             // cached intensity floor for blanked (intensity-0) beams (0 = none)
+	// A/B switch (BEAMMODEL): false = Driver model (this device's calibrated beam_energy pipeline,
+	// the default/legacy behaviour), true = Renderer model (beam_energy is forced to -1 at add_point /
+	// add_point_stereo, so the bgfx renderer derives energy itself from the per-segment timestamps,
+	// the same unified path used by the Atari AVG/DVG games). Cached per frame in screen_configuration().
+	bool m_renderer_energy_model = false;
 	// Spot killer (deflection protection): the beam is cut (screen black) when its TRAVEL DISTANCE
 	// within each m_spotkill_secs window stays below m_spotkill_dist - the deflection has (almost)
 	// stopped, e.g. a crashed / runaway program parking the beam. Distance-based, so a beam parked
@@ -265,6 +271,7 @@ private:
 	optional_ioport m_io_beam_dwell;     // same-location accumulation limit (parked-beam pile-up cap)
 	optional_ioport m_io_beam_speed;     // stroke inverse-speed normalizer
 	optional_ioport m_io_bright;         // Brightness knob: 50 = normal (x1), 100 = x2 intensity
+	optional_ioport m_io_beam_model;     // A/B switch: Driver model (calibrated energy pipeline) vs Renderer model (unified AVG/DVG energy)
 	optional_ioport m_io_spotkill;       // spot killer: cut the beam when deflection stops (CRT burn protection)
 	optional_ioport m_io_spotkill_ms;    // spot killer time constant (no-deflection time before the beam is cut)
 	optional_ioport m_io_spotkill_range; // spot killer travel threshold (% of the draw width per window)
