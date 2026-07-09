@@ -1528,6 +1528,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "ray_angle", &renderer_bgfx::vec_slider_cache::ray_angle, 15.0f },
 	{ "ray_gain", &renderer_bgfx::vec_slider_cache::ray_gain, 0.0f },
 	{ "ray_length", &renderer_bgfx::vec_slider_cache::ray_length, 60.0f },
+	{ "ray_length_rand", &renderer_bgfx::vec_slider_cache::ray_length_rand, 0.0f },
 	{ "ray_var", &renderer_bgfx::vec_slider_cache::ray_var, 0.6f },
 	{ "ray_width", &renderer_bgfx::vec_slider_cache::ray_width, 1.2f },
 	{ "ring_fill", &renderer_bgfx::vec_slider_cache::ring_fill, 0.0f },
@@ -2418,12 +2419,30 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				static const float seg_f1[GLOW_RAY_SEGS] = { 0.30f, 0.62f, 1.00f };
 				static const float seg_sg[GLOW_RAY_SEGS] = { 1.0f,  1.9f,  3.2f };
 				static const float seg_g [GLOW_RAY_SEGS] = { 1.0f,  0.42f, 0.16f };
+				// Time-varying ray-length wobble (ray_length_rand > 0): each ray stretches/shrinks over
+				// time so the starburst shimmers rather than sitting rigid. Per (dot, ray-index) seed,
+				// smoothstep value-noise on the shared jitter cadence (freezes on pause). 0 = static.
+				const float rl_rand = std::clamp(m_vs.ray_length_rand, 0.0f, 1.0f);
+				auto rh = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
+				const float rl_hz = std::max(1.0f, m_vs.energy_jitter_hz);
+				const double rl_t = m_vec_time_ms * double(rl_hz) * 0.001;
+				const uint32_t rl_step = uint32_t(int64_t(rl_t));
+				const float rl_fr = float(rl_t - double(rl_step));
+				const float rl_sm = rl_fr * rl_fr * (3.0f - 2.0f * rl_fr);
+				const uint32_t rl_dot = rh(uint32_t(int32_t(cx))) ^ rh(uint32_t(int32_t(cy)) + 0x9e3779b9U);
 				for (int ri = 0; ri < m_glow_rays_n; ri++)
 				{
 					const float th = rang + float(ri) * (6.2831853f / float(m_glow_rays_n));
 					const float ux = cosf(th), uy = sinf(th);
 					const float rnx = uy, rny = -ux;
-					const float rlen_i = rlen * (1.0f - ray_var * (1.0f - ray_var_tbl[ri % 12]));
+					float rlen_i = rlen * (1.0f - ray_var * (1.0f - ray_var_tbl[ri % 12]));
+					if (rl_rand > 0.0f)
+					{
+						const uint32_t rs = rl_dot ^ rh(uint32_t(ri) * 0x9e3779b9U + 1u);
+						const float n0 = float(rh(rs ^ rh(rl_step))      & 0xffffffu) / float(0x800000) - 1.0f;
+						const float n1 = float(rh(rs ^ rh(rl_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
+						rlen_i *= std::max(0.05f, 1.0f + rl_rand * (n0 + (n1 - n0) * rl_sm));
+					}
 					for (int sj = 0; sj < GLOW_RAY_SEGS; sj++)
 					{
 						const int rbase = (ri * GLOW_RAY_SEGS + sj) * 6;
