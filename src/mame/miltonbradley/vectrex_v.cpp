@@ -266,15 +266,9 @@ void vectrex_base_state::add_point(int x, int y, rgb_t color, int intensity, flo
 	newpoint->col = color;
 	newpoint->intensity = intensity;
 	// Object-type lift (length-0 here == a parked dot, e.g. a star/bullet). -1 (untimed) passes through.
-	float be = (beam_energy >= 0.0f)
+	const float be = (beam_energy >= 0.0f)
 			? beam_energy * object_boost(intensity, x == prev_x && y == prev_y)
 			: beam_energy;
-	// A/B switch: Renderer model passes beam_energy = -1 (no driver energy), so the renderer derives
-	// energy from the per-segment timestamps exactly like the AVG/DVG games; Driver model keeps this
-	// device's calibrated energy pipeline. All other arguments (x, y, color, intensity, t0, t1,
-	// cap_flags) are unaffected - only the stored beam_energy is overridden here.
-	if (m_renderer_energy_model)
-		be = -1.0f;
 	newpoint->beam_energy = be;
 	newpoint->cap_flags = u8(cap_flags);   // RAMP on/off terminus bits for the renderer's line caps
 	newpoint->t0 = t0;
