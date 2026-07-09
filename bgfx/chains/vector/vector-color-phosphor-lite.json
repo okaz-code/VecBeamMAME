@@ -181,10 +181,7 @@
 		{ "type": "float", "name": "shadow_mask_scale",       "text": "Shadow Mask Scale (px @1080p)","default": 4.0, "min": 1.0, "max": 8.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "color", "name": "ambient_color",           "text": "Ambient Color ",               "default": [ 0.35, 0.35, 0.35 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
-		{ "type": "float", "name": "ambient_mask",            "text": "Ambient Shadow-Mask (0=flat,1=masked)", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-
-		// ---- Utility ----
-		{ "type": "intenum", "name": "pause_composite", "text": "Pause Frame Composite", "default": 0, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] }
+		{ "type": "float", "name": "ambient_mask",            "text": "Ambient Shadow-Mask (0=flat,1=masked)", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" }
 	],
 
 	"parameters": [
