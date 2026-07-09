@@ -3805,6 +3805,16 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "phosphor_total_ms", 500.0f) };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos", phos_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos", phos_vals, 4);
+				// Energy-dependent decay rate: high-excitation phosphor saturates (second-order /
+				// bimolecular recombination), so a bright deposit decays FASTER initially than a dim
+				// one - a concentrated dwell dot fades toward the line level instead of out-lasting it
+				// in the afterimage. Modelled by shrinking the effective half-life / total by
+				// (1 + k * stored-peak) per pixel (k = phosphor_energy_decay). k = 0 = off (uniform
+				// decay, unchanged). Shared by both phosphor passes so re-excite and display agree.
+				const float phos2_vals[4] = {
+					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f), 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
+				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
 
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
