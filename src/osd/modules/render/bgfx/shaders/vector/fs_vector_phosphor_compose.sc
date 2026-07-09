@@ -30,6 +30,8 @@ SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 
 uniform vec4 u_phos;              // y = half_ms (tau), z = curve (p), w = total_ms
+uniform vec4 u_phos2;             // x = energy-decay k: bright peaks decay faster (0 = off, uniform)
+uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1,1 = uniform
 uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 = off
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
 
@@ -44,7 +46,18 @@ float phos_S(float age, float tau, float p, float total)
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
-	vec3 lit = pool.rgb * phos_S(pool.a, u_phos.y, u_phos.z, u_phos.w);
+	// Energy-dependent decay: brighter stored peak -> shorter effective half-life / total (see u_phos2);
+	// must match the update pass so re-excite and display agree.
+	// Energy decay keyed on OVERRANGE (peak past 0..1), not raw peak, so a normal-bright thick line
+	// decays uniformly instead of hollowing out centre-first (must match the update pass).
+	float dmult = 1.0 + max(0.0, u_phos2.x) * max(0.0, max(max(pool.r, pool.g), pool.b) - 1.0);
+	// Per-channel (RGB) decay: shared age, each channel its own half-life / total via u_phos_rgb
+	// (1,1,1 = uniform). Must match the update pass.
+	vec3 tau3 = (u_phos.y / dmult) * u_phos_rgb.rgb;
+	vec3 tot3 = (u_phos.w / dmult) * u_phos_rgb.rgb;
+	vec3 lit = pool.rgb * vec3(phos_S(pool.a, tau3.r, u_phos.z, tot3.r),
+							   phos_S(pool.a, tau3.g, u_phos.z, tot3.g),
+							   phos_S(pool.a, tau3.b, u_phos.z, tot3.b));
 	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);
 }
