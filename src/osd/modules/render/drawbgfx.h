@@ -261,6 +261,7 @@ public:
 		float phosphor_overdrive = 0.0f;
 		float point_width_scale = 1.0f;
 		float ray_angle = 15.0f;
+		float ray_count_rand = 0.0f;    // time-varying random suppression of individual rays (0 = all present)
 		float ray_gain = 0.0f;
 		float ray_length = 60.0f;
 		float ray_length_rand = 0.0f;   // time-varying per-ray length wobble (0 = static pattern)

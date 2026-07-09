@@ -1526,6 +1526,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "phosphor_overdrive", &renderer_bgfx::vec_slider_cache::phosphor_overdrive, 0.0f },
 	{ "point_width_scale", &renderer_bgfx::vec_slider_cache::point_width_scale, 1.0f },
 	{ "ray_angle", &renderer_bgfx::vec_slider_cache::ray_angle, 15.0f },
+	{ "ray_count_rand", &renderer_bgfx::vec_slider_cache::ray_count_rand, 0.0f },
 	{ "ray_gain", &renderer_bgfx::vec_slider_cache::ray_gain, 0.0f },
 	{ "ray_length", &renderer_bgfx::vec_slider_cache::ray_length, 60.0f },
 	{ "ray_length_rand", &renderer_bgfx::vec_slider_cache::ray_length_rand, 0.0f },
@@ -2423,6 +2424,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				// time so the starburst shimmers rather than sitting rigid. Per (dot, ray-index) seed,
 				// smoothstep value-noise on the shared jitter cadence (freezes on pause). 0 = static.
 				const float rl_rand = std::clamp(m_vs.ray_length_rand, 0.0f, 1.0f);
+				const float rc_rand = std::clamp(m_vs.ray_count_rand, 0.0f, 1.0f);
 				auto rh = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
 				const float rl_hz = std::max(1.0f, m_vs.energy_jitter_hz);
 				const double rl_t = m_vec_time_ms * double(rl_hz) * 0.001;
@@ -2442,6 +2444,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						const float n0 = float(rh(rs ^ rh(rl_step))      & 0xffffffu) / float(0x800000) - 1.0f;
 						const float n1 = float(rh(rs ^ rh(rl_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
 						rlen_i *= std::max(0.05f, 1.0f + rl_rand * (n0 + (n1 - n0) * rl_sm));
+					}
+					// Random ray COUNT: independently suppress rays over time so the visible ray count
+					// varies (the buffer is still sized for the max; a suppressed ray is drawn degenerate
+					// via the rlen_i < 1 test below). ray_count_rand = fraction of rays randomly dropped;
+					// a soft band around the threshold fades a ray out (shrinks its length to 0) rather
+					// than popping. Time-coherent per (dot, ray), so rays blink in/out at a bounded rate.
+					if (rc_rand > 0.0f)
+					{
+						const uint32_t cs = rl_dot ^ rh(uint32_t(ri) * 0x85ebca6bU + 0x9999u);
+						const float c0 = float(rh(cs ^ rh(rl_step))      & 0xffffffu) / float(0xffffffu);
+						const float c1 = float(rh(cs ^ rh(rl_step + 1u)) & 0xffffffu) / float(0xffffffu);
+						const float cn = c0 + (c1 - c0) * rl_sm;   // 0..1 time-coherent
+						rlen_i *= std::clamp((cn - rc_rand) / 0.15f, 0.0f, 1.0f);
 					}
 					for (int sj = 0; sj < GLOW_RAY_SEGS; sj++)
 					{
