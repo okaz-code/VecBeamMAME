@@ -121,10 +121,6 @@ void vectrex_base_state::screen_configuration()
 	m_obj_sharp = std::max(0.1f, m_io_obj_sharp.read_safe(50) / 25.0f);             // curve sharpness (50 = 2.0)
 	m_obj_max   = std::max(0.0f, m_io_obj_max.read_safe(75) / 25.0f);               // max mult (25 = 1.0 off, 75 = 3.0)
 	m_obj_star  = std::max(0.0f, m_io_obj_star.read_safe(75) / 50.0f);              // star/point extra (50 = 1.0 off, 75 = 1.5)
-	// A/B switch: Beam energy model = Renderer -> add_point/add_point_stereo force beam_energy to -1, so
-	// the renderer derives energy from timestamps itself (unified AVG/DVG path); Driver (default) keeps
-	// this device's own calibrated energy pipeline (dot_dwell_energy / stroke_density_energy / object_boost).
-	m_renderer_energy_model = m_io_beam_model.read_safe(0) != 0;
 
 	/* Vectrex 'dipswitch' configuration */
 
