@@ -1491,6 +1491,11 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_jitter_ramp", &renderer_bgfx::vec_slider_cache::energy_jitter_ramp, 0.5f },
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
+	{ "energy_obj_knee", &renderer_bgfx::vec_slider_cache::energy_obj_knee, 0.75f },
+	{ "energy_obj_lift", &renderer_bgfx::vec_slider_cache::energy_obj_lift, 0.0f },
+	{ "energy_obj_max", &renderer_bgfx::vec_slider_cache::energy_obj_max, 3.0f },
+	{ "energy_obj_sharp", &renderer_bgfx::vec_slider_cache::energy_obj_sharp, 2.0f },
+	{ "energy_obj_star", &renderer_bgfx::vec_slider_cache::energy_obj_star, 1.5f },
 	{ "energy_speed_norm", &renderer_bgfx::vec_slider_cache::energy_speed_norm, 0.8f },
 	{ "energy_stroke_agg", &renderer_bgfx::vec_slider_cache::energy_stroke_agg, 1.0f },
 	{ "glow_curve", &renderer_bgfx::vec_slider_cache::glow_curve, 1.0f },
@@ -1630,6 +1635,24 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
 }
 
+// Port of the Vectrex driver's object_boost() (see vectrex_v.cpp): beam_energy *= 1..energy_obj_max
+// as intensity rises past energy_obj_knee (sharpness energy_obj_sharp); point-classified (parked-dot)
+// primitives get an extra energy_obj_star factor. energy_obj_lift <= 0 = off. Model-derived energy
+// only (the caller gates on prim->beam_energy < 0.0f).
+float renderer_bgfx::energy_object_lift(float intensity01, bool as_point) const
+{
+	if (m_vs.energy_obj_lift <= 0.0f)
+		return 1.0f;
+	const float knee = std::clamp(m_vs.energy_obj_knee, 0.0f, 0.999f);
+	const float t = std::clamp((intensity01 - knee) / std::max(1e-3f, 1.0f - knee), 0.0f, 1.0f);
+	const float sharp = std::max(0.1f, m_vs.energy_obj_sharp);
+	const float lift = (sharp == 1.0f) ? t : powf(t, sharp);
+	float b = 1.0f + (std::max(1.0f, m_vs.energy_obj_max) - 1.0f) * lift;
+	if (as_point)
+		b *= std::max(1.0f, m_vs.energy_obj_star);
+	return b;
+}
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, bool junction_dot, float stroke_px_per_ms, float dwell_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
@@ -1686,6 +1709,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// device-supplied energy (e.g. the Vectrex driver model) already caps its own pile-up.
 	if (prim->beam_energy < 0.0f && dwell_scale < 1.0f)
 		n *= dwell_scale;
+	// Object-type lift (energy_object_lift port of the Vectrex driver's object_boost - see there):
+	// model-derived energy only, applied AFTER the dwell cap (matching the driver's own order - a
+	// bullet/star lift can push a spot back past what the dwell cap already capped it to).
+	if (prim->beam_energy < 0.0f)
+		n *= energy_object_lift(std::clamp(prim->color.a, 0.0f, 1.0f), as_point);
 	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
 	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
 	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n

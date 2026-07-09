@@ -120,6 +120,14 @@ private:
 	// the per-segment sweep speed with the whole stroke's aggregate (see m_stroke_speed).
 	float generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms = -1.0f);
 
+	// Port of the Vectrex driver's object_boost() (vectrex_v.cpp): a smooth per-object-type lift of
+	// beam_energy, driven by display intensity - a bullet/explosion/star (typically drawn at higher
+	// intensity than an enemy/ship) sails past energy_obj_knee and multiplies up to energy_obj_max,
+	// with an extra energy_obj_star factor for point-classified (parked-dot) primitives. Model-derived
+	// energy only; a device that supplies its own beam_energy already includes any such lift itself.
+	// energy_obj_lift <= 0 = off (multiplier 1, unaffected).
+	float energy_object_lift(float intensity01, bool as_point) const;
+
 	void set_bgfx_state(uint32_t blend);
 
 	static uint32_t u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
@@ -217,6 +225,11 @@ public:
 		float energy_jitter_ramp = 0.5f;
 		float energy_line_max = 4.0f;
 		float energy_model = 0.0f;
+		float energy_obj_knee = 0.75f;
+		float energy_obj_lift = 0.0f;     // 0 = off (chains without the slider unchanged)
+		float energy_obj_max = 3.0f;
+		float energy_obj_sharp = 2.0f;
+		float energy_obj_star = 1.5f;
 		float energy_speed_norm = 0.8f;
 		float energy_stroke_agg = 1.0f;
 		float glow_curve = 1.0f;
