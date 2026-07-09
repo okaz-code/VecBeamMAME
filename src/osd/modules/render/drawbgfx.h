@@ -129,6 +129,10 @@ private:
 	// (see put_analytic_line) so it does not amplify fast multiplexed line content into a visible beat.
 	float energy_object_lift(float intensity01, bool as_point) const;
 
+	// DAC / integrator position noise: time-coherent, position-keyed 2D endpoint offset (px). See the
+	// definition; shared vertices / coincident dot endpoints get the same offset so the path stays joined.
+	void beam_noise_offset(float x, float y, float &ox, float &oy) const;
+
 	void set_bgfx_state(uint32_t blend);
 
 	static uint32_t u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
@@ -192,6 +196,7 @@ public:
 	{
 		float analytic_glow = 0.0f;
 		float analytic_glow_width = 8.0f;
+		float beam_noise = 0.0f;   // DAC/integrator position noise amplitude (px); 0 = off
 		float beam_width_max = 1.5f;
 		float beam_width_min = 1.0f;
 		float beam_width_over_scale = -1.0f;

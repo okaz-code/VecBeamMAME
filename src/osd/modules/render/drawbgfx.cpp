@@ -1462,6 +1462,7 @@ struct vec_slider_def { const char *name; float renderer_bgfx::vec_slider_cache:
 const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "analytic_glow", &renderer_bgfx::vec_slider_cache::analytic_glow, 0.0f },
 	{ "analytic_glow_width", &renderer_bgfx::vec_slider_cache::analytic_glow_width, 8.0f },
+	{ "beam_noise", &renderer_bgfx::vec_slider_cache::beam_noise, 0.0f },
 	{ "beam_width_max", &renderer_bgfx::vec_slider_cache::beam_width_max, 1.5f },
 	{ "beam_width_min", &renderer_bgfx::vec_slider_cache::beam_width_min, 1.0f },
 	{ "beam_width_over_scale", &renderer_bgfx::vec_slider_cache::beam_width_over_scale, -1.0f },
@@ -1652,6 +1653,34 @@ float renderer_bgfx::energy_object_lift(float intensity01, bool as_point) const
 	return b;
 }
 
+// DAC / integrator position noise: a time-coherent 2D offset (px) for a beam endpoint, modelling the
+// analog deflection chain's noise floor. Keyed on the endpoint POSITION so a shared vertex (two
+// connected strokes) and a parked dot's two coincident endpoints get the SAME offset - the beam path
+// stays joined and a dot stays a dot. The time axis is emulated time quantized to energy_jitter_hz
+// steps with smoothstep value-noise between them (bounded speed, freezes on pause). beam_noise 0 = off.
+void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) const
+{
+	ox = oy = 0.0f;
+	const float amt = m_vs.beam_noise;
+	if (amt <= 0.0f)
+		return;
+	const float hz = std::max(1.0f, m_vs.energy_jitter_hz);   // share the jitter cadence
+	const double t = m_vec_time_ms * double(hz) * 0.001;
+	const uint32_t step = uint32_t(int64_t(t));
+	const float frac = float(t - double(step));
+	const float sm = frac * frac * (3.0f - 2.0f * frac);
+	auto h = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
+	const uint32_t seed = h(uint32_t(int32_t(x))) ^ h(uint32_t(int32_t(y)) + 0x9e3779b9U);
+	auto nz = [&](uint32_t chan) -> float {
+		const uint32_t s = seed ^ h(chan);
+		const float a0 = float(h(s ^ h(step))      & 0xffffffu) / float(0x800000) - 1.0f;
+		const float a1 = float(h(s ^ h(step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
+		return a0 + (a1 - a0) * sm;
+	};
+	ox = amt * nz(0x68f1u);
+	oy = amt * nz(0xb5e3u);
+}
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
@@ -1684,6 +1713,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	const float point_threshold = m_vs.line_point_threshold;
 	const bool as_point = (seg_len <= point_threshold);
+
+	// DAC / integrator position noise: jitter each endpoint by a time-coherent, position-keyed offset
+	// (analog deflection noise). Applied AFTER the point/line classification (so a dot - whose two
+	// endpoints share a position and thus an offset - stays a dot and is not reclassified as a line);
+	// the clean dx/dy/seg_len above are kept for the beam direction, width and energy (a sub-pixel
+	// offset does not change them meaningfully), only the drawn endpoint positions move.
+	if (m_vs.beam_noise > 0.0f)
+	{
+		float ox0, oy0, ox1, oy1;
+		beam_noise_offset(x0, y0, ox0, oy0);
+		beam_noise_offset(x1, y1, ox1, oy1);
+		x0 += ox0; y0 += oy0; x1 += ox1; y1 += oy1;
+	}
 
 	// Unified per-vector transfers. drive = beam_energy when the device supplies it (AVG: Tempest /
 	// Star Wars / Major Havoc), else the display intensity (DVG: Asteroids etc.). Brightness and width
