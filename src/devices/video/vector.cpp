@@ -49,6 +49,7 @@ float vector_options::s_beam_dot_size = 0.0f;
 float vector_options::s_beam_intensity_weight = 0.0f;
 float vector_options::s_overscan_x = 1.0f;
 float vector_options::s_overscan_y = 1.0f;
+float vector_options::s_blank_leak = 0.0f;
 
 void vector_options::init(emu_options &options)
 {
@@ -59,6 +60,7 @@ void vector_options::init(emu_options &options)
 	s_flicker = options.flicker();
 	s_overscan_x = options.vector_overscan_x();
 	s_overscan_y = options.vector_overscan_y();
+	s_blank_leak = options.vector_blank_leak();
 }
 
 // device type definition
@@ -341,9 +343,28 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				}
 			}
 		}
-		else if (!curpoint->emitted)
+		else
 		{
-			m_move_notifier(curpoint->x, curpoint->y, curpoint->col, visarea.width(), visarea.height());
+			// Blanked beam move (intensity 0). Normally invisible, but a real CRT leaks a little light
+			// during the blanked retrace/move; s_blank_leak > 0 draws the move path faintly so it shows.
+			// beam_energy = -1 so the renderer derives the level from the move's speed (a fast jump
+			// leaks less than a slow move); no end caps. Emitted every pass (like lit lines) so the
+			// window-boundary re-blend works; the move notifier still fires once (below).
+			if (vector_options::s_blank_leak > 0.0f)
+			{
+				const int leak_i = std::clamp(int(vector_options::s_blank_leak * 255.0f + 0.5f), 1, 255);
+				screen.container().add_line(
+						coords.x0, coords.y0, coords.x1, coords.y1,
+						beam_width,
+						(leak_i << 24) | (curpoint->col & 0xffffff),
+						flags,
+						-1.0f,
+						curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
+						curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double(),
+						0);
+			}
+			if (!curpoint->emitted)
+				m_move_notifier(curpoint->x, curpoint->y, curpoint->col, visarea.width(), visarea.height());
 		}
 
 		curpoint->emitted = true;

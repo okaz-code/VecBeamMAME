@@ -119,6 +119,7 @@
 #define OPTION_FLICKER              "flicker"
 #define OPTION_VECTOR_OVERSCAN_X    "vector_overscan_x"
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
+#define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_EVENT_DUMP    "vector_event_dump"
 
 // core sound options
@@ -407,6 +408,7 @@ public:
 	float flicker() const { return float_value(OPTION_FLICKER); }
 	float vector_overscan_x() const { return float_value(OPTION_VECTOR_OVERSCAN_X); }
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
+	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
 	const char *vector_event_dump() const { return value(OPTION_VECTOR_EVENT_DUMP); }
 
 	// core sound options

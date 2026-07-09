@@ -25,6 +25,7 @@ public:
 	static float s_beam_intensity_weight;
 	static float s_overscan_x;          // overscan zoom factor about screen centre (1.0 = none)
 	static float s_overscan_y;
+	static float s_blank_leak;          // blanked-beam leak level (0 = off): faintly draw blanked move/retrace paths
 
 protected:
 	static void init(emu_options& options);
