@@ -1718,17 +1718,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// branch's own energy_line_max, so restricting the lift to points loses no legitimate line flare.
 	if (prim->beam_energy < 0.0f && as_point)
 		n *= energy_object_lift(std::clamp(prim->color.a, 0.0f, 1.0f), true);
-	// Z rise-time response (points only, model-derived only): the blanking / Z-amp / cathode drive
-	// has a finite response, so a dot parked only a few us does not let the beam current reach full
-	// value and deposits less energy than a fully-established beam. Effective factor = 1 - exp(-dt/tau).
+	// Z rise-time response (points, any source): the blanking / Z-amp / cathode drive has a finite
+	// response, so a dot parked only a brief time does not let the beam current reach full value and
+	// deposits less energy than a fully-established beam. Effective factor = 1 - exp(-dt/tau).
 	// This is the physical replacement for the retired junction_dot geometric hack: a mid-stroke dot
 	// deposited by a brief beam pause is dimmed because it IS a brief dwell, not because it happens to
 	// lie on a line - and because the two-regime transfer couples brightness->width, a dimmed dot also
-	// reads thinner, reproducing the old width-shrink as a consequence. This is a distinct physical
-	// stage from the dwell-energy density model (beam-current establishment vs phosphor excitation =
-	// current x time), so it composes with generic_beam_energy rather than duplicating it.
-	// z_rise_tau 0 = off (no change). Timed sources only (needs the real dwell).
-	if (as_point && prim->beam_energy < 0.0f && m_vs.z_rise_tau > 0.0f
+	// reads thinner, reproducing the old width-shrink as a consequence. It applies REGARDLESS of the
+	// beam_energy source: every energy model (device-supplied like Star Wars AVG, or the renderer's own
+	// generic_beam_energy) assumes the beam reaches full current, so this current-establishment stage
+	// is a distinct, additive display effect - it is not double-counting the phosphor dwell (energy =
+	// current x time). The junction dots it targets (e.g. Star Wars: dots drawn at the same beam_energy
+	// as the lines but a ~0.08us dwell vs the lines' ~5us) are dimmed hard while the lines are untouched.
+	// z_rise_tau 0 = off (no change; per-chain, so a driver-model chain that leaves it 0 is unaffected).
+	// Timed sources only (needs the real dwell).
+	if (as_point && m_vs.z_rise_tau > 0.0f
 		&& prim->t0 >= 0.0 && prim->t1 > prim->t0)
 	{
 		const double dt_us = (prim->t1 - prim->t0) * 1e6;
