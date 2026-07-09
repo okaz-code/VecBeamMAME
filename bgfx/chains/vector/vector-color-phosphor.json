@@ -22,7 +22,7 @@
 		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 3.0, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_total_ms", "text": "Phosphor Total (ms)",       "default": 500.0,"min": 20.0,"max": 1500.0,"step": 10.0,"format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_energy_decay", "text": "Phosphor Energy Decay (bright faster)", "default": 0.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "color", "name": "phosphor_rgb_decay", "text": "Phosphor RGB Decay (halflife x)", "default": [ 1.0, 1.0, 1.0 ], "max": [ 3.0, 3.0, 3.0 ], "min": [ 0.2, 0.2, 0.2 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "color", "name": "phosphor_rgb_decay", "text": "Phosphor RGB Decay (halflife x)", "default": [ 1.0, 1.3, 0.6 ], "max": [ 3.0, 3.0, 3.0 ], "min": [ 0.2, 0.2, 0.2 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "phosphor_color",    "text": "Phosphor Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Brightness (two-regime transfer) ----
@@ -69,9 +69,9 @@
 		{ "type": "float", "name": "overdrive_core",           "text": "Overdrive to Core",         "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_gain",            "text": "Overdrive Gain (S-curve)",  "default": 0.0, "min": -4.0, "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "overload_gain_center",     "text": "Overdrive Gain Center",     "default": 0.5, "min": 0.05, "max": 0.95, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.7, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_softness",   "text": "Overload Softness (legacy line)", "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 32.0, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.25, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_softness",   "text": "Overload Softness (legacy line)", "default": 0.5, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 8.0, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_over_scale","text": "Beam Width Overload Scale (px)","default": 8.0, "min": -1.0, "max": 24.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_over_curve",  "text": "Width Overload Curve",     "default": 0.9, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_overdrive", "text": "Overdrive (white at peak)",  "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -79,7 +79,7 @@
 		{ "type": "float", "name": "overdrive_sat_curve", "text": "Overdrive Saturation Curve", "default": 1.0, "min": 0.2, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "overdrive_color",    "text": "Overdrive Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_glow_gain",  "text": "Overload Glow (bloom)",       "default": 0.3,  "min": 0.0, "max": 2.0,  "step": 0.02, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_glow_width", "text": "Overload Glow Width (px)",     "default": 40.0, "min": 4.0, "max": 200.0, "step": 2.0,  "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "overload_glow_width", "text": "Overload Glow Width (px)",     "default": 12.0, "min": 4.0, "max": 200.0, "step": 2.0,  "format": "%3.0f", "screen": "vector" },
 
 		// ---- Energy model (speed / dwell / frame load) ----
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
@@ -109,7 +109,7 @@
 		{ "type": "float", "name": "glow_wide",          "text": "Glow Wide (low-res)",       "default": 0.006, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 
 		// ---- Flicker ----
-		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 12.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 24.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "flicker_buckets", "text": "Cyclic Flicker Buckets (N)",         "default": 6.0,   "min": 2.0, "max": 16.0,   "step": 1.0,  "format": "%2.0f", "screen": "vector" },
 		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 16.7,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
@@ -120,9 +120,9 @@
 
 		// ---- Artistic (non-physical) ----
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.8, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "energy_jitter",       "text": "Energy Jitter (near saturation)", "default": 0.0,  "min": 0.0, "max": 0.005, "step": 0.00005, "format": "%1.5f", "screen": "vector" },
-		{ "type": "float", "name": "energy_jitter_base",  "text": "Energy Jitter Base (all vectors)",   "default": 0.0,  "min": 0.0, "max": 0.005, "step": 0.0001, "format": "%1.4f", "screen": "vector" },
-		{ "type": "float", "name": "beam_noise",         "text": "Beam Position Noise (px)",       "default": 0.0,  "min": 0.0, "max": 3.0,  "step": 0.05,  "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "energy_jitter",       "text": "Energy Jitter (near saturation)", "default": 0.0006,  "min": 0.0, "max": 0.005, "step": 0.00005, "format": "%1.5f", "screen": "vector" },
+		{ "type": "float", "name": "energy_jitter_base",  "text": "Energy Jitter Base (all vectors)",   "default": 0.003,  "min": 0.0, "max": 0.005, "step": 0.0001, "format": "%1.4f", "screen": "vector" },
+		{ "type": "float", "name": "beam_noise",         "text": "Beam Position Noise (px)",       "default": 0.25,  "min": 0.0, "max": 3.0,  "step": 0.05,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter_onset", "text": "Energy Jitter Onset (n)",         "default": 0.8,  "min": 0.1, "max": 2.0,  "step": 0.05,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter_ramp",  "text": "Energy Jitter Ramp (n span)",     "default": 0.5,  "min": 0.05,"max": 2.0,  "step": 0.05,  "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter_hz",    "text": "Energy Jitter Speed (Hz)",        "default": 15.0, "min": 1.0, "max": 120.0,"step": 1.0,   "format": "%3.0f", "screen": "vector" },
