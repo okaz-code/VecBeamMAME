@@ -1485,6 +1485,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_dwell_cap", &renderer_bgfx::vec_slider_cache::energy_dwell_cap, 16.0f },
 	{ "energy_infl", &renderer_bgfx::vec_slider_cache::energy_infl, 0.6f },
 	{ "energy_jitter", &renderer_bgfx::vec_slider_cache::energy_jitter, 0.0f },
+	{ "energy_jitter_base", &renderer_bgfx::vec_slider_cache::energy_jitter_base, 0.0f },
 	{ "energy_jitter_hz", &renderer_bgfx::vec_slider_cache::energy_jitter_hz, 15.0f },
 	{ "energy_jitter_onset", &renderer_bgfx::vec_slider_cache::energy_jitter_onset, 0.8f },
 	{ "energy_jitter_ramp", &renderer_bgfx::vec_slider_cache::energy_jitter_ramp, 0.5f },
@@ -1752,7 +1753,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		const float j_onset = m_vs.energy_jitter_onset;
 		const float j_ramp  = std::max(0.05f, m_vs.energy_jitter_ramp);
-		const float j_w = std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f);
+		// Base floor: normal (below-onset) vectors still get a slight always-on wobble (analog-noise
+		// shimmer of the whole image); the near-saturation ramp adds on top. energy_jitter_base 0 =
+		// ramp only (prior behaviour - only near-saturation vectors wobble).
+		const float j_w = std::max(std::clamp(m_vs.energy_jitter_base, 0.0f, 1.0f),
+								   std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f));
 		if (j_w > 0.0f)
 		{
 			const float j_hz = std::max(1.0f, m_vs.energy_jitter_hz);
@@ -2652,7 +2657,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	{
 		const float j_onset = m_vs.energy_jitter_onset;
 		const float j_ramp  = std::max(0.05f, m_vs.energy_jitter_ramp);
-		const float j_w = std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f);
+		// Base floor: normal (below-onset) vectors still get a slight always-on wobble (analog-noise
+		// shimmer of the whole image); the near-saturation ramp adds on top. energy_jitter_base 0 =
+		// ramp only (prior behaviour - only near-saturation vectors wobble).
+		const float j_w = std::max(std::clamp(m_vs.energy_jitter_base, 0.0f, 1.0f),
+								   std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f));
 		if (j_w > 0.0f)
 		{
 			const float j_hz = std::max(1.0f, m_vs.energy_jitter_hz);

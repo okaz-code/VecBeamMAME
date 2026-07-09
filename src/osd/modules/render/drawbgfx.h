@@ -215,6 +215,7 @@ public:
 		float energy_dwell_cap = 16.0f;   // 16 = no cap (chains without the slider)
 		float energy_infl = 0.6f;
 		float energy_jitter = 0.0f;
+		float energy_jitter_base = 0.0f;   // always-on wobble floor for normal vectors (analog noise)
 		float energy_jitter_hz = 15.0f;
 		float energy_jitter_onset = 0.8f;
 		float energy_jitter_ramp = 0.5f;
