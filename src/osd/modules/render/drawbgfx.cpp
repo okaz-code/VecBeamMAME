@@ -3253,9 +3253,14 @@ int renderer_bgfx::draw(int update)
 			//   many short sub-segments gets uniform brightness instead of per-segment speed noise.
 			//   Assigned only when the run has 2+ line segments (a single segment reads the same either
 			//   way); dot members keep the dwell model.
-			// - energy_dwell_cap: dots piled on ONE parked spot accumulate model energy only up to the
-			//   cap - the first dot at a new spot is always full (a dazzle spot still dazzles), later
-			//   same-spot dots emit what remains. Any real beam travel (a line segment) resets the spot.
+			// - energy_dwell_cap: dots landing on the SAME screen spot (0.5px quantized) accumulate model
+			//   energy only up to the cap - the first dot claiming a spot this frame is always full (a
+			//   dazzle spot still dazzles), later dots at that spot emit what remains. Keyed by position
+			//   (not list order): an earlier single-slot "current parked spot" tracker reset whenever an
+			//   unrelated primitive (a different object's dot/line) fell between two same-spot text dots
+			//   in draw order, which is not stable frame-to-frame (other objects reorder the list) and
+			//   showed up as BIOS text randomly brightening/dimming - a position-keyed map gives the same
+			//   result regardless of what else is interleaved.
 			m_stroke_speed.clear();
 			m_dwell_scale.clear();
 			const bool stroke_agg_on = m_line_analytic && m_vs.energy_model > 0.0f && m_vs.energy_stroke_agg > 0.5f;
@@ -3276,9 +3281,8 @@ int renderer_bgfx::draw(int update)
 					}
 					run.clear(); run_px = 0.0; run_ms = 0.0; in_run = false;
 				};
-				constexpr int SPOT_NONE = -0x40000000;
-				int spot_x = SPOT_NONE, spot_y = SPOT_NONE;   // current parked spot (0.5 px quantized)
-				float spot_accum = 0.0f;                      // model energy already emitted at that spot
+				std::unordered_map<uint64_t, float> spot_accum;   // quantized (x,y) -> energy claimed so far
+				spot_accum.reserve(64);
 				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
 				{
 					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags))
@@ -3303,28 +3307,17 @@ int renderer_bgfx::draw(int update)
 								flush_run();
 						}
 					}
-					if (dwell_cap_on)
+					if (dwell_cap_on && is_pt && p->beam_energy < 0.0f)
 					{
-						if (!is_pt)
-							{ spot_x = spot_y = SPOT_NONE; spot_accum = 0.0f; }   // beam travelled: pile-up over
-						else if (p->beam_energy < 0.0f)
-						{
-							const int qx = int(p->bounds.x0 * 2.0f), qy = int(p->bounds.y0 * 2.0f);
-							if (qx == spot_x && qy == spot_y)
-							{
-								const float predicted = generic_beam_energy(p, len, true, e_ref);
-								const float remaining = std::max(0.0f, m_vs.energy_dwell_cap - spot_accum);
-								const float dscale = (predicted > 1e-6f) ? std::min(1.0f, remaining / predicted) : 1.0f;
-								if (dscale < 1.0f)
-									m_dwell_scale.emplace(p, dscale);
-								spot_accum += predicted * dscale;
-							}
-							else
-							{
-								spot_x = qx; spot_y = qy;
-								spot_accum = generic_beam_energy(p, len, true, e_ref);   // first dot: full
-							}
-						}
+						const uint64_t key = (uint64_t(uint32_t(int32_t(p->bounds.x0 * 2.0f))) << 32)
+											| uint64_t(uint32_t(int32_t(p->bounds.y0 * 2.0f)));
+						float &accum = spot_accum.try_emplace(key, 0.0f).first->second;
+						const float predicted = generic_beam_energy(p, len, true, e_ref);
+						const float remaining = std::max(0.0f, m_vs.energy_dwell_cap - accum);
+						const float dscale = (predicted > 1e-6f) ? std::min(1.0f, remaining / predicted) : 1.0f;
+						if (dscale < 1.0f)
+							m_dwell_scale.emplace(p, dscale);
+						accum += predicted * dscale;
 					}
 				}
 				flush_run();   // a stroke still open at the list end (no RAMP-off seen)
