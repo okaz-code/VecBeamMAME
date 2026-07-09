@@ -28,6 +28,15 @@ float phos_S(float age, float tau, float p, float total)
 	return clamp((s - s1) / max(1e-4, 1.0 - s1), 0.0, 1.0);
 }
 
+// Two-phase energy decay for one channel: normal part (<=1) at the base half-life, overrange excess
+// (>1) 'accel' times faster. Summed. Suppresses a hot deposit's extra brightness in the afterimage
+// WITHOUT hollowing (the normal part stays monotonic in the stored peak, so a bright centre never
+// decays below its dimmer edge). Must match fs_vector_phosphor_compose.
+float phos_two(float age, float tauN, float p, float totN, float accel, float norm, float over)
+{
+	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
+}
+
 void main()
 {
 	vec3  cur   = texture2D(s_tex,  v_texcoord0).rgb;
@@ -35,20 +44,19 @@ void main()
 	vec3  peakP = prev.rgb;
 	float ageP  = prev.a;
 
-	// Energy-dependent decay: brighter stored peak -> shorter effective half-life / total (see u_phos2).
-	// Keyed on OVERRANGE (peak past the normal 0..1 range), NOT raw peak: a normal-bright thick line
-	// (bright centre, dimmer edges, all <= 1) then decays UNIFORMLY instead of hollowing out
-	// centre-first; only a genuinely saturated, concentrated deposit (an overrange dwell dot) decays
-	// faster - which is where phosphor saturation actually happens.
-	float peakPb = max(max(peakP.r, peakP.g), peakP.b);
-	float dmultP = 1.0 + max(0.0, u_phos2.x) * max(0.0, peakPb - 1.0);
-	// Per-channel (RGB) decay: same shared age, each channel its own half-life / total via u_phos_rgb
-	// (1,1,1 = uniform). The re-excite test compares the BRIGHTEST surviving channel to the fresh frame.
-	vec3 tauP = (u_phos.y / dmultP) * u_phos_rgb.rgb;
-	vec3 totP = (u_phos.w / dmultP) * u_phos_rgb.rgb;
-	vec3 dRGB = peakP * vec3(phos_S(ageP, tauP.r, u_phos.z, totP.r),
-							 phos_S(ageP, tauP.g, u_phos.z, totP.g),
-							 phos_S(ageP, tauP.b, u_phos.z, totP.b));
+	// Two-phase energy decay + per-channel (RGB) half-life. accel = overrange-excess speed-up
+	// (u_phos2.x = phosphor_energy_decay); u_phos_rgb = per-channel half-life multiplier (1,1,1 =
+	// uniform). The re-excite test compares the BRIGHTEST surviving channel to the fresh frame.
+	// Must match the compose pass so re-excite and display agree.
+	float accel = 1.0 + max(0.0, u_phos2.x);
+	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
+	vec3 totN = u_phos.w * u_phos_rgb.rgb;
+	vec3 overP = max(vec3_splat(0.0), peakP - 1.0);
+	vec3 normP = peakP - overP;
+	vec3 dRGB = vec3(
+		phos_two(ageP, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
+		phos_two(ageP, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
+		phos_two(ageP, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
 	float decayed = max(max(dRGB.r, dRGB.g), dRGB.b);
 	float curL    = max(max(cur.r, cur.g), cur.b);
 

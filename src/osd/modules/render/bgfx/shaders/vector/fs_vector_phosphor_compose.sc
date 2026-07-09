@@ -43,21 +43,30 @@ float phos_S(float age, float tau, float p, float total)
 	return clamp((s - s1) / max(1e-4, 1.0 - s1), 0.0, 1.0);
 }
 
+// Two-phase energy decay for one channel: the normal part (<=1) decays at the base half-life; the
+// overrange excess (>1) decays 'accel' times faster. Summed. This suppresses a hot deposit's extra
+// brightness in the afterimage WITHOUT hollowing the feature - the normal part is monotonic in the
+// stored peak, so a bright centre never decays below its dimmer edge (no centre-first ring).
+float phos_two(float age, float tauN, float p, float totN, float accel, float norm, float over)
+{
+	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
+}
+
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
-	// Energy-dependent decay: brighter stored peak -> shorter effective half-life / total (see u_phos2);
-	// must match the update pass so re-excite and display agree.
-	// Energy decay keyed on OVERRANGE (peak past 0..1), not raw peak, so a normal-bright thick line
-	// decays uniformly instead of hollowing out centre-first (must match the update pass).
-	float dmult = 1.0 + max(0.0, u_phos2.x) * max(0.0, max(max(pool.r, pool.g), pool.b) - 1.0);
-	// Per-channel (RGB) decay: shared age, each channel its own half-life / total via u_phos_rgb
-	// (1,1,1 = uniform). Must match the update pass.
-	vec3 tau3 = (u_phos.y / dmult) * u_phos_rgb.rgb;
-	vec3 tot3 = (u_phos.w / dmult) * u_phos_rgb.rgb;
-	vec3 lit = pool.rgb * vec3(phos_S(pool.a, tau3.r, u_phos.z, tot3.r),
-							   phos_S(pool.a, tau3.g, u_phos.z, tot3.g),
-							   phos_S(pool.a, tau3.b, u_phos.z, tot3.b));
+	// accel = how much faster the overrange excess decays (u_phos2.x = phosphor_energy_decay).
+	// Per-channel (RGB) decay: each channel its own base half-life / total via u_phos_rgb (1,1,1 =
+	// uniform). Must match the update pass so re-excite and display agree.
+	float accel = 1.0 + max(0.0, u_phos2.x);
+	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
+	vec3 totN = u_phos.w * u_phos_rgb.rgb;
+	vec3 over = max(vec3_splat(0.0), pool.rgb - 1.0);
+	vec3 norm = pool.rgb - over;
+	vec3 lit = vec3(
+		phos_two(pool.a, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
+		phos_two(pool.a, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
+		phos_two(pool.a, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);
 }
