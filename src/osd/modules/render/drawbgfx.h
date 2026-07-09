@@ -263,6 +263,7 @@ public:
 		float ray_angle = 15.0f;
 		float ray_gain = 0.0f;
 		float ray_length = 60.0f;
+		float ray_length_rand = 0.0f;   // time-varying per-ray length wobble (0 = static pattern)
 		float ray_var = 0.6f;
 		float ray_width = 1.2f;
 		float ring_fill = 0.0f;
