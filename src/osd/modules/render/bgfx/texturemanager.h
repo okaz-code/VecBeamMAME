@@ -45,6 +45,10 @@ public:
 	// Getters
 	bgfx::TextureHandle handle(const std::string &name);
 	bgfx_texture_handle_provider* provider(const std::string &name);
+	// A 1x1 opaque-black fallback texture, lazily created. Used to keep a sampler bound when its
+	// intended input provider is (transiently) absent - an unbound sampler is undefined on some
+	// backends (garbage reads) and a hard validation error on Metal.
+	bgfx::TextureHandle dummy_handle();
 
 private:
 	bgfx_texture* create_texture(const std::string &name);
@@ -59,6 +63,7 @@ private:
 
 	std::map<std::string, std::pair<bgfx_texture_handle_provider *, std::unique_ptr<bgfx_texture_handle_provider> > > m_textures;
 	std::map<uint64_t, sequenced_handle> m_mame_textures;
+	bgfx::TextureHandle m_dummy = BGFX_INVALID_HANDLE;   // 1x1 black fallback (see dummy_handle)
 };
 
 #endif // MAME_RENDER_BGFX_TEXTUREMANAGER_H

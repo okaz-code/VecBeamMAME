@@ -54,7 +54,14 @@ void bgfx_input_pair::bind(bgfx_effect *effect, const int32_t screen) const
 
 	bgfx_texture_handle_provider* provider = chains().textures().provider(name);
 	if (!provider)
+	{
+		// The intended input is not registered this frame (e.g. a runtime provider like the vector
+		// "screen"/"glow" FBO that has not been injected yet, or a target dropped across a live chain
+		// reload). Leaving the sampler unbound is undefined on some backends and a fatal validation
+		// error on Metal, so bind an opaque-black fallback instead of skipping.
+		bgfx::setTexture(m_index, effect->uniform(m_sampler)->handle(), chains().textures().dummy_handle());
 		return;
+	}
 
 	float rowpixels(provider->rowpixels());
 	float width_margin(provider->width_margin());

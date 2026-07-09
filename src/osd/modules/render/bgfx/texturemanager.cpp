@@ -36,6 +36,25 @@ texture_manager::~texture_manager()
 		bgfx::destroy(mame_texture.second.handle);
 	}
 	m_mame_textures.clear();
+
+	if (bgfx::isValid(m_dummy))
+	{
+		bgfx::destroy(m_dummy);
+		m_dummy = BGFX_INVALID_HANDLE;
+	}
+}
+
+bgfx::TextureHandle texture_manager::dummy_handle()
+{
+	if (!bgfx::isValid(m_dummy))
+	{
+		// 1x1 opaque black, immutable. Sampler-clamped so any UV reads the single texel.
+		const uint32_t black = 0xff000000;
+		const bgfx::Memory *mem = bgfx::copy(&black, sizeof(black));
+		m_dummy = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::BGRA8,
+			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);
+	}
+	return m_dummy;
 }
 
 void texture_manager::add_provider(const std::string &name, std::unique_ptr<bgfx_texture_handle_provider> &&provider)
