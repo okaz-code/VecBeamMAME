@@ -3815,6 +3815,17 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f), 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
+				// Per-channel (RGB) phosphor decay: each colour phosphor has its own half-life (blue
+				// ZnS:Ag is shorter, green longer), so the decay rate differs per channel while the
+				// excitation time (age) is shared. rgb = half-life multipliers; injected with a (1,1,1)
+				// fallback so the monochrome / Vectrex chains (no such slider, single phosphor) are
+				// unchanged. Only meaningful on the colour chains.
+				const float phos_rgb_vals[4] = {
+					m_chains->slider_value(0, "phosphor_rgb_decay0", 1.0f),
+					m_chains->slider_value(0, "phosphor_rgb_decay1", 1.0f),
+					m_chains->slider_value(0, "phosphor_rgb_decay2", 1.0f), 0.0f };
+				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos_rgb", phos_rgb_vals, 4);
+				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos_rgb", phos_rgb_vals, 4);
 
 				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
 				s_current_view += chain_views;
