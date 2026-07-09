@@ -1503,8 +1503,6 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "hv_droop", &renderer_bgfx::vec_slider_cache::hv_droop, 0.0f },
 	{ "intensity_overdrive", &renderer_bgfx::vec_slider_cache::intensity_overdrive, 0.0f },
 	{ "intensity_overdrive_curve", &renderer_bgfx::vec_slider_cache::intensity_overdrive_curve, 2.0f },
-	{ "junction_dot_scale", &renderer_bgfx::vec_slider_cache::junction_dot_scale, 1.0f },
-	{ "junction_dot_thresh", &renderer_bgfx::vec_slider_cache::junction_dot_thresh, 1.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
 	{ "line_cap_min_size", &renderer_bgfx::vec_slider_cache::line_cap_min_size, 0.0f },
@@ -1544,6 +1542,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "width_over_curve", &renderer_bgfx::vec_slider_cache::width_over_curve, 1.0f },
 	{ "width_sigmoid", &renderer_bgfx::vec_slider_cache::width_sigmoid, 0.0f },
 	{ "width_sigmoid_center", &renderer_bgfx::vec_slider_cache::width_sigmoid_center, 0.5f },
+	{ "z_rise_tau", &renderer_bgfx::vec_slider_cache::z_rise_tau, 0.0f },
 };
 } // anonymous namespace
 
@@ -1652,7 +1651,7 @@ float renderer_bgfx::energy_object_lift(float intensity01, bool as_point) const
 	return b;
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, bool junction_dot, float stroke_px_per_ms, float dwell_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -1719,6 +1718,22 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// branch's own energy_line_max, so restricting the lift to points loses no legitimate line flare.
 	if (prim->beam_energy < 0.0f && as_point)
 		n *= energy_object_lift(std::clamp(prim->color.a, 0.0f, 1.0f), true);
+	// Z rise-time response (points only, model-derived only): the blanking / Z-amp / cathode drive
+	// has a finite response, so a dot parked only a few us does not let the beam current reach full
+	// value and deposits less energy than a fully-established beam. Effective factor = 1 - exp(-dt/tau).
+	// This is the physical replacement for the retired junction_dot geometric hack: a mid-stroke dot
+	// deposited by a brief beam pause is dimmed because it IS a brief dwell, not because it happens to
+	// lie on a line - and because the two-regime transfer couples brightness->width, a dimmed dot also
+	// reads thinner, reproducing the old width-shrink as a consequence. This is a distinct physical
+	// stage from the dwell-energy density model (beam-current establishment vs phosphor excitation =
+	// current x time), so it composes with generic_beam_energy rather than duplicating it.
+	// z_rise_tau 0 = off (no change). Timed sources only (needs the real dwell).
+	if (as_point && prim->beam_energy < 0.0f && m_vs.z_rise_tau > 0.0f
+		&& prim->t0 >= 0.0 && prim->t1 > prim->t0)
+	{
+		const double dt_us = (prim->t1 - prim->t0) * 1e6;
+		n *= float(1.0 - std::exp(-dt_us / double(m_vs.z_rise_tau)));
+	}
 	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
 	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
 	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
@@ -1831,21 +1846,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		// point_width_scale: plain size multiplier for EVERY dot (stars / bullets included).
 		beam_units *= m_vs.point_width_scale;
-		// Junction dots - points lying ON a neighbouring vector stroke (mid-stroke intensity
-		// dots) - get their own width scale: beam energy CANNOT separate them from a starfield
-		// (a dot at the same displayed intensity has the same low n as an equally-dim star), but
-		// the geometric on-line test can (stars are isolated points). Energy still PROTECTS hot
-		// dots, as a gate rather than a blend: the FULL scale applies to any junction dot with
-		// n below junction_dot_thresh, then eases to neutral (x1) between thresh and 2x thresh -
-		// so the slider bites at full strength on the ordinary dim dots it targets (the old
-		// 0->thresh blend diluted it by the dot's own n and 0.0 barely shrank anything).
-		if (junction_dot)
-		{
-			const float j_scale  = m_vs.junction_dot_scale;
-			const float j_thresh = std::max(0.05f, m_vs.junction_dot_thresh);
-			const float j_w = std::clamp((n - j_thresh) / j_thresh, 0.0f, 1.0f);   // 0 below thresh, 1 at 2x
-			beam_units *= j_scale + (1.0f - j_scale) * j_w;
-		}
 	}
 	float width = beam_units * (m_vec_res_w / 1920.0f);
 	const float ovld = 0.0f;   // overload model removed; the width transfer handles beam widening
@@ -3178,26 +3178,12 @@ int renderer_bgfx::draw(int update)
 		// a ROT270 (portrait) screen is pillarboxed in a wide window/fullscreen, so s_width includes the
 		// side bars and would over-thicken the beam in fullscreen. The content box tracks the real width.
 		float vminx = 1e9f, vminy = 1e9f, vmaxx = -1e9f, vmaxy = -1e9f;
-		// Junction-dot geometry: when junction_dot_scale is active, collect this frame's visible
-		// non-point strokes (gathered for free in this scan) so the write loop can test each dot
-		// for lying ON a line - games that jump back and deposit the dot separately are not list-
-		// adjacent to their line, so endpoint adjacency alone misses them. Flicker-excluded strokes
-		// are included (still beam geometry; keeps a dot's size from pulsing with the buckets).
-		const bool j_scan = m_line_analytic
-				&& m_chains->slider_value(0, "junction_dot_scale", 1.0f) != 1.0f;
-		m_j_segments.clear();
 		render_primitive *scan = window().m_primlist->first();
 		while (scan != nullptr)
 		{
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 			{
 				vector_count++;
-				if (j_scan && scan->color.a > 0.004f)
-				{
-					const float jdx = scan->bounds.x1 - scan->bounds.x0, jdy = scan->bounds.y1 - scan->bounds.y0;
-					if (jdx * jdx + jdy * jdy > pt_thresh * pt_thresh)
-						m_j_segments.push_back({ scan->bounds.x0, scan->bounds.y0, scan->bounds.x1, scan->bounds.y1 });
-				}
 				// Gather this frame's own busyness stats here (free - already walking every vector for
 				// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
 				if (flicker_on)
@@ -3510,10 +3496,6 @@ int renderer_bgfx::draw(int update)
 							}
 						}
 						render_primitive *vprim = window().m_primlist->first();
-						// Junction-dot detection state: the previous vector LINE primitive in list order
-						// (tracked across flicker exclusion - an excluded neighbour is still part of the
-						// beam geometry).
-						render_primitive *vp_prev_line = nullptr;
 						while (vprim != nullptr)
 						{
 							// Write only LINEs with PRIMFLAG_VECTOR. UI lines are drawn normally by
@@ -3551,41 +3533,6 @@ int renderer_bgfx::draw(int update)
 									const float rdx = vprim->bounds.x1 - vprim->bounds.x0, rdy = vprim->bounds.y1 - vprim->bounds.y0;
 									const bool r_is_point = (rdx * rdx + rdy * rdy) <= (pt_thresh * pt_thresh);
 									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
-									// Junction-dot test (see put_analytic_line): a dot LYING ON a visible
-									// stroke is a mid-stroke intensity dot, not an isolated starfield/bullet
-									// dot. Geometric point-to-segment test against this frame's stroke list
-									// (m_j_segments, built in the pre-scan): games jump back and deposit the
-									// dot separately, so list adjacency alone misses them. Game-space
-									// collinear points stay collinear through the affine transform, so a
-									// small epsilon suffices. Fast path first: endpoint-connected to the
-									// previous stroke (polyline dots, O(1)).
-									bool j_dot = false;
-									if (r_is_point && j_scan)
-									{
-										constexpr float J_EPS  = 0.5f;
-										constexpr float J_EPS2 = J_EPS * J_EPS;
-										const float jx = vprim->bounds.x0, jy = vprim->bounds.y0;
-										if (vp_prev_line != nullptr)
-										{
-											const float pdx = vp_prev_line->bounds.x1 - jx, pdy = vp_prev_line->bounds.y1 - jy;
-											j_dot = (pdx * pdx + pdy * pdy) <= J_EPS2;
-										}
-										if (!j_dot)
-										{
-											for (const auto &sg : m_j_segments)
-											{
-												// cheap bbox reject before the exact distance test
-												if (jx < std::min(sg[0], sg[2]) - J_EPS || jx > std::max(sg[0], sg[2]) + J_EPS
-													|| jy < std::min(sg[1], sg[3]) - J_EPS || jy > std::max(sg[1], sg[3]) + J_EPS)
-													continue;
-												const float sdx2 = sg[2] - sg[0], sdy2 = sg[3] - sg[1];
-												const float slen2 = sdx2 * sdx2 + sdy2 * sdy2;
-												const float t = std::clamp(((jx - sg[0]) * sdx2 + (jy - sg[1]) * sdy2) / std::max(slen2, 1e-6f), 0.0f, 1.0f);
-												const float ex = sg[0] + t * sdx2 - jx, ey = sg[1] + t * sdy2 - jy;
-												if (ex * ex + ey * ey <= J_EPS2) { j_dot = true; break; }
-											}
-										}
-									}
 									// Whole-stroke energy pre-pass results (see above): aggregate stroke
 									// speed and same-spot dwell scale, if this vector received either.
 									float sps = -1.0f, dsc = 1.0f;
@@ -3599,7 +3546,7 @@ int renderer_bgfx::draw(int update)
 										auto dit = m_dwell_scale.find(vprim);
 										if (dit != m_dwell_scale.end()) dsc = dit->second;
 									}
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, j_dot, sps, dsc);
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, sps, dsc);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (npptr) np_verts += NP_VPL;
 									if (rptr) ray_verts += m_ray_vpl;
@@ -3608,10 +3555,6 @@ int renderer_bgfx::draw(int update)
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								vertices += verts_per_line;
 							}
-							// Track the previous vector stroke for the junction-dot test, INCLUDING
-							// flicker-excluded ones (they are still part of the beam geometry).
-							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags))
-								vp_prev_line = vprim;
 							vprim = vprim->next();
 						}
 					}
