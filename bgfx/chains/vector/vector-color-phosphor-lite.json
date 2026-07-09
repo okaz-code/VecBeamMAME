@@ -34,7 +34,6 @@
 		{ "type": "float", "name": "bright_sigmoid",        "text": "Brightness Sigmoid",        "default": 0.0, "min": -4.0, "max": 4.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "bright_sigmoid_center", "text": "Brightness Sigmoid Center", "default": 0.4, "min": 0.05, "max": 0.95,"step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "linear_color",     "text": "Color-Linear Brightness",   "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "short_boost",       "text": "Short Stroke Boost",        "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Beam width / shape / focus ----
 		{ "type": "float", "name": "width_knee",        "text": "Width at Threshold",        "default": 0.9, "min": 0.0,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -44,7 +43,6 @@
 		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 3.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "core_flat",         "text": "Line Core Flatness",        "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "dot_flat",          "text": "Dot Core Flatness",         "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold","text": "Line/Point Threshold (px)","default": 2.0, "min": 0.0,  "max": 8.0,  "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "point_width_scale",  "text": "Point Width Scale",         "default": 1.0, "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "junction_dot_scale",  "text": "Junction Dot Scale",        "default": 1.0, "min": 0.0,  "max": 2.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },

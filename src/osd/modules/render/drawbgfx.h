@@ -125,7 +125,8 @@ private:
 	// intensity than an enemy/ship) sails past energy_obj_knee and multiplies up to energy_obj_max,
 	// with an extra energy_obj_star factor for point-classified (parked-dot) primitives. Model-derived
 	// energy only; a device that supplies its own beam_energy already includes any such lift itself.
-	// energy_obj_lift <= 0 = off (multiplier 1, unaffected).
+	// energy_obj_lift <= 0 = off (multiplier 1, unaffected). The caller applies this to POINTS ONLY
+	// (see put_analytic_line) so it does not amplify fast multiplexed line content into a visible beat.
 	float energy_object_lift(float intensity01, bool as_point) const;
 
 	void set_bgfx_state(uint32_t blend);
@@ -209,7 +210,6 @@ public:
 		float deflection_damping = 0.5f;
 		float deflection_dynamics = 0.0f;
 		float deflection_settle = 5.0f;
-		float dot_flat = 0.0f;
 		float dot_no_persist_dwell = 0.0f;
 		float edge_defocus = 0.0f;
 		float edge_defocus_curve = 2.0f;
