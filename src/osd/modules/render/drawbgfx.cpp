@@ -1475,7 +1475,6 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "deflection_damping", &renderer_bgfx::vec_slider_cache::deflection_damping, 0.5f },
 	{ "deflection_dynamics", &renderer_bgfx::vec_slider_cache::deflection_dynamics, 0.0f },
 	{ "deflection_settle", &renderer_bgfx::vec_slider_cache::deflection_settle, 5.0f },
-	{ "dot_flat", &renderer_bgfx::vec_slider_cache::dot_flat, 0.0f },
 	{ "dot_no_persist_dwell", &renderer_bgfx::vec_slider_cache::dot_no_persist_dwell, 0.0f },
 	{ "edge_defocus", &renderer_bgfx::vec_slider_cache::edge_defocus, 0.0f },
 	{ "edge_defocus_curve", &renderer_bgfx::vec_slider_cache::edge_defocus_curve, 2.0f },
@@ -1712,8 +1711,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Object-type lift (energy_object_lift port of the Vectrex driver's object_boost - see there):
 	// model-derived energy only, applied AFTER the dwell cap (matching the driver's own order - a
 	// bullet/star lift can push a spot back past what the dwell cap already capped it to).
-	if (prim->beam_energy < 0.0f)
-		n *= energy_object_lift(std::clamp(prim->color.a, 0.0f, 1.0f), as_point);
+	// POINTS ONLY: the driver only boosts beam_energy >= 0 content, which in renderer-equivalent
+	// terms is the dwelling-dot population (bullets/stars); fast line content (e.g. BIOS text) is
+	// beam_energy = -1 there and stays unboosted. Lifting fast lines here amplified their infl floor
+	// past the overload threshold, which made the genuinely multiplexed (drawn ~1-in-4-frames, real
+	// hardware) BIOS text lines beat visibly. Genuinely slow/bright lines still overload via the line
+	// branch's own energy_line_max, so restricting the lift to points loses no legitimate line flare.
+	if (prim->beam_energy < 0.0f && as_point)
+		n *= energy_object_lift(std::clamp(prim->color.a, 0.0f, 1.0f), true);
 	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
 	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
 	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
@@ -2071,10 +2076,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// sigma keeps (1 - core_flat) of its value for the skirt. 0 = off (plain gaussian, exact prior
 	// behaviour - other chains unaffected).
 	const float core_flat = std::clamp(m_vs.core_flat, 0.0f, 0.98f);
-	// Dots can take a flatter core than lines (a crisp disc edge reads right where a line wants a
-	// slightly softer shoulder): dot_flat overrides the flat fraction for points. 0 = follow core_flat.
-	const float dot_flat = std::clamp(m_vs.dot_flat, 0.0f, 0.98f);
-	const float flat_f = (as_point && dot_flat > 0.0f) ? dot_flat : core_flat;
+	// Points and lines share the same flat-core fraction (the separate dot_flat override was retired;
+	// it had defaulted to the same value as core_flat, so this is behaviour-preserving).
+	const float flat_f = core_flat;
 	float wcore = 0.0f;
 	if (flat_f > 0.0f)
 	{
@@ -3661,7 +3665,7 @@ int renderer_bgfx::draw(int update)
 				{
 					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
 									  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
-									  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
+									  1.0f, 0.0f };   // 3rd = short_boost (retired slider), baked to former default
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
@@ -3711,7 +3715,7 @@ int renderer_bgfx::draw(int update)
 					if (lp)
 					{
 						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f,
-										  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
+										  1.0f, 0.0f };   // 3rd = short_boost (retired slider), baked to former default
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
@@ -3773,7 +3777,7 @@ int renderer_bgfx::draw(int update)
 					{
 						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
 										  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
-										  m_chains->slider_value(0, "short_boost", 0.0f), 0.0f };
+										  1.0f, 0.0f };   // 3rd = short_boost (retired slider), baked to former default
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
