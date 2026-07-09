@@ -17,6 +17,8 @@ SAMPLER2D(s_prev, 0);   // pool, previous frame: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
+uniform vec4 u_phos2;   // x = energy-decay k: bright peaks decay faster (0 = off, uniform)
+uniform vec4 u_phos_rgb; // rgb = per-channel half-life multiplier (blue phosphor shorter etc.); 1,1,1 = uniform
 
 float phos_S(float age, float tau, float p, float total)
 {
@@ -33,7 +35,21 @@ void main()
 	vec3  peakP = prev.rgb;
 	float ageP  = prev.a;
 
-	float decayed = max(max(peakP.r, peakP.g), peakP.b) * phos_S(ageP, u_phos.y, u_phos.z, u_phos.w);
+	// Energy-dependent decay: brighter stored peak -> shorter effective half-life / total (see u_phos2).
+	// Keyed on OVERRANGE (peak past the normal 0..1 range), NOT raw peak: a normal-bright thick line
+	// (bright centre, dimmer edges, all <= 1) then decays UNIFORMLY instead of hollowing out
+	// centre-first; only a genuinely saturated, concentrated deposit (an overrange dwell dot) decays
+	// faster - which is where phosphor saturation actually happens.
+	float peakPb = max(max(peakP.r, peakP.g), peakP.b);
+	float dmultP = 1.0 + max(0.0, u_phos2.x) * max(0.0, peakPb - 1.0);
+	// Per-channel (RGB) decay: same shared age, each channel its own half-life / total via u_phos_rgb
+	// (1,1,1 = uniform). The re-excite test compares the BRIGHTEST surviving channel to the fresh frame.
+	vec3 tauP = (u_phos.y / dmultP) * u_phos_rgb.rgb;
+	vec3 totP = (u_phos.w / dmultP) * u_phos_rgb.rgb;
+	vec3 dRGB = peakP * vec3(phos_S(ageP, tauP.r, u_phos.z, totP.r),
+							 phos_S(ageP, tauP.g, u_phos.z, totP.g),
+							 phos_S(ageP, tauP.b, u_phos.z, totP.b));
+	float decayed = max(max(dRGB.r, dRGB.g), dRGB.b);
 	float curL    = max(max(cur.r, cur.g), cur.b);
 
 	vec3  peak;
