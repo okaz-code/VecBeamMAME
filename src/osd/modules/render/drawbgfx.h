@@ -172,11 +172,6 @@ private:
 	bool m_vec_engine_active = false;
 	// Emulated time (ms) at this present, cached once per frame for the Energy Jitter time axis.
 	double m_vec_time_ms = 0.0;
-	// Junction-dot geometry: this frame's visible non-point vector strokes (x0,y0,x1,y1), collected
-	// in the pre-scan when junction_dot_scale is active, so a dot can be tested for lying ON a line
-	// (games that jump back to deposit the dot separately - list adjacency does not catch those).
-	// Member (not a local) so the capacity persists across frames instead of reallocating.
-	std::vector<std::array<float, 4>> m_j_segments;
 	// Renderer energy-model aids, rebuilt by a per-frame pre-pass when active (see draw()):
 	// - m_stroke_speed: per-primitive stroke-aggregate beam speed (px/ms) from cap_flags-delimited
 	//   stroke runs (Vectrex RAMP strokes; sources without cap_flags never populate it), smoothing
@@ -238,8 +233,7 @@ public:
 		float hv_droop = 0.0f;
 		float intensity_overdrive = 0.0f;
 		float intensity_overdrive_curve = 2.0f;
-		float junction_dot_scale = 1.0f;
-		float junction_dot_thresh = 1.0f;
+		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
 		float line_cap_min_size = 0.0f;
@@ -318,7 +312,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, bool junction_dot = false, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
