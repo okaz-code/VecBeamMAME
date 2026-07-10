@@ -122,6 +122,12 @@ public:
 	void load_config(util::xml::data_node const &screennode);
 	void save_config(util::xml::data_node &parentnode);
 
+	// Apply a chain-selection change requested via slider_changed(). The actual reload_chains()
+	// (which destroys and recreates all of the chain's bgfx targets) is deferred to here so it runs
+	// from the renderer at a clean frame boundary rather than mid-frame inside the slider callback -
+	// see the member comment on m_reload_pending. No-op when nothing is pending.
+	void process_pending_reload();
+
 private:
 	class chain_desc
 	{
@@ -203,6 +209,19 @@ private:
 	uint16_t m_vec_win_h = 0;
 	uint16_t m_vec_fb_w  = 0;
 	uint16_t m_vec_fb_h  = 0;
+
+	// Deferred chain reload. A chain-selection slider change (slider_changed) only records the request
+	// here; the destroy/recreate of bgfx targets is carried out later by process_pending_reload(),
+	// called from the renderer before it starts a frame. Performing the reload directly in the slider
+	// callback tears down and rebuilds the chain's render targets while the previous frame's GPU work
+	// may still be in flight, which races on the Metal backend and corrupts the display (individual
+	// vector lines fly to bounded-random positions, occasional blowout bloom) until the app is
+	// restarted. Vectrex triggers it most often because it submits by far the most vector geometry, so
+	// the reload overlaps a longer render. Deferring to a frame boundary closes the window; other
+	// backends (D3D/GL) were tolerant but benefit equally from the cleaner ordering.
+	bool                            m_reload_pending = false;
+	int32_t                         m_reload_slider_id = 0;
+	std::vector<std::vector<float>> m_reload_saved_settings;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;

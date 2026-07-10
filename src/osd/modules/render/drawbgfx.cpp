@@ -388,16 +388,6 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	else
 		osd_printf_warning("Unknown BGFX backend type '%s', going with auto-detection.\n", backend);
 
-#if defined(__APPLE__)
-	// macOS/Metal: run bgfx single-threaded. Calling renderFrame() before init() selects the
-	// single-threaded mode (the calling thread does both API submission and rendering). The default
-	// multithreaded mode's separate render thread races with the live chain-reload path's resource
-	// destroy/recreate on Metal, producing display corruption that persists until an app restart (a
-	// timing bug that a verbose-log delay happened to mask). Single-threaded removes the race
-	// deterministically. Other platforms (D3D/GL) are unaffected and keep the render thread.
-	bgfx::renderFrame();
-#endif
-
 	if (!bgfx::init(init))
 		return false;
 
@@ -3026,6 +3016,13 @@ int renderer_bgfx::draw(int update)
 	{
 		s_current_view = 0;
 	}
+
+	// Apply any chain-selection change requested via the UI slider here, at a clean frame boundary
+	// before any render target is touched this frame. The reload destroys and recreates the chain's
+	// bgfx targets; doing that inside the slider callback (mid-frame, with the previous frame's GPU
+	// work possibly still in flight) races on Metal and corrupts the display until restart. No-op when
+	// nothing is pending. See chain_manager::m_reload_pending.
+	m_chains->process_pending_reload();
 
 	window().m_primlist->acquire_lock();
 	uint32_t num_screens = m_chains->update_screen_textures(s_current_view, window().m_primlist->first(), window());

@@ -759,9 +759,13 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 			int32_t abs_idx = int32_t(m_compat_chain_indices[newval]);
 			set_current_chain(id, abs_idx);
 
-			std::vector<std::vector<float>> settings = slider_settings();
-			reload_chains();
-			restore_slider_settings(id, settings);
+			// Defer the actual reload_chains() (target destroy/recreate) to a clean frame boundary
+			// via process_pending_reload(); doing it here races in-flight rendering on Metal. Capture
+			// the slider settings now (before the chain objects change) so they can be restored after
+			// the deferred reload rebuilds the sliders. See m_reload_pending.
+			m_reload_saved_settings = slider_settings();
+			m_reload_slider_id = id;
+			m_reload_pending = true;
 
 			m_slider_notifier.set_sliders_dirty();
 		}
@@ -779,6 +783,18 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 			return int32_t(i);
 	}
 	return 0;
+}
+
+void chain_manager::process_pending_reload()
+{
+	if (!m_reload_pending)
+		return;
+
+	m_reload_pending = false;
+	reload_chains();
+	restore_slider_settings(m_reload_slider_id, m_reload_saved_settings);
+	m_reload_saved_settings.clear();
+	m_reload_saved_settings.shrink_to_fit();
 }
 
 void chain_manager::create_selection_slider(uint32_t screen_index)
