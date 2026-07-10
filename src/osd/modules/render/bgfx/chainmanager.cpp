@@ -766,8 +766,11 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 			m_reload_saved_settings = slider_settings();
 			m_reload_slider_id = id;
 			m_reload_pending = true;
-
-			m_slider_notifier.set_sliders_dirty();
+			// NB: set_sliders_dirty() is intentionally NOT called here. The slider menu must only be
+			// marked dirty AFTER the deferred reload_chains() has rebuilt the slider_state objects
+			// (done in process_pending_reload); marking it here would rebuild the menu against the old
+			// sliders and consume the dirty flag before they are destroyed, leaving the menu holding
+			// stale slider_states (crash: std::bad_function_call on the next menu open).
 		}
 	}
 
@@ -795,6 +798,9 @@ void chain_manager::process_pending_reload()
 	restore_slider_settings(m_reload_slider_id, m_reload_saved_settings);
 	m_reload_saved_settings.clear();
 	m_reload_saved_settings.shrink_to_fit();
+	// Mark the slider menu dirty only now, after the new slider_state objects exist, so the UI
+	// rebuilds its menu items against the fresh sliders rather than the just-destroyed old ones.
+	m_slider_notifier.set_sliders_dirty();
 }
 
 void chain_manager::create_selection_slider(uint32_t screen_index)
