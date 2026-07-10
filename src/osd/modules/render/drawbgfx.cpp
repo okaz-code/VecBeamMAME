@@ -1130,7 +1130,11 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 	bgfx_effect* effect = effects[PRIMFLAG_GET_BLENDMODE(prim->flags)];
 
 	bgfx::setVertexBuffer(0,buffer);
-	bgfx::setTexture(0, effect->uniform("s_tex")->handle(), texture);
+	// Fallback if the source texture is invalid (e.g. atlas not ready on the first frame): leaving the
+	// sampler unbound is undefined on some backends and a fatal validation error on Metal.
+	const bgfx::TextureHandle quad_tex = (bgfx::isValid(texture) || m_chains == nullptr)
+			? texture : m_chains->textures().dummy_handle();
+	bgfx::setTexture(0, effect->uniform("s_tex")->handle(), quad_tex);
 
 	bgfx_uniform* inv_view_dims = effect->uniform("u_inv_view_dims");
 	if (inv_view_dims)
@@ -3970,7 +3974,11 @@ int renderer_bgfx::draw(int update)
 				bgfx_uniform *p = m_hdr_screen_effect->uniform("u_hdr_params");
 				if (p) { float val[4] = { beam_peak, 0,0,0 }; p->set(val, sizeof(float)*4); p->upload(); }
 				bgfx_uniform *st = m_hdr_screen_effect->uniform("s_tex");
-				if (st) bgfx::setTexture(0, st->handle(), screen_hdr->texture());
+				// Bind a fallback if screen_hdr has not been written yet this frame (e.g. the chain
+				// did not run because the FBO/atlas was not ready): an unbound sampler is fatal on Metal.
+				const bgfx::TextureHandle seed_src = bgfx::isValid(screen_hdr->texture())
+						? screen_hdr->texture() : m_chains->textures().dummy_handle();
+				if (st) bgfx::setTexture(0, st->handle(), seed_src);
 				bgfx::setVertexBuffer(0, &vb);
 				m_hdr_screen_effect->submit(seed_view);
 			}
@@ -4141,7 +4149,9 @@ int renderer_bgfx::draw(int update)
 				sr->upload();
 			}
 			bgfx_uniform *st = m_hdr_present_effect->uniform("s_tex");
-			if (st) bgfx::setTexture(0, st->handle(), m_hdr_work->texture());
+			const bgfx::TextureHandle present_src = (m_hdr_work && bgfx::isValid(m_hdr_work->texture()))
+					? m_hdr_work->texture() : m_chains->textures().dummy_handle();
+			if (st) bgfx::setTexture(0, st->handle(), present_src);
 			bgfx::setVertexBuffer(0, &vb);
 			m_hdr_present_effect->submit(present_view);
 		}
