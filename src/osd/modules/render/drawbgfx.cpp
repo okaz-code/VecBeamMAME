@@ -388,6 +388,16 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	else
 		osd_printf_warning("Unknown BGFX backend type '%s', going with auto-detection.\n", backend);
 
+#if defined(__APPLE__)
+	// macOS/Metal: run bgfx single-threaded. Calling renderFrame() before init() selects the
+	// single-threaded mode (the calling thread does both API submission and rendering). The default
+	// multithreaded mode's separate render thread races with the live chain-reload path's resource
+	// destroy/recreate on Metal, producing display corruption that persists until an app restart (a
+	// timing bug that a verbose-log delay happened to mask). Single-threaded removes the race
+	// deterministically. Other platforms (D3D/GL) are unaffected and keep the render thread.
+	bgfx::renderFrame();
+#endif
+
 	if (!bgfx::init(init))
 		return false;
 
