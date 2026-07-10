@@ -48,9 +48,6 @@ bgfx_target* target_manager::create_target(
 {
 	const std::string full_name = name + std::to_string(screen);
 
-	// TEMP DIAGNOSTIC (chain-switch target loss): trace target (re)creation.
-	osd_printf_verbose("BGFX-DIAG: create_target '%s' %ux%u style=%u scale=%f\n", full_name.c_str(), width, height, style, scale);
-
 	auto iter = m_targets.find(full_name);
 	if (iter != m_targets.end())
 	{
@@ -74,7 +71,6 @@ void target_manager::destroy_target(const std::string &name, uint32_t screen)
 	const auto found = m_targets.find(full_name);
 	if (found != m_targets.end())
 	{
-		osd_printf_verbose("BGFX-DIAG: destroy_target '%s'\n", full_name.c_str());   // TEMP DIAGNOSTIC
 		m_targets.erase(found);
 		m_textures.remove_provider(full_name);
 	}
