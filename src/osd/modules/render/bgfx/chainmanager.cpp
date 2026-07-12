@@ -479,6 +479,56 @@ void chain_manager::load_chains()
 			m_screen_chains[chain] = load_chain(util::path_concat(desc.m_path, desc.m_name), uint32_t(chain)).release();
 		}
 	}
+
+	// Overlay the HDR auto-config values on the freshly-created sliders. Doing it here (and only
+	// here) makes them behave as computed defaults: the cfg restore that follows on the first frame,
+	// and restore_slider_settings() across live reloads, both overwrite them as usual.
+	apply_hdr_auto();
+}
+
+void chain_manager::apply_hdr_auto()
+{
+	if (m_hdr_display_peak <= 0.0f || !m_options.bgfx_hdr())
+		return;
+
+	// One knob in, two sliders out: put a single full-intensity line at ~55% of the panel peak and
+	// let the hue-preserving roll-off asymptote additive overlaps/overload exactly at the panel peak
+	// (max * beam_peak = display peak). knee stays at the chain default (1.0 = a single line is
+	// untouched). Clamps follow the chain JSON slider ranges (beam_peak_nits 80..2000 step 10,
+	// hdr_rolloff_max 0.5..4.0).
+	const float peak = m_hdr_display_peak;
+	const float beam = std::clamp(std::round(peak * 0.55f / 10.0f) * 10.0f, 100.0f, 2000.0f);
+	const float rmax = std::clamp(peak / beam, 1.1f, 4.0f);
+
+	bool applied = false;
+	for (size_t screen = 0; screen < m_screen_chains.size(); screen++)
+	{
+		bgfx_chain *chain = m_screen_chains[screen];
+		if (chain == nullptr)
+			continue;
+		const std::string beam_name = "beam_peak_nits" + std::to_string(screen);
+		const std::string rmax_name = "hdr_rolloff_max" + std::to_string(screen);
+		for (bgfx_slider *slider : chain->sliders())
+		{
+			if (slider->name() == beam_name)
+			{
+				slider->import(beam);
+				applied = true;
+			}
+			else if (slider->name() == rmax_name)
+			{
+				slider->import(rmax);
+				applied = true;
+			}
+		}
+	}
+
+	if (applied)
+	{
+		osd_printf_verbose(
+				"BGFX: HDR auto-config for a %.0f nit display: beam_peak_nits=%.0f, hdr_rolloff_max=%.2f\n",
+				peak, beam, rmax);
+	}
 }
 
 void chain_manager::destroy_chains()

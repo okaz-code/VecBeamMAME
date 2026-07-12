@@ -128,6 +128,12 @@ public:
 	// see the member comment on m_reload_pending. No-op when nothing is pending.
 	void process_pending_reload();
 
+	// HDR auto-config: the display peak luminance (nits) resolved from the bgfx_hdr_display_peak
+	// option (numeric, or OS-detected for "auto"); 0 = feature off. When set, load_chains() derives
+	// beam_peak_nits / hdr_rolloff_max slider values from it (see apply_hdr_auto). Set once by the
+	// renderer right after construction, before the first load_chains().
+	void set_hdr_display_peak(float nits) { m_hdr_display_peak = nits; }
+
 private:
 	class chain_desc
 	{
@@ -152,6 +158,11 @@ private:
 	void load_chains();
 	void destroy_chains();
 	void reload_chains();
+
+	// Derive and import HDR slider values from m_hdr_display_peak (no-op when 0 or bgfx_hdr off).
+	// Called at the end of load_chains() so the values act as computed defaults: user cfg (restored
+	// later) and live slider edits (restored across reloads) both take precedence.
+	void apply_hdr_auto();
 
 	// Rebuild m_compat_chain_indices according to m_is_vector_game.
 	void rebuild_compat_chain_indices();
@@ -222,6 +233,9 @@ private:
 	bool                            m_reload_pending = false;
 	int32_t                         m_reload_slider_id = 0;
 	std::vector<std::vector<float>> m_reload_saved_settings;
+
+	// HDR auto-config display peak (nits); see set_hdr_display_peak().
+	float                           m_hdr_display_peak = 0.0f;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;

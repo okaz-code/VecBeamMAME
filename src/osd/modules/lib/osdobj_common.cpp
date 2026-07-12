@@ -161,6 +161,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_VEC_LINE_SHADER,            "analytic",         core_options::option_type::STRING,   "vector line renderer (classic = quad + cap fans, analytic = gaussian line integral); only used by chains declaring vector_engine=analytic" },
 	{ OSDOPTION_BGFX_HDR "(0-1)",                "0",                core_options::option_type::INTEGER,  "HDR10 output (PQ / Rec.2020, RGB10A2 backbuffer); requires Windows HDR on and d3d11/d3d12" },
 	{ OSDOPTION_BGFX_HDR_PAPER_WHITE,           "200",              core_options::option_type::INTEGER,  "UI/menu white level in nits for HDR mode" },
+	{ OSDOPTION_BGFX_HDR_DISPLAY_PEAK,          "0",                core_options::option_type::STRING,   "HDR display peak luminance in nits, or auto to query the OS; derives beam_peak_nits / hdr_rolloff_max defaults (0 = keep chain defaults; only used with bgfx_hdr)" },
 	{ OSDOPTION_BGFX_SHADOW_MASK,                "slot-mask.png",   core_options::option_type::STRING,   "shadow mask texture name" },
 	{ OSDOPTION_BGFX_LUT,                        "lut-default.png", core_options::option_type::STRING,   "LUT texture name" },
 	{ OSDOPTION_BGFX_AVI_NAME,                   OSDOPTVAL_AUTO,    core_options::option_type::PATH,     "filename for BGFX output logging" },

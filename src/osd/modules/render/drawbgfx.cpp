@@ -51,6 +51,7 @@
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 // standard windows headers
 #include <windows.h>
+#include <dxgi1_6.h>   // HDR display peak query (IDXGIOutput6::GetDesc1)
 #if defined(SDLMAME_WIN32) && !defined(SDLMAME_SDL3)
 #include <SDL2/SDL_syswm.h>
 #endif
@@ -61,6 +62,11 @@ extern void *GetOSWindow(void *wincontroller);
 #ifndef SDLMAME_SDL3
 #include <SDL2/SDL_syswm.h>
 #endif
+#endif
+#if defined(__APPLE__)
+// EDR headroom query via the Objective-C runtime (NSScreen); avoids adding a .mm to the build.
+#include <objc/message.h>
+#include <objc/runtime.h>
 #endif
 #endif
 
@@ -83,6 +89,9 @@ public:
 	util::xml::data_node &persistent_settings() { return *m_persistent_settings; }
 	osd_options const &options() const { return *m_options; }
 	uint32_t max_texture_size() const { return m_max_texture_size; }
+	// HDR auto-config: display peak (nits) resolved from bgfx_hdr_display_peak at library init
+	// (numeric, or OS query for "auto"); 0 = feature off. Renderers hand it to their chain_manager.
+	float hdr_display_peak_nits() const { return m_hdr_display_peak_nits; }
 
 	template <typename T>
 	util::notifier_subscription subscribe_load(void (T::*func)(util::xml::data_node const &), T *obj)
@@ -118,6 +127,7 @@ protected:
 	util::xml::file::ptr m_persistent_settings;
 	osd_options const *m_options;
 	uint32_t m_max_texture_size;
+	float m_hdr_display_peak_nits = 0.0f;   // see hdr_display_peak_nits()
 
 private:
 	friend class parent_module_holder;
@@ -196,6 +206,7 @@ private:
 	void save_config(config_type cfg_type, util::xml::data_node *parentnode);
 
 	bool init_bgfx_library(osd_window &window);
+	void resolve_hdr_display_peak(void *nwh);
 
 	static bool set_platform_data(bgfx::PlatformData &platform_data, osd_window const &window);
 
@@ -435,7 +446,150 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 
 	imguiCreate();
 
+	// HDR auto-config: resolve bgfx_hdr_display_peak (numeric nits or "auto" = OS query) now that the
+	// backend is up and the native window handle is known. The result feeds chain_manager's derived
+	// beam_peak_nits / hdr_rolloff_max defaults.
+	resolve_hdr_display_peak(init.platformData.nwh);
+
 	return true;
+}
+
+
+//============================================================
+//  HDR auto-config: display peak luminance resolution
+//============================================================
+
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+
+// Ask DXGI for the panel's advertised peak luminance (DXGI_OUTPUT_DESC1.MaxLuminance) of the monitor
+// the window is on. dxgi.dll is loaded dynamically so no import-library dependency is added; local
+// IIDs avoid needing __uuidof/dxguid. Returns 0 on any failure.
+static float detect_hdr_display_peak_nits(void *nwh)
+{
+	static const GUID guid_factory1 = { 0x770aae78, 0xf26f, 0x4dba, { 0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87 } }; // IID_IDXGIFactory1
+	static const GUID guid_output6  = { 0x068346e8, 0xaaec, 0x4b84, { 0xad, 0xd7, 0x13, 0x7f, 0x51, 0x3f, 0x77, 0xa1 } }; // IID_IDXGIOutput6
+
+	if (nwh == nullptr)
+		return 0.0f;
+	const HMONITOR monitor = MonitorFromWindow(reinterpret_cast<HWND>(nwh), MONITOR_DEFAULTTONEAREST);
+	if (monitor == nullptr)
+		return 0.0f;
+
+	const HMODULE dxgi = LoadLibraryW(L"dxgi.dll");
+	if (dxgi == nullptr)
+		return 0.0f;
+	using create_factory_fn = HRESULT (WINAPI *)(REFIID, void **);
+	const auto create_factory = reinterpret_cast<create_factory_fn>(GetProcAddress(dxgi, "CreateDXGIFactory1"));
+
+	float peak = 0.0f;
+	IDXGIFactory1 *factory = nullptr;
+	if (create_factory != nullptr && SUCCEEDED(create_factory(guid_factory1, reinterpret_cast<void **>(&factory))))
+	{
+		IDXGIAdapter1 *adapter = nullptr;
+		for (UINT a = 0; peak == 0.0f && factory->EnumAdapters1(a, &adapter) != DXGI_ERROR_NOT_FOUND; a++)
+		{
+			IDXGIOutput *output = nullptr;
+			for (UINT o = 0; peak == 0.0f && adapter->EnumOutputs(o, &output) != DXGI_ERROR_NOT_FOUND; o++)
+			{
+				IDXGIOutput6 *output6 = nullptr;
+				if (SUCCEEDED(output->QueryInterface(guid_output6, reinterpret_cast<void **>(&output6))))
+				{
+					DXGI_OUTPUT_DESC1 desc;
+					if (SUCCEEDED(output6->GetDesc1(&desc)) && desc.Monitor == monitor)
+						peak = desc.MaxLuminance;
+					output6->Release();
+				}
+				output->Release();
+			}
+			adapter->Release();
+		}
+		factory->Release();
+	}
+	FreeLibrary(dxgi);
+	return peak;
+}
+
+#elif defined(__APPLE__)
+
+// EDR headroom (multiples of SDR reference white) of the window's screen, via the ObjC runtime so no
+// .mm needs to be added to the build. nwh is the NSWindow under SDL/Metal. Returns 0 on failure.
+static float detect_edr_headroom(void *nwh)
+{
+	using msg_id_fn = id (*)(id, SEL);
+	using msg_dbl_fn = double (*)(id, SEL);
+	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
+
+	id screen = nullptr;
+	if (nwh != nullptr)
+		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), sel_registerName("screen"));
+	if (screen == nullptr)
+		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(
+				reinterpret_cast<id>(objc_getClass("NSScreen")), sel_registerName("mainScreen"));
+	if (screen == nullptr)
+		return 0.0f;
+
+	// maximumPotentialExtendedDynamicRangeColorComponentValue: the display's best-case headroom
+	// (stable across brightness changes), macOS 10.15+.
+	const SEL sel = sel_registerName("maximumPotentialExtendedDynamicRangeColorComponentValue");
+	if (!reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), sel))
+		return 0.0f;
+	return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, sel));
+}
+
+#endif
+
+void video_bgfx::resolve_hdr_display_peak(void *nwh)
+{
+	m_hdr_display_peak_nits = 0.0f;
+	if (!m_options->bgfx_hdr())
+		return;
+
+	// Only meaningful when an HDR present path actually engaged. If the HDR request fell back to SDR
+	// (no Windows HDR / wrong backend), applying an HDR-peak-derived beam_peak_nits would just dim the
+	// SDR image, so leave the chain defaults alone.
+	if (!s_bgfx_hdr_active && !s_bgfx_edr_active)
+	{
+		if (*m_options->bgfx_hdr_display_peak() && strcmp(m_options->bgfx_hdr_display_peak(), "0") != 0)
+			osd_printf_verbose("BGFX: HDR fell back to SDR; ignoring bgfx_hdr_display_peak\n");
+		return;
+	}
+
+	const std::string_view peak_opt = m_options->bgfx_hdr_display_peak();
+	float peak = 0.0f;
+	if (peak_opt == OSDOPTVAL_AUTO)
+	{
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+		peak = detect_hdr_display_peak_nits(nwh);
+		if (peak <= 0.0f)
+			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: DXGI query failed, assuming 1000 nits\n");
+#elif defined(__APPLE__)
+		// EDR works in headroom (multiples of SDR white) rather than absolute nits; converting via
+		// paper_white keeps the single downstream derivation (beam at 55% of "peak") correct, since
+		// the EDR present divides by paper_white again.
+		const float headroom = detect_edr_headroom(nwh);
+		if (headroom > 1.0f)
+			peak = headroom * float(m_options->bgfx_hdr_paper_white());
+		else
+			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: EDR headroom query failed, assuming 1000 nits\n");
+#else
+		osd_printf_warning("BGFX: bgfx_hdr_display_peak auto is not supported on this platform, assuming 1000 nits\n");
+#endif
+		if (peak <= 0.0f)
+			peak = 1000.0f;
+	}
+	else
+	{
+		peak = float(atof(std::string(peak_opt).c_str()));
+		if (peak < 0.0f)
+			peak = 0.0f;
+	}
+
+	if (peak > 0.0f && peak < 400.0f)
+		osd_printf_warning("BGFX: bgfx_hdr_display_peak %.0f nits is very low for an HDR display\n", peak);
+	if (peak > 0.0f)
+		osd_printf_verbose("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
+				(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
+	m_hdr_display_peak_nits = peak;
 }
 
 
@@ -828,6 +982,9 @@ int renderer_bgfx::create()
 			*this,
 			window().prescale(),
 			max_prescale_size);
+	// HDR auto-config: hand over the resolved display peak before the first load_chains() so the
+	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win).
+	m_chains->set_hdr_display_peak(m_module().hdr_display_peak_nits());
 	m_sliders_dirty = true;
 
 	uint32_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
