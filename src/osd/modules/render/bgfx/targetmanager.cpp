@@ -94,7 +94,10 @@ bgfx_target* target_manager::target(uint32_t screen, const std::string &name)
 	{
 		// "output" is intentionally absent when the chain's final pass renders
 		// directly to the backbuffer (BGFX_INVALID_HANDLE fallback in setup_view).
-		if (name != "output")
+		// "screen_hdr" is probed every frame by the renderer's HDR present path to detect whether
+		// the active chain declares the HDR pipeline; it is intentionally absent on chains that
+		// don't (e.g. default-vector), so its absence is not worth a per-frame warning either.
+		if (name != "output" && name != "screen_hdr")
 			osd_printf_verbose("Warning: Attempting to retrieve a nonexistent target '%s' for screen %d\n", name, screen);
 		return nullptr;
 	}
