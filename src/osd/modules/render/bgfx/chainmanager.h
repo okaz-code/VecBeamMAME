@@ -222,15 +222,19 @@ private:
 	uint16_t m_vec_fb_h  = 0;
 
 	// Deferred chain reload. A chain-selection slider change (slider_changed) only records the request
-	// here; the destroy/recreate of bgfx targets is carried out later by process_pending_reload(),
-	// called from the renderer before it starts a frame. Performing the reload directly in the slider
-	// callback tears down and rebuilds the chain's render targets while the previous frame's GPU work
-	// may still be in flight, which races on the Metal backend and corrupts the display (individual
-	// vector lines fly to bounded-random positions, occasional blowout bloom) until the app is
-	// restarted. Vectrex triggers it most often because it submits by far the most vector geometry, so
-	// the reload overlaps a longer render. Deferring to a frame boundary closes the window; other
-	// backends (D3D/GL) were tolerant but benefit equally from the cleaner ordering.
-	bool                            m_reload_pending = false;
+	// here; the destroy and recreate of the chain's bgfx targets are carried out later by
+	// process_pending_reload(), called from the renderer before it starts a frame. Performing the
+	// reload directly in the slider callback tears down and rebuilds the render targets while the
+	// previous frame's GPU work may still be in flight, which races on the Metal backend and corrupts
+	// the display (individual vector lines fly to bounded-random positions, occasional blowout bloom)
+	// until the app is restarted. The reload is additionally split into TWO frames - destroy on one,
+	// create on the next - because destroy+create within the same frame still corrupted intermittently
+	// on Metal (freed handle slots are recycled by the new targets while the in-flight frame's command
+	// buffers still reference the old resources); the intervening bgfx::frame() lets the backend
+	// retire the old textures first, at the cost of one chain-less (pass-through) frame on switch.
+	// D3D/GL were tolerant either way but share the cleaner ordering.
+	enum class reload_phase { NONE, DESTROY, CREATE };
+	reload_phase                    m_reload_phase = reload_phase::NONE;
 	int32_t                         m_reload_slider_id = 0;
 	std::vector<std::vector<float>> m_reload_saved_settings;
 

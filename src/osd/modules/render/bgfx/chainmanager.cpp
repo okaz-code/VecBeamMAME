@@ -809,13 +809,15 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 			int32_t abs_idx = int32_t(m_compat_chain_indices[newval]);
 			set_current_chain(id, abs_idx);
 
-			// Defer the actual reload_chains() (target destroy/recreate) to a clean frame boundary
-			// via process_pending_reload(); doing it here races in-flight rendering on Metal. Capture
-			// the slider settings now (before the chain objects change) so they can be restored after
-			// the deferred reload rebuilds the sliders. See m_reload_pending.
-			m_reload_saved_settings = slider_settings();
+			// Defer the actual destroy/create of the chain's targets to clean frame boundaries via
+			// process_pending_reload(); doing it here races in-flight rendering on Metal. Capture the
+			// slider settings now (only if the old chains still exist - on a rapid re-switch while a
+			// reload is already in flight, keep the earlier capture) so they can be restored after
+			// the deferred reload rebuilds the sliders. See m_reload_phase.
+			if (m_reload_phase == reload_phase::NONE)
+				m_reload_saved_settings = slider_settings();
 			m_reload_slider_id = id;
-			m_reload_pending = true;
+			m_reload_phase = reload_phase::DESTROY;
 			// NB: set_sliders_dirty() is intentionally NOT called here. The slider menu must only be
 			// marked dirty AFTER the deferred reload_chains() has rebuilt the slider_state objects
 			// (done in process_pending_reload); marking it here would rebuild the menu against the old
@@ -840,11 +842,23 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 
 void chain_manager::process_pending_reload()
 {
-	if (!m_reload_pending)
+	if (m_reload_phase == reload_phase::NONE)
 		return;
 
-	m_reload_pending = false;
-	reload_chains();
+	if (m_reload_phase == reload_phase::DESTROY)
+	{
+		// Tear the old chain down this frame and create the replacement only on the NEXT frame: the
+		// intervening bgfx::frame() lets the backend (Metal in particular) retire the destroyed
+		// textures before their handle slots are recycled by the new targets. See m_reload_phase.
+		// This frame renders chain-less (has_applicable_chain() false / null screen_chain are
+		// handled everywhere) - a one-frame pass-through blink on switch.
+		destroy_chains();
+		m_reload_phase = reload_phase::CREATE;
+		return;
+	}
+
+	m_reload_phase = reload_phase::NONE;
+	load_chains();
 	restore_slider_settings(m_reload_slider_id, m_reload_saved_settings);
 	m_reload_saved_settings.clear();
 	m_reload_saved_settings.shrink_to_fit();
