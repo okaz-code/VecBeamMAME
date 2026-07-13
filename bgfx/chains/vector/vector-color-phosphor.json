@@ -1,4 +1,4 @@
-﻿// license:BSD-3-Clause
+// license:BSD-3-Clause
 // copyright-holders:okaz
 // Colour vector phosphor chain (AVG colour: Tempest / Star Wars / Major Havoc, Sega G80, Cinematronics colour) - the Vectrex phosphor engine
 // ported to generic vector sources. Same pipeline: per-pixel phosphor pool (rgb=peak, a=age, Hill
