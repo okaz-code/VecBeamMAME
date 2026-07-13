@@ -17,7 +17,7 @@ SAMPLER2D(s_prev, 0);   // pool, previous frame: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
-uniform vec4 u_phos2;   // x = energy-decay k: bright peaks decay faster (0 = off, uniform)
+uniform vec4 u_phos2;   // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
 uniform vec4 u_phos_rgb; // rgb = per-channel half-life multiplier (blue phosphor shorter etc.); 1,1,1 = uniform
 
 float phos_S(float age, float tau, float p, float total)
@@ -53,10 +53,17 @@ void main()
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
 	vec3 overP = max(vec3_splat(0.0), peakP - 1.0);
 	vec3 normP = peakP - overP;
+	// Hold-then-decay (u_phos2.y = hold_ms): the afterglow stays at full brightness for hold_ms
+	// before the decay curve starts. With a short calibrated half-life (trail look), a single
+	// present interval already dropped the residue to ~27%, carving flickering dark seams between a
+	// slowly-moving bright line's successive positions; the eye integrates ~a frame on the real
+	// thing, so holding for about one present closes the seams without lengthening the tail's shape.
+	// Must match fs_vector_phosphor_compose.
+	float ageE = max(0.0, ageP - u_phos2.y);
 	vec3 dRGB = vec3(
-		phos_two(ageP, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
-		phos_two(ageP, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
-		phos_two(ageP, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
+		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
+		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
+		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
 	float decayed = max(max(dRGB.r, dRGB.g), dRGB.b);
 	float curL    = max(max(cur.r, cur.g), cur.b);
 
