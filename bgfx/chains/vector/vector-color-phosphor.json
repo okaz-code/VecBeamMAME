@@ -1,4 +1,4 @@
-// license:BSD-3-Clause
+﻿// license:BSD-3-Clause
 // copyright-holders:okaz
 // Colour vector phosphor chain (AVG colour: Tempest / Star Wars / Major Havoc, Sega G80, Cinematronics colour) - the Vectrex phosphor engine
 // ported to generic vector sources. Same pipeline: per-pixel phosphor pool (rgb=peak, a=age, Hill
@@ -22,7 +22,7 @@
 		{ "type": "float", "name": "phosphor_curve",    "text": "Phosphor Decay Curve",      "default": 3.0, "min": 0.4,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_total_ms", "text": "Phosphor Total (ms)",       "default": 500.0,"min": 20.0,"max": 1500.0,"step": 10.0,"format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "phosphor_energy_decay", "text": "Phosphor Energy Decay (bright faster)", "default": 0.0, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "color", "name": "phosphor_rgb_decay", "text": "Phosphor RGB Decay (halflife x)", "default": [ 1.0, 1.3, 0.6 ], "max": [ 3.0, 3.0, 3.0 ], "min": [ 0.2, 0.2, 0.2 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "color", "name": "phosphor_rgb_decay", "text": "Phosphor RGB Decay (halflife x)", "default": [ 1.0, 1.05, 0.95 ], "max": [ 3.0, 3.0, 3.0 ], "min": [ 0.2, 0.2, 0.2 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "phosphor_color",    "text": "Phosphor Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Brightness (two-regime transfer) ----
@@ -37,22 +37,22 @@
 		{ "type": "float", "name": "width_curve",       "text": "Width Curve",               "default": 1.0, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "width_sigmoid",         "text": "Width Sigmoid",             "default": 0.0, "min": -4.0, "max": 4.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_sigmoid_center",  "text": "Width Sigmoid Center",      "default": 0.5, "min": 0.05, "max": 0.95,"step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 2.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 3.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_min",    "text": "Beam Width Minimum",        "default": 3.0, "min": 0.1,  "max": 24.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_max",    "text": "Beam Width Maximum",        "default": 4.0, "min": 0.1,  "max": 24.0, "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "core_flat",         "text": "Line Core Flatness",        "default": 0.5, "min": 0.0,  "max": 0.98, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_point_threshold","text": "Line/Point Threshold (px)","default": 2.0, "min": 0.0,  "max": 8.0,  "step": 0.5,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "point_width_scale",  "text": "Point Width Scale",         "default": 1.0, "min": 0.05, "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "z_rise_tau",        "text": "Z Rise Time (us)",           "default": 0.2, "min": 0.0,  "max": 20.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.6, 0.6 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 1.0, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "vec2",  "name": "defocus",          "text": "Defocus (beam blur), ",    "default": [ 0.2, 0.2 ], "max": [ 2.0, 2.0 ], "min": [ 0.0, 0.0 ], "step": 0.1, "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "edge_defocus",      "text": "Edge Defocus",              "default": 0.1, "min": 0.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "edge_defocus_curve","text": "Edge Defocus Curve",        "default": 3.0, "min": 0.5,  "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 
 		// ---- Line caps ----
-		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.75, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "line_cap_brightness","text": "Line Cap Brightness",        "default": 0.25, "min": 0.0,  "max": 3.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "line_cap_width",     "text": "Line Cap Width",             "default": 1.0, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "intenum", "name": "cap_no_persist", "text": "Line Caps: No Persistence", "default": 1, "max": 1, "min": 0, "step": 1, "format": "%s", "screen": "vector", "strings": [ "Off", "On" ] },
 		{ "type": "float", "name": "dot_no_persist_dwell", "text": "Dot No-Persist Dwell (us)", "default": 20.0, "min": 0.0,  "max": 60.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "vertex_dwell",     "text": "Vertex Dwell (corner dots)",  "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "vertex_dwell",     "text": "Vertex Dwell (corner dots)",  "default": 0.5, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Deflection dynamics (AVG) ----
 		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
@@ -69,17 +69,17 @@
 		{ "type": "float", "name": "overdrive_core",           "text": "Overdrive to Core",         "default": 1.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_gain",            "text": "Overdrive Gain (S-curve)",  "default": 0.0, "min": -4.0, "max": 4.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "overload_gain_center",     "text": "Overdrive Gain Center",     "default": 0.5, "min": 0.05, "max": 0.95, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 0.25, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_softness",   "text": "Overload Softness (legacy line)", "default": 0.5, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_bloom",    "text": "Overload Bloom",            "default": 1.0, "min": 0.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "overload_softness",   "text": "Overload Softness (legacy line)", "default": 1.5, "min": 0.0, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "beam_width_overmax","text": "Beam Width Over-Max (lift)","default": 8.0, "min": 0.0,  "max": 32.0, "step": 0.5,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "beam_width_over_scale","text": "Beam Width Overload Scale (px)","default": 8.0, "min": -1.0, "max": 24.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "beam_width_over_scale","text": "Beam Width Overload Scale (px)","default": 3.0, "min": -1.0, "max": 24.0, "step": 0.5, "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "width_over_curve",  "text": "Width Overload Curve",     "default": 0.9, "min": 0.2,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "phosphor_overdrive", "text": "Overdrive (white at peak)",  "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "vec2",  "name": "overdrive_knee",     "text": "Overdrive Knee/Ceiling (xpeak) ", "default": [ 1.7, 2.65 ], "max": [ 4.0, 4.0 ], "min": [ 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "phosphor_overdrive", "text": "Overdrive (white at peak)",  "default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "vec2",  "name": "overdrive_knee",     "text": "Overdrive Knee/Ceiling (xpeak) ", "default": [ 1.15, 1.55 ], "max": [ 4.0, 4.0 ], "min": [ 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overdrive_sat_curve", "text": "Overdrive Saturation Curve", "default": 1.0, "min": 0.2, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "color", "name": "overdrive_color",    "text": "Overdrive Color ",           "default": [ 1.0, 1.0, 1.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "overload_glow_gain",  "text": "Overload Glow (bloom)",       "default": 0.3,  "min": 0.0, "max": 2.0,  "step": 0.02, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "overload_glow_width", "text": "Overload Glow Width (px)",     "default": 12.0, "min": 4.0, "max": 200.0, "step": 2.0,  "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "overload_glow_width", "text": "Overload Glow Width (px)",     "default": 24.0, "min": 4.0, "max": 200.0, "step": 2.0,  "format": "%3.0f", "screen": "vector" },
 
 		// ---- Energy model (speed / dwell / frame load) ----
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
@@ -97,27 +97,27 @@
 		{ "type": "float", "name": "energy_obj_sharp",   "text": "Energy Object Sharpness",    "default": 2.0,  "min": 0.1,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_obj_max",     "text": "Energy Object Max",          "default": 3.0,  "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_obj_star",    "text": "Energy Object Star Boost",   "default": 1.5,  "min": 1.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.01,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop_ref",       "text": "HV Droop Load Ref",         "default": 10.0, "min": 1.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
 		// ---- Analytic glow ----
-		{ "type": "float", "name": "analytic_glow",       "text": "Glow Source (per-line)",    "default": 0.08, "min": 0.0, "max": 1.0,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "analytic_glow",       "text": "Glow Source (per-line)",    "default": 0.12, "min": 0.0, "max": 1.0,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
 		{ "type": "float", "name": "analytic_glow_width", "text": "Glow Source Width (px)",    "default": 15.0, "min": 1.0, "max": 160.0, "step": 1.0,  "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "glow_threshold",     "text": "Glow Source Threshold",     "default": 0.5, "min": 0.0,  "max": 2.0, "step": 0.02, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "glow_curve",         "text": "Glow Source Curve",         "default": 0.25, "min": 0.25, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "glow_narrow",        "text": "Glow Narrow (full-res)",    "default": 0.002, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "glow_wide",          "text": "Glow Wide (low-res)",       "default": 0.006, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "glow_narrow",        "text": "Glow Narrow (full-res)",    "default": 0.01, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "glow_wide",          "text": "Glow Wide (low-res)",       "default": 0.02, "min": 0.0, "max": 0.2, "step": 0.001, "format": "%1.3f", "screen": "vector" },
 
 		// ---- Flicker ----
 		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 24.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "flicker_buckets", "text": "Cyclic Flicker Buckets (N)",         "default": 6.0,   "min": 2.0, "max": 16.0,   "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 16.7,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
-		{ "type": "color", "name": "flicker_rgb",    "text": "Cyclic Flicker RGB Visibility",     "default": [ 1.0, 0.6, 0.15 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 20.0,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
+		{ "type": "color", "name": "flicker_rgb",    "text": "Cyclic Flicker RGB Visibility",     "default": [ 0.4, 0.55, 0.0 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Monitor glow (off-screen beam) ----
-		{ "type": "float", "name": "mglow_coefficient",      "text": "Monitor Glow Coefficient",     "default": 0.05,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
-		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.06,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
-		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.5,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_coefficient",      "text": "Monitor Glow Coefficient",     "default": 0.4,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.05,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.1,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 
 		// ---- Artistic (non-physical) ----
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.8, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -129,9 +129,9 @@
 		{ "type": "float", "name": "energy_jitter_hz",    "text": "Energy Jitter Speed (Hz)",        "default": 15.0, "min": 1.0, "max": 120.0,"step": 1.0,   "format": "%3.0f", "screen": "vector" },
 
 		// ---- HDR / SDR presentation ----
-		{ "type": "float", "name": "beam_peak_nits",    "text": "HDR Beam Peak (nits)",       "default": 600.0, "min": 80.0, "max": 2000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
+		{ "type": "float", "name": "beam_peak_nits",    "text": "HDR Beam Peak (nits)",       "default": 330.0, "min": 80.0, "max": 2000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_rolloff_knee",  "text": "HDR Highlight Knee (xpeak)", "default": 1.0, "min": 0.5,  "max": 2.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "hdr_rolloff_max",   "text": "HDR Highlight Max (xpeak)",  "default": 2.0, "min": 0.5,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hdr_rolloff_max",   "text": "HDR Highlight Max (xpeak)",  "default": 1.85, "min": 0.5,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hdr_sat_protect",   "text": "HDR Saturated Color Protect", "default": 0.5, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "sdr_rolloff_knee",   "text": "SDR Highlight Knee (xwhite)",   "default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "sdr_rolloff_ceiling","text": "SDR Highlight Ceiling (xwhite)","default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -163,7 +163,7 @@
 		{ "type": "float", "name": "vector_pincushion_x_cubic", "text": "Vector Pincushion X (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_y_quad",  "text": "Vector Pincushion Y (Quad)",  "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "vector_pincushion_y_cubic", "text": "Vector Pincushion Y (Cubic)", "default": 0.00, "max": 1.00, "min": -1.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.20, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "distortion",       "text": "Quadric Distortion Amount", "default": 0.12, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "cubic_distortion", "text": "Cubic Distortion Amount",   "default": 0.00, "max": 2.00, "min": -2.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "distort_corner",   "text": "Distorted Corner Amount",   "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "round_corner",     "text": "Rounded Corner Amount",     "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
@@ -172,11 +172,11 @@
 		{ "type": "float", "name": "reflection",       "text": "Reflection Amount",         "default": 0.00, "max": 2.00, "min":  0.00, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Shadow mask / ambient (set-and-forget) ----
-		{ "type": "float", "name": "shadow_mask_strength",    "text": "Shadow Mask Strength",         "default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "shadow_mask_strength",    "text": "Shadow Mask Strength",         "default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "shadow_mask_brightboost", "text": "Shadow Mask Brightness Boost", "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "shadow_mask_scale",       "text": "Shadow Mask Scale (px @1080p)","default": 4.0, "min": 1.0, "max": 8.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "color", "name": "ambient_color",           "text": "Ambient Color ",               "default": [ 0.35, 0.35, 0.35 ], "max": [ 1.0, 1.0, 1.0 ], "min": [ 0.0, 0.0, 0.0 ], "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 0.0, "min": 0.0, "max": 20.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
+		{ "type": "float", "name": "ambient_level",           "text": "Ambient Level (x0.001)",       "default": 2.0, "min": 0.0, "max": 200.0, "step": 0.5, "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "ambient_mask",            "text": "Ambient Shadow-Mask (0=flat,1=masked)", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "format": "%1.2f", "screen": "vector" }
 	],
 
@@ -191,6 +191,8 @@
 		  "_comment": "single-buffer accumulator for narrow+wide glow. Additive ADDs are safe here (single-buffer); the combined glow is then added to internal ONCE via a read+write (replace) pass, because repeated partial ADDs to the doublebuffered internal write stale pages (Wide was cancelling Narrow)." },
 		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RGBA16F",
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
+		{ "name": "npglow_dc", "mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
+		  "_comment": "no-persist layer after Deconvergence (see NoPersist Deconvergence pass): the np dots/caps must shift with the same per-channel gun misalignment as the main line body, or adjusting convergence separates a glyph lines from its dots." },
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
 		  "_comment": "linear chain output; its presence makes the renderer present this as an HDR chain (PQ/EDR, SDR fallback)" },
 		{ "name": "glow_lo0", "mode": "native", "scale": 0.5,     "doublebuffer": false, "format": "RGBA16F",
@@ -277,9 +279,23 @@
 		  "_comment": "pool update: rgb=peak,a=age. If the fresh frame is brighter than the decayed pool the pixel re-excites (age 0), else the peak holds and age advances by dt. u_phos = (dt_ms, half, curve, total) injected by the renderer. Reads+writes phos_pool in place (doublebuffered feedback).",
 		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" } ],
 		  "uniforms": [], "output": "phos_pool" },
+		{   "effect": "hlsl/deconverge",
+			"name": "NoPersist Deconvergence",
+			"_comment": "same gun-misalignment shift as the Deconvergence pass above, applied to the no-persist layer (line caps / short-dwell dots). Without this the np content joined the pipeline after Deconvergence unshifted, so adjusting convergence moved a glyph lines but not its dots. Always on (zero sliders = identity shift) so npglow_dc is never stale.",
+			"uniforms": [
+				{ "uniform": "u_converge_red",          "slider": "converge_red"   },
+				{ "uniform": "u_converge_green",        "slider": "converge_green" },
+				{ "uniform": "u_converge_blue",         "slider": "converge_blue"  },
+				{ "uniform": "u_radial_converge_red",   "slider": "radial_converge_red"   },
+				{ "uniform": "u_radial_converge_green", "slider": "radial_converge_green" },
+				{ "uniform": "u_radial_converge_blue",  "slider": "radial_converge_blue"  }
+			],
+			"input": [ { "sampler": "s_tex", "texture": "npglow" } ],
+			"output": "npglow_dc"
+		},
 		{ "effect": "vector/vector_phosphor_compose", "name": "Phosphor Apply",
 		  "_comment": "single compose pass replacing the former Phosphor Apply (pool emit) + NoPersist Combine + Phosphor Tint trio - two full-res passes saved, math unchanged: internal = (pool_peak * S(age) + npglow * cap_no_persist) * phosphor_color. The no-persist FBO holds line caps / short-dwell junction dots (bright while drawn, no afterimage, never fed into the glow cascade); the old pass pair's net 0.3745 x 2.67 = 0.99991 add is exactly 1.0 here (that was the intent), and u_np_gain=0 both reproduces the old disablewhen skip and guards stale np content. The entry keeps the name 'Phosphor Apply' because the renderer injects u_phos into it by name.",
-		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "texture": "npglow" } ],
+		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "target": "npglow_dc" } ],
 		  "uniforms": [
 			{ "uniform": "u_np_gain",           "slider": "cap_no_persist" },
 			{ "uniform": "u_line_channel_gain", "slider": "phosphor_color" } ],
