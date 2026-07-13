@@ -3434,9 +3434,9 @@ int renderer_bgfx::draw(int update)
 		// fraction there, so it shimmers instead of blinking. All-1.0 keeps the cheap full-skip path
 		// (mono/Vectrex chains have no flicker_rgb slider and stay on it).
 		const float fl_rgb[3] = {
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb0", 1.0f), 0.0f, 1.0f) : 1.0f,
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb1", 1.0f), 0.0f, 1.0f) : 1.0f,
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb2", 1.0f), 0.0f, 1.0f) : 1.0f };
+			flicker_busy ? std::clamp(m_chains->slider_value_indexed(0, "flicker_rgb", 0, 1.0f), 0.0f, 1.0f) : 1.0f,
+			flicker_busy ? std::clamp(m_chains->slider_value_indexed(0, "flicker_rgb", 1, 1.0f), 0.0f, 1.0f) : 1.0f,
+			flicker_busy ? std::clamp(m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f), 0.0f, 1.0f) : 1.0f };
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
@@ -4211,10 +4211,14 @@ int renderer_bgfx::draw(int update)
 				// excitation time (age) is shared. rgb = half-life multipliers; injected with a (1,1,1)
 				// fallback so the monochrome / Vectrex chains (no such slider, single phosphor) are
 				// unchanged. Only meaningful on the colour chains.
+				// NB: slider_value_indexed, not slider_value - colour-slider components are registered
+				// as name+component ("...decay0/1/2"); plain slider_value appends the float-slider "0"
+				// suffix and silently missed them, so this injection was stuck at the (1,1,1) fallback
+				// (the JSON defaults never applied and the menu slider did nothing).
 				const float phos_rgb_vals[4] = {
-					m_chains->slider_value(0, "phosphor_rgb_decay0", 1.0f),
-					m_chains->slider_value(0, "phosphor_rgb_decay1", 1.0f),
-					m_chains->slider_value(0, "phosphor_rgb_decay2", 1.0f), 0.0f };
+					m_chains->slider_value_indexed(0, "phosphor_rgb_decay", 0, 1.0f),
+					m_chains->slider_value_indexed(0, "phosphor_rgb_decay", 1, 1.0f),
+					m_chains->slider_value_indexed(0, "phosphor_rgb_decay", 2, 1.0f), 0.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos_rgb", phos_rgb_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos_rgb", phos_rgb_vals, 4);
 
