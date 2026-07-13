@@ -35,9 +35,13 @@ void main()
 
 	// Scale proportionally to resolution against a 1920x1080 base.
 	// slider_scale = N means "N pixel pitch at 1080p", keeping the on-screen relative size
-	// constant at other resolutions.
+	// constant at other resolutions. The resulting pitch is SNAPPED to an integer pixel count:
+	// a fractional pitch (e.g. 3.56 px) beats against the pixel grid and the moire shows up as
+	// coarse luma bands (9-15 px) sweeping through bright strokes - screen-fixed, so they appear
+	// to crawl through moving content. Integer pitch = the mask tiles align with the pixel grid
+	// and only the intended fine triad texture remains (what a real mask looks like up close).
 	const float ref_width = 1920.0;
-	float scale = slider_scale * (u_target_dims.x / ref_width);
+	float scale = max(1.0, floor(slider_scale * (u_target_dims.x / ref_width) + 0.5));
 
 	// convert to pixel coords, divide by scale to get the mask UV (tile repeat)
 	// the sampler wrap mode is REPEAT, so UVs above 1 automatically tile
