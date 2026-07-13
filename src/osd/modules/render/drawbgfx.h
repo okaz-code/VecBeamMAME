@@ -419,6 +419,15 @@ private:
 	double m_flicker_prev_t0 = -1.0;
 	double m_flicker_prev_t1 = -1.0;
 
+	// Bezel edge glow (render_vector_stats::edge_energy): sticky union of the per-frame vector
+	// content bounding boxes (window px), approximating the on-window screen rect the render core
+	// clips vectors to - the borders the edge-glow streaks are anchored to. Converges immediately on
+	// any frame with an edge-clipped line (its bounds touch the true screen edges). Reset when the
+	// window size changes.
+	float m_edge_box_min_x = 1e9f, m_edge_box_min_y = 1e9f;
+	float m_edge_box_max_x = -1e9f, m_edge_box_max_y = -1e9f;
+	uint16_t m_edge_box_w = 0, m_edge_box_h = 0;   // window dims the box was accumulated at
+
 	// True when a new emulated frame arrived at this present (render_vector_stats::frame_id
 	// advanced since the previous present). Drives the chain's phosphor-tail freeze: re-presents
 	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.

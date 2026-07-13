@@ -42,6 +42,69 @@
 static constexpr float OFFSCREEN_ENERGY_MIN = 0.7f;
 static constexpr float OFFSCREEN_MARGIN     = 0.30f;
 
+// Localized bezel-edge glow (render_vector_stats::edge_energy): the phosphor face continues behind
+// the bezel, so a beam driven off-screen lights the border near its exit point. The farther beyond
+// the edge the beam travels, the deeper behind the bezel it lands and the less light leaks back out:
+// exponential decay with this reach (normalized screen fractions to 1/e).
+static constexpr float EDGE_GLOW_REACH = 0.12f;
+
+// Bin one lit segment's off-screen portion onto the border it left through. coords are normalized
+// screen coords (may lie outside [0,1]). The event's over-floor energy is scaled by the fraction of
+// the segment that is outside (a fully-outside segment or parked dot counts in full) and deposited
+// at the outside part's midpoint: nearest border edge, distance-decayed, into that edge's bin.
+static void accumulate_edge_glow(render_bounds const &coords, float beam_energy, float (&edge)[4][render_vector_stats::EDGE_GLOW_BINS])
+{
+	const float e_over = beam_energy - OFFSCREEN_ENERGY_MIN;
+	if (e_over <= 0.0f)
+		return;
+	const float x0 = coords.x0, y0 = coords.y0, x1 = coords.x1, y1 = coords.y1;
+	if (x0 >= 0.0f && x0 <= 1.0f && y0 >= 0.0f && y0 <= 1.0f
+		&& x1 >= 0.0f && x1 <= 1.0f && y1 >= 0.0f && y1 <= 1.0f)
+		return;   // fully inside
+
+	const float dx = x1 - x0, dy = y1 - y0;
+
+	// Liang-Barsky: the parameter interval [tmin, tmax] of the segment inside the unit square
+	float tmin = 0.0f, tmax = 1.0f;
+	auto clip1 = [&](float p, float q) {
+		if (fabsf(p) < 1e-9f) { if (q < 0.0f) { tmin = 1.0f; tmax = 0.0f; } return; }
+		const float r = q / p;
+		if (p < 0.0f) tmin = std::max(tmin, r); else tmax = std::min(tmax, r);
+	};
+	clip1(-dx, x0);          // x >= 0
+	clip1( dx, 1.0f - x0);   // x <= 1
+	clip1(-dy, y0);          // y >= 0
+	clip1( dy, 1.0f - y0);   // y <= 1
+
+	auto deposit = [&](float mx, float my, float e) {
+		const float cx = std::clamp(mx, 0.0f, 1.0f), cy = std::clamp(my, 0.0f, 1.0f);
+		const float ox = fabsf(mx - cx), oy = fabsf(my - cy);
+		int side; float along;
+		if (ox >= oy) { side = (mx < cx) ? 0 : 1; along = cy; }
+		else          { side = (my < cy) ? 2 : 3; along = cx; }
+		const int bin = std::clamp(int(along * render_vector_stats::EDGE_GLOW_BINS), 0, render_vector_stats::EDGE_GLOW_BINS - 1);
+		edge[side][bin] += e * expf(-std::max(ox, oy) / EDGE_GLOW_REACH);
+	};
+
+	if (tmin >= tmax)
+	{
+		// no part inside (includes parked dots outside): everything at the midpoint
+		deposit((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, e_over);
+		return;
+	}
+
+	// outside tails [0, tmin) and (tmax, 1]: event energy scaled by the outside fraction and
+	// split between the tails in proportion to their lengths
+	const float w0 = std::max(tmin, 0.0f), w1 = std::max(1.0f - tmax, 0.0f);
+	const float out_frac = std::clamp(w0 + w1, 0.0f, 1.0f);
+	if (out_frac <= 1e-6f)
+		return;
+	const float E = e_over * out_frac;
+	const float wsum = w0 + w1;
+	if (w0 > 0.0f) deposit(x0 + dx * (tmin * 0.5f),          y0 + dy * (tmin * 0.5f),          E * (w0 / wsum));
+	if (w1 > 0.0f) deposit(x0 + dx * ((1.0f + tmax) * 0.5f), y0 + dy * ((1.0f + tmax) * 0.5f), E * (w1 / wsum));
+}
+
 float vector_options::s_flicker = 0.0f;
 float vector_options::s_beam_width_min = 0.0f;
 float vector_options::s_beam_width_max = 0.0f;
@@ -271,6 +334,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// event (window-boundary re-emissions do not recount, matching the notifiers).
 	float stats_total_energy = 0.0f;
 	float stats_offscreen_energy = 0.0f;
+	float stats_edge_energy[4][render_vector_stats::EDGE_GLOW_BINS] = {};
 
 	for (int i = 0; i < m_vector_index; i++)
 	{
@@ -340,6 +404,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					if (curpoint->beam_energy > OFFSCREEN_ENERGY_MIN
 						&& std::max(outside(coords.x0, coords.y0), outside(coords.x1, coords.y1)) > OFFSCREEN_MARGIN)
 						stats_offscreen_energy += curpoint->beam_energy - OFFSCREEN_ENERGY_MIN;
+					// localized bezel-edge glow bins (own inside/outside test - no margin, distance-decayed)
+					accumulate_edge_glow(coords, curpoint->beam_energy, stats_edge_energy);
 				}
 			}
 		}
@@ -383,6 +449,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.timed = m_avg_timing;
 	stats.total_energy = stats_total_energy;
 	stats.offscreen_energy = stats_offscreen_energy;
+	static_assert(sizeof(stats.edge_energy) == sizeof(stats_edge_energy));
+	memcpy(stats.edge_energy, stats_edge_energy, sizeof(stats.edge_energy));
 	screen.container().set_vector_stats(stats);
 
 	return 0;

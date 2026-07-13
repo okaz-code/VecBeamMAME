@@ -259,12 +259,20 @@ private:
 // CRT load / afterglow effects without reaching into the device. Stock renderers ignore it.
 struct render_vector_stats
 {
+	static constexpr int EDGE_GLOW_BINS = 16;
+
 	u32   frame_id = 0U;            // increments every emulated frame the device drew (0 = no vector device)
 	u32   list_generation = 0U;     // increments when the CPU starts a NEW beam list
 	bool  list_stale = false;       // this frame re-showed the previous beam list (no new list started)
 	bool  timed = false;            // per-segment t0/t1 model real cycle-accurate sweep timing (AVG/DVG)
 	float total_energy = 0.0F;      // sum of beam_energy x normalized segment length this frame (EHT load)
 	float offscreen_energy = 0.0F;  // shaped off-screen beam energy this frame (monitor-glow source)
+	// Off-screen beam energy binned along the four screen borders (0=left, 1=right, 2=top,
+	// 3=bottom; bins run +y along the sides, +x along top/bottom, in normalized screen space).
+	// Source for a localized bezel-edge glow where a beam leaves the visible area - the CRT face
+	// continues behind the bezel, so an off-screen excursion lights the border near its exit point
+	// (distinct from offscreen_energy above, which feeds the whole-screen monitor glow).
+	float edge_energy[4][EDGE_GLOW_BINS] = {};
 };
 
 
