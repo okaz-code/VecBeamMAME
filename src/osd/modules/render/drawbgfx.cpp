@@ -3967,8 +3967,10 @@ int renderer_bgfx::draw(int update)
 				// The bins live in DEVICE screen space (0=left, 1=right, 2=top, 3=bottom of the
 				// device's visarea); the streaks are drawn in WINDOW space. Rotated screens (e.g.
 				// the portrait Vectrex, ROT270) map a device edge onto a different window edge, so
-				// transform each bin's border point + tangent through the render target orientation.
-				const int e_orient = window().target()->orientation();
+				// transform each bin's border point + tangent through the machine orientation. (The
+				// render target's orientation() reported ROT0 here - the rotation is applied inside
+				// the view/container transform - so read the machine's own flags instead.)
+				const u32 e_orient = window().machine().system().flags & machine_flags::MASK_ORIENTATION;
 				const float e_bw = m_edge_box_max_x - m_edge_box_min_x;
 				const float e_bh = m_edge_box_max_y - m_edge_box_min_y;
 				for (int es = 0; es < 4; es++)
