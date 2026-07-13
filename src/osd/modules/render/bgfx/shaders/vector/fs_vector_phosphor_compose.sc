@@ -30,7 +30,7 @@ SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 
 uniform vec4 u_phos;              // y = half_ms (tau), z = curve (p), w = total_ms
-uniform vec4 u_phos2;             // x = energy-decay k: bright peaks decay faster (0 = off, uniform)
+uniform vec4 u_phos2;             // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
 uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1,1 = uniform
 uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 = off
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
@@ -63,10 +63,14 @@ void main()
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
 	vec3 over = max(vec3_splat(0.0), pool.rgb - 1.0);
 	vec3 norm = pool.rgb - over;
+	// Hold-then-decay (u_phos2.y = hold_ms): full brightness for hold_ms before the decay curve
+	// starts - closes the flickering dark seams a short half-life carved between a slowly-moving
+	// bright line's successive positions. Must match fs_vector_phosphor (the update pass).
+	float ageE = max(0.0, pool.a - u_phos2.y);
 	vec3 lit = vec3(
-		phos_two(pool.a, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
-		phos_two(pool.a, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
-		phos_two(pool.a, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
+		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
+		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
+		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);
 }

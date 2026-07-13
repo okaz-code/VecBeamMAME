@@ -4231,7 +4231,10 @@ int renderer_bgfx::draw(int update)
 				// (1 + k * stored-peak) per pixel (k = phosphor_energy_decay). k = 0 = off (uniform
 				// decay, unchanged). Shared by both phosphor passes so re-excite and display agree.
 				const float phos2_vals[4] = {
-					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f), 0.0f, 0.0f, 0.0f };
+					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f),
+				// .y = hold_ms: the afterglow holds full brightness this long before the decay curve
+				// starts (default ~one present closes the moving-bright-line seams; 0 = old behaviour)
+				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f), 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
 				// Per-channel (RGB) phosphor decay: each colour phosphor has its own half-life (blue
