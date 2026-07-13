@@ -45,16 +45,22 @@ static constexpr float OFFSCREEN_MARGIN     = 0.30f;
 // Localized bezel-edge glow (render_vector_stats::edge_energy): the phosphor face continues behind
 // the bezel, so a beam driven off-screen lights the border near its exit point. The farther beyond
 // the edge the beam travels, the deeper behind the bezel it lands and the less light leaks back out:
-// exponential decay with this reach (normalized screen fractions to 1/e).
-static constexpr float EDGE_GLOW_REACH = 0.12f;
+// exponential decay with this reach (normalized screen fractions to 1/e). The commanded excursion
+// can be arbitrarily deep (the emulated integrators are unbounded), but the real beam pins at the
+// deflection limit just past the glass edge, so the excitation stays near the border regardless -
+// cap the effective depth. No energy floor here (unlike the monitor-glow shaping above): the real
+// edge light comes from MANY medium-energy passes accumulating per frame, not from rare intense
+// events, so every lit off-screen contribution counts and the renderer's gain slider scales the sum.
+static constexpr float EDGE_GLOW_REACH     = 0.12f;
+static constexpr float EDGE_GLOW_DEPTH_CAP = 0.30f;
 
 // Bin one lit segment's off-screen portion onto the border it left through. coords are normalized
-// screen coords (may lie outside [0,1]). The event's over-floor energy is scaled by the fraction of
-// the segment that is outside (a fully-outside segment or parked dot counts in full) and deposited
+// screen coords (may lie outside [0,1]). The event's energy is scaled by the fraction of the
+// segment that is outside (a fully-outside segment or parked dot counts in full) and deposited
 // at the outside part's midpoint: nearest border edge, distance-decayed, into that edge's bin.
 static void accumulate_edge_glow(render_bounds const &coords, float beam_energy, float (&edge)[4][render_vector_stats::EDGE_GLOW_BINS])
 {
-	const float e_over = beam_energy - OFFSCREEN_ENERGY_MIN;
+	const float e_over = beam_energy;
 	if (e_over <= 0.0f)
 		return;
 	const float x0 = coords.x0, y0 = coords.y0, x1 = coords.x1, y1 = coords.y1;
@@ -83,7 +89,7 @@ static void accumulate_edge_glow(render_bounds const &coords, float beam_energy,
 		if (ox >= oy) { side = (mx < cx) ? 0 : 1; along = cy; }
 		else          { side = (my < cy) ? 2 : 3; along = cx; }
 		const int bin = std::clamp(int(along * render_vector_stats::EDGE_GLOW_BINS), 0, render_vector_stats::EDGE_GLOW_BINS - 1);
-		edge[side][bin] += e * expf(-std::max(ox, oy) / EDGE_GLOW_REACH);
+		edge[side][bin] += e * expf(-std::min(std::max(ox, oy), EDGE_GLOW_DEPTH_CAP) / EDGE_GLOW_REACH);
 	};
 
 	if (tmin >= tmax)

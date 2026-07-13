@@ -3964,26 +3964,42 @@ int renderer_bgfx::draw(int update)
 				AnalyticLineVertex *ev = reinterpret_cast<AnalyticLineVertex *>(edge_tvb.data);
 				int vi = 0;
 				constexpr int NB = render_vector_stats::EDGE_GLOW_BINS;
+				// The bins live in DEVICE screen space (0=left, 1=right, 2=top, 3=bottom of the
+				// device's visarea); the streaks are drawn in WINDOW space. Rotated screens (e.g.
+				// the portrait Vectrex, ROT270) map a device edge onto a different window edge, so
+				// transform each bin's border point + tangent through the render target orientation.
+				const int e_orient = window().target()->orientation();
+				const float e_bw = m_edge_box_max_x - m_edge_box_min_x;
+				const float e_bh = m_edge_box_max_y - m_edge_box_min_y;
 				for (int es = 0; es < 4; es++)
 				{
-					// border line and its along-edge range (0=left, 1=right, 2=top, 3=bottom)
-					const bool vertical = (es < 2);
-					const float amin = vertical ? m_edge_box_min_y : m_edge_box_min_x;
-					const float amax = vertical ? m_edge_box_max_y : m_edge_box_max_x;
-					const float fixed = (es == 0) ? m_edge_box_min_x : (es == 1) ? m_edge_box_max_x
-									  : (es == 2) ? m_edge_box_min_y : m_edge_box_max_y;
 					for (int eb = 0; eb < NB; eb++)
 					{
 						const float energy = vstats.edge_energy[es][eb];
 						if (energy <= 1e-3f)
 							continue;
+						// device-space border point (normalized) + edge tangent for this side/bin
+						const float along = (float(eb) + 0.5f) / float(NB);
+						float dpx = (es == 0) ? 0.0f : (es == 1) ? 1.0f : along;
+						float dpy = (es == 2) ? 0.0f : (es == 3) ? 1.0f : along;
+						float dtx = (es < 2) ? 0.0f : 1.0f;
+						float dty = (es < 2) ? 1.0f : 0.0f;
+						// device space -> window space (same orientation the prims went through)
+						if (e_orient & ORIENTATION_SWAP_XY) { std::swap(dpx, dpy); std::swap(dtx, dty); }
+						if (e_orient & ORIENTATION_FLIP_X) dpx = 1.0f - dpx;
+						if (e_orient & ORIENTATION_FLIP_Y) dpy = 1.0f - dpy;
+						const float cx = m_edge_box_min_x + dpx * e_bw;
+						const float cy = m_edge_box_min_y + dpy * e_bh;
 						// a streak of edge_glow_length centred on the bin, clamped to the border range,
 						// lying exactly on the border line (half the gaussian shows inside = bezel leak)
-						const float c = amin + (float(eb) + 0.5f) / float(NB) * (amax - amin);
+						const bool horiz = (dtx != 0.0f);   // streak runs along the window x axis
+						const float amin = horiz ? m_edge_box_min_x : m_edge_box_min_y;
+						const float amax = horiz ? m_edge_box_max_x : m_edge_box_max_y;
+						const float c = horiz ? cx : cy;
 						const float ea0 = std::max(amin, c - half), ea1 = std::min(amax, c + half);
-						const float ex0 = vertical ? fixed : ea0, ey0 = vertical ? ea0 : fixed;
-						const float ex1 = vertical ? fixed : ea1, ey1 = vertical ? ea1 : fixed;
-						const float edx = vertical ? 0.0f : 1.0f, edy = vertical ? 1.0f : 0.0f;
+						const float ex0 = horiz ? ea0 : cx, ey0 = horiz ? cy : ea0;
+						const float ex1 = horiz ? ea1 : cx, ey1 = horiz ? cy : ea1;
+						const float edx = horiz ? 1.0f : 0.0f, edy = horiz ? 0.0f : 1.0f;
 						const float enx = edy, eny = -edx;
 						const float eseg = ea1 - ea0;
 						const float amp = std::clamp(energy * edge_gain, 0.0f, 1.0f);
