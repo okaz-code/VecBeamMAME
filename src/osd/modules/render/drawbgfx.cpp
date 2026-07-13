@@ -3426,6 +3426,19 @@ int renderer_bgfx::draw(int update)
 			m_flicker_accum_ms = 0.0;
 		const double flicker_span = flicker_busy ? std::max(1e-9, (last_t1 - first_t0) / double(flicker_n)) : 1.0;
 		const int flicker_active_bucket = int(m_flicker_cycle % uint64_t(flicker_n));
+		// Per-channel flicker visibility (real colour monitors: green flickers most, blue barely -
+		// green dominates the luminance signal flicker perception rides on, and the blue S-cone
+		// pathway is temporally sluggish; emulated output on a sample-and-hold panel loses those
+		// perceptual filters, so the weighting is baked in here). 1.0 = the channel drops out fully
+		// in its excluded bucket (classic behaviour); smaller = the channel is only dimmed by that
+		// fraction there, so it shimmers instead of blinking. All-1.0 keeps the cheap full-skip path
+		// (mono/Vectrex chains have no flicker_rgb slider and stay on it).
+		const float fl_rgb[3] = {
+			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb0", 1.0f), 0.0f, 1.0f) : 1.0f,
+			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb1", 1.0f), 0.0f, 1.0f) : 1.0f,
+			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_rgb2", 1.0f), 0.0f, 1.0f) : 1.0f };
+		const bool flicker_partial = flicker_busy
+				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
 		double cur_first_t0 = -1.0, cur_last_t1 = -1.0;
@@ -3454,9 +3467,11 @@ int renderer_bgfx::draw(int update)
 				}
 				// This present's rotating bucket is excluded (not drawn) - the phosphor pool decays it;
 				// vector_count (list membership / staleness) still counts it so a flicker-only frame is
-				// not mistaken for a stale/empty one.
+				// not mistaken for a stale/empty one. In per-channel mode (flicker_partial) the bucket's
+				// vectors are DRAWN dimmed instead of skipped, so they must be counted here - the write
+				// loop's buffer sizing depends on this count staying in lockstep.
 				bool flicker_excluded = false;
-				if (flicker_busy && scan->t0 >= 0.0)
+				if (flicker_busy && !flicker_partial && scan->t0 >= 0.0)
 				{
 					const int bucket = std::clamp(int((scan->t0 - first_t0) / flicker_span), 0, flicker_n - 1);
 					flicker_excluded = (bucket == flicker_active_bucket);
@@ -3503,6 +3518,22 @@ int renderer_bgfx::draw(int update)
 		m_vec_res_w = (m_vec_extent_w > 1.0f)
 			? std::clamp(m_vec_extent_w, 64.0f, float(s_width[window_index]))
 			: float(s_width[window_index]);
+
+		// Bezel edge glow anchor box: sticky union of the content bounding boxes (see drawbgfx.h).
+		if (m_edge_box_w != uint16_t(s_width[window_index]) || m_edge_box_h != uint16_t(s_height[window_index]))
+		{
+			m_edge_box_w = uint16_t(s_width[window_index]);
+			m_edge_box_h = uint16_t(s_height[window_index]);
+			m_edge_box_min_x = m_edge_box_min_y = 1e9f;
+			m_edge_box_max_x = m_edge_box_max_y = -1e9f;
+		}
+		if (vmaxx > vminx && vmaxy > vminy)
+		{
+			m_edge_box_min_x = std::min(m_edge_box_min_x, vminx);
+			m_edge_box_min_y = std::min(m_edge_box_min_y, vminy);
+			m_edge_box_max_x = std::max(m_edge_box_max_x, vmaxx);
+			m_edge_box_max_y = std::max(m_edge_box_max_y, vmaxy);
+		}
 
 		if (vector_count > 0)
 		{
@@ -3759,11 +3790,27 @@ int renderer_bgfx::draw(int update)
 							// buffer_primitives (to avoid phosphor ghosting). Cyclic flicker exclusion
 							// (see flicker_busy above) MUST match the visible_count scan exactly (that
 							// count sized the allocation), so an excluded vector is skipped here too -
-							// not drawn this present, same as if the CPU had not generated it.
-							const bool vp_flicker_excluded = flicker_busy && vprim->t0 >= 0.0
+							// not drawn this present, same as if the CPU had not generated it. In
+							// per-channel mode (flicker_partial) the bucket's vectors are drawn dimmed
+							// by flicker_rgb instead (and were counted by the scan).
+							const bool vp_in_bucket = flicker_busy && vprim->t0 >= 0.0
 								&& std::clamp(int((vprim->t0 - first_t0) / flicker_span), 0, flicker_n - 1) == flicker_active_bucket;
+							const bool vp_flicker_excluded = vp_in_bucket && !flicker_partial;
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
+								// Per-channel flicker: attenuate this bucket's colour in place for the
+								// draw calls below (restored after - the same primitive list may be
+								// walked again). A channel at weight 1.0 goes fully dark (classic), at
+								// 0.15 it only dips 15% - it shimmers rather than blinks.
+								const bool vp_dimmed = vp_in_bucket && flicker_partial;
+								render_color vp_saved_color;
+								if (vp_dimmed)
+								{
+									vp_saved_color = vprim->color;
+									vprim->color.r *= 1.0f - fl_rgb[0];
+									vprim->color.g *= 1.0f - fl_rgb[1];
+									vprim->color.b *= 1.0f - fl_rgb[2];
+								}
 								if (m_line_analytic)
 								{
 									float scap = 1.0f, ecap = 1.0f;
@@ -3811,6 +3858,8 @@ int renderer_bgfx::draw(int update)
 								else
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								vertices += verts_per_line;
+								if (vp_dimmed)
+									vprim->color = vp_saved_color;
 							}
 							vprim = vprim->next();
 						}
@@ -3878,6 +3927,88 @@ int renderer_bgfx::draw(int update)
 			}
 			m_vectors_in_fbo = true;
 
+			// Bezel edge glow: turn the device's per-border off-screen energy bins
+			// (render_vector_stats::edge_energy) into soft gaussian streaks lying on the screen-rect
+			// borders (m_edge_box), drawn additively into the glow FBO below (third submit, after the
+			// per-line glow and rays) so the chain's glow combine and blurs spread them like any other
+			// glow source. Only the border bins a beam actually left through light up - localized,
+			// unlike the whole-screen monitor glow. Off unless the active chain provides an edge_glow
+			// slider > 0 (the Vectrex chain only, by default).
+			bgfx::TransientVertexBuffer edge_tvb = {};
+			int edge_quads = 0;
+			bool edge_alloc = false;
+			const float edge_gain = m_chains->slider_value(0, "edge_glow", 0.0f);
+			if (edge_gain > 0.0f && bgfx::isValid(m_vec_glow_fb)
+				&& m_edge_box_max_x > m_edge_box_min_x + 8.0f && m_edge_box_max_y > m_edge_box_min_y + 8.0f)
+			{
+				for (int es = 0; es < 4; es++)
+					for (int eb = 0; eb < render_vector_stats::EDGE_GLOW_BINS; eb++)
+						if (vstats.edge_energy[es][eb] > 1e-3f)
+							edge_quads++;
+				if (edge_quads > 0)
+				{
+					const uint32_t eneeded = uint32_t(edge_quads) * 6;
+					if (eneeded == bgfx::getAvailTransientVertexBuffer(eneeded, AnalyticLineVertex::ms_decl))
+					{
+						bgfx::allocTransientVertexBuffer(&edge_tvb, eneeded, AnalyticLineVertex::ms_decl);
+						edge_alloc = (edge_tvb.data != nullptr);
+					}
+				}
+			}
+			if (edge_alloc)
+			{
+				const float res_scale = m_vec_res_w / 1920.0f;
+				const float sig  = std::max(1.0f, m_chains->slider_value(0, "edge_glow_width", 10.0f) * res_scale);
+				const float half = std::max(4.0f, 0.5f * m_chains->slider_value(0, "edge_glow_length", 80.0f) * res_scale);
+				const float epad = 3.5f * sig + 0.5f;
+				AnalyticLineVertex *ev = reinterpret_cast<AnalyticLineVertex *>(edge_tvb.data);
+				int vi = 0;
+				constexpr int NB = render_vector_stats::EDGE_GLOW_BINS;
+				for (int es = 0; es < 4; es++)
+				{
+					// border line and its along-edge range (0=left, 1=right, 2=top, 3=bottom)
+					const bool vertical = (es < 2);
+					const float amin = vertical ? m_edge_box_min_y : m_edge_box_min_x;
+					const float amax = vertical ? m_edge_box_max_y : m_edge_box_max_x;
+					const float fixed = (es == 0) ? m_edge_box_min_x : (es == 1) ? m_edge_box_max_x
+									  : (es == 2) ? m_edge_box_min_y : m_edge_box_max_y;
+					for (int eb = 0; eb < NB; eb++)
+					{
+						const float energy = vstats.edge_energy[es][eb];
+						if (energy <= 1e-3f)
+							continue;
+						// a streak of edge_glow_length centred on the bin, clamped to the border range,
+						// lying exactly on the border line (half the gaussian shows inside = bezel leak)
+						const float c = amin + (float(eb) + 0.5f) / float(NB) * (amax - amin);
+						const float ea0 = std::max(amin, c - half), ea1 = std::min(amax, c + half);
+						const float ex0 = vertical ? fixed : ea0, ey0 = vertical ? ea0 : fixed;
+						const float ex1 = vertical ? fixed : ea1, ey1 = vertical ? ea1 : fixed;
+						const float edx = vertical ? 0.0f : 1.0f, edy = vertical ? 1.0f : 0.0f;
+						const float enx = edy, eny = -edx;
+						const float eseg = ea1 - ea0;
+						const float amp = std::clamp(energy * edge_gain, 0.0f, 1.0f);
+						const uint32_t ergba = u32Color(
+								uint32_t(amp * 255.0f + 0.5f), uint32_t(amp * 255.0f + 0.5f),
+								uint32_t(amp * 255.0f + 0.5f), 255);
+						const float ga0 = -epad, ga1 = eseg + epad;
+						auto evtx = [&](int i, float x, float y, float aa, float bb, float d) {
+							ev[i].m_x = x; ev[i].m_y = y; ev[i].m_z = 0.0f; ev[i].m_rgba = ergba;
+							ev[i].m_u = 0.0f; ev[i].m_v = 0.0f;
+							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
+						};
+						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
+						const float sx1 = ex1 + edx * epad, sy1 = ey1 + edy * epad;
+						evtx(vi + 0, sx0 + enx * epad, sy0 + eny * epad, ga0, ga0 - eseg,  epad);
+						evtx(vi + 1, sx1 + enx * epad, sy1 + eny * epad, ga1, ga1 - eseg,  epad);
+						evtx(vi + 2, sx1 - enx * epad, sy1 - eny * epad, ga1, ga1 - eseg, -epad);
+						evtx(vi + 3, sx0 + enx * epad, sy0 + eny * epad, ga0, ga0 - eseg,  epad);
+						evtx(vi + 4, sx1 - enx * epad, sy1 - eny * epad, ga1, ga1 - eseg, -epad);
+						evtx(vi + 5, sx0 - enx * epad, sy0 - eny * epad, ga0, ga0 - eseg, -epad);
+						vi += 6;
+					}
+				}
+			}
+
 			// Analytic glow: draw the separate glow buffer into m_vec_glow_fb (cleared, additive),
 			// then inject it as "glow0" so a chain pass can add it after the shadow mask. Starburst rays
 			// share this SAME FBO/view via a second submit from their own buffer (ray_tvb, sized by
@@ -3888,7 +4019,7 @@ int renderer_bgfx::draw(int update)
 			// ghost). If BOTH allocs failed (transient-buffer pressure on a busy frame) we skip entirely
 			// and LEAVE the FBO, because clearing it to black while unable to redraw the real glow would
 			// make the glow vanish until the scene lightens.
-			if ((glow_alloc || ray_alloc) && bgfx::isValid(m_vec_glow_fb))
+			if ((glow_alloc || ray_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
 			{
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
@@ -3931,6 +4062,13 @@ int renderer_bgfx::draw(int update)
 				if (ray_verts > 0)
 				{
 					bgfx::setVertexBuffer(0, &ray_tvb);
+					set_glow_uniforms();
+					line_eff->submit(glow_view);
+					glow_submitted = true;
+				}
+				if (edge_alloc)
+				{
+					bgfx::setVertexBuffer(0, &edge_tvb);
 					set_glow_uniforms();
 					line_eff->submit(glow_view);
 					glow_submitted = true;

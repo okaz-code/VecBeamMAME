@@ -119,6 +119,10 @@
 		{ "type": "float", "name": "flicker_thresh_ms","text": "Cyclic Flicker Threshold (draw ms)", "default": 12.0, "min": 0.0, "max": 300.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "flicker_buckets", "text": "Cyclic Flicker Buckets (N)",         "default": 6.0,   "min": 2.0, "max": 16.0,   "step": 1.0,  "format": "%2.0f", "screen": "vector" },
 		{ "type": "float", "name": "flicker_period_ms", "text": "Cyclic Flicker Step (ms)",         "default": 16.7,  "min": 2.0, "max": 100.0,  "step": 0.5,  "format": "%2.1f", "screen": "vector" },
+		// ---- Bezel edge glow (off-screen beam exits light the border near the exit point) ----
+		{ "type": "float", "name": "edge_glow",        "text": "Edge Glow (off-screen beam)",  "default": 0.25, "min": 0.0, "max": 2.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "edge_glow_width",  "text": "Edge Glow Width (px)",        "default": 10.0, "min": 1.0, "max": 60.0, "step": 1.0, "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "edge_glow_length", "text": "Edge Glow Length (px)",       "default": 80.0, "min": 10.0, "max": 400.0, "step": 5.0, "format": "%3.0f", "screen": "vector" },
 
 		// ---- Artistic (non-physical) ----
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.5, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
