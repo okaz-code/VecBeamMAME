@@ -64,7 +64,14 @@ void main()
 	float age;
 	if (curL >= decayed)
 	{
-		peak = cur;   age = 0.0;            // (re)excited: take the new colour, restart the decay
+		// (Re)excited: take the new excitation, but keep - per channel - any still-brighter decayed
+		// residue of the previous deposit. Real phosphor excitation superposes; a winner-take-all
+		// replacement (peak = cur) let a colour flank re-hitting a pixel that recently held a bright
+		// WHITE (overloaded) core clobber the white afterglow's other channels, carving a dark band
+		// through the interior of a slowly moving overloaded line (a static line re-deposits the same
+		// profile every frame, so it never showed). max() re-anchors the surviving residue at age 0 -
+		// a slight over-persistence, but monotonic and artifact-free.
+		peak = max(cur, dRGB);   age = 0.0;
 	}
 	else
 	{
