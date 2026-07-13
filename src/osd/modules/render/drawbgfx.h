@@ -427,6 +427,11 @@ private:
 	float m_edge_box_min_x = 1e9f, m_edge_box_min_y = 1e9f;
 	float m_edge_box_max_x = -1e9f, m_edge_box_max_y = -1e9f;
 	uint16_t m_edge_box_w = 0, m_edge_box_h = 0;   // window dims the box was accumulated at
+	// Temporally-smoothed edge bins (instant attack, exponential release over edge_glow_persist ms):
+	// the raw per-frame bins follow the beam sweep pattern frame by frame and flicker hard; the real
+	// glow is smoothed by phosphor/scatter persistence and the eye's integration. [4][EDGE_GLOW_BINS]
+	// (size static_asserted against render_vector_stats in drawbgfx.cpp).
+	float m_edge_smooth[4][16] = {};
 
 	// True when a new emulated frame arrived at this present (render_vector_stats::frame_id
 	// advanced since the previous present). Drives the chain's phosphor-tail freeze: re-presents

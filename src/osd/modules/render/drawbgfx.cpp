@@ -3938,13 +3938,23 @@ int renderer_bgfx::draw(int update)
 			int edge_quads = 0;
 			bool edge_alloc = false;
 			const float edge_gain = m_chains->slider_value(0, "edge_glow", 0.0f);
+			static_assert(sizeof(m_edge_smooth) == sizeof(render_vector_stats::edge_energy));
 			if (edge_gain > 0.0f && bgfx::isValid(m_vec_glow_fb)
 				&& m_edge_box_max_x > m_edge_box_min_x + 8.0f && m_edge_box_max_y > m_edge_box_min_y + 8.0f)
 			{
+				// Temporal smoothing (instant attack, exponential release over edge_glow_persist ms of
+				// real time): the raw bins follow the frame's exact sweep pattern and flicker hard;
+				// phosphor/scatter persistence and the eye smooth the real thing. 0 = off (raw bins).
+				const float persist_ms = m_chains->slider_value(0, "edge_glow_persist", 120.0f);
+				const float e_decay = (persist_ms > 0.5f && flicker_dt_ms > 0.0)
+						? powf(0.5f, float(flicker_dt_ms) / persist_ms) : 0.0f;
 				for (int es = 0; es < 4; es++)
 					for (int eb = 0; eb < render_vector_stats::EDGE_GLOW_BINS; eb++)
-						if (vstats.edge_energy[es][eb] > 1e-3f)
+					{
+						m_edge_smooth[es][eb] = std::max(vstats.edge_energy[es][eb], m_edge_smooth[es][eb] * e_decay);
+						if (m_edge_smooth[es][eb] > 1e-3f)
 							edge_quads++;
+					}
 				if (edge_quads > 0)
 				{
 					const uint32_t eneeded = uint32_t(edge_quads) * 6;
@@ -3977,7 +3987,7 @@ int renderer_bgfx::draw(int update)
 				{
 					for (int eb = 0; eb < NB; eb++)
 					{
-						const float energy = vstats.edge_energy[es][eb];
+						const float energy = m_edge_smooth[es][eb];
 						if (energy <= 1e-3f)
 							continue;
 						// device-space border point (normalized) + edge tangent for this side/bin
