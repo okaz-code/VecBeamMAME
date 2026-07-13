@@ -1197,11 +1197,36 @@ void renderer_bgfx::render_post_screen_quad(int view, render_primitive* prim, bg
 
 void renderer_bgfx::render_avi_quad()
 {
-	m_avi_view->set_index(s_current_view);
-	m_avi_view->setup();
+	const auto view = uint16_t(s_current_view);
+	const auto w = uint16_t(s_width[0]);
+	const auto h = uint16_t(s_height[0]);
 
-	bgfx::setViewRect(s_current_view, 0, 0, s_width[0], s_height[0]);
-	bgfx::setViewClear(s_current_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff, 1.0f, 0);
+	if (m_vec_hdr_chain)
+	{
+		// HDR chain: the present pass already encoded the finished frame into m_avi_target
+		// (draw() redirects present_fb there while recording), so this view is the display
+		// copy avi target -> window backbuffer. update_recording()'s blit is keyed to this
+		// same view, which sorts after the present view, so it reads the fresh frame.
+		bgfx::FrameBufferHandle fb = BGFX_INVALID_HANDLE;
+		if (m_framebuffer != nullptr)
+			fb = m_framebuffer->target();
+		bgfx::setViewFrameBuffer(view, fb);
+		bgfx::setViewRect(view, 0, 0, w, h);
+		// opaque full-screen quad; the frame-start clear view already handled the backbuffer
+		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+		float proj[16];
+		bx::mtxOrtho(proj, 0.0f, float(w), float(h), 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+		bgfx::setViewTransform(view, nullptr, proj);
+	}
+	else
+	{
+		m_avi_view->set_index(s_current_view);
+		m_avi_view->setup();
+
+		bgfx::setViewRect(s_current_view, 0, 0, s_width[0], s_height[0]);
+		bgfx::setViewClear(s_current_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff, 1.0f, 0);
+	}
 
 	bgfx::TransientVertexBuffer buffer;
 	bgfx::allocTransientVertexBuffer(&buffer, 6, ScreenVertex::ms_decl);
@@ -4424,9 +4449,15 @@ int renderer_bgfx::draw(int update)
 
 			const uint16_t present_view = uint16_t(s_current_view);
 			s_current_view++;
-			// window 0 renders to the default backbuffer (m_framebuffer is null there)
+			// window 0 renders to the default backbuffer (m_framebuffer is null there).
+			// While AVI recording, present into the capture target instead: update_recording()
+			// reads that target back for the encoder, and render_avi_quad() copies it to the
+			// backbuffer so the window keeps showing the picture during recording.
 			bgfx::FrameBufferHandle present_fb = BGFX_INVALID_HANDLE;
-			if (m_framebuffer != nullptr)
+			const bool avi_recording = m_avi_writer != nullptr && m_avi_writer->recording() && m_avi_target != nullptr;
+			if (avi_recording)
+				present_fb = m_avi_target->target();
+			else if (m_framebuffer != nullptr)
 				present_fb = m_framebuffer->target();
 			bgfx::setViewFrameBuffer(present_view, present_fb);
 			bgfx::setViewRect(present_view, 0, 0, uint16_t(w), uint16_t(h));
@@ -4524,6 +4555,9 @@ int renderer_bgfx::draw(int update)
 
 void renderer_bgfx::update_recording()
 {
+	// s_current_view - 1 is render_avi_quad()'s view. Keying the blit to a view that sorts
+	// after the HDR present view matters: bgfx runs blits when their view begins, so an
+	// earlier view would read the avi target before the present pass has written this frame.
 	bgfx::blit(s_current_view > 0 ? s_current_view - 1 : 0, m_avi_texture, 0, 0, bgfx::getTexture(m_avi_target->target()));
 	bgfx::readTexture(m_avi_texture, m_avi_data);
 
