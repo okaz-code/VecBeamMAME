@@ -71,14 +71,15 @@ void main()
 	float age;
 	if (curL >= decayed)
 	{
-		// (Re)excited: take the new excitation, but keep - per channel - any still-brighter decayed
-		// residue of the previous deposit. Real phosphor excitation superposes; a winner-take-all
-		// replacement (peak = cur) let a colour flank re-hitting a pixel that recently held a bright
-		// WHITE (overloaded) core clobber the white afterglow's other channels, carving a dark band
-		// through the interior of a slowly moving overloaded line (a static line re-deposits the same
-		// profile every frame, so it never showed). max() re-anchors the surviving residue at age 0 -
-		// a slight over-persistence, but monotonic and artifact-free.
-		peak = max(cur, dRGB);   age = 0.0;
+		// (Re)excited: the new excitation REPLACES the pixel (winner-take-all). Do NOT adopt the
+		// decayed residue here (a previous max(cur, dRGB) "fix" did): re-anchoring the residue at
+		// age 0 every present combines with the Hill curve's flat shoulder (S(one present) ~ 1 at
+		// long half-lives) into a residue that effectively NEVER decays - old content re-hit by new
+		// content of another colour left a ghost that persisted for SECONDS, and interior pixels
+		// grazed by weak deposits froze at partially-decayed levels (dark glyph interiors). The
+		// clobbered-white-afterglow band this tried to cure is instead mitigated by the compose
+		// pass's superposition lower bound (display >= current excitation).
+		peak = cur;   age = 0.0;
 	}
 	else
 	{
