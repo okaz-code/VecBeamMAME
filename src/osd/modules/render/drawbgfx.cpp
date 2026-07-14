@@ -4220,13 +4220,24 @@ int renderer_bgfx::draw(int update)
 			if (m_chains->has_applicable_chain(0))
 			{
 				// Feed the monitor glow into the chain's glow pass (no-op without an "add_mglow"
-				// pass). The device publishes the shaped off-screen beam energy
-				// (render_vector_stats; the old mglow_threshold / mglow_min_distance shaping now
-				// lives there with the same values baked in); the chain's coefficient scales it
-				// here. On a stale frame the per-frame energy can dip and make the glow flicker
-				// against vsync - the monitor glow physically persists, so track the peak and
-				// decay it gently.
-				const float mglow_amount = vstats.offscreen_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
+				// pass). The device publishes the shaped off-screen beam energy binned by how far
+				// beyond the visible area the beam reached (render_vector_stats::offscreen_energy;
+				// the old mglow_threshold energy floor is baked there); here the minimum-distance
+				// cutoff (mglow_min_distance, "Monitor Glow Min Distance") drops the shallow bins -
+				// a beam has to leave the screen by at least that much before the tube face lights -
+				// with the boundary bin blended linearly so the slider responds smoothly. The
+				// chain's coefficient then scales the sum. On a stale frame the per-frame energy
+				// can dip and make the glow flicker against vsync - the monitor glow physically
+				// persists, so track the peak and decay it gently.
+				const float mglow_min_dist = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
+				float mglow_energy = 0.0f;
+				for (int mb = 0; mb < render_vector_stats::OFFSCREEN_DEPTH_BINS; mb++)
+				{
+					const float bin_top = float(mb + 1) * render_vector_stats::OFFSCREEN_DEPTH_STEP;
+					const float keep = std::clamp((bin_top - mglow_min_dist) / render_vector_stats::OFFSCREEN_DEPTH_STEP, 0.0f, 1.0f);
+					mglow_energy += vstats.offscreen_energy[mb] * keep;
+				}
+				const float mglow_amount = mglow_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
 				if (m_vec_frame_advanced)
 					m_mglow_smoothed = std::max(mglow_amount, m_mglow_smoothed * 0.80f);
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
