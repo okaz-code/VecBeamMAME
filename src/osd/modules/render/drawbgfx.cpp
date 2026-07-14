@@ -3488,12 +3488,17 @@ int renderer_bgfx::draw(int update)
 		// full-brightness colours already sit at $FF (1-bit guns: Star Wars), every white counts as
 		// over-nominal - leave this at 0 there (per-game cfg) or the whole picture runs hot.
 		const float gun_over = std::max(0.0f, m_chains->slider_value(0, "gun_overdrive", 0.0f));
-		// Both thresholds are calibratable: the saturation knee must sit BELOW the source's nominal
-		// full step (mhavoc $CB = 0.796) or the near-white convergence cannot happen, while the
-		// overdrive nominal must sit ABOVE it or every ordinary full-brightness vector reads as
-		// over-driven and the whole picture runs hot.
+		// Both thresholds are calibratable. The saturation knee must sit BELOW the source's nominal
+		// full step (mhavoc $CB = 0.796) or the near-white convergence cannot happen. The overdrive
+		// nominal is a TOTAL drive (sum of the three guns' raw levels, 0..3): the tube doesn't know
+		// hue, it only sees total cathode current, so keying the overload on the summed drive is the
+		// single unified physical rule - mhavoc's over-driven white ($FF+$CB+$CB = 2.59) is the
+		// hottest content and clears the default 2.45, while ordinary white ($CBx3 = 2.39), bright
+		// single-gun red ($FF = 1.0) and two-gun mixes (sparkle purple $FF+$CB = 1.8) all stay below.
+		// A per-channel key was tried first and lit every $FF-bearing colour (red arrows, sparkle
+		// purple) that the real monitor shows calm.
 		const float gun_knee = std::clamp(m_chains->slider_value(0, "gun_sat_knee", 0.7f), 0.0f, 0.95f);
-		const float gun_nominal = std::clamp(m_chains->slider_value(0, "gun_over_nominal", 0.85f), 0.5f, 0.99f);
+		const float gun_nominal = std::clamp(m_chains->slider_value(0, "gun_over_nominal", 2.45f), 1.0f, 3.0f);
 		auto gun_saturate = [gun_sat, gun_knee](float c) {
 			if (c <= gun_knee)
 				return c;
@@ -3868,14 +3873,14 @@ int renderer_bgfx::draw(int update)
 								// shimmers rather than blinks.
 								const bool vp_dimmed = vp_in_bucket && flicker_partial;
 								const bool vp_recolor = vp_dimmed || gun_sat > 0.0f;
-								// over-nominal drive -> energy boost, from the RAW colour (before the
-								// gun_saturation compression below rewrites it); see gun_over above
+								// over-nominal TOTAL drive -> energy boost, from the RAW colour (before
+								// the gun_saturation compression below rewrites it); see gun_over above
 								float vp_gun_mult = 1.0f;
 								if (gun_over > 0.0f)
 								{
-									const float mx = std::max({ vprim->color.r, vprim->color.g, vprim->color.b });
-									if (mx > gun_nominal)
-										vp_gun_mult = 1.0f + gun_over * std::min((mx - gun_nominal) / (1.0f - gun_nominal), 1.0f);
+									const float load = vprim->color.r + vprim->color.g + vprim->color.b;
+									if (load > gun_nominal)
+										vp_gun_mult = 1.0f + gun_over * std::min((load - gun_nominal) / std::max(0.05f, 3.0f - gun_nominal), 1.0f);
 								}
 								render_color vp_saved_color;
 								if (vp_recolor)
