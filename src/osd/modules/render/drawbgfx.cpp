@@ -1869,7 +1869,7 @@ void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) co
 	oy = amt * nz(0xb5e3u);
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale, float gun_mult)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -1932,6 +1932,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
+	// Gun over-nominal drive -> beam energy (gun_overdrive slider, computed per vector at the draw
+	// loop from the RAW source colour): a channel driven past the nominal maximum (mhavoc's $FF vs
+	// the $CB nominal step) saturates the gun's COLOUR response, but the extra beam current is real -
+	// on the tube it shows up as extra luminance and halation, not extra hue. Feeding it into n here
+	// drives the existing overdrive paths (hot core / white pull / Overload Glow / spot bloom), which
+	// is exactly the "over-driven whites glow hard" look of the real thing. 1.0 = off.
+	n *= gun_mult;
 	// Same-spot dwell cap (energy_dwell_cap pre-pass in draw()): a run of dots deposited on ONE spot
 	// piles energy up only to the cap - the later dots' MODEL-DERIVED energy is scaled down by the
 	// pre-computed factor. Applies only when the renderer derived n itself (beam_energy < 0); a
@@ -3473,6 +3480,15 @@ int renderer_bgfx::draw(int update)
 		// read salmon/orange. Channels at/below the knee are untouched, so saturated primaries and
 		// ordinary colours keep their hue; only near-full-drive imbalances converge to white. 0 = off.
 		const float gun_sat = std::clamp(m_chains->slider_value(0, "gun_saturation", 0.0f), 0.0f, 1.0f);
+		// Gun overdrive (gun_overdrive slider): how much of a channel's OVER-NOMINAL drive (above
+		// GUN_NOMINAL of full scale - mhavoc's $FF step vs the $CB nominal) is converted into extra
+		// beam energy (n multiplier in put_analytic_line). The saturated gun can't turn the excess
+		// current into more hue, but the tube still turns it into luminance + halation. Keyed on the
+		// RAW colour before gun_saturation compresses it. 0 = off. NB: on sources whose ordinary
+		// full-brightness colours already sit at $FF (1-bit guns: Star Wars), every white counts as
+		// over-nominal - leave this at 0 there (per-game cfg) or the whole picture runs hot.
+		const float gun_over = std::max(0.0f, m_chains->slider_value(0, "gun_overdrive", 0.0f));
+		constexpr float GUN_NOMINAL = 0.85f;   // between mhavoc's $CB (0.796) nominal and $FF over-drive
 		auto gun_saturate = [gun_sat](float c) {
 			constexpr float knee = 0.7f;   // drive level where the gun response starts to flatten
 			if (c <= knee)
@@ -3848,6 +3864,15 @@ int renderer_bgfx::draw(int update)
 								// shimmers rather than blinks.
 								const bool vp_dimmed = vp_in_bucket && flicker_partial;
 								const bool vp_recolor = vp_dimmed || gun_sat > 0.0f;
+								// over-nominal drive -> energy boost, from the RAW colour (before the
+								// gun_saturation compression below rewrites it); see gun_over above
+								float vp_gun_mult = 1.0f;
+								if (gun_over > 0.0f)
+								{
+									const float mx = std::max({ vprim->color.r, vprim->color.g, vprim->color.b });
+									if (mx > GUN_NOMINAL)
+										vp_gun_mult = 1.0f + gun_over * std::min((mx - GUN_NOMINAL) / (1.0f - GUN_NOMINAL), 1.0f);
+								}
 								render_color vp_saved_color;
 								if (vp_recolor)
 								{
@@ -3904,7 +3929,7 @@ int renderer_bgfx::draw(int update)
 										auto dit = m_dwell_scale.find(vprim);
 										if (dit != m_dwell_scale.end()) dsc = dit->second;
 									}
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, sps, dsc);
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, sps, dsc, vp_gun_mult);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (npptr) np_verts += NP_VPL;
 									if (rptr) ray_verts += m_ray_vpl;
