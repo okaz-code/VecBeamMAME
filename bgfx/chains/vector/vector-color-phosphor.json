@@ -120,6 +120,12 @@
 		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.05,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.1,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 
+		// ---- Bezel edge glow (off-screen beam exits light the border near the exit point) ----
+		{ "type": "float", "name": "edge_glow",        "text": "Edge Glow (off-screen beam)",  "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "edge_glow_width",  "text": "Edge Glow Width (px)",        "default": 100.0, "min": 4.0, "max": 400.0, "step": 2.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "edge_glow_length", "text": "Edge Glow Length (px)",       "default": 150.0, "min": 20.0, "max": 600.0, "step": 5.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "edge_glow_persist", "text": "Edge Glow Persistence (ms)",  "default": 120.0, "min": 0.0, "max": 1000.0, "step": 10.0, "format": "%4.0f", "screen": "vector" },
+
 		// ---- Artistic (non-physical) ----
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.8, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter",       "text": "Energy Jitter (near saturation)", "default": 0.0006,  "min": 0.0, "max": 0.005, "step": 0.00005, "format": "%1.5f", "screen": "vector" },
