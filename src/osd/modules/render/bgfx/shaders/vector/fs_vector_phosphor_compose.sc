@@ -34,6 +34,9 @@ uniform vec4 u_phos2;             // x = energy-decay k (0 = off, uniform), y = 
 uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1,1 = uniform
 uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 = off
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
+uniform vec4 u_phos_debug;        // (mode, 0, 0, 0) diagnostic view: 0 = off (normal), 1 = stored pool
+                                  // peak (no decay/np), 2 = pool age map (white = 50 ms), 3 = decayed
+                                  // pool display without the np add
 
 float phos_S(float age, float tau, float p, float total)
 {
@@ -71,6 +74,21 @@ void main()
 		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
 		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
 		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
+	// Diagnostic views (u_phos_debug.x, slider phos_debug): bisect where a display artifact enters -
+	// the DEPOSIT (mode 1 shows the stored peak: artifacts here come from upstream of the pool), the
+	// pool STATE (mode 2 shows age: structured age patterns inside strokes = re-excite logic), or the
+	// DECAY/compose (mode 3 shows the decayed pool without the np add).
+	if (u_phos_debug.x > 0.5)
+	{
+		if (u_phos_debug.x < 1.5)
+			gl_FragColor = vec4(pool.rgb, 1.0);                       // 1: stored peak, raw
+		else if (u_phos_debug.x < 2.5)
+			gl_FragColor = vec4(vec3_splat(pool.a / 50.0), 1.0);      // 2: age map (white = 50 ms)
+		else
+			gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);  // 3: decayed pool, no np
+		return;
+	}
+
 	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);
 }
