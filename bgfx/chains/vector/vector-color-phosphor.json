@@ -119,6 +119,7 @@
 		{ "type": "float", "name": "mglow_coefficient",      "text": "Monitor Glow Coefficient",     "default": 0.4,  "min": 0.0, "max": 10.0, "step": 0.05, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_brightness",       "text": "Monitor Glow Brightness",      "default": 0.05,  "min": 0.0, "max": 2.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
 		{ "type": "float", "name": "mglow_center_edge_diff", "text": "Monitor Glow Center-Edge Diff","default": 0.1,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%2.2f", "screen": "vector" },
+		{ "type": "float", "name": "mglow_min_distance",    "text": "Monitor Glow Min Distance (screen)", "default": 0.3, "min": 0.0, "max": 0.75, "step": 0.01, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Bezel edge glow (off-screen beam exits light the border near the exit point) ----
 		{ "type": "float", "name": "edge_glow",        "text": "Edge Glow (off-screen beam)",  "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01, "format": "%1.2f", "screen": "vector" },

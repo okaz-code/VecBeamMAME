@@ -35,12 +35,11 @@
 #define MAX_POINTS 20000
 
 // Off-screen beam shaping for render_vector_stats::offscreen_energy (monitor glow): a segment
-// contributes when its beam energy exceeds the floor AND an endpoint is at least this far outside
-// the visible area (in screen fractions). These match the defaults of the renderer sliders they
-// replace (mglow_threshold / mglow_min_distance); baking them keeps the device -> renderer
-// interface a plain per-frame aggregate.
+// contributes when its beam energy exceeds this floor (matches the default of the old
+// mglow_threshold renderer slider it replaces). The minimum off-screen distance is NOT baked
+// here: the energy is published binned by excursion depth and the renderer applies its own
+// cutoff (the Monitor Glow Min Distance slider, mglow_min_distance).
 static constexpr float OFFSCREEN_ENERGY_MIN = 0.7f;
-static constexpr float OFFSCREEN_MARGIN     = 0.30f;
 
 // Localized bezel-edge glow (render_vector_stats::edge_energy): the phosphor face continues behind
 // the bezel, so a beam driven off-screen lights the border near its exit point. The farther beyond
@@ -339,7 +338,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam
 	// event (window-boundary re-emissions do not recount, matching the notifiers).
 	float stats_total_energy = 0.0f;
-	float stats_offscreen_energy = 0.0f;
+	float stats_offscreen_energy[render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_edge_energy[4][render_vector_stats::EDGE_GLOW_BINS] = {};
 
 	for (int i = 0; i < m_vector_index; i++)
@@ -401,15 +400,24 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					// normalized length at constant velocity), summed over the frame
 					const float lx = coords.x1 - coords.x0, ly = coords.y1 - coords.y0;
 					stats_total_energy += curpoint->beam_energy * sqrtf(lx * lx + ly * ly);
-					// shaped off-screen contribution (see OFFSCREEN_ENERGY_MIN / OFFSCREEN_MARGIN)
+					// shaped off-screen contribution (see OFFSCREEN_ENERGY_MIN), binned by how far
+					// beyond the visible area the segment reaches so the renderer can apply its
+					// own minimum-distance cutoff (mglow_min_distance slider)
 					auto outside = [] (float x, float y) {
 						const float dx = (x < 0.0f) ? -x : (x > 1.0f) ? (x - 1.0f) : 0.0f;
 						const float dy = (y < 0.0f) ? -y : (y > 1.0f) ? (y - 1.0f) : 0.0f;
 						return std::max(dx, dy);
 					};
-					if (curpoint->beam_energy > OFFSCREEN_ENERGY_MIN
-						&& std::max(outside(coords.x0, coords.y0), outside(coords.x1, coords.y1)) > OFFSCREEN_MARGIN)
-						stats_offscreen_energy += curpoint->beam_energy - OFFSCREEN_ENERGY_MIN;
+					if (curpoint->beam_energy > OFFSCREEN_ENERGY_MIN)
+					{
+						const float depth = std::max(outside(coords.x0, coords.y0), outside(coords.x1, coords.y1));
+						if (depth > 0.0f)
+						{
+							const int bin = std::min(render_vector_stats::OFFSCREEN_DEPTH_BINS - 1,
+									int(depth / render_vector_stats::OFFSCREEN_DEPTH_STEP));
+							stats_offscreen_energy[bin] += curpoint->beam_energy - OFFSCREEN_ENERGY_MIN;
+						}
+					}
 					// localized bezel-edge glow bins (own inside/outside test - no margin, distance-decayed)
 					accumulate_edge_glow(coords, curpoint->beam_energy, stats_edge_energy);
 				}
@@ -454,7 +462,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.list_stale = m_beam_list_stale;
 	stats.timed = m_avg_timing;
 	stats.total_energy = stats_total_energy;
-	stats.offscreen_energy = stats_offscreen_energy;
+	static_assert(sizeof(stats.offscreen_energy) == sizeof(stats_offscreen_energy));
+	memcpy(stats.offscreen_energy, stats_offscreen_energy, sizeof(stats.offscreen_energy));
 	static_assert(sizeof(stats.edge_energy) == sizeof(stats_edge_energy));
 	memcpy(stats.edge_energy, stats_edge_energy, sizeof(stats.edge_energy));
 	screen.container().set_vector_stats(stats);
