@@ -242,14 +242,22 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	// effect, so the analysis log should record the value the source actually produced (stable, not jittered).
 	const int dump_intensity = intensity;
 
-	// Legacy random flicker (-flicker): applied to every drawn point in full-frame mode.
+	// Legacy random flicker (-flicker): the same random reduction is applied to the display
+	// intensity AND to a device-supplied beam energy. Renderers that derive brightness from
+	// beam_energy (the HDR vector chains; only Star Wars supplies it device-side) would otherwise
+	// never see the intensity reduction and show no flicker at all, while every generic-energy
+	// game (Tempest etc., beam_energy < 0, derived from the post-flicker intensity) did.
 	if (vector_options::s_flicker && (intensity > 0))
 	{
 		float random = float(machine().rand() & 255) / 255.0f; // random value between 0.0 and 1.0
+		const float reduction = random * vector_options::s_flicker;
 
-		intensity -= int(intensity * random * vector_options::s_flicker);
+		intensity -= int(intensity * reduction);
 
 		intensity = std::clamp(intensity, 0, 255);
+
+		if (beam_energy > 0.0f)
+			beam_energy -= beam_energy * reduction;
 	}
 
 	newpoint = &m_vector_list[m_vector_index];
