@@ -3488,14 +3488,18 @@ int renderer_bgfx::draw(int update)
 		// full-brightness colours already sit at $FF (1-bit guns: Star Wars), every white counts as
 		// over-nominal - leave this at 0 there (per-game cfg) or the whole picture runs hot.
 		const float gun_over = std::max(0.0f, m_chains->slider_value(0, "gun_overdrive", 0.0f));
-		constexpr float GUN_NOMINAL = 0.85f;   // between mhavoc's $CB (0.796) nominal and $FF over-drive
-		auto gun_saturate = [gun_sat](float c) {
-			constexpr float knee = 0.7f;   // drive level where the gun response starts to flatten
-			if (c <= knee)
+		// Both thresholds are calibratable: the saturation knee must sit BELOW the source's nominal
+		// full step (mhavoc $CB = 0.796) or the near-white convergence cannot happen, while the
+		// overdrive nominal must sit ABOVE it or every ordinary full-brightness vector reads as
+		// over-driven and the whole picture runs hot.
+		const float gun_knee = std::clamp(m_chains->slider_value(0, "gun_sat_knee", 0.7f), 0.0f, 0.95f);
+		const float gun_nominal = std::clamp(m_chains->slider_value(0, "gun_over_nominal", 0.85f), 0.5f, 0.99f);
+		auto gun_saturate = [gun_sat, gun_knee](float c) {
+			if (c <= gun_knee)
 				return c;
-			const float t = std::min((c - knee) / (1.0f - knee), 1.0f);
+			const float t = std::min((c - gun_knee) / (1.0f - gun_knee), 1.0f);
 			const float f = 1.0f - powf(1.0f - t, 4.0f);   // fast rise onto the saturated ceiling
-			return c + ((knee + (1.0f - knee) * f) - c) * gun_sat;
+			return c + ((gun_knee + (1.0f - gun_knee) * f) - c) * gun_sat;
 		};
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
@@ -3870,8 +3874,8 @@ int renderer_bgfx::draw(int update)
 								if (gun_over > 0.0f)
 								{
 									const float mx = std::max({ vprim->color.r, vprim->color.g, vprim->color.b });
-									if (mx > GUN_NOMINAL)
-										vp_gun_mult = 1.0f + gun_over * std::min((mx - GUN_NOMINAL) / (1.0f - GUN_NOMINAL), 1.0f);
+									if (mx > gun_nominal)
+										vp_gun_mult = 1.0f + gun_over * std::min((mx - gun_nominal) / (1.0f - gun_nominal), 1.0f);
 								}
 								render_color vp_saved_color;
 								if (vp_recolor)
