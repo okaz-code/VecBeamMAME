@@ -36,6 +36,11 @@ private:
 
 	bool const m_menuless_mode;
 	bool m_hidden;
+
+	// the OSD slider_states populate() built the OSD section from; handle() polls the OSD list
+	// each frame and repopulates when it no longer matches (deferred bgfx chain reloads swap
+	// the slider set a couple of frames after the chain-selection slider changes)
+	std::vector<void *> m_osd_slider_refs;
 };
 
 } // namespace ui

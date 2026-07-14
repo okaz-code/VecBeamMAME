@@ -41,6 +41,28 @@ menu_sliders::~menu_sliders()
 
 bool menu_sliders::handle(event const *ev)
 {
+	// The OSD slider set can change asynchronously while this menu is open: the bgfx chain
+	// manager defers a chain switch's destroy/create to frame boundaries, so the new chain's
+	// sliders only come into existence a couple of frames after the selection slider changed.
+	// Poll for a change and repopulate - this both drops items whose slider_state has been
+	// destroyed in the meantime (they would dangle) and brings up the new chain's parameters
+	// without waiting for the user to touch another slider.
+	{
+		std::vector<menu_item> const osd_sliders = machine().osd().get_slider_list();
+		std::vector<void *> refs;
+		refs.reserve(osd_sliders.size());
+		for (menu_item const &item : osd_sliders)
+		{
+			if (item.type() == menu_item_type::SLIDER)
+				refs.push_back(item.ref());
+		}
+		if (refs != m_osd_slider_refs)
+		{
+			reset(reset_options::REMEMBER_POSITION);
+			return true;
+		}
+	}
+
 	if (!ev)
 		return false;
 
@@ -216,6 +238,16 @@ void menu_sliders::populate()
 
 	// add OSD options
 	std::vector<menu_item> osd_sliders = machine().osd().get_slider_list();
+
+	// remember which OSD slider_states this list was built from, so handle() can spot the set
+	// changing behind the menu's back (e.g. a deferred bgfx chain reload) and repopulate
+	m_osd_slider_refs.clear();
+	for (const menu_item &item : osd_sliders)
+	{
+		if (item.type() == menu_item_type::SLIDER)
+			m_osd_slider_refs.push_back(item.ref());
+	}
+
 	for (const menu_item &item : osd_sliders)
 	{
 		if (item.type() == menu_item_type::SLIDER)
