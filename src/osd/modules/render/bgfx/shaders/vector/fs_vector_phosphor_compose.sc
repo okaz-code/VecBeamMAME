@@ -37,7 +37,9 @@ uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 =
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
 uniform vec4 u_phos_debug;        // (mode, 0, 0, 0) diagnostic view: 0 = off (normal), 1 = stored pool
                                   // peak (no decay/np), 2 = pool age map (white = 50 ms), 3 = decayed
-                                  // pool display without the np add
+                                  // pool display without the np add, 4 = the CURRENT excitation frame
+                                  // only (shows how much of the content this present actually drew -
+                                  // beam-window slicing on busy scenes appears directly here)
 
 float phos_S(float age, float tau, float p, float total)
 {
@@ -85,8 +87,10 @@ void main()
 			gl_FragColor = vec4(pool.rgb, 1.0);                       // 1: stored peak, raw
 		else if (u_phos_debug.x < 2.5)
 			gl_FragColor = vec4(vec3_splat(pool.a / 50.0), 1.0);      // 2: age map (white = 50 ms)
-		else
+		else if (u_phos_debug.x < 3.5)
 			gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);  // 3: decayed pool, no np
+		else
+			gl_FragColor = vec4(texture2D(s_cur, v_texcoord0).rgb, 1.0); // 4: current excitation only
 		return;
 	}
 
