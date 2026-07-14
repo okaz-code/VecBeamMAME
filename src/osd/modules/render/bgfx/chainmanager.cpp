@@ -818,11 +818,16 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 				m_reload_saved_settings = slider_settings();
 			m_reload_slider_id = id;
 			m_reload_phase = reload_phase::DESTROY;
-			// NB: set_sliders_dirty() is intentionally NOT called here. The slider menu must only be
-			// marked dirty AFTER the deferred reload_chains() has rebuilt the slider_state objects
-			// (done in process_pending_reload); marking it here would rebuild the menu against the old
-			// sliders and consume the dirty flag before they are destroyed, leaving the menu holding
-			// stale slider_states (crash: std::bad_function_call on the next menu open).
+			// Mark the sliders dirty NOW as well as after the deferred create: while a reload is
+			// pending, get_slider_list() returns only the persistent selection sliders (see there),
+			// so the menu rebuild this triggers - menu_sliders resets itself right after any slider
+			// change - drops every reference into the doomed chains' slider_states BEFORE
+			// process_pending_reload() destroys them. Without this, the open menu keeps items
+			// pointing at freed slider_states for a frame (occasional crash on adjust/redraw) and,
+			// because it never repopulates on its own, keeps displaying the previous chain's
+			// parameters (the menu polls for slider-list changes and refreshes once the deferred
+			// create publishes the new chain's sliders).
+			m_slider_notifier.set_sliders_dirty();
 		}
 	}
 
@@ -1349,7 +1354,11 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 		bgfx_chain* chain = m_screen_chains[index];
 		sliders.push_back(m_selection_sliders[index]);
 
-		if (chain == nullptr)
+		// While a deferred chain reload is pending the current chains (and their slider_states)
+		// are about to be destroyed - publish only the persistent selection sliders so a menu
+		// rebuilt in this window holds no references into the doomed chains. The reload's CREATE
+		// phase marks the sliders dirty again once the replacement sliders exist.
+		if (chain == nullptr || m_reload_phase != reload_phase::NONE)
 		{
 			continue;
 		}
