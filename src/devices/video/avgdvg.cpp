@@ -1312,14 +1312,32 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 			// MASTER_CLOCK ticks (the timers below convert with the same base, so the stamps line
 			// up with machine time). A handler can flush mid-op (jump-to-zero), in which case
 			// everything still in the buffer is new.
+			// An op that buffered SEVERAL points (mhavoc's sparkle loop: one point per 8-cycle
+			// step, dozens per op) gets its interval sliced evenly across them - the loop's steps
+			// are equal-duration on the real hardware. Stamping every point with the WHOLE op
+			// interval handed each few-px sparkle segment a duration of hundreds of us, which the
+			// renderer's speed/dwell energy model read as an ultra-slow, dwelling beam: massive
+			// overload, so the pyroids' dim white multi-colour twinkle displayed as bright
+			// saturated orange (each LFSR-coloured sub-segment at full brightness).
 			if (m_nvect != nvect_before)
 			{
 				const attotime t0 = slice_base + attotime::from_ticks(cycles_before, MASTER_CLOCK);
 				const attotime t1 = slice_base + attotime::from_ticks(cycles, MASTER_CLOCK);
-				for (int i = (m_nvect > nvect_before) ? nvect_before : 0; i < m_nvect; i++)
+				const int first = (m_nvect > nvect_before) ? nvect_before : 0;
+				const int count = m_nvect - first;
+				if (count == 1)
 				{
-					m_vectbuf[i].t0 = t0;
-					m_vectbuf[i].t1 = t1;
+					m_vectbuf[first].t0 = t0;
+					m_vectbuf[first].t1 = t1;
+				}
+				else
+				{
+					const attotime dur = t1 - t0;
+					for (int i = first; i < m_nvect; i++)
+					{
+						m_vectbuf[i].t0 = t0 + dur * u32(i - first) / u32(count);
+						m_vectbuf[i].t1 = t0 + dur * u32(i - first + 1) / u32(count);
+					}
 				}
 			}
 		}

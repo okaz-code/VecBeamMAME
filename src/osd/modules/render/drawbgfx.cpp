@@ -3464,6 +3464,23 @@ int renderer_bgfx::draw(int update)
 			flicker_busy ? std::clamp(m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f), 0.0f, 1.0f) : 1.0f };
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
+		// Gun saturation (gun_saturation slider): per-channel soft-knee compression of the SOURCE
+		// colour near full drive, modelling the CRT gun/phosphor saturating at maximum beam current.
+		// A real monitor shows an over-driven "white" as plain white - mhavoc's in-game white is
+		// colorram $F = R $FF, G/B $CB (the 2-bit red DAC's extra step), and the real red gun is
+		// already saturated so the +25% red never becomes +25% light. A faithful linear display
+		// (especially the HDR present, which never clips the core) keeps the ratio and the pyroids
+		// read salmon/orange. Channels at/below the knee are untouched, so saturated primaries and
+		// ordinary colours keep their hue; only near-full-drive imbalances converge to white. 0 = off.
+		const float gun_sat = std::clamp(m_chains->slider_value(0, "gun_saturation", 0.0f), 0.0f, 1.0f);
+		auto gun_saturate = [gun_sat](float c) {
+			constexpr float knee = 0.7f;   // drive level where the gun response starts to flatten
+			if (c <= knee)
+				return c;
+			const float t = std::min((c - knee) / (1.0f - knee), 1.0f);
+			const float f = 1.0f - powf(1.0f - t, 4.0f);   // fast rise onto the saturated ceiling
+			return c + ((knee + (1.0f - knee) * f) - c) * gun_sat;
+		};
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
 		double cur_first_t0 = -1.0, cur_last_t1 = -1.0;
@@ -3823,18 +3840,30 @@ int renderer_bgfx::draw(int update)
 							const bool vp_flicker_excluded = vp_in_bucket && !flicker_partial;
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
-								// Per-channel flicker: attenuate this bucket's colour in place for the
-								// draw calls below (restored after - the same primitive list may be
-								// walked again). A channel at weight 1.0 goes fully dark (classic), at
-								// 0.15 it only dips 15% - it shimmers rather than blinks.
+								// Per-vector source-colour adjustments, applied in place for the draw
+								// calls below and restored after (the same primitive list may be
+								// walked again): gun saturation (see gun_saturate above), then
+								// per-channel flicker - attenuate this bucket's colour. A channel at
+								// weight 1.0 goes fully dark (classic), at 0.15 it only dips 15% - it
+								// shimmers rather than blinks.
 								const bool vp_dimmed = vp_in_bucket && flicker_partial;
+								const bool vp_recolor = vp_dimmed || gun_sat > 0.0f;
 								render_color vp_saved_color;
-								if (vp_dimmed)
+								if (vp_recolor)
 								{
 									vp_saved_color = vprim->color;
-									vprim->color.r *= 1.0f - fl_rgb[0];
-									vprim->color.g *= 1.0f - fl_rgb[1];
-									vprim->color.b *= 1.0f - fl_rgb[2];
+									if (gun_sat > 0.0f)
+									{
+										vprim->color.r = gun_saturate(vprim->color.r);
+										vprim->color.g = gun_saturate(vprim->color.g);
+										vprim->color.b = gun_saturate(vprim->color.b);
+									}
+									if (vp_dimmed)
+									{
+										vprim->color.r *= 1.0f - fl_rgb[0];
+										vprim->color.g *= 1.0f - fl_rgb[1];
+										vprim->color.b *= 1.0f - fl_rgb[2];
+									}
 								}
 								if (m_line_analytic)
 								{
@@ -3883,7 +3912,7 @@ int renderer_bgfx::draw(int update)
 								else
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								vertices += verts_per_line;
-								if (vp_dimmed)
+								if (vp_recolor)
 									vprim->color = vp_saved_color;
 							}
 							vprim = vprim->next();
