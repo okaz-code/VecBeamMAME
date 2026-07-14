@@ -28,6 +28,7 @@ $input v_color0, v_texcoord0
 
 SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
+SAMPLER2D(s_cur, 2);   // the CURRENT excitation frame (same "internal" page the update pass read)
 
 uniform vec4 u_phos;              // y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;             // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
@@ -88,6 +89,14 @@ void main()
 			gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);  // 3: decayed pool, no np
 		return;
 	}
+
+	// Superposition lower bound: a pixel the beam is exciting RIGHT NOW can never be darker than
+	// that excitation, whatever the pool's (peak, age) state machine currently holds. Wherever the
+	// re-excite hysteresis mis-tracks (fluctuating deposits, overrange residues, scaling glyphs),
+	// the error could only show as live content displayed at a DECAYED level - taking max with the
+	// current frame makes that entire failure class invisible by construction. In the normal case
+	// (pixel re-excited this present) pool == cur and this is exactly the previous output.
+	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
 
 	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);

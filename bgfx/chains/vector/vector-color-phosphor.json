@@ -296,7 +296,7 @@
 		},
 		{ "effect": "vector/vector_phosphor_compose", "name": "Phosphor Apply",
 		  "_comment": "single compose pass replacing the former Phosphor Apply (pool emit) + NoPersist Combine + Phosphor Tint trio - two full-res passes saved, math unchanged: internal = (pool_peak * S(age) + npglow * cap_no_persist) * phosphor_color. The no-persist FBO holds line caps / short-dwell junction dots (bright while drawn, no afterimage, never fed into the glow cascade); the old pass pair's net 0.3745 x 2.67 = 0.99991 add is exactly 1.0 here (that was the intent), and u_np_gain=0 both reproduces the old disablewhen skip and guards stale np content. The entry keeps the name 'Phosphor Apply' because the renderer injects u_phos into it by name.",
-		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "target": "npglow_dc" } ],
+		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "target": "npglow_dc" }, { "sampler": "s_cur", "target": "internal" } ],
 		  "uniforms": [
 			{ "uniform": "u_np_gain",           "slider": "cap_no_persist" },
 			{ "uniform": "u_phos_debug",        "slider": "phos_debug" },
