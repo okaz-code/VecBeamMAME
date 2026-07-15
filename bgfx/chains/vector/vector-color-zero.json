@@ -5,7 +5,7 @@
 // brightness/width transfer, constant beam width, no caps/overload/glow/flicker/monitor glow/
 // jitter/noise, flat geometry, no mask/ambient, energy model off). For A/B comparison and
 // isolating a single effect: start here and raise one slider at a time. Kept in sync with
-// vector-color-phosphor.json structurally (same sliders/targets/passes; only defaults differ).
+// vector-color.json structurally (same sliders/targets/passes; only defaults differ).
 // Colour vector phosphor chain (AVG colour: Tempest / Star Wars / Major Havoc, Sega G80, Cinematronics colour) - the Vectrex phosphor engine
 // ported to generic vector sources. Same pipeline: per-pixel phosphor pool (rgb=peak, a=age, Hill
 // decay), flat-core analytic beam, overdrive hot-core + Overload Glow (bloom), analytic glow, HDR
