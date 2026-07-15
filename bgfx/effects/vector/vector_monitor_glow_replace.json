@@ -1,11 +1,9 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
-// Monitor glow - full-screen radial glow added onto the base image IN THE SHADER (samples s_tex
-// itself), so this writes internal in-place (replace blend) rather than relying on additive blend
-// state onto a separate accumulation target - safe on the DOUBLEBUFFERED "internal" target only.
-// Used by the current vector-color-phosphor.json chain. Do NOT point this at a single-buffer target
-// (the older chains' "mglow_out") - see vector_monitor_glow.json (the plain additive-only sibling used
-// by those chains) for why.
+// Monitor glow plus copy, using REPLACE blend. It is safe either as an in-place pass on a
+// double-buffered target, or as a fused final blit from one target to a distinct output target.
+// The colour phosphor chain uses the latter form to write screen_hdr without a second copy pass.
+// Do not use it in-place on a single-buffer target.
 // uniforms:
 //   u_mglow_amount:     accumulated off-screen overload energy (injected each frame by the renderer)
 //   u_mglow_brightness: overall brightness multiplier slider

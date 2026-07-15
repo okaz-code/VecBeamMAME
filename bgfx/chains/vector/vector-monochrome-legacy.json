@@ -9,7 +9,7 @@
 // timestamps (AVG / DVG / Cinematronics have them), replacing the old dwell_* brightness knobs.
 // Line caps are unconditional here (cap_flags / RAMP termini are a Vectrex concept).
 {
-	"name": "Vector (Monochrome Phosphor, HDR)",
+	"name": "Vector (Monochrome, HDR, Legacy)",
 	"author": "okaz",
 	"screen_type": "vector",
 	"vector_engine": "analytic",

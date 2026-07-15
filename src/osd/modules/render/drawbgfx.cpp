@@ -2153,7 +2153,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 	}
 	// Route the overdrive into the CORE deposit (body / caps / dwell-dot z): the flare quad lands in
-	// the glow FBO, which chains like vector-vectrex-phosphor composite at tiny glow weights (~0.02),
+	// the glow FBO, which chains like vector-vectrex composite at tiny glow weights (~0.02),
 	// so there the flare alone cannot brighten the spot. With overdrive_core > 0 the same (1+z)
 	// overrange multiplies the core deposit itself into the float FBO, where it feeds the phosphor
 	// pool and the bloom cascade like any other light. 0 = off (flare-only, prior behaviour).
@@ -2487,7 +2487,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// Halation-from-overdrive (ring_over_gain > 0): the ring stops using the legacy brightness
 			// threshold and instead follows the overdrive heat - strength scales with line_over (the
 			// capped overrange), so only genuinely hot dwell dots grow the "angel ring" and it swells
-			// with the heat. Chains like vector-vectrex-phosphor composite the glow FBO at a tiny
+			// with the heat. Chains like vector-vectrex composite the glow FBO at a tiny
 			// weight (glow_narrow ~0.02), which would crush the rim - carry (1/glow_narrow - 1) in z
 			// so the shader's (1+z) undoes that weight and the rim lands at its tuned strength
 			// independent of the chain's glow gain. 0 = legacy threshold gate (prior behaviour).
