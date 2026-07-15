@@ -11,7 +11,7 @@ $input v_color0, v_texcoord0
 // u_mglow_edge_diff.x:  Monitor Glow Center-Edge Diff slider (brightness drop toward the edges)
 //
 // IN-PLACE variant (samples s_tex and adds intensity itself, REPLACE blend) - for the current
-// vector-color-phosphor.json chain only, which writes this directly onto the DOUBLEBUFFERED
+// vector-color.json chain only, which writes this directly onto the DOUBLEBUFFERED
 // "internal" target (no mglow_out/mglow_seed - lets the pass be skipped outright via
 // disablewhen mglow_coefficient==0 without leaving a separate target stale). Self-sampling s_tex while
 // writing the SAME logical target is only safe because "internal" is doublebuffered (read comes from
