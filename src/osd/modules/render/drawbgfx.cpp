@@ -3313,7 +3313,7 @@ int renderer_bgfx::draw(int update)
 		// analytic gaussians computed from interpolated line-local varyings, so a reduced raster only
 		// samples the same function at lower density. Tracked separately so a chain switch that changes
 		// only this factor recreates the FBOs.
-		const float glow_scale = std::clamp(m_chains->slider_value(0, "glow_fbo_scale", 1.0f), 0.25f, 1.0f);
+		const float glow_scale = std::clamp(m_chains->slider_value(0, "glow_fbo_scale", 1.0f), 0.1f, 1.0f);
 		const uint16_t target_glow_w = std::max<uint16_t>(1, uint16_t(target_fb_w * glow_scale));
 		const uint16_t target_glow_h = std::max<uint16_t>(1, uint16_t(target_fb_h * glow_scale));
 		if (cur_w > 0 && cur_h > 0 && (target_fb_w != m_vec_fb_w || target_fb_h != m_vec_fb_h
