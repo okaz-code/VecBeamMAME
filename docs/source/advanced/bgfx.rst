@@ -169,6 +169,17 @@ bgfx_screen_chains
 
     Note that the commas are on the outside edges, and any colons are in the
     middle.
+bgfx_render_scale
+    Sets the internal resolution scale for the analytic vector renderer and its
+    native BGFX chain targets.  The default is ``1.0``.  For example, ``0.5``
+    processes the vector chain at half the window width and height while keeping
+    the final output, user interface and artwork at full window resolution.
+    Target scales declared by a chain are applied on top of this value.
+
+    The vector FBO supersampling factor is applied after this scale.  For the
+    lowest fill-rate cost, use ``-bgfx_render_scale 0.5``
+    ``-bgfx_vec_supersample 1`` together.
+
 bgfx_shadow_mask
     This specifies the shadow mask effect PNG file.  By default this is
     **slot-mask.png**.

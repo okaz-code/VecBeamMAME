@@ -89,6 +89,7 @@
 #define OSDOPTION_BGFX_BACKEND          "bgfx_backend"
 #define OSDOPTION_BGFX_DEBUG            "bgfx_debug"
 #define OSDOPTION_BGFX_SCREEN_CHAINS    "bgfx_screen_chains"
+#define OSDOPTION_BGFX_RENDER_SCALE      "bgfx_render_scale"
 #define OSDOPTION_BGFX_VEC_SUPERSAMPLE  "bgfx_vec_supersample"
 #define OSDOPTION_BGFX_VEC_LINE_SHADER  "bgfx_vec_line_shader"
 #define OSDOPTION_BGFX_HDR              "bgfx_hdr"
@@ -172,6 +173,7 @@ public:
 	const char *bgfx_backend() const { return value(OSDOPTION_BGFX_BACKEND); }
 	bool bgfx_debug() const { return bool_value(OSDOPTION_BGFX_DEBUG); }
 	const char *bgfx_screen_chains() const { return value(OSDOPTION_BGFX_SCREEN_CHAINS); }
+	float bgfx_render_scale() const { return float_value(OSDOPTION_BGFX_RENDER_SCALE); }
 	int bgfx_vec_supersample() const { return int_value(OSDOPTION_BGFX_VEC_SUPERSAMPLE); }
 	const char *bgfx_vec_line_shader() const { return value(OSDOPTION_BGFX_VEC_LINE_SHADER); }
 	bool bgfx_hdr() const { return int_value(OSDOPTION_BGFX_HDR) != 0; }
