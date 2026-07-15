@@ -1,0 +1,22 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// One-tap additive accumulator for the colour-vector narrow glow.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "1",
+		"srcAlpha": "1",
+		"dstAlpha": "1"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_glow_accum",
+	"uniforms": [
+		{ "name": "s_tex",            "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_blit_intensity", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims",  "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

@@ -1,0 +1,37 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Colour-vector post-phosphor defocus, asymmetric pincushion, shadow-mask/ambient,
+// and calibrated glow composite in one replace pass.
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_glow_combine_color_defocus",
+	"uniforms": [
+		{ "name": "s_base",                           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_bloom",                          "type": "int",  "values": [ 1.0 ] },
+		{ "name": "s_mask",                           "type": "int",  "values": [ 2.0 ] },
+		{ "name": "u_defocus",                        "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_vec_pincushion_x_quad",          "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_vec_pincushion_x_cubic",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_vec_pincushion_y_quad",          "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_vec_pincushion_y_cubic",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_glow_enable",                    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_strength",            "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_brightboost",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_shadow_mask_scale",               "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_target_dims",                     "type": "vec4", "values": [ 1920.0, 1080.0, 0.0, 0.0 ] },
+		{ "name": "u_ambient_color",                   "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_ambient_level",                   "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_ambient_mask",                    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims",                   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}
