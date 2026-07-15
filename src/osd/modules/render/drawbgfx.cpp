@@ -1001,6 +1001,9 @@ int renderer_bgfx::create()
 	{
 		const int ss = m_module().options().bgfx_vec_supersample();
 		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
+		m_vec_render_scale = std::clamp(m_module().options().bgfx_render_scale(), 0.1f, 1.0f);
+		osd_printf_verbose("BGFX: analytic vector render scale %.2f, supersample %u (effective raster scale %.2f)\n",
+			m_vec_render_scale, unsigned(m_vec_supersample), m_vec_render_scale * float(m_vec_supersample));
 	}
 
 	// load the analytic-AA vector line effect
@@ -3306,8 +3309,10 @@ int renderer_bgfx::draw(int update)
 	{
 		const uint16_t cur_w = uint16_t(s_width[window_index]);
 		const uint16_t cur_h = uint16_t(s_height[window_index]);
-		const uint16_t target_fb_w = uint16_t(cur_w * m_vec_supersample);
-		const uint16_t target_fb_h = uint16_t(cur_h * m_vec_supersample);
+		const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(cur_w) * m_vec_render_scale + 0.5f));
+		const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(cur_h) * m_vec_render_scale + 0.5f));
+		const uint16_t target_fb_w = uint16_t(render_w * m_vec_supersample);
+		const uint16_t target_fb_h = uint16_t(render_h * m_vec_supersample);
 		// glow_fbo_scale: the active chain's glow-FBO resolution factor (a fast-variant chain sets 0.5
 		// to quarter the glow fill cost; chains without the slider get 1.0). The glow content is smooth
 		// analytic gaussians computed from interpolated line-local varyings, so a reduced raster only
@@ -3329,6 +3334,8 @@ int renderer_bgfx::draw(int update)
 			m_vec_fb_h = target_fb_h;
 			m_vec_glow_fb_w = target_glow_w;
 			m_vec_glow_fb_h = target_glow_h;
+			osd_printf_verbose("BGFX: analytic vector internal %ux%u, raster FBO %ux%u, output %ux%u\n",
+				render_w, render_h, m_vec_fb_w, m_vec_fb_h, cur_w, cur_h);
 			// bilinear (no MSAA, for sampler compatibility)
 			const uint64_t cf = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
 				BGFX_TEXTURE_RT;
@@ -4252,9 +4259,10 @@ int renderer_bgfx::draw(int update)
 		bgfx::TextureHandle vec_color = bgfx::getTexture(m_vec_fb, 0);
 		if (bgfx::isValid(vec_color))
 		{
+			const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(s_width[window_index]) * m_vec_render_scale + 0.5f));
+			const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(s_height[window_index]) * m_vec_render_scale + 0.5f));
 			m_chains->inject_vector_screen(vec_color,
-				uint16_t(s_width[window_index]),
-				uint16_t(s_height[window_index]),
+				render_w, render_h,
 				m_vec_fb_w, m_vec_fb_h);
 			// Expose the analytic-glow FBO as "glow0" for the chain's post-mask glow composite pass.
 			if (bgfx::isValid(m_vec_glow_fb))
@@ -4414,7 +4422,9 @@ int renderer_bgfx::draw(int update)
 				// did not run because the FBO/atlas was not ready): an unbound sampler is fatal on Metal.
 				const bgfx::TextureHandle seed_src = bgfx::isValid(screen_hdr->texture())
 						? screen_hdr->texture() : m_chains->textures().dummy_handle();
-				if (st) bgfx::setTexture(0, st->handle(), seed_src);
+				if (st)
+					bgfx::setTexture(0, st->handle(), seed_src,
+						BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
 				bgfx::setVertexBuffer(0, &vb);
 				m_hdr_screen_effect->submit(seed_view);
 			}

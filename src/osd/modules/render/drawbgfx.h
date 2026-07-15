@@ -164,7 +164,10 @@ private:
 	std::vector<uint32_t> m_seen_views;
 
 	// FBO for vector drawing in the BGFX-sample style (not routed through chain_manager).
-	// m_vec_supersample is the FBO supersampling factor, from -bgfx_vec_supersample (clamped 1-2).
+	// m_vec_render_scale scales the analytic vector FBO base and native vector-chain targets.
+	// The final BGFX swapchain, UI and artwork remain at the physical window resolution.
+	float m_vec_render_scale = 1.0f;
+	// m_vec_supersample is applied after m_vec_render_scale (both dimensions).
 	uint16_t m_vec_supersample = 2;
 	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_fb_w = 0;
