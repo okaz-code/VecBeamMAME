@@ -168,7 +168,7 @@ private:
 	// The final BGFX swapchain, UI and artwork remain at the physical window resolution.
 	float m_vec_render_scale = 1.0f;
 	// m_vec_supersample is applied after m_vec_render_scale (both dimensions).
-	uint16_t m_vec_supersample = 2;
+	uint16_t m_vec_supersample = 1;
 	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_fb_w = 0;
 	uint16_t m_vec_fb_h = 0;
@@ -261,8 +261,12 @@ public:
 		float overload_max = 0.0f;
 		float overload_ramp = 0.0f;
 		float overload_threshold = 1.0f;
+		float overload_width_add = -1.0f;
+		float overload_width_center = 0.65f;
+		float overload_width_steepness = 10.0f;
 		float phosphor_overdrive = 0.0f;
 		float point_width_scale = 1.0f;
+		float point_brightness_scale = 1.0f;
 		float ray_angle = 15.0f;
 		float ray_count_rand = 0.0f;    // time-varying random suppression of individual rays (0 = all present)
 		float ray_gain = 0.0f;
@@ -272,6 +276,7 @@ public:
 		float ray_width = 1.2f;
 		float ring_fill = 0.0f;
 		float ring_gain = 0.0f;
+		float halation_gain = 1.0f;
 		float ring_min_dwell = 0.0f;
 		float ring_over_gain = 0.0f;
 		float ring_radius = 24.0f;
@@ -323,7 +328,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float gun_mult = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -422,14 +427,11 @@ private:
 	double m_flicker_prev_t0 = -1.0;
 	double m_flicker_prev_t1 = -1.0;
 
-	// Bezel edge glow (render_vector_stats::edge_energy): sticky union of the per-frame vector
-	// content bounding boxes (window px), approximating the on-window screen rect the render core
-	// clips vectors to - the borders the edge-glow streaks are anchored to. Converges immediately on
-	// any frame with an edge-clipped line (its bounds touch the true screen edges). Reset when the
-	// window size changes.
+	// Bezel edge glow (render_vector_stats::edge_energy): exact on-window CRT screen rectangle in
+	// window pixels, taken from the full-screen VECTORBUF background quad emitted by vector.cpp.
+	// Unlike a bounding box learned from lit lines, this is stable on sparse/title/ranking screens.
 	float m_edge_box_min_x = 1e9f, m_edge_box_min_y = 1e9f;
 	float m_edge_box_max_x = -1e9f, m_edge_box_max_y = -1e9f;
-	uint16_t m_edge_box_w = 0, m_edge_box_h = 0;   // window dims the box was accumulated at
 	// Temporally-smoothed edge bins (instant attack, exponential release over edge_glow_persist ms):
 	// the raw per-frame bins follow the beam sweep pattern frame by frame and flicker hard; the real
 	// glow is smoothed by phosphor/scatter persistence and the eye's integration. [4][EDGE_GLOW_BINS]
@@ -441,24 +443,10 @@ private:
 	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.
 	uint32_t m_vec_prev_frame_id = 0;
 	bool m_vec_frame_advanced = false;
-	// Resolution basis for beam width / bloom / defocus scaling. A ROT270 (portrait) vector screen is
-	// pillarboxed in a wide window/fullscreen, so the raw framebuffer width over-scales the beam in
-	// fullscreen vs a content-sized window. m_vec_extent_w peak-holds the vector bounding-box width (=
-	// the real content width in fb px); m_vec_res_w is the per-present 1920-reference basis used by the
-	// put_*_line magnitudes, so a given beam_width looks identical windowed and fullscreen.
-	float m_vec_extent_w = 0.0f;
+	// Resolution basis for beam width / bloom / defocus scaling: width of the exact full-screen
+	// VECTORBUF background quad after layout, rotation and aspect-fit transforms. This avoids both
+	// pillarbox over-scaling and scene-dependent under-scaling on sparse screens.
 	float m_vec_res_w = 0.0f;
-	// Identity of the active bgfx_chain the last time m_vec_extent_w was updated. The peak-hold's own
-	// comment says it should "reset to 0 on FBO (re)create so a resolution change re-learns it" - but
-	// no such reset actually existed anywhere in this file, so it never re-learned anything: switching
-	// the active chain (e.g. color-phosphor -> monochrome-phosphor -> back to color-phosphor) does NOT
-	// touch this peak (chain reload only recreates the CHAIN's own declared targets, not this renderer-
-	// owned value), but the underlying game keeps running/drawing throughout, so if it happened to draw
-	// wider content while a DIFFERENT chain was active, that peak silently carries over and permanently
-	// changes color-phosphor's own width/bloom/defocus scale after switching back - with no game/
-	// resolution change at all. Comparing screen_chain(0)'s pointer (changes on every reload_chains())
-	// lets the peak-hold re-learn from scratch on any chain switch, matching the documented intent.
-	bgfx_chain *m_vec_extent_chain = nullptr;
 	// Emulated time (seconds) at the previous present, used to time-calibrate the max-persist
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
