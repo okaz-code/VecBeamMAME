@@ -35,7 +35,8 @@ uniform vec4 u_bloom_overdrive;    // (r, g, b, 0)
 uniform vec4 u_bloom_channel_gain; // (r, g, b, 0) per-channel gain on the bloom contribution (default 1,1,1)
 uniform vec4 u_time;               // (time_seconds, 0, 0, 0) auto-bound by a chain system parameter
 uniform vec4 u_ambient_color;      // (r, g, b, 0) non-excited phosphor body tint (P31 grey-green / P22 grey)
-uniform vec4 u_ambient_level;      // (level, 0, 0, 0) room-light reflection floor, 0 = off
+uniform vec4 u_ambient_level;        // (level, 0, 0, 0) room-light reflection floor, 0 = off
+uniform vec4 u_ambient_output_scale; // inverse SDR beam exposure for reflected ambient only
 uniform vec4 u_bloom_noise;        // (strength, freeze, 0, 0) dark-area shimmer amount; freeze>0.5 holds the pattern (pause)
 
 // per-pixel + per-frame hash random [0, 1], compatible with HLSL random.fx
@@ -85,8 +86,8 @@ void main()
 	// Ambient / non-excited phosphor body colour: room light reflected off the dark
 	// phosphor and metal-back raises the "black" to the body tint. A flat additive floor; the later
 	// tint / vignette / HDR-encode passes shape it through the same optics. u_ambient_level 0 = off,
-	// so chains without the uniform are unaffected. The slider is in milli-units (0..20 reads nicer
-	// than 0..0.02), so scale by 0.001 here. The floor is small (the visible "black" lift).
-	vec3 ambient = u_ambient_level.x * 0.001 * u_ambient_color.rgb;
+	// so chains without the uniform are unaffected. The slider is expressed in milli-units
+	// and scaled by 0.001 here. The floor remains a controlled visible "black" lift.
+	vec3 ambient = u_ambient_level.x * 0.001 * u_ambient_color.rgb * u_ambient_output_scale.x;
 	gl_FragColor = vec4(base + bloom + ambient, 1.0);
 }

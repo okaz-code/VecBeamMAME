@@ -24,6 +24,7 @@ uniform vec4 u_target_dims;
 uniform vec4 u_tex_size2;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
+uniform vec4 u_ambient_output_scale;
 uniform vec4 u_ambient_mask;
 uniform vec4 u_tube_distortion;
 uniform vec4 u_tube_cubic_distortion;
@@ -244,7 +245,7 @@ void main()
 	vec3 raw_mask_factor = mix(vec3_splat(1.0), mask * (1.0 + brightboost), strength);
 	vec3 mask_factor = mix(vec3_splat(1.0), raw_mask_factor, face);
 
-	vec3 ambient = u_ambient_level.x * 0.001 * u_ambient_color.rgb;
+	vec3 ambient = u_ambient_level.x * 0.001 * u_ambient_color.rgb * u_ambient_output_scale.x;
 	vec3 ambient_out = ambient * mix(vec3_splat(1.0), mask_factor, clamp(u_ambient_mask.x, 0.0, 1.0)) * face * vignette;
 
 	vec2 md = v_texcoord0 - vec2_splat(0.5);
