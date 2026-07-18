@@ -32,6 +32,7 @@ void main()
 	// chromaticity (hue+saturation) is preserved - an over-bright blue stays blue, just stops getting
 	// brighter, instead of turning purple. knee/max are multiples of beam_peak; max<=knee = off. A knee
 	// of 1.0 leaves a single full-intensity line untouched and only rolls the brighter overlaps.
+	if (hdr || edr)
 	{
 		float peak = max(u_hdr_params.x, 1.0);
 		float m0   = max(L.r, max(L.g, L.b));   // original peak (overload indicator - additive overlap nits)

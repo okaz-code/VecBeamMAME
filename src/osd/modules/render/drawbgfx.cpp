@@ -4299,6 +4299,16 @@ int renderer_bgfx::draw(int update)
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 
+				// Ambient is reflected room light, not beam emission. The SDR seed scales the
+				// completed chain by sdr_beam_level, so pre-compensate only ambient here; beam,
+				// optical glow, monitor glow and bezel reflection retain the SDR exposure.
+				const bool hdr_present = s_bgfx_hdr_active || s_bgfx_edr_active;
+				const float sdr_level = std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f);
+				const float ambient_output_scale = hdr_present ? 1.0f : (1.0f / sdr_level);
+				const float ambient_scale_vals[4] = { ambient_output_scale, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "add_mglow",   "u_ambient_output_scale", ambient_scale_vals, 4);
+				m_chains->inject_entry_uniform(0, "Glow Combine", "u_ambient_output_scale", ambient_scale_vals, 4);
+
 				// Colour phosphor-decay pool. The "Phosphor" update pass and the "Phosphor Apply"
 				// compose pass share u_phos = (dt_ms, half_ms, curve, total_ms): the pool holds
 				// rgb=peak/a=age and decays via the Hill sigmoid S(age). dt = emulated time advanced
@@ -4383,8 +4393,15 @@ int renderer_bgfx::draw(int update)
 			const float h = float(s_height[0]);
 			const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
 			const float paper_white = float(m_module().options().bgfx_hdr_paper_white());
+			// Keep the HDR beam calibration in absolute nits, but give SDR its own normalized
+			// beam level. Reusing beam_peak in SDR made a nominal beam 330/200 = 1.65 with
+			// the common defaults, clipping it before useful SDR-only shaping could occur.
+			// Chains without the new slider retain unity SDR seeding for compatibility.
+			const bool hdr_present = s_bgfx_hdr_active || s_bgfx_edr_active;
+			const float sdr_beam_level = std::clamp(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.0f, 1.0f);
+			const float seed_peak = hdr_present ? beam_peak : paper_white * sdr_beam_level;
 
-			// Seed pass: hdr_work = screen_hdr * beam_peak (linear nits). A dedicated view before
+			// Seed pass: hdr_work = screen_hdr * seed_peak (linear nits). A dedicated view before
 			// the artwork view; overwrites the whole target so no clear is needed.
 			const uint16_t seed_view = uint16_t(s_current_view++);
 			bgfx::setViewFrameBuffer(seed_view, m_hdr_work->target());
@@ -4401,7 +4418,7 @@ int renderer_bgfx::draw(int update)
 				vertex(&v[0], 0,0,0,0xffffffff,0,0); vertex(&v[1], w,0,0,0xffffffff,1,0); vertex(&v[2], w,h,0,0xffffffff,1,1);
 				vertex(&v[3], 0,0,0,0xffffffff,0,0); vertex(&v[4], w,h,0,0xffffffff,1,1); vertex(&v[5], 0,h,0,0xffffffff,0,1);
 				bgfx_uniform *p = m_hdr_screen_effect->uniform("u_hdr_params");
-				if (p) { float val[4] = { beam_peak, 0,0,0 }; p->set(val, sizeof(float)*4); p->upload(); }
+				if (p) { float val[4] = { seed_peak, 0,0,0 }; p->set(val, sizeof(float)*4); p->upload(); }
 				bgfx_uniform *st = m_hdr_screen_effect->uniform("s_tex");
 				// Bind a fallback if screen_hdr has not been written yet this frame (e.g. the chain
 				// did not run because the FBO/atlas was not ready): an unbound sampler is fatal on Metal.

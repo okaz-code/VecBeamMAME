@@ -171,6 +171,15 @@
       ]
     },
     {
+      "name": "u_ambient_output_scale",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },    {
       "name": "u_mglow_amount",
       "type": "vec4",
       "values": [

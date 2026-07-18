@@ -138,10 +138,10 @@
 		{"type":"float","name":"primary_red_saturation","text":"Red Saturation","default":0.7,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"primary_red_brightness","text":"Red Brightness","default":1.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"primary_green_hue","text":"Green Hue Shift (deg)","default":0.0,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector"},
-		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.5,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"primary_green_brightness","text":"Green Brightness","default":1.68,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"primary_blue_hue","text":"Blue Hue Shift (Violet +)","default":20.0,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector"},
-		{"type":"float","name":"primary_blue_saturation","text":"Blue Saturation","default":0.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"primary_blue_hue","text":"Blue Hue Shift (Violet +)","default":5.0,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector"},
+		{"type":"float","name":"primary_blue_saturation","text":"Blue Saturation","default":0.6,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"primary_blue_brightness","text":"Blue Brightness","default":2.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"vec2","name":"chroma_a","text":"Phosphor A Chromaticity ","default":[0.63,0.34],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector"},
 		{"type":"vec2","name":"chroma_b","text":"Phosphor B Chromaticity ","default":[0.31,0.595],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector"},
@@ -165,7 +165,7 @@
 		// ---- Shadow mask ----
 		{"type":"float","name":"shadow_mask_strength","text":"Shadow Mask Strength","default":0.3,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector"},
-		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.8,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.65,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 
 		// ---- Ambient, tube and bezel ----
 		{"type":"color","name":"ambient_color","text":"Ambient Color ","default":[0.35,0.35,0.35],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector"},
@@ -190,9 +190,10 @@
 		{"type":"float","name":"hdr_rolloff_knee","text":"HDR Highlight Knee (xpeak)","default":1.0,"min":0.5,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"hdr_rolloff_max","text":"HDR Highlight Max (xpeak)","default":1.85,"min":0.5,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"hdr_sat_protect","text":"HDR Saturated Color Protect","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"sdr_rolloff_knee","text":"SDR Highlight Knee (xwhite)","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_beam_level","text":"SDR Beam Level","default":0.70,"min":0.10,"max":1.00,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_rolloff_knee","text":"SDR Highlight Knee (xwhite)","default":0.75,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"sdr_rolloff_ceiling","text":"SDR Highlight Ceiling (xwhite)","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"sdr_shadow_curve","text":"SDR Shadow Curve","default":1.0,"min":0.3,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_shadow_curve","text":"SDR Shadow Curve","default":1.10,"min":0.3,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"edr_sdr_level","text":"EDR SDR Level (UI/Art, macOS)","default":1.0,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"phosphor_gamut","text":"Phosphor Gamut (P22, HDR)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"}
 	],

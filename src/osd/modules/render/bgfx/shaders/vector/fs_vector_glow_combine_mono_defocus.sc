@@ -17,6 +17,7 @@ uniform vec4 u_glow_enable;
 uniform vec4 u_target_dims;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
+uniform vec4 u_ambient_output_scale;
 uniform vec4 u_tube_distortion;
 uniform vec4 u_tube_cubic_distortion;
 uniform vec4 u_tube_distort_corner;
@@ -104,7 +105,7 @@ void main()
 	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0,tube_active);vec2 base_uv=vector_pincushion_uv(emit_uv);
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
 	float face=tube_face_factor(v_texcoord0,tube_active),vignette=tube_vignette(v_texcoord0,tube_active);
-	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*face*vignette;
+	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(u_glow_enable.x>0.0&&!emit_outside)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
