@@ -31,6 +31,16 @@ uniform vec4 u_y_gain;
 uniform vec4 u_chroma_a;
 uniform vec4 u_chroma_b;
 uniform vec4 u_chroma_c;
+uniform vec4 u_primary_mode;
+uniform vec4 u_primary_red_hue;
+uniform vec4 u_primary_red_saturation;
+uniform vec4 u_primary_red_brightness;
+uniform vec4 u_primary_green_hue;
+uniform vec4 u_primary_green_saturation;
+uniform vec4 u_primary_green_brightness;
+uniform vec4 u_primary_blue_hue;
+uniform vec4 u_primary_blue_saturation;
+uniform vec4 u_primary_blue_brightness;
 
 float phos_S(float age, float tau, float p, float total)
 {
@@ -66,22 +76,54 @@ vec3 sample_np_converged(vec2 uv)
 	return vec3(texture2D(s_np, uv_r).r, texture2D(s_np, uv_g).g, texture2D(s_np, uv_b).b);
 }
 
-vec3 phosphor_to_srgb(vec3 cin)
+vec3 cie_color(vec3 cin)
 {
 	mat3 xy = mat3(u_chroma_a.xyz, u_chroma_b.xyz, u_chroma_c.xyz);
-	mat3 XYZ_TO_sRGB = mtxFromRows3(
+	mat3 xyz_to_srgb = mtxFromRows3(
 		vec3( 3.2406, -1.5372, -0.4986),
 		vec3(-0.9689,  1.8758,  0.0415),
 		vec3( 0.0557, -0.2040,  1.0570));
 	vec3 cout = vec3_splat(0.0);
+	vec3 white = vec3_splat(0.0);
 	for (int i = 0; i < 3; ++i)
 	{
-		float Y = u_y_gain[i] * cin[i];
+		float Y = u_y_gain[i];
 		float X = xy[i].x / xy[i].y * Y;
 		float Z = (1.0 - xy[i].x - xy[i].y) / xy[i].y * Y;
-		cout += mul(XYZ_TO_sRGB, vec3(X, Y, Z));
+		vec3 primary = mul(xyz_to_srgb, vec3(X, Y, Z));
+		cout += primary * cin[i];
+		white += primary;
 	}
-	return cout;
+	return max(cout / max(white, vec3_splat(1e-4)), vec3_splat(0.0));
+}
+
+vec3 hue_rgb(float h)
+{
+	vec3 p = abs(fract(vec3(h, h + 0.6666667, h + 0.3333333)) * 6.0 - 3.0);
+	return saturate(p - 1.0);
+}
+
+vec3 direct_primary(float base_hue, float shift_deg, float saturation, float brightness)
+{
+	vec3 c = hue_rgb(fract(base_hue + shift_deg / 360.0));
+	float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	return max(mix(vec3_splat(y), c, saturation), vec3_splat(0.0)) * brightness;
+}
+
+vec3 direct_color(vec3 cin)
+{
+	cin = max(cin, vec3_splat(0.0));
+	float neutral = min(cin.r, min(cin.g, cin.b));
+	vec3 chroma = cin - vec3_splat(neutral);
+	vec3 pr = direct_primary(0.0, u_primary_red_hue.x, u_primary_red_saturation.x, u_primary_red_brightness.x);
+	vec3 pg = direct_primary(0.3333333, u_primary_green_hue.x, u_primary_green_saturation.x, u_primary_green_brightness.x);
+	vec3 pb = direct_primary(0.6666667, u_primary_blue_hue.x, u_primary_blue_saturation.x, u_primary_blue_brightness.x);
+	return vec3_splat(neutral) + pr * chroma.r + pg * chroma.g + pb * chroma.b;
+}
+
+vec3 color_transform(vec3 cin)
+{
+	return u_primary_mode.x > 0.5 ? direct_color(cin) : cie_color(cin);
 }
 
 void main()
@@ -117,5 +159,5 @@ void main()
 		composed = lit * u_line_channel_gain.rgb;
 	}
 
-	gl_FragColor = vec4(phosphor_to_srgb(composed), 1.0) * v_color0;
+	gl_FragColor = vec4(color_transform(composed), 1.0) * v_color0;
 }

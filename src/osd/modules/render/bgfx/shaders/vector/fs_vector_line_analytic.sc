@@ -66,8 +66,14 @@ void main()
 			// outside it. Width-lifted (overdriven) dots read as crisp bright discs instead of soft
 			// blobs. Flat dots are large by construction, so the box-integrated sub-pixel AA of the
 			// plain path below is not needed here.
-			float r = sqrt(a * a + d * d);
-			float rr = max(r - v_texcoord0.y, 0.0);
+			// Rounded-square dwell spot. u_line_params.w is corner roundness:
+			// 0 = compact rounded square, 1 = the former circular disc. The gaussian is
+			// evaluated only outside the solid SDF core, preserving the existing soft skirt.
+			float half_extent = v_texcoord0.y;
+			float corner = mix(half_extent * 0.15, half_extent, clamp(u_line_params.w, 0.0, 1.0));
+			vec2 q = abs(vec2(a, d)) - vec2_splat(half_extent) + vec2_splat(corner);
+			float sd = length(max(q, vec2_splat(0.0))) + min(max(q.x, q.y), 0.0) - corner;
+			float rr = max(sd, 0.0);
 			fade = sharpen(exp(-rr * rr * inv_2s2), u_line_params.y);
 		}
 		else
@@ -128,10 +134,9 @@ void main()
 		fade = perp * axial;
 	}
 
-	// Intensity overrange: v_texcoord0.x carries the per-vector overdrive (0 = none). The blend is
-	// additive with the SRC_ALPHA factor (deposit = colour.rgb * out.a), so scaling the alpha by (1+z)
-	// pushes the deposited light above the per-line ceiling into the float FBO - feeding the present's
-	// overload whitening. Glow / ring quads carry z = 0 (x1), so they are unaffected.
-	float over_mult = 1.0 + max(0.0, v_texcoord0.x);
+	// Float intensity multiplier. Core/overload geometry carries z >= 0 (x1 and above); very faint
+	// halation geometry may carry -1 < z < 0 so its gain is not quantized through RGBA8 vertex colour.
+	// The additive SRC_ALPHA blend deposits colour.rgb * out.a into the float FBO.
+	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
 	gl_FragColor = v_color0 * vec4(1.0, 1.0, 1.0, fade * over_mult);
 }

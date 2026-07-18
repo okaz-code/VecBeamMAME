@@ -1,5 +1,6 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz
+// BALANCED PORTRAIT: full-resolution beam/phosphor path with half-resolution analytic glow and a 1/16 wide-glow floor.
 // Colour vector phosphor chain (AVG colour: Tempest / Star Wars / Major Havoc, Sega G80, Cinematronics colour) - the Vectrex phosphor engine
 // ported to generic vector sources. Same pipeline: per-pixel phosphor pool (rgb=peak, a=age, Hill
 // decay), flat-core analytic beam, overdrive hot-core + Overload Glow (bloom), analytic glow, HDR
@@ -11,7 +12,7 @@
 // timestamps (AVG / DVG / Cinematronics have them), replacing the old dwell_* brightness knobs.
 // Line caps are unconditional here (cap_flags / RAMP termini are a Vectrex concept).
 {
-	"name": "Vector (Color, HDR)",
+	"name": "Vector (Color, HDR, Balanced Portrait)",
 	"author": "okaz",
 	"screen_type": "vector",
 	"vector_engine": "analytic",
@@ -36,11 +37,11 @@
 
 		// ---- Beam shape, points and focus ----
 		{"type":"float","name":"width_curve","text":"Width Curve","default":2.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.0,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":3.5,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector"},
+		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":8.5,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":9.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"core_flat","text":"Line Core Flatness","default":0.3,"min":0.0,"max":0.98,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"line_point_threshold","text":"Line/Point Threshold (px)","default":2.0,"min":0.0,"max":8.0,"step":0.5,"format":"%1.1f","screen":"vector"},
-		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":2.2,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":1.5,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"point_brightness_scale","text":"Point Brightness Scale","default":2.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"point_roundness","text":"Point Roundness","default":0.25,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"z_rise_tau","text":"Z Rise Time (us)","default":0.2,"min":0.0,"max":20.0,"step":0.01,"format":"%1.2f","screen":"vector"},
@@ -101,9 +102,9 @@
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":15.0,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"glow_threshold","text":"Glow Source Threshold","default":0.5,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"glow_curve","text":"Glow Source Curve","default":0.25,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.02,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector"},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.004,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector"},
-		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":1.0,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.04,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector"},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.008,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector"},
+		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.4,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"mglow_coefficient","text":"Monitor Glow Coefficient","default":0.4,"min":0.0,"max":10.0,"step":0.05,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"mglow_brightness","text":"Monitor Glow Brightness","default":0.8,"min":0.0,"max":2.0,"step":0.01,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"mglow_center_edge_diff","text":"Monitor Glow Center-Edge Diff","default":0.1,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector"},
@@ -165,11 +166,11 @@
 		// ---- Shadow mask ----
 		{"type":"float","name":"shadow_mask_strength","text":"Shadow Mask Strength","default":0.3,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector"},
-		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.8,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.7,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 
 		// ---- Ambient, tube and bezel ----
 		{"type":"color","name":"ambient_color","text":"Ambient Color ","default":[0.35,0.35,0.35],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"ambient_level","text":"Ambient Level (x0.001)","default":30.0,"min":0.0,"max":200.0,"step":0.5,"format":"%2.1f","screen":"vector"},
+		{"type":"float","name":"ambient_level","text":"Ambient Level (x0.001)","default":20.0,"min":0.0,"max":200.0,"step":0.5,"format":"%2.1f","screen":"vector"},
 		{"type":"float","name":"tube_distortion","text":"Tube Quadric Distortion","default":0.12,"min":-2.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"tube_cubic_distortion","text":"Tube Cubic Distortion","default":0.0,"min":-2.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"tube_distort_corner","text":"Tube Corner Distortion","default":0.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
@@ -203,8 +204,8 @@
 
 	"targets": [
 		{ "name": "internal",  "mode": "native", "scale": 1, "doublebuffer": true, "format": "RG11B10F" },
-		{ "name": "glow_accum", "mode": "native", "scale": 1, "doublebuffer": false, "format": "RGBA16F",
-		  "_comment": "single-buffer accumulator for narrow+wide glow. Additive ADDs are safe here (single-buffer); the combined glow is then added to internal ONCE via a read+write (replace) pass, because repeated partial ADDs to the doublebuffered internal write stale pages (Wide was cancelling Narrow)." },
+		{ "name": "glow_accum", "mode": "native", "scale": 0.5, "doublebuffer": false, "format": "RGBA16F",
+		  "_comment": "BALANCED: half-resolution accumulator matching the renderer glow FBO. The full-resolution beam and phosphor pool remain untouched; Glow Combine upsamples this smooth light field." },
 		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RGBA16F",
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
 
@@ -214,9 +215,7 @@
 		  "_comment": "wide local glow: the per-line glow buffer cascaded down to low-res, then upscaled+added. Bounded spread (only down to 1/16) = wide but still LOCAL (does not reach the whole screen like the bloom ladder)." },
 		{ "name": "glow_lo1", "mode": "native", "scale": 0.25,    "doublebuffer": false, "format": "RGBA16F" },
 		{ "name": "glow_lo2", "mode": "native", "scale": 0.125,   "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625,  "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo4", "mode": "native", "scale": 0.03125, "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo5", "mode": "native", "scale": 0.015625,"doublebuffer": false, "format": "RGBA16F" }
+		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625,  "doublebuffer": false, "format": "RGBA16F" }
 	],
 
 	"passes": [
@@ -331,15 +330,11 @@
 		{ "effect": "vector/vector_downsample", "name": "wide_glow_ds1", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo0" } ], "output": "glow_lo1" },
 		{ "effect": "vector/vector_downsample", "name": "wide_glow_ds2", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo1" } ], "output": "glow_lo2" },
 		{ "effect": "vector/vector_downsample", "name": "wide_glow_ds3", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo2" } ], "output": "glow_lo3" },
-		{ "effect": "vector/vector_downsample", "name": "wide_glow_ds4", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo3" } ], "output": "glow_lo4" },
-		{ "effect": "vector/vector_downsample", "name": "wide_glow_ds5", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo4" } ], "output": "glow_lo5" },
-		{ "effect": "vector/vector_upsample", "name": "wide_glow_us4", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo5" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "glow_lo4" },
-		{ "effect": "vector/vector_upsample", "name": "wide_glow_us3", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo4" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "glow_lo3" },
 		{ "effect": "vector/vector_upsample", "name": "wide_glow_us2", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo3" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "glow_lo2" },
 		{ "effect": "vector/vector_upsample", "name": "wide_glow_us1", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo2" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "glow_lo1" },
 		{ "effect": "vector/vector_upsample", "name": "wide_glow_us0", "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ], "input": [ { "sampler": "s_tex", "target": "glow_lo1" } ], "uniforms": [ { "uniform": "u_blit_intensity", "value": [ 1.0 ] } ], "output": "glow_lo0" },
 		{ "effect": "vector/vector_blit_add", "name": "Glow Accum Wide",
-		  "_comment": "Stage 2 (wide): ADD the broad far-only halo (1/64 smooth upscale from glow_lo0) into glow_accum. clear:{} PRESERVES the narrow seed above (single-buffer, so this partial ADD is safe). Result = narrow + wide in glow_accum.",
+		  "_comment": "BALANCED Stage 2: add the broad halo reconstructed from the 1/16 floor into the half-resolution glow accumulator. Four deepest-cascade passes are omitted.",
 		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "glow_wide", "value": 0.0 } ],
 		  "clear": {},
 		  "input": [ { "sampler": "s_tex", "target": "glow_lo0" } ],

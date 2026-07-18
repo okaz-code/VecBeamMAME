@@ -1,37 +1,494 @@
-// license:BSD-3-Clause
-// copyright-holders:okaz-code
-// Colour-vector post-phosphor defocus, asymmetric pincushion, shadow-mask/ambient,
-// and calibrated glow composite in one replace pass.
 {
-	"blend": {
-		"equation": "add",
-		"srcColor": "1",
-		"dstColor": "0",
-		"srcAlpha": "1",
-		"dstAlpha": "0"
-	},
-	"depth": { "function": "always" },
-	"cull": { "mode": "none" },
-	"write": { "rgb": true, "alpha": true },
-	"vertex": "vs_gui",
-	"fragment": "vector/fs_vector_glow_combine_color_defocus",
-	"uniforms": [
-		{ "name": "s_base",                           "type": "int",  "values": [ 0.0 ] },
-		{ "name": "s_bloom",                          "type": "int",  "values": [ 1.0 ] },
-		{ "name": "s_mask",                           "type": "int",  "values": [ 2.0 ] },
-		{ "name": "u_defocus",                        "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_vec_pincushion_x_quad",          "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_vec_pincushion_x_cubic",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_vec_pincushion_y_quad",          "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_vec_pincushion_y_cubic",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_glow_enable",                    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_shadow_mask_strength",            "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_shadow_mask_brightboost",         "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_shadow_mask_scale",               "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_target_dims",                     "type": "vec4", "values": [ 1920.0, 1080.0, 0.0, 0.0 ] },
-		{ "name": "u_ambient_color",                   "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_ambient_level",                   "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_ambient_mask",                    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-		{ "name": "u_inv_view_dims",                   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
-	]
+  "blend": {
+    "equation": "add",
+    "srcColor": "1",
+    "dstColor": "0",
+    "srcAlpha": "1",
+    "dstAlpha": "0"
+  },
+  "depth": {
+    "function": "always"
+  },
+  "cull": {
+    "mode": "none"
+  },
+  "write": {
+    "rgb": true,
+    "alpha": true
+  },
+  "vertex": "vs_gui",
+  "fragment": "vector/fs_vector_glow_combine_color_defocus",
+  "uniforms": [
+    {
+      "name": "s_base",
+      "type": "int",
+      "values": [
+        0.0
+      ]
+    },
+    {
+      "name": "s_bloom",
+      "type": "int",
+      "values": [
+        1.0
+      ]
+    },
+    {
+      "name": "s_mask",
+      "type": "int",
+      "values": [
+        2.0
+      ]
+    },
+    {
+      "name": "u_defocus",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_vec_pincushion_x_quad",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_vec_pincushion_x_cubic",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_vec_pincushion_y_quad",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_vec_pincushion_y_cubic",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_glow_enable",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_shadow_mask_strength",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_shadow_mask_brightboost",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_shadow_mask_scale",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_target_dims",
+      "type": "vec4",
+      "values": [
+        1920.0,
+        1080.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tex_size2",
+      "type": "vec4",
+      "values": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_ambient_color",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_ambient_level",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_mglow_amount",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_mglow_brightness",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_mglow_edge_diff",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_y_gain",
+      "type": "vec4",
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_chroma_a",
+      "type": "vec4",
+      "values": [
+        0.64,
+        0.33,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_chroma_b",
+      "type": "vec4",
+      "values": [
+        0.3,
+        0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_chroma_c",
+      "type": "vec4",
+      "values": [
+        0.15,
+        0.06,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_ambient_mask",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_inv_view_dims",
+      "type": "vec4",
+      "values": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_distortion",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_cubic_distortion",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_distort_corner",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_round_corner",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_smooth_border",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_vignetting",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tube_face_scale",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_glow_strength",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_glow_width",
+      "type": "vec4",
+      "values": [
+        32.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_glow_curve",
+      "type": "vec4",
+      "values": [
+        2.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_glow_inside",
+      "type": "vec4",
+      "values": [
+        0.25,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_glow_tail_curve",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_glow_black_toe",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_mode",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_red_hue",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_red_saturation",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_red_brightness",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_green_hue",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_green_saturation",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_green_brightness",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_blue_hue",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_blue_saturation",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_blue_brightness",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
 }
