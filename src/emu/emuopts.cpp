@@ -143,6 +143,9 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_OVERSCAN_Y,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_BLANK_LEAK,                          "0.0",       core_options::option_type::FLOAT,      "set vector blanked-beam leak level (0 = off), faintly draws blanked retrace/move paths" },
 	{ OPTION_VECTOR_EVENT_DUMP,                          nullptr,     core_options::option_type::PATH,       "debug: write timed beam events to this CSV file" },
+	{ OPTION_VECTOR_RECORD,                              nullptr,     core_options::option_type::PATH,       "record final vector beam events to an MVEC stream" },
+	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
+	{ OPTION_VECTOR_EXIT_AFTER_PLAYBACK,                 "0",         core_options::option_type::BOOLEAN,    "close the program at the end of vector playback" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },

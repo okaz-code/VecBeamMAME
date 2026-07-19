@@ -28,6 +28,16 @@
 #include "render.h"
 #include "screen.h"
 
+#include "util/hashing.h"
+
+#include <condition_variable>
+#include <cstring>
+#include <deque>
+#include <limits>
+#include <mutex>
+#include <thread>
+#include <vector>
+
 
 #define VECTOR_WIDTH_DENOM 512
 
@@ -108,6 +118,405 @@ static void accumulate_edge_glow(render_bounds const &coords, float beam_energy,
 	if (w1 > 0.0f) deposit(x0 + dx * ((1.0f + tmax) * 0.5f), y0 + dy * ((1.0f + tmax) * 0.5f), E * (w1 / wsum));
 }
 
+namespace {
+
+constexpr u32 MVEC_FRAME_MAGIC = 0x4d415246U; // "FRAM" in little-endian byte order
+constexpr u16 MVEC_VERSION_MAJOR = 1;
+constexpr u16 MVEC_VERSION_MINOR = 0;
+constexpr size_t MVEC_QUEUE_LIMIT = 256U * 1024U * 1024U;
+std::mutex s_mvec_claim_mutex;
+bool s_mvec_claimed = false;
+
+void append_u8(std::vector<u8> &out, u8 value) { out.push_back(value); }
+void append_u16(std::vector<u8> &out, u16 value)
+{
+	append_u8(out, u8(value)); append_u8(out, u8(value >> 8));
+}
+void append_u32(std::vector<u8> &out, u32 value)
+{
+	for (unsigned shift = 0; shift < 32; shift += 8) append_u8(out, u8(value >> shift));
+}
+void append_u64(std::vector<u8> &out, u64 value)
+{
+	for (unsigned shift = 0; shift < 64; shift += 8) append_u8(out, u8(value >> shift));
+}
+void append_i32(std::vector<u8> &out, s32 value) { append_u32(out, u32(value)); }
+void append_i64(std::vector<u8> &out, s64 value) { append_u64(out, u64(value)); }
+void append_float(std::vector<u8> &out, float value)
+{
+	u32 bits; std::memcpy(&bits, &value, sizeof(bits)); append_u32(out, bits);
+}
+void append_double(std::vector<u8> &out, double value)
+{
+	u64 bits; std::memcpy(&bits, &value, sizeof(bits)); append_u64(out, bits);
+}
+void append_string(std::vector<u8> &out, std::string_view value)
+{
+	if (value.size() > std::numeric_limits<u16>::max())
+		fatalerror("MVEC metadata string is too long\n");
+	append_u16(out, u16(value.size()));
+	out.insert(out.end(), value.begin(), value.end());
+}
+
+class payload_reader
+{
+public:
+	payload_reader(const std::vector<u8> &data) : m_data(data) { }
+	u8 get_u8() { require(1); return m_data[m_pos++]; }
+	u16 get_u16() { u16 v = get_u8(); v |= u16(get_u8()) << 8; return v; }
+	u32 get_u32() { u32 v = 0; for (unsigned s = 0; s < 32; s += 8) v |= u32(get_u8()) << s; return v; }
+	u64 get_u64() { u64 v = 0; for (unsigned s = 0; s < 64; s += 8) v |= u64(get_u8()) << s; return v; }
+	s32 get_i32() { return s32(get_u32()); }
+	s64 get_i64() { return s64(get_u64()); }
+	float get_float() { u32 b = get_u32(); float v; std::memcpy(&v, &b, sizeof(v)); return v; }
+	double get_double() { u64 b = get_u64(); double v; std::memcpy(&v, &b, sizeof(v)); return v; }
+	bool done() const { return m_pos == m_data.size(); }
+private:
+	void require(size_t count) { if (count > m_data.size() - m_pos) fatalerror("MVEC frame is truncated\n"); }
+	const std::vector<u8> &m_data;
+	size_t m_pos = 0;
+};
+
+} // anonymous namespace
+
+class vector_device::stream_state
+{
+public:
+	enum class mode { NONE, RECORD, PLAYBACK };
+
+	stream_state(vector_device &owner) : m_owner(owner)
+	{
+		const char *const record_path = owner.machine().options().vector_record();
+		const char *const playback_path = owner.machine().options().vector_playback();
+		const bool record = record_path && record_path[0];
+		const bool playback = playback_path && playback_path[0];
+		if (record && playback)
+			fatalerror("-vector_record and -vector_playback are mutually exclusive\n");
+		if (!record && !playback)
+			return;
+
+		{
+			std::lock_guard<std::mutex> lock(s_mvec_claim_mutex);
+			if (s_mvec_claimed)
+				fatalerror("MVEC currently supports one vector device per machine\n");
+			s_mvec_claimed = true;
+			m_claimed = true;
+		}
+
+		if (record)
+		{
+			m_mode = mode::RECORD;
+			m_output.open(record_path, std::ios::binary | std::ios::trunc);
+			if (!m_output)
+				fatalerror("Unable to open MVEC record file '%s'\n", record_path);
+			write_header();
+			m_writer = std::thread(&stream_state::writer_loop, this);
+			osd_printf_info("MVEC: recording vector stream to %s\n", record_path);
+		}
+		else
+		{
+			m_mode = mode::PLAYBACK;
+			m_input.open(playback_path, std::ios::binary);
+			if (!m_input)
+				fatalerror("Unable to open MVEC playback file '%s'\n", playback_path);
+			read_header();
+			osd_printf_info("MVEC: playing vector stream from %s\n", playback_path);
+		}
+	}
+
+	~stream_state()
+	{
+		finish();
+		if (m_claimed)
+		{
+			std::lock_guard<std::mutex> lock(s_mvec_claim_mutex);
+			s_mvec_claimed = false;
+		}
+	}
+
+	mode current_mode() const { return m_mode; }
+	bool recording() const { return m_mode == mode::RECORD; }
+	bool playing() const { return m_mode == mode::PLAYBACK; }
+
+	void finish()
+	{
+		if (m_mode == mode::RECORD)
+		{
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				m_stopping = true;
+			}
+			m_not_empty.notify_all();
+			m_not_full.notify_all();
+			if (m_writer.joinable())
+				m_writer.join();
+			m_output.flush();
+			m_output.close();
+			if (m_write_failed)
+				osd_printf_error("MVEC: recording failed after %llu frames: %s\n", (unsigned long long)m_frames, m_write_error);
+			else
+				osd_printf_info("MVEC: recorded %llu frames\n", (unsigned long long)m_frames);
+		}
+		else if (m_mode == mode::PLAYBACK)
+		{
+			m_input.close();
+		}
+		m_mode = mode::NONE;
+	}
+
+	void record_frame(const point *points, int count, bool stale, bool timed, u32 generation, const rectangle &visarea)
+	{
+		if (!recording()) return;
+		std::vector<u8> payload;
+		const u32 stored_count = stale ? 0U : u32(count);
+		payload.reserve(40U + size_t(stored_count) * 72U);
+		append_u64(payload, m_frames);
+		append_u32(payload, (stale ? 1U : 0U) | (timed ? 2U : 0U));
+		append_u32(payload, generation);
+		append_i32(payload, visarea.min_x); append_i32(payload, visarea.max_x);
+		append_i32(payload, visarea.min_y); append_i32(payload, visarea.max_y);
+		append_u32(payload, stored_count);
+		for (u32 i = 0; i < stored_count; ++i)
+		{
+			const point &p = points[i];
+			append_i32(payload, p.x0); append_i32(payload, p.y0);
+			append_i32(payload, p.x); append_i32(payload, p.y);
+			append_u32(payload, u32(p.col));
+			append_u8(payload, u8(p.intensity));
+			append_float(payload, p.beam_energy);
+			append_i32(payload, p.t0.seconds()); append_i64(payload, p.t0.attoseconds());
+			append_i32(payload, p.t1.seconds()); append_i64(payload, p.t1.attoseconds());
+			append_u32(payload, p.cap_flags);
+			append_i32(payload, p.dump_scale);
+			append_double(payload, p.dump_ramp_us);
+			append_u8(payload, p.dump_midchange ? 1U : 0U);
+		}
+
+		std::vector<u8> chunk;
+		chunk.reserve(payload.size() + 12U);
+		append_u32(chunk, MVEC_FRAME_MAGIC);
+		append_u32(chunk, u32(payload.size()));
+		chunk.insert(chunk.end(), payload.begin(), payload.end());
+		append_u32(chunk, u32(util::crc32_creator::simple(payload.data(), u32(payload.size()))));
+		enqueue(std::move(chunk));
+		++m_frames;
+	}
+
+	bool playback_frame(point *dest, int capacity, int &count, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
+	{
+		if (!playing()) return false;
+		if (m_eof)
+		{
+			copy_cached(dest, capacity, count, true);
+			stale = true;
+			return true;
+		}
+
+		u32 magic;
+		if (!read_file_u32(magic, true))
+		{
+			playback_end("End of file");
+			copy_cached(dest, capacity, count, true);
+			stale = true;
+			return true;
+		}
+		if (magic != MVEC_FRAME_MAGIC)
+			fatalerror("MVEC frame marker is invalid at frame %llu\n", (unsigned long long)m_frames);
+		u32 payload_size;
+		if (!read_file_u32(payload_size, false) || payload_size > 128U * 1024U * 1024U)
+			fatalerror("MVEC frame size is invalid\n");
+		std::vector<u8> payload(payload_size);
+		if (!read_exact(payload.data(), payload.size()))
+			fatalerror("MVEC frame payload is truncated\n");
+		u32 stored_crc;
+		if (!read_file_u32(stored_crc, false))
+			fatalerror("MVEC frame checksum is missing\n");
+		const u32 actual_crc = u32(util::crc32_creator::simple(payload.data(), u32(payload.size())));
+		if (stored_crc != actual_crc)
+			fatalerror("MVEC CRC mismatch at frame %llu\n", (unsigned long long)m_frames);
+
+		payload_reader reader(payload);
+		const u64 frame_number = reader.get_u64();
+		if (frame_number != m_frames)
+			fatalerror("MVEC frame sequence mismatch (expected %llu, got %llu)\n", (unsigned long long)m_frames, (unsigned long long)frame_number);
+		const u32 flags = reader.get_u32();
+		stale = bool(flags & 1U);
+		timed = bool(flags & 2U);
+		generation = reader.get_u32();
+		visarea.min_x = reader.get_i32(); visarea.max_x = reader.get_i32();
+		visarea.min_y = reader.get_i32(); visarea.max_y = reader.get_i32();
+		const u32 stored_count = reader.get_u32();
+		if (stored_count > MAX_POINTS)
+			fatalerror("MVEC frame has too many points (%u)\n", stored_count);
+		if (stale && stored_count != 0)
+			fatalerror("MVEC stale frame unexpectedly contains points\n");
+		if (!stale)
+		{
+			m_cached.resize(stored_count);
+			for (point &p : m_cached)
+			{
+				p.x0 = reader.get_i32(); p.y0 = reader.get_i32();
+				p.x = reader.get_i32(); p.y = reader.get_i32();
+				p.col = rgb_t(reader.get_u32());
+				p.intensity = reader.get_u8();
+				p.beam_energy = reader.get_float();
+				const s32 t0s = reader.get_i32(); const s64 t0a = reader.get_i64();
+				const s32 t1s = reader.get_i32(); const s64 t1a = reader.get_i64();
+				p.t0 = attotime(t0s, t0a); p.t1 = attotime(t1s, t1a);
+				p.cap_flags = reader.get_u32();
+				p.dump_scale = reader.get_i32();
+				p.dump_ramp_us = reader.get_double();
+				p.dump_midchange = reader.get_u8() != 0;
+				p.emitted = false;
+			}
+		}
+		if (!reader.done())
+			fatalerror("MVEC frame contains unsupported trailing data\n");
+		copy_cached(dest, capacity, count, stale);
+		++m_frames;
+		return true;
+	}
+
+private:
+	void write_header()
+	{
+		std::vector<u8> header;
+		const char magic[8] = { 'M','A','M','E','V','E','C','\0' };
+		header.insert(header.end(), magic, magic + sizeof(magic));
+		append_u16(header, MVEC_VERSION_MAJOR); append_u16(header, MVEC_VERSION_MINOR);
+		append_u32(header, 0x12345678U);
+		append_string(header, m_owner.machine().system().name);
+		append_string(header, m_owner.tag());
+		m_output.write(reinterpret_cast<const char *>(header.data()), std::streamsize(header.size()));
+		if (!m_output) fatalerror("Unable to write MVEC header\n");
+	}
+
+	void read_header()
+	{
+		char magic[8];
+		if (!read_exact(magic, sizeof(magic)) || std::memcmp(magic, "MAMEVEC\0", 8))
+			fatalerror("MVEC file is corrupt or unsupported\n");
+		u16 major, minor; u32 endian;
+		if (!read_file_u16(major) || !read_file_u16(minor) || !read_file_u32(endian, false))
+			fatalerror("MVEC header is truncated\n");
+		if (major != MVEC_VERSION_MAJOR || endian != 0x12345678U)
+			fatalerror("MVEC format version or byte order is unsupported\n");
+		const std::string system = read_file_string();
+		const std::string device = read_file_string();
+		if (system != m_owner.machine().system().name)
+			fatalerror("MVEC file is for machine '%s', not '%s'\n", system.c_str(), m_owner.machine().system().name);
+		if (device != m_owner.tag())
+			osd_printf_warning("MVEC: recorded device is '%s', current device is '%s'\n", device.c_str(), m_owner.tag());
+		osd_printf_info("MVEC format %u.%u, machine %s, device %s\n", major, minor, system.c_str(), device.c_str());
+	}
+
+	bool read_exact(void *dest, size_t size)
+	{
+		m_input.read(reinterpret_cast<char *>(dest), std::streamsize(size));
+		return size_t(m_input.gcount()) == size;
+	}
+	bool read_file_u16(u16 &value)
+	{
+		u8 b[2]; if (!read_exact(b, sizeof(b))) return false; value = u16(b[0]) | (u16(b[1]) << 8); return true;
+	}
+	bool read_file_u32(u32 &value, bool allow_clean_eof)
+	{
+		u8 b[4];
+		m_input.read(reinterpret_cast<char *>(b), sizeof(b));
+		const std::streamsize got = m_input.gcount();
+		if (got == 0 && allow_clean_eof) return false;
+		if (got != sizeof(b)) return false;
+		value = u32(b[0]) | (u32(b[1]) << 8) | (u32(b[2]) << 16) | (u32(b[3]) << 24); return true;
+	}
+	std::string read_file_string()
+	{
+		u16 size; if (!read_file_u16(size)) fatalerror("MVEC header string is truncated\n");
+		std::string result(size, '\0');
+		if (size && !read_exact(result.data(), size)) fatalerror("MVEC header string is truncated\n");
+		return result;
+	}
+
+	void enqueue(std::vector<u8> &&chunk)
+	{
+		std::unique_lock<std::mutex> lock(m_mutex);
+		m_not_full.wait(lock, [&] { return m_write_failed || m_queued_bytes + chunk.size() <= MVEC_QUEUE_LIMIT || m_queue.empty(); });
+		if (m_write_failed) fatalerror("MVEC writer failed: %s\n", m_write_error);
+		m_queued_bytes += chunk.size();
+		m_queue.emplace_back(std::move(chunk));
+		lock.unlock();
+		m_not_empty.notify_one();
+	}
+
+	void writer_loop()
+	{
+		for (;;)
+		{
+			std::vector<u8> chunk;
+			{
+				std::unique_lock<std::mutex> lock(m_mutex);
+				m_not_empty.wait(lock, [&] { return m_stopping || !m_queue.empty(); });
+				if (m_queue.empty())
+				{
+					if (m_stopping) break;
+					continue;
+				}
+				chunk = std::move(m_queue.front());
+				m_queue.pop_front();
+				m_queued_bytes -= chunk.size();
+			}
+			m_not_full.notify_one();
+			m_output.write(reinterpret_cast<const char *>(chunk.data()), std::streamsize(chunk.size()));
+			if (!m_output)
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				m_write_failed = true;
+				m_write_error = "disk write error";
+				m_queue.clear(); m_queued_bytes = 0;
+				m_not_full.notify_all();
+				break;
+			}
+		}
+	}
+
+	void copy_cached(point *dest, int capacity, int &count, bool stale)
+	{
+		if (m_cached.size() > size_t(capacity)) fatalerror("MVEC playback buffer overflow\n");
+		count = int(m_cached.size());
+		for (int i = 0; i < count; ++i)
+		{
+			dest[i] = m_cached[i];
+			dest[i].emitted = stale;
+		}
+	}
+
+	void playback_end(const char *reason)
+	{
+		m_eof = true;
+		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)m_frames, reason);
+		m_owner.machine().popmessage("Vector playback ended\n%s", reason);
+		if (m_owner.machine().options().vector_exit_after_playback())
+			m_owner.machine().schedule_exit();
+	}
+
+	vector_device &m_owner;
+	mode m_mode = mode::NONE;
+	bool m_claimed = false;
+	std::ofstream m_output;
+	std::ifstream m_input;
+	std::thread m_writer;
+	std::mutex m_mutex;
+	std::condition_variable m_not_empty;
+	std::condition_variable m_not_full;
+	std::deque<std::vector<u8>> m_queue;
+	size_t m_queued_bytes = 0;
+	bool m_stopping = false;
+	bool m_write_failed = false;
+	const char *m_write_error = nullptr;
+	bool m_eof = false;
+	u64 m_frames = 0;
+	std::vector<point> m_cached;
+};
+
 float vector_options::s_flicker = 0.0f;
 float vector_options::s_beam_width_min = 0.0f;
 float vector_options::s_beam_width_max = 0.0f;
@@ -143,6 +552,8 @@ vector_device::vector_device(const machine_config &mconfig, const char *tag, dev
 		m_beam_list_stale(false)
 {
 }
+vector_device::~vector_device() = default;
+
 
 void vector_device::device_start()
 {
@@ -163,6 +574,16 @@ void vector_device::device_start()
 		else
 			osd_printf_warning("vector: could not open event dump file '%s'\n", dump_path);
 	}
+
+	// MVEC capture/playback is independent of the legacy analysis CSV dump.
+	m_stream = std::make_unique<stream_state>(*this);
+}
+
+void vector_device::device_stop()
+{
+	m_stream.reset();
+	if (m_event_dump.is_open())
+		m_event_dump.close();
 }
 
 
@@ -280,6 +701,9 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 	newpoint->t0 = t0;
 	newpoint->t1 = t1;
 	newpoint->cap_flags = cap_flags;
+	newpoint->dump_scale = m_dump_scale;
+	newpoint->dump_ramp_us = m_dump_ramp_us;
+	newpoint->dump_midchange = m_dump_midchange;
 	newpoint->emitted = false;
 
 	if (m_event_dump.is_open() && !t0.is_never())
@@ -321,25 +745,50 @@ void vector_device::clear_list()
 uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
 	uint32_t flags = PRIMFLAG_ANTIALIAS(1) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD) | PRIMFLAG_VECTOR(1);
-	const rectangle &visarea = screen.visible_area();
+	rectangle visarea = screen.visible_area();
+	bool playback_frame = false;
+	bool playback_stale = false;
+	bool frame_timed = m_avg_timing;
+	if (m_stream && m_stream->playing())
+	{
+		int playback_count = 0;
+		u32 playback_generation = 0;
+		playback_frame = m_stream->playback_frame(m_vector_list.get(), MAX_POINTS, playback_count,
+			playback_stale, frame_timed, playback_generation, visarea);
+		m_vector_index = playback_count;
+		m_list_generation = playback_generation;
+		m_min_intensity = 255;
+		m_max_intensity = 0;
+		for (int i = 0; i < m_vector_index; ++i)
+		{
+			const int intensity = m_vector_list[i].intensity;
+			if (intensity > 0)
+			{
+				m_min_intensity = std::min(m_min_intensity, intensity);
+				m_max_intensity = std::max(m_max_intensity, intensity);
+			}
+		}
+	}
+
 	float xscale = 1.0f / (65536 * visarea.width());
 	float yscale = 1.0f / (65536 * visarea.height());
 	float xoffs = (float)visarea.min_x;
 	float yoffs = (float)visarea.min_y;
 
-	point *curpoint;
-
-	curpoint = m_vector_list.get();
-
+	point *curpoint = m_vector_list.get();
 	screen.container().empty();
 	screen.container().add_rect(0.0f, 0.0f, 1.0f, 1.0f, rgb_t(0xff,0x00,0x00,0x00), PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA) | PRIMFLAG_VECTORBUF(1));
 
 	m_frame_begin_notifier();
 
-	// CRT-flicker detection: stale = the beam list was not refreshed since the last draw. A renderer
-	// reads this via beam_list_stale(); the emulated output here is unchanged.
-	m_beam_list_stale = (m_list_generation == m_last_drawn_generation);
+	// CRT-flicker detection normally follows list generations. MVEC playback restores the recorded
+	// stale decision explicitly because it affects notifiers, EHT load and temporal renderer state.
+	m_beam_list_stale = playback_frame ? playback_stale : (m_list_generation == m_last_drawn_generation);
 	m_last_drawn_generation = m_list_generation;
+
+	if (m_stream && m_stream->recording())
+		m_stream->record_frame(m_vector_list.get(), m_vector_index, m_beam_list_stale,
+			frame_timed, m_list_generation, visarea);
 
 	// Per-frame statistics for the render container (see render_vector_stats): total beam energy
 	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam
@@ -467,7 +916,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.frame_id = ++m_stats_frame_id;
 	stats.list_generation = m_list_generation;
 	stats.list_stale = m_beam_list_stale;
-	stats.timed = m_avg_timing;
+	stats.timed = frame_timed;
 	stats.total_energy = stats_total_energy;
 	static_assert(sizeof(stats.offscreen_energy) == sizeof(stats_offscreen_energy));
 	memcpy(stats.offscreen_energy, stats_offscreen_energy, sizeof(stats.offscreen_energy));
