@@ -4246,9 +4246,26 @@ int renderer_bgfx::draw(int update)
 		{
 			const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(s_width[window_index]) * m_vec_render_scale + 0.5f));
 			const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(s_height[window_index]) * m_vec_render_scale + 0.5f));
+			uint16_t content_w = render_w;
+			uint16_t content_h = render_h;
+			float content_area = 0.0f;
+			for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
+			{
+				if (scan->type != render_primitive::QUAD || !PRIMFLAG_GET_VECTORBUF(scan->flags))
+					continue;
+				const float bounds_w = std::abs(scan->bounds.x1 - scan->bounds.x0);
+				const float bounds_h = std::abs(scan->bounds.y1 - scan->bounds.y0);
+				const float area = bounds_w * bounds_h;
+				if (area <= content_area)
+					continue;
+				content_area = area;
+				content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_render_scale)), 1, int(render_w)));
+				content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_render_scale)), 1, int(render_h)));
+			}
 			m_chains->inject_vector_screen(vec_color,
 				render_w, render_h,
-				m_vec_fb_w, m_vec_fb_h);
+				m_vec_fb_w, m_vec_fb_h,
+				content_w, content_h);
 			// Expose the analytic-glow FBO as "glow0" for the chain's post-mask glow composite pass.
 			if (bgfx::isValid(m_vec_glow_fb))
 			{

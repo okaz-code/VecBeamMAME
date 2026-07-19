@@ -15,6 +15,7 @@ uniform vec4 u_vec_pincushion_y_quad;
 uniform vec4 u_vec_pincushion_y_cubic;
 uniform vec4 u_glow_enable;
 uniform vec4 u_target_dims;
+uniform vec4 u_quad_dims;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_ambient_output_scale;
@@ -25,6 +26,7 @@ uniform vec4 u_tube_round_corner;
 uniform vec4 u_tube_smooth_border;
 uniform vec4 u_tube_vignetting;
 uniform vec4 u_tube_face_scale;
+uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
 uniform vec4 u_bezel_glow_curve;
@@ -37,46 +39,52 @@ uniform vec4 u_glow_black_toe;
 float tube_active_amount()
 {
 	float geometry=abs(u_tube_distortion.x)+abs(u_tube_cubic_distortion.x)+u_tube_distort_corner.x+u_tube_round_corner.x+u_tube_smooth_border.x;
-	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry);
+	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry+abs(1.0-u_tube_face_scale.x));
 }
-vec2 emission_uv(vec2 uv,float active){float s=mix(1.0,clamp(u_tube_face_scale.x,0.75,1.0),active);return (uv-vec2_splat(0.5))/s+vec2_splat(0.5);}
+vec2 emission_uv(vec2 uv){float s=clamp(u_vector_image_scale.x,0.75,1.0);return (uv-vec2_splat(0.5))/s+vec2_splat(0.5);}
+vec2 tube_quad_dims(){return max(u_quad_dims.xy,vec2_splat(1.0));}
+vec2 tube_view_scale(){return max(u_target_dims.xy,vec2_splat(1.0))/tube_quad_dims();}
+vec2 tube_face_coord(vec2 uv,float active){float s=mix(1.0,clamp(u_tube_face_scale.x,0.75,1.0),active);return (uv-vec2_splat(0.5))*tube_view_scale()/s;}
+vec2 tube_aspect(){vec2 dims=tube_quad_dims();return dims/max(min(dims.x,dims.y),1.0);}
+float safe_distortion_divisor(float v){return abs(v)<1e-4?(v<0.0?-1e-4:1e-4):v;}
 vec2 distort_centered(vec2 p,float amount,float cubic_amount)
 {
-	float cubic=cubic_amount>0.0?cubic_amount*1.1:cubic_amount*1.2;float r2=dot(p,p);
-	float f=1.0+r2*(amount+cubic*sqrt(r2));f/=1.0+amount*0.25+cubic*0.125;return p*f;
+	vec2 aspect=tube_aspect(),physical=p*aspect;float cubic=cubic_amount>0.0?cubic_amount*1.1:cubic_amount*1.2;
+	float r2=dot(physical,physical),f=1.0+r2*(amount+cubic*sqrt(max(r2,0.0)));vec2 half_extent=vec2_splat(0.5)*aspect;
+	float rx2=half_extent.x*half_extent.x,ry2=half_extent.y*half_extent.y;
+	float fit_x=1.0+rx2*(amount+cubic*sqrt(rx2)),fit_y=1.0+ry2*(amount+cubic*sqrt(ry2));
+	physical*=vec2(f/safe_distortion_divisor(fit_x),f/safe_distortion_divisor(fit_y));return physical/aspect;
 }
 vec2 tube_quad_coord(vec2 uv,float active)
 {
-	vec2 p=emission_uv(uv,active)-vec2_splat(0.5);float ca=max(u_tube_distort_corner.x,u_tube_distortion.x+u_tube_cubic_distortion.x)*active;
-	return distort_centered(p,ca,0.0);
+	vec2 p=tube_face_coord(uv,active);float amount=u_tube_distortion.x*active,cubic=u_tube_cubic_distortion.x*active;
+	float corner_minimum=u_tube_distort_corner.x*active,corner_extra=max(corner_minimum-(amount+cubic),0.0);
+	return distort_centered(p,amount+corner_extra,cubic);
 }
-float round_box(vec2 p,vec2 b,float r){return length(max(abs(p)-b+r,vec2_splat(0.0)))-r;}
-float screen_signed_distance(vec2 uv,float active)
-{
-	float s=mix(1.0,clamp(u_tube_face_scale.x,0.75,1.0),active);vec2 d=abs(uv-vec2_splat(0.5))-vec2_splat(0.5*s);
-	return min(max(d.x,d.y),0.0)+length(max(d,vec2_splat(0.0)));
-}
+float round_box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return min(max(q.x,q.y),0.0)+length(max(q,vec2_splat(0.0)))-r;}
 float tube_signed_distance(vec2 uv,float active)
 {
-	if(active<0.5)return -1.0;float radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
-	return round_box(tube_quad_coord(uv,active),vec2_splat(0.5),radius);
+	if(active<0.5)return -1.0;vec2 aspect=tube_aspect(),q=tube_quad_coord(uv,active)*aspect;float radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
+	return round_box(q,vec2_splat(0.5)*aspect,radius);
 }
 float tube_face_factor(vec2 uv,float active)
 {
-	if(active<0.5)return 1.0;float sd=tube_signed_distance(uv,active);float aa=max(fwidth(sd),1.0/max(u_target_dims.x,u_target_dims.y))+u_tube_smooth_border.x*0.02;
-	return 1.0-smoothstep(-aa,aa,sd);
+	if(active<0.5)return 1.0;float sd=tube_signed_distance(uv,active);vec2 dims=tube_quad_dims();
+	float aa=max(fwidth(sd),1.0/max(min(dims.x,dims.y),1.0))+u_tube_smooth_border.x*0.02;return 1.0-smoothstep(-aa,aa,sd);
 }
 float tube_vignette(vec2 uv,float active)
 {
-	if(active<0.5)return 1.0;float amount=max(u_tube_vignetting.x,0.0),len=length(tube_quad_coord(uv,active));
-	float blur=amount*0.75+0.25,radius=1.0-amount*0.25;return saturate(smoothstep(radius,radius-blur,len));
+	if(active<0.5)return 1.0;float amount=max(u_tube_vignetting.x,0.0);vec2 aspect=tube_aspect();
+	float len=length(tube_quad_coord(uv,active)*aspect)*(1.41421356/length(aspect));float blur=amount*0.75+0.25,radius=1.0-amount*0.25;
+	return saturate(smoothstep(radius,radius-blur,len));
 }
 float bezel_band(vec2 uv,float active)
 {
-	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;float sd=screen_signed_distance(uv,active);
-	float width_uv=max(u_bezel_glow_width.x/max(min(u_target_dims.x,u_target_dims.y),1.0),1e-5),curve=max(u_bezel_glow_curve.x,0.25);
-	float outside=exp(-pow(max(sd,0.0)/width_uv,curve));float inside=exp(-pow(max(-sd,0.0)/width_uv,curve))*clamp(u_bezel_glow_inside.x,0.0,1.0);
-	return u_bezel_glow_strength.x*mix(inside,outside,step(0.0,sd));
+	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;
+	vec2 dims=tube_quad_dims();float signed_px=tube_signed_distance(uv,active)*min(dims.x,dims.y);
+	float width_px=max(u_bezel_glow_width.x,1.0),curve=max(u_bezel_glow_curve.x,0.25),inside_balance=clamp(u_bezel_glow_inside.x,0.0,1.0);
+	float outside=exp(-pow(max(signed_px,0.0)/width_px,curve)),inside=inside_balance*exp(-pow(max(-signed_px,0.0)/width_px,curve));
+	return u_bezel_glow_strength.x*mix(inside,outside,step(0.0,signed_px));
 }
 vec3 shape_glow(vec3 c)
 {
@@ -102,13 +110,13 @@ vec3 sample_defocused(vec2 uv)
 }
 void main()
 {
-	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0,tube_active);vec2 base_uv=vector_pincushion_uv(emit_uv);
+	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0);vec2 base_uv=vector_pincushion_uv(emit_uv);
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
 	float face=tube_face_factor(v_texcoord0,tube_active),vignette=tube_vignette(v_texcoord0,tube_active);
 	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(u_glow_enable.x>0.0&&!emit_outside)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
-	if(band>0.0&&u_glow_enable.x>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));bezel=shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN*band);}
-	gl_FragColor=vec4(base+ambient+glow+bezel,1.0)*v_color0;
+	if(band>0.0&&u_glow_enable.x>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));bezel=shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN)*band;}
+	gl_FragColor=vec4((base+glow)*face+ambient+bezel,1.0)*v_color0;
 }
