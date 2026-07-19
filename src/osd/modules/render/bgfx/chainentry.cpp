@@ -290,7 +290,7 @@ void bgfx_chain_entry::setup_quaddims_uniform(chain_manager::screen_prim &prim) 
 	bgfx_uniform* quad_dims_uniform = m_effect->uniform("u_quad_dims");
 	if (quad_dims_uniform != nullptr)
 	{
-		float values[2] = { float(prim.m_quad_width), float(prim.m_quad_height) };
+		float values[2] = { float(prim.m_content_width), float(prim.m_content_height) };
 		quad_dims_uniform->set(values, sizeof(float) * 2);
 	}
 }

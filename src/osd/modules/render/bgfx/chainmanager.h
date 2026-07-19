@@ -52,6 +52,8 @@ public:
 		uint16_t m_screen_height = 0;
 		uint16_t m_quad_width = 0;
 		uint16_t m_quad_height = 0;
+		uint16_t m_content_width = 0;
+		uint16_t m_content_height = 0;
 		float m_tex_width = 0.0f;
 		float m_tex_height = 0.0f;
 		int m_rowpixels = 0;
@@ -70,7 +72,7 @@ public:
 	// Must be called before process_screen_chains() each frame.
 	// vec_fb_w/h are the supersample FBO dimensions (typically 2x window).
 	void inject_vector_screen(bgfx::TextureHandle color_tex, uint16_t width, uint16_t height,
-		uint16_t vec_fb_w, uint16_t vec_fb_h);
+		uint16_t vec_fb_w, uint16_t vec_fb_h, uint16_t content_width, uint16_t content_height);
 
 	// Bootstrap / keep alive the screen-0 chain slot for a vector game without injecting the
 	// vector FBO: keeps the chain-selection slider available while the active chain does not opt

@@ -143,6 +143,16 @@
       ]
     },
     {
+      "name": "u_quad_dims",
+      "type": "vec4",
+      "values": [
+        1920.0,
+        1080.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_tube_distortion",
       "type": "vec4",
       "values": [
@@ -204,6 +214,16 @@
     },
     {
       "name": "u_tube_face_scale",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_vector_image_scale",
       "type": "vec4",
       "values": [
         1.0,

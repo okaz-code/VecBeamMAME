@@ -58,6 +58,8 @@ chain_manager::screen_prim::screen_prim(render_primitive *prim)
 	m_screen_height = uint16_t(floorf(prim->get_full_quad_height() + 0.5f));
 	m_quad_width = uint16_t(floorf(prim->get_quad_width() + 0.5f));
 	m_quad_height = uint16_t(floorf(prim->get_quad_height() + 0.5f));
+	m_content_width = m_quad_width;
+	m_content_height = m_quad_height;
 	m_tex_width = prim->texture.width;
 	m_tex_height = prim->texture.height;
 	m_rowpixels = prim->texture.rowpixels;
@@ -593,7 +595,8 @@ void chain_manager::process_screen_quad(uint32_t view, uint32_t screen, screen_p
 //   - prim.m_prim is set to nullptr.  This is safe as long as the chain JSON does not
 //     set apply_tint=true on any entry (misc/blit does not).
 void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
-	uint16_t width, uint16_t height, uint16_t vec_fb_w, uint16_t vec_fb_h)
+	uint16_t width, uint16_t height, uint16_t vec_fb_w, uint16_t vec_fb_h,
+	uint16_t content_width, uint16_t content_height)
 {
 	// (1) Set native dims first so any TARGET_STYLE_NATIVE targets get correct sizes.
 	m_targets.update_target_sizes(0, width, height, TARGET_STYLE_NATIVE,
@@ -611,6 +614,8 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 	prim.m_screen_height  = height;
 	prim.m_quad_width     = width;
 	prim.m_quad_height    = height;
+	prim.m_content_width  = content_width;
+	prim.m_content_height = content_height;
 	prim.m_tex_width      = float(vec_fb_w);
 	prim.m_tex_height     = float(vec_fb_h);
 	prim.m_rowpixels      = vec_fb_w;
