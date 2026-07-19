@@ -121,6 +121,9 @@
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_EVENT_DUMP    "vector_event_dump"
+#define OPTION_VECTOR_RECORD        "vector_record"
+#define OPTION_VECTOR_PLAYBACK      "vector_playback"
+#define OPTION_VECTOR_EXIT_AFTER_PLAYBACK "vector_exit_after_playback"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -410,6 +413,9 @@ public:
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
 	const char *vector_event_dump() const { return value(OPTION_VECTOR_EVENT_DUMP); }
+	const char *vector_record() const { return value(OPTION_VECTOR_RECORD); }
+	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
+	bool vector_exit_after_playback() const { return bool_value(OPTION_VECTOR_EXIT_AFTER_PLAYBACK); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }

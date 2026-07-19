@@ -50,6 +50,7 @@ public:
 
 	// construction/destruction
 	vector_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	virtual ~vector_device();
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void clear_list();
@@ -90,6 +91,7 @@ public:
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
+	virtual void device_stop() override ATTR_COLD;
 
 	// notifiers
 	util::notifier_subscription add_frame_begin_notifier(frame_begin_delegate &&n);
@@ -123,7 +125,7 @@ private:
 	/* The vertices are buffered here */
 	struct point
 	{
-		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), cap_flags(0), emitted(false) { }
+		point() : x(0), y(0), x0(0), y0(0), col(0), intensity(0), beam_energy(0.0f), t0(attotime::never), t1(attotime::never), cap_flags(0), dump_scale(-1), dump_ramp_us(-1.0), dump_midchange(false), emitted(false) { }
 
 		int x; int y;
 		int x0; int y0;     // segment start (previous beam position), so a line re-emits with the correct start
@@ -132,8 +134,13 @@ private:
 		float beam_energy;  // normalized (0..1) beam energy passed through to the render primitive
 		attotime t0, t1;    // absolute machine time the beam drew this line (never = untimed)
 		u32 cap_flags;      // line end-cap terminus bits passed through (bit0 start, bit1 end)
+		int dump_scale;     // optional source metadata (Vectrex VIA T1 latch), not used for rendering
+		double dump_ramp_us;// optional source metadata (Vectrex RAMP-active duration)
+		bool dump_midchange;// optional source metadata (Vectrex curve mid-point)
 		bool emitted;       // already emitted once: notifiers are not re-fired on a re-drawn stale list
 	};
+
+	class stream_state;
 
 	std::unique_ptr<point[]> m_vector_list;
 	int m_vector_index;
@@ -152,6 +159,7 @@ private:
 	// the device drew), so a renderer can tell running frames from pause / menu re-presents.
 	uint32_t m_stats_frame_id = 0;
 	bool m_avg_timing = false;   // set_avg_timing(): this device's t0/t1 model real AVG/DVG sweep time
+	std::unique_ptr<stream_state> m_stream;
 
 	// notify interested parties about vector-drawing activities
 	util::notifier<> m_frame_begin_notifier;
