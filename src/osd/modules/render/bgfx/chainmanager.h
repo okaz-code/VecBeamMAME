@@ -129,6 +129,8 @@ public:
 	// from the renderer at a clean frame boundary rather than mid-frame inside the slider callback -
 	// see the member comment on m_reload_pending. No-op when nothing is pending.
 	void process_pending_reload();
+	// Recreate the active chain while preserving slider values, clearing temporal FBO history.
+	void request_temporal_reset();
 
 	// HDR auto-config: the display peak luminance (nits) resolved from the bgfx_hdr_display_peak
 	// option (numeric, or OS-detected for "auto"); 0 = feature off. When set, load_chains() derives

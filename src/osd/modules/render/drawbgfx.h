@@ -210,6 +210,12 @@ public:
 		float bright_sigmoid_center = 0.5f;
 		float bright_threshold = 0.0f;
 		float core_flat = 0.0f;
+		float convergence_bloom_gain = 0.0f;
+		float convergence_bloom_falloff = 96.0f;
+		float convergence_bloom_knee = 8.0f;
+		float convergence_bloom_min_support = 110.0f;
+		float convergence_bloom_source_radius = 0.0f;
+		float convergence_bloom_threshold = 8.0f;
 		float deflection_damping = 0.5f;
 		float deflection_dynamics = 0.0f;
 		float deflection_settle = 5.0f;
@@ -245,6 +251,8 @@ public:
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
+		float line_cap_max_size = 0.0f;    // max cap sigma at 1920-ref; 0 = unlimited (legacy)
+		float line_cap_mode = 0.0f;        // 0 legacy, 1 blank transitions, 2 RAMP flags, 3 off
 		float line_cap_min_size = 0.0f;
 		float line_cap_size = 2.0f;         // = LINE_CAP_SIZE_PX
 		float line_cap_width = 1.5f;
@@ -443,6 +451,7 @@ private:
 	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.
 	uint32_t m_vec_prev_frame_id = 0;
 	bool m_vec_frame_advanced = false;
+	uint32_t m_vec_playback_reset = 0; // last MVEC discontinuity serial whose temporal history was cleared
 	// Resolution basis for beam width / bloom / defocus scaling: width of the exact full-screen
 	// VECTORBUF background quad after layout, rotation and aspect-fit transforms. This avoids both
 	// pillarbox over-scaling and scene-dependent under-scaling on sparse screens.

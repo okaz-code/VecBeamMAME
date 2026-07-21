@@ -14,6 +14,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 
 
 /***************************************************************************
@@ -34,6 +35,9 @@ public:
 	virtual bool is_menu_active() { return false; }
 
 	virtual void popup_time_string(int seconds, std::string message) { }
+
+	// Dedicated persistent overlay used by the MVEC playback controller; empty hides it.
+	virtual void set_vector_playback_text(std::string message) { }
 
 	virtual void menu_reset() { }
 

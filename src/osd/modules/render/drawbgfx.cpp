@@ -1662,6 +1662,12 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "bright_sigmoid_center", &renderer_bgfx::vec_slider_cache::bright_sigmoid_center, 0.5f },
 	{ "bright_threshold", &renderer_bgfx::vec_slider_cache::bright_threshold, 0.0f },
 	{ "core_flat", &renderer_bgfx::vec_slider_cache::core_flat, 0.0f },
+	{ "convergence_bloom_gain", &renderer_bgfx::vec_slider_cache::convergence_bloom_gain, 0.0f },
+	{ "convergence_bloom_falloff", &renderer_bgfx::vec_slider_cache::convergence_bloom_falloff, 96.0f },
+	{ "convergence_bloom_knee", &renderer_bgfx::vec_slider_cache::convergence_bloom_knee, 8.0f },
+	{ "convergence_bloom_min_support", &renderer_bgfx::vec_slider_cache::convergence_bloom_min_support, 110.0f },
+	{ "convergence_bloom_source_radius", &renderer_bgfx::vec_slider_cache::convergence_bloom_source_radius, 0.0f },
+	{ "convergence_bloom_threshold", &renderer_bgfx::vec_slider_cache::convergence_bloom_threshold, 8.0f },
 	{ "deflection_damping", &renderer_bgfx::vec_slider_cache::deflection_damping, 0.5f },
 	{ "deflection_dynamics", &renderer_bgfx::vec_slider_cache::deflection_dynamics, 0.0f },
 	{ "deflection_settle", &renderer_bgfx::vec_slider_cache::deflection_settle, 5.0f },
@@ -1696,6 +1702,8 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "intensity_overdrive_curve", &renderer_bgfx::vec_slider_cache::intensity_overdrive_curve, 2.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
+	{ "line_cap_max_size", &renderer_bgfx::vec_slider_cache::line_cap_max_size, 0.0f },
+	{ "line_cap_mode", &renderer_bgfx::vec_slider_cache::line_cap_mode, 0.0f },
 	{ "line_cap_min_size", &renderer_bgfx::vec_slider_cache::line_cap_min_size, 0.0f },
 	{ "line_cap_size", &renderer_bgfx::vec_slider_cache::line_cap_size, 2.0f },
 	{ "line_cap_width", &renderer_bgfx::vec_slider_cache::line_cap_width, 1.5f },
@@ -2083,6 +2091,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// overload threshold. Chains without the new slider retain the former width transfer unchanged.
 	const bool sigmoid_width = (m_vs.overload_width_add >= 0.0f);
 	float overload_width_amount = 0.0f;
+	float normal_beam_units;
 	float beam_units;
 	if (sigmoid_width)
 	{
@@ -2091,6 +2100,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float normal_curve = std::max(0.01f, m_vs.width_curve);
 		if (normal_curve != 1.0f) normal_width = powf(normal_width, normal_curve);
 		beam_units = bw_min + normal_width * (bw_max - bw_min);
+		normal_beam_units = beam_units;
 
 		const float ow_thresh = m_vs.overload_threshold;
 		const float ow_ramp = m_vs.overload_ramp;
@@ -2110,13 +2120,18 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	else
 	{
 		beam_units = bw_min + std::min(wf, 1.0f) * (bw_max - bw_min);
+		normal_beam_units = beam_units;
 		const float w_over_scale_slider = m_vs.beam_width_over_scale;
 		const float w_over_scale = (w_over_scale_slider >= 0.0f) ? w_over_scale_slider : bw_max;
 		if (wf > 1.0f) beam_units += (wf - 1.0f) * w_over_scale;
 	}
 	if (as_point)
+	{
 		beam_units *= m_vs.point_width_scale;
+		normal_beam_units *= m_vs.point_width_scale;
+	}
 	float width = beam_units * (m_vec_res_w / 1920.0f);
+	const float normal_width = std::max(0.5f, normal_beam_units * (m_vec_res_w / 1920.0f));
 	const float ovld = 0.0f;
 	if (width < 0.5f) width = 0.5f;
 
@@ -2745,10 +2760,34 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float cap_bright = std::max(0.0f, m_vs.line_cap_brightness);
 		if (cap_bright > 0.0f)
 		{
-			const float cap_scale = 0.5f * cap_bright;
+			// The cap is the finite blanking/Z transition of the ordinary moving spot. Derive it
+			// before overload-width lift, overload bloom, edge defocus and HV droop.
+			const float cap_over = sigmoid_width
+				? overload_width_amount
+				: std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+			const float cap_smooth = cap_over * cap_over * (3.0f - 2.0f * cap_over);
+			const float cap_scale = 0.5f * cap_bright * (1.0f - cap_smooth);
 			// line_cap_width fattens the endpoint dot a touch beyond the bare beam spot (1.0 = exactly
 			// the line's sigma); the dwell dot is usually a little larger than the running stroke.
-			const float sg_cap = sigma * std::max(0.1f, m_vs.line_cap_width);
+			float sg_cap = std::max(sig_floor, normal_width / 3.2f);
+			float cap_wcore = 0.0f;
+			if (flat_f > 0.0f)
+			{
+				cap_wcore = flat_f * 0.5f * normal_width;
+				sg_cap = std::max(sig_floor, sg_cap * (1.0f - flat_f));
+			}
+			sg_cap *= std::max(0.1f, m_vs.line_cap_width);
+			const float cap_max = m_vs.line_cap_max_size * (m_vec_res_w / 1920.0f);
+			if (cap_max > 0.0f)
+			{
+				const float extent = cap_wcore + sg_cap;
+				if (extent > cap_max)
+				{
+					const float shrink = cap_max / extent;
+					cap_wcore *= shrink;
+					sg_cap *= shrink;
+				}
+			}
 			auto cap_rgba_for = [&](float boost) -> uint32_t {
 				const float s = cap_scale * boost;
 				return u32Color(
@@ -2761,8 +2800,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// NoPersist Combine pass cancels the shader BLOOM_BRIGHTNESS_GAIN with scale 0.3745), so the
 			// cap carries the same z as the core spot (core_over) whether it went to the core or np FBO.
 			const float cap_z = core_over;
-			set_dot(cap_tgt, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), cap_z, wcore);
-			set_dot(cap_tgt, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), cap_z, wcore);
+			set_dot(cap_tgt, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), cap_z, cap_wcore);
+			set_dot(cap_tgt, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), cap_z, cap_wcore);
 		}
 		else
 		{
@@ -3408,6 +3447,24 @@ int renderer_bgfx::draw(int update)
 		// (render_vector_stats on the primitive list) - the render-layer replacement for the
 		// former direct device queries and notifiers.
 		const render_vector_stats vstats = window().m_primlist->vector_stats();
+		// A discontinuous MVEC seek must not combine the selected past frame with phosphor/glow
+		// retained from the future frame that was visible before the seek. Recreate chain targets
+		// through the normal deferred path (preserving sliders), and clear renderer-side smoothers.
+		if (vstats.playback_active && vstats.playback_reset != m_vec_playback_reset)
+		{
+			m_vec_playback_reset = vstats.playback_reset;
+			m_chains->request_temporal_reset();
+			m_mglow_smoothed = 0.0f;
+			m_hv_smoothed = 0.0f;
+			m_hv_load_norm = 0.0f;
+			std::memset(m_edge_smooth, 0, sizeof(m_edge_smooth));
+			m_flicker_cycle = 0;
+			m_flicker_accum_ms = 0.0;
+			m_flicker_prev_count = 0;
+			m_flicker_prev_t0 = -1.0;
+			m_flicker_prev_t1 = -1.0;
+			m_vec_persist_prev_t = -1.0;
+		}
 		// Track whether the device drew a new emulated frame since the previous present, so pause /
 		// menu stills (no emulation progress) can freeze the phosphor tail and persistence pools.
 		m_vec_frame_advanced = (vstats.frame_id != m_vec_prev_frame_id);
@@ -3465,8 +3522,11 @@ int renderer_bgfx::draw(int update)
 		// same thing on every game. Accumulator resets when inactive so a later busy stretch starts
 		// clean rather than replaying a stale fractional step from long ago.
 		const int64_t flicker_hpc_now = bx::getHPCounter();
-		const double flicker_dt_ms = (m_flicker_last_hpc != 0)
+		const double flicker_real_dt_ms = (m_flicker_last_hpc != 0)
 				? double(flicker_hpc_now - m_flicker_last_hpc) * 1000.0 / double(bx::getHPFrequency()) : 0.0;
+		// MVEC playback is a frame-domain tool: pause means zero elapsed display time, and a
+		// one-frame step advances temporal effects by one recorded machine refresh.
+		const double flicker_dt_ms = vstats.playback_active ? double(vstats.playback_dt_ms) : flicker_real_dt_ms;
 		m_flicker_last_hpc = flicker_hpc_now;
 		if (flicker_busy)
 		{
@@ -3602,7 +3662,8 @@ int renderer_bgfx::draw(int update)
 		{
 			// Emulated time for this present, cached for the per-vector Energy Jitter time axis
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
-			m_vec_time_ms = window().machine().time().as_double() * 1000.0;
+			m_vec_time_ms = vstats.playback_active
+			? vstats.playback_time_ms : window().machine().time().as_double() * 1000.0;
 
 			// HV supply droop load: peak-track this frame's total beam energy
 			// with gentle decay (so it does not flicker against vsync when a frame is stale),
@@ -3703,8 +3764,9 @@ int renderer_bgfx::draw(int update)
 			// (prim->cap_flags bit0 = stroke start / RAMP-on, bit1 = stroke end / RAMP-off), overriding the
 			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
 			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
+			const int cap_mode = m_line_analytic ? int(std::lround(m_vs.line_cap_mode)) : 0;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
-			if (vertex_dwell > 0.0f)
+			if (vertex_dwell > 0.0f || cap_mode == 1)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
 				const render_primitive *pv = nullptr;
@@ -3725,7 +3787,9 @@ int renderer_bgfx::draw(int update)
 						const float gy = p->bounds.y0 - pv->bounds.y1;
 						if (gx * gx + gy * gy < 0.25f)  // shared vertex (within 0.5 px)
 						{
-							const float prof = (1.0f - (pdx * ndx + pdy * ndy)) * 0.5f;  // 0 straight, 1 reversal
+							const float prof = (cap_mode == 1)
+								? 0.0f  // connected lit vectors: no blanking transition at this joint
+								: (1.0f - (pdx * ndx + pdy * ndy)) * 0.5f;  // legacy angular dwell
 							vtx_boost[pv].second = prof;  // prev segment's end
 							vtx_boost[p].first   = prof;  // this segment's start
 						}
@@ -3734,6 +3798,198 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
+			// Convergence bloom is reserved for genuinely massive local beam convergence. Ordinary
+			// overloaded projectiles keep their normal per-line overload glow, but cannot bridge into a
+			// giant envelope. Connected components are formed only from cells already over the density
+			// threshold, then gated by the number of hot cells and vector/cell hits supporting that core.
+			struct convergence_bloom { float x, y, magnitude, radius, r, g, b, peak; };
+			static constexpr int MAX_CONVERGENCE_BLOOMS = 8;
+			std::vector<convergence_bloom> conv_blooms;
+			const bool conv_on = m_line_analytic && m_vs.convergence_bloom_gain > 0.0f;
+			if (conv_on)
+			{
+				static constexpr int CONV_W = 32, CONV_H = 32;
+				std::array<float, CONV_W * CONV_H> heat = {};
+				std::array<float, CONV_W * CONV_H> sum_r = {}, sum_g = {}, sum_b = {};
+				std::array<uint16_t, CONV_W * CONV_H> hit_count = {};
+				// Per-cell tangent equations. Their direction covariance separates a few isotropic
+				// projectiles from a coherent circular sweep; their RHS gives the circle centre directly.
+				std::array<float, CONV_W * CONV_H> tan_xx = {}, tan_xy = {}, tan_yy = {};
+				std::array<float, CONV_W * CONV_H> tan_bx = {}, tan_by = {};
+				const float sw = float(std::max<uint32_t>(1, s_width[window_index]));
+				const float sh = float(std::max<uint32_t>(1, s_height[window_index]));
+				const float cell_w = sw / float(CONV_W), cell_h = sh / float(CONV_H);
+				const float threshold = std::max(0.0f, m_vs.convergence_bloom_threshold);
+				const float ov_span = (m_vs.overload_ramp > 0.0f) ? m_vs.overload_ramp
+					: std::max(1e-3f, 1.0f - m_vs.overload_threshold);
+				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+				{
+					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags)) continue;
+					const float dx = p->bounds.x1 - p->bounds.x0, dy = p->bounds.y1 - p->bounds.y0;
+					const float len = sqrtf(dx * dx + dy * dy);
+					const bool is_point = len <= pt_thresh;
+					const bool has_direction = len > 1e-4f;
+					const float dir_x = has_direction ? dx / len : 0.0f;
+					const float dir_y = has_direction ? dy / len : 0.0f;
+					const float mid_x = 0.5f * (p->bounds.x0 + p->bounds.x1);
+					const float mid_y = 0.5f * (p->bounds.y0 + p->bounds.y1);
+					const float tangent_rhs = dir_x * mid_x + dir_y * mid_y;
+					float stroke_speed = -1.0f;
+					auto sit = m_stroke_speed.find(p);
+					if (sit != m_stroke_speed.end()) stroke_speed = sit->second;
+					float energy = (p->beam_energy >= 0.0f) ? p->beam_energy
+						: generic_beam_energy(p, len, is_point, (m_vec_res_w > 1.0f) ? m_vec_res_w : sw, stroke_speed);
+					if (p->beam_energy < 0.0f)
+					{
+						auto dit = m_dwell_scale.find(p);
+						if (dit != m_dwell_scale.end()) energy *= dit->second;
+						if (is_point) energy *= energy_object_lift(std::clamp(p->color.a, 0.0f, 1.0f), true);
+					}
+					float over = (energy - m_vs.overload_threshold) / ov_span;
+					if (is_point) over *= std::max(1.0f, m_vs.overload_dot_gain);
+					over = std::clamp(over, 0.0f, 4.0f);
+					if (over <= 0.0f) continue;
+					const int steps = std::max(1, int(std::ceil(std::max(fabsf(dx) / cell_w, fabsf(dy) / cell_h))));
+					int previous = -1;
+					for (int step = 0; step <= steps; step++)
+					{
+						const float t = float(step) / float(steps);
+						const float x = p->bounds.x0 + dx * t, y = p->bounds.y0 + dy * t;
+						const int ix = std::clamp(int(x / cell_w), 0, CONV_W - 1);
+						const int iy = std::clamp(int(y / cell_h), 0, CONV_H - 1);
+						const int cell = iy * CONV_W + ix;
+						if (cell == previous) continue;
+						previous = cell;
+						heat[cell] += over;
+						sum_r[cell] += p->color.r * over;
+						sum_g[cell] += p->color.g * over;
+						sum_b[cell] += p->color.b * over;
+						if (hit_count[cell] != std::numeric_limits<uint16_t>::max()) hit_count[cell]++;
+						if (has_direction)
+						{
+							tan_xx[cell] += dir_x * dir_x;
+							tan_xy[cell] += dir_x * dir_y;
+							tan_yy[cell] += dir_y * dir_y;
+							tan_bx[cell] += dir_x * tangent_rhs;
+							tan_by[cell] += dir_y * tangent_rhs;
+						}
+					}
+				}
+
+				std::array<uint8_t, CONV_W * CONV_H> hot = {};
+				for (int i = 0; i < CONV_W * CONV_H; i++) hot[i] = heat[i] > threshold;
+				std::array<int16_t, CONV_W * CONV_H> label;
+				std::array<int16_t, CONV_W * CONV_H> queue = {};
+				label.fill(-1);
+				int components = 0;
+				for (int seed = 0; seed < CONV_W * CONV_H; seed++)
+				{
+					if (!hot[seed] || label[seed] >= 0) continue;
+					int qread = 0, qwrite = 0;
+					queue[qwrite++] = int16_t(seed); label[seed] = int16_t(components);
+					while (qread < qwrite)
+					{
+						const int cell = queue[qread++], cx = cell % CONV_W, cy = cell / CONV_W;
+						for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
+						{
+							if (!ox && !oy) continue;
+							const int xx = cx + ox, yy = cy + oy;
+							if (xx < 0 || xx >= CONV_W || yy < 0 || yy >= CONV_H) continue;
+							const int next = yy * CONV_W + xx;
+							if (hot[next] && label[next] < 0)
+							{
+								label[next] = int16_t(components); queue[qwrite++] = int16_t(next);
+							}
+						}
+					}
+					components++;
+				}
+
+				const float knee = std::max(0.01f, m_vs.convergence_bloom_knee);
+				const float min_support = std::max(0.0f, m_vs.convergence_bloom_min_support);
+				const float manual_radius = m_vs.convergence_bloom_source_radius * (m_vec_res_w / 1920.0f);
+				for (int component = 0; component < components; component++)
+				{
+					float centre_x = 0.0f, centre_y = 0.0f;
+					float fit_xx = 0.0f, fit_xy = 0.0f, fit_yy = 0.0f, fit_bx = 0.0f, fit_by = 0.0f;
+					int occupied = 0, hits = 0, hottest = -1;
+					for (int cell = 0; cell < CONV_W * CONV_H; cell++)
+					{
+						if (!hot[cell] || label[cell] != component) continue;
+						centre_x += (float(cell % CONV_W) + 0.5f) * cell_w;
+						centre_y += (float(cell / CONV_W) + 0.5f) * cell_h;
+						occupied++; hits += hit_count[cell];
+						fit_xx += tan_xx[cell]; fit_xy += tan_xy[cell]; fit_yy += tan_yy[cell];
+						fit_bx += tan_bx[cell]; fit_by += tan_by[cell];
+						if (hottest < 0 || heat[cell] > heat[hottest]) hottest = cell;
+					}
+					if (!occupied || hottest < 0) continue;
+
+					// The support gate rejects ordinary projectiles even if several of them happen to touch.
+					// A 15% smooth knee prevents the dense explosion from popping abruptly at the boundary.
+					const float support = float(occupied) * sqrtf(float(hits));
+					float support_response = 1.0f;
+					if (min_support > 0.0f)
+					{
+						const float support_start = 0.85f * min_support;
+						const float x = std::clamp((support - support_start) /
+							std::max(1e-3f, min_support - support_start), 0.0f, 1.0f);
+						support_response = x * x * (3.0f - 2.0f * x);
+					}
+					if (support_response <= 0.0f) continue;
+
+					// Three overlapping enemy shots have enough samples to pass support alone, but their
+					// directions are nearly isotropic. Moderate candidates must retain the directional
+					// coherence of a circular sweep; an extremely supported explosion bypasses this gate.
+					const float trace = fit_xx + fit_yy;
+					const float discr = sqrtf(std::max(0.0f,
+						(fit_xx - fit_yy) * (fit_xx - fit_yy) + 4.0f * fit_xy * fit_xy));
+					const float direction_isotropy = (trace > 1e-4f) ? (trace - discr) / (trace + discr) : 1.0f;
+					if (min_support > 0.0f && support < 4.0f * min_support && direction_isotropy > 0.65f)
+						continue;
+
+					// Fallback is the hot-cell centroid. For circular/arc geometry, intersect the segment
+					// normals in least squares. Unlike the centroid, this stays at the true circle centre
+					// when only the deliberately bright upper-right arc survives the density threshold.
+					centre_x /= float(occupied); centre_y /= float(occupied);
+					const float determinant = fit_xx * fit_yy - fit_xy * fit_xy;
+					const float determinant_norm = (trace > 1e-4f) ? determinant / (trace * trace) : 0.0f;
+					if (determinant_norm > 0.02f)
+					{
+						const float fitted_x = (fit_bx * fit_yy - fit_xy * fit_by) / determinant;
+						const float fitted_y = (fit_xx * fit_by - fit_xy * fit_bx) / determinant;
+						if (std::isfinite(fitted_x) && std::isfinite(fitted_y)
+							&& fitted_x >= -0.25f * sw && fitted_x <= 1.25f * sw
+							&& fitted_y >= -0.25f * sh && fitted_y <= 1.25f * sh)
+						{
+							centre_x = fitted_x; centre_y = fitted_y;
+						}
+					}
+
+					std::vector<float> radii;
+					radii.reserve(size_t(occupied));
+					for (int cell = 0; cell < CONV_W * CONV_H; cell++)
+					{
+						if (!hot[cell] || label[cell] != component) continue;
+						const float x = (float(cell % CONV_W) + 0.5f) * cell_w;
+						const float y = (float(cell / CONV_W) + 0.5f) * cell_h;
+						radii.push_back(sqrtf((x-centre_x)*(x-centre_x) + (y-centre_y)*(y-centre_y)));
+					}
+					std::sort(radii.begin(), radii.end());
+					const size_t ri = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.875f + 0.5f));
+					float radius = manual_radius > 0.0f ? manual_radius
+						: radii[ri] + 0.5f * sqrtf(cell_w*cell_w + cell_h*cell_h);
+					radius = std::min(radius, 0.45f * std::min(sw, sh));
+					const float signal = heat[hottest] - threshold;
+					const float energy_response = -expm1f(-signal / knee);
+					const float colour_peak = std::max({sum_r[hottest],sum_g[hottest],sum_b[hottest],1e-4f});
+					conv_blooms.push_back({centre_x,centre_y,m_vs.convergence_bloom_gain*energy_response*support_response,radius,
+						sum_r[hottest]/colour_peak,sum_g[hottest]/colour_peak,sum_b[hottest]/colour_peak,heat[hottest]});
+				}
+				std::sort(conv_blooms.begin(), conv_blooms.end(),
+					[](const convergence_bloom &a, const convergence_bloom &b) { return a.peak > b.peak; });
+				if (conv_blooms.size() > MAX_CONVERGENCE_BLOOMS) conv_blooms.resize(MAX_CONVERGENCE_BLOOMS);
+			}
 			// Deflection-amplifier dynamics: when on, each analytic line is drawn as a
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
 			// DEFL_NOUT*6 verts (+ the two caps). The beam integrator state is reset at the start of each
@@ -3759,6 +4015,7 @@ int renderer_bgfx::draw(int update)
 			const bool g_fill  = g_halation && m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f;
 			const bool g_flare = m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f;
 			const bool g_oglow = g_flare && m_chains->slider_value(0, "overload_glow_gain", 0.0f) > 0.0f;
+			const bool g_conv = !conv_blooms.empty();
 			const int  g_rays  = (m_chains->slider_value(0, "ray_gain", 0.0f) > 0.0f)
 					? int(std::clamp(m_chains->slider_value(0, "ray_count", 6.0f), 1.0f, 12.0f)) : 0;
 			// cap_no_persist: line end caps move from the core buffer to the glow buffer - the glow path
@@ -3767,7 +4024,7 @@ int renderer_bgfx::draw(int update)
 			// brighter/wider endpoints visible after the line body had decayed, turning a moving
 			// object's trail into a dotted line of cap ghosts).
 			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
-			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_oglow || g_rays > 0);
+			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_oglow || g_conv || g_rays > 0);
 			int goff = 0;
 			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = m_glow_off_oglow = -1;
 			m_glow_rays_n = 0;
@@ -3806,6 +4063,8 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer ray_tvb = {};
 			int ray_verts = 0;
 			bool ray_alloc = false;
+			bgfx::TransientVertexBuffer conv_tvb = {};
+			bool conv_alloc = false;
 			const bool ray_on = m_line_analytic && m_glow_on && m_ray_vpl > 0 && bgfx::isValid(m_vec_glow_fb);
 			if (visible_count > 0)
 			{
@@ -3817,7 +4076,7 @@ int renderer_bgfx::draw(int update)
 					{
 						// Best-effort separate glow buffer (6 verts/line). If it cannot be allocated the
 						// core still draws; glow is simply skipped this frame.
-						if (m_glow_on)
+						if (m_glow_on && m_glow_vpl > 0)
 						{
 							const uint32_t gneeded = uint32_t(visible_count) * uint32_t(m_glow_vpl);
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
@@ -3845,6 +4104,37 @@ int renderer_bgfx::draw(int update)
 							{
 								bgfx::allocTransientVertexBuffer(&ray_tvb, rneeded, line_decl);
 								ray_alloc = (ray_tvb.data != nullptr);
+							}
+						}
+						// One boundary ring per detected overload object, independent of per-line glow allocation.
+						const uint32_t conv_needed = uint32_t(conv_blooms.size()) * 6u;
+						if (g_conv && conv_needed == bgfx::getAvailTransientVertexBuffer(conv_needed, line_decl))
+						{
+							bgfx::allocTransientVertexBuffer(&conv_tvb, conv_needed, line_decl);
+							conv_alloc = (conv_tvb.data != nullptr);
+							if (conv_alloc)
+							{
+								AnalyticLineVertex *cv = reinterpret_cast<AnalyticLineVertex *>(conv_tvb.data);
+								const float falloff = std::max(1.0f, m_vs.convergence_bloom_falloff * (m_vec_res_w / 1920.0f));
+								for (size_t bloom_index = 0; bloom_index < conv_blooms.size(); bloom_index++)
+								{
+									const convergence_bloom &bloom = conv_blooms[bloom_index];
+									const float pad = bloom.radius + 3.5f * falloff + 0.5f;
+									const uint32_t rgba = u32Color(uint32_t(std::clamp(bloom.r,0.0f,1.0f)*255.0f+0.5f),
+										uint32_t(std::clamp(bloom.g,0.0f,1.0f)*255.0f+0.5f),
+										uint32_t(std::clamp(bloom.b,0.0f,1.0f)*255.0f+0.5f),
+										uint32_t(std::min(bloom.magnitude,1.0f)*255.0f+0.5f));
+									const float z = std::max(0.0f, bloom.magnitude - 1.0f);
+									AnalyticLineVertex *bv = cv + bloom_index * 6;
+									auto cvtx = [&](int n, float x, float y, float a, float d) {
+										bv[n].m_x=x; bv[n].m_y=y; bv[n].m_z=z; bv[n].m_rgba=rgba;
+										bv[n].m_u=0.0f; bv[n].m_v=0.0f; bv[n].m_a=a; bv[n].m_b=bloom.radius;
+										bv[n].m_d=d; bv[n].m_sigma=-falloff;
+									};
+									cvtx(0,bloom.x-pad,bloom.y-pad,-pad,-pad); cvtx(1,bloom.x+pad,bloom.y-pad,pad,-pad);
+									cvtx(2,bloom.x+pad,bloom.y+pad,pad,pad);   cvtx(3,bloom.x-pad,bloom.y-pad,-pad,-pad);
+									cvtx(4,bloom.x+pad,bloom.y+pad,pad,pad);   cvtx(5,bloom.x-pad,bloom.y+pad,-pad,pad);
+								}
 							}
 						}
 						render_primitive *vprim = window().m_primlist->first();
@@ -3890,11 +4180,24 @@ int renderer_bgfx::draw(int update)
 								if (m_line_analytic)
 								{
 									float scap = 1.0f, ecap = 1.0f;
-									if (cap_ramp_only > 0.5f)
+									if (cap_mode == 3)
+									{
+										scap = ecap = 0.0f;
+									}
+									else if (cap_mode == 2 || (cap_mode == 0 && cap_ramp_only > 0.5f))
 									{
 										// caps only at driver-flagged RAMP termini (bit0 start, bit1 end)
 										scap = (vprim->cap_flags & 1u) ? 1.0f : 0.0f;
 										ecap = (vprim->cap_flags & 2u) ? 1.0f : 0.0f;
+									}
+									else if (cap_mode == 1)
+									{
+										auto it = vtx_boost.find(vprim);
+										if (it != vtx_boost.end())
+										{
+											scap = it->second.first;
+											ecap = it->second.second;
+										}
 									}
 									else if (vertex_dwell > 0.0f)
 									{
@@ -4127,7 +4430,7 @@ int renderer_bgfx::draw(int update)
 			// ghost). If BOTH allocs failed (transient-buffer pressure on a busy frame) we skip entirely
 			// and LEAVE the FBO, because clearing it to black while unable to redraw the real glow would
 			// make the glow vanish until the scene lightens.
-			if ((glow_alloc || ray_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
+			if ((glow_alloc || ray_alloc || conv_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
 			{
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
@@ -4170,6 +4473,13 @@ int renderer_bgfx::draw(int update)
 				if (ray_verts > 0)
 				{
 					bgfx::setVertexBuffer(0, &ray_tvb);
+					set_glow_uniforms();
+					line_eff->submit(glow_view);
+					glow_submitted = true;
+				}
+				if (conv_alloc)
+				{
+					bgfx::setVertexBuffer(0, &conv_tvb);
 					set_glow_uniforms();
 					line_eff->submit(glow_view);
 					glow_submitted = true;
@@ -4303,12 +4613,52 @@ int renderer_bgfx::draw(int update)
 				// can dip and make the glow flicker against vsync - the monitor glow physically
 				// persists, so track the peak and decay it gently.
 				const float mglow_min_dist = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
+				const float coverage_start = m_chains->slider_value(0, "mglow_coverage_start", -1.0f);
 				float mglow_energy = 0.0f;
-				for (int mb = 0; mb < render_vector_stats::OFFSCREEN_DEPTH_BINS; mb++)
+				if (coverage_start >= 0.0f)
 				{
-					const float bin_top = float(mb + 1) * render_vector_stats::OFFSCREEN_DEPTH_STEP;
-					const float keep = std::clamp((bin_top - mglow_min_dist) / render_vector_stats::OFFSCREEN_DEPTH_STEP, 0.0f, 1.0f);
-					mglow_energy += vstats.offscreen_energy[mb] * keep;
+					// The deliberate Star Wars/ESB monitor flash scans an overloaded path around the
+					// complete outer face. Reduce the angle/depth peak grid to one value per direction,
+					// then require broad, balanced coverage. Per-cell peaks make the result independent
+					// of vector subdivision/count, so bullets and dense concentric explosions cannot win
+					// by accumulating many samples in one sector.
+					float quadrant_energy[4] = {};
+					int covered = 0;
+					for (int ma = 0; ma < render_vector_stats::MONITOR_GLOW_ANGLE_BINS; ++ma)
+					{
+						float angle_energy = 0.0f;
+						for (int mb = 0; mb < render_vector_stats::OFFSCREEN_DEPTH_BINS; ++mb)
+						{
+							const float bin_top = float(mb + 1) * render_vector_stats::OFFSCREEN_DEPTH_STEP;
+							const float keep = std::clamp((bin_top - mglow_min_dist) /
+									render_vector_stats::OFFSCREEN_DEPTH_STEP, 0.0f, 1.0f);
+							angle_energy = std::max(angle_energy, vstats.monitor_glow_coverage[ma][mb] * keep);
+						}
+						if (angle_energy > 0.05f)
+							++covered;
+						quadrant_energy[ma / (render_vector_stats::MONITOR_GLOW_ANGLE_BINS / 4)] += angle_energy;
+					}
+					constexpr float QUADRANT_BINS = float(render_vector_stats::MONITOR_GLOW_ANGLE_BINS / 4);
+					const float balanced_energy = std::min({ quadrant_energy[0], quadrant_energy[1],
+							quadrant_energy[2], quadrant_energy[3] }) / QUADRANT_BINS;
+					const float coverage = float(covered) / float(render_vector_stats::MONITOR_GLOW_ANGLE_BINS);
+					const float coverage_full = std::max(coverage_start + 0.01f,
+							m_chains->slider_value(0, "mglow_coverage_full", 0.85f));
+					const float x = std::clamp((coverage - coverage_start) /
+							(coverage_full - coverage_start), 0.0f, 1.0f);
+					const float coverage_gain = x * x * (3.0f - 2.0f * x);
+					mglow_energy = balanced_energy * coverage_gain;
+				}
+				else
+				{
+					// Compatibility for legacy chains that do not declare coverage controls.
+					for (int mb = 0; mb < render_vector_stats::OFFSCREEN_DEPTH_BINS; ++mb)
+					{
+						const float bin_top = float(mb + 1) * render_vector_stats::OFFSCREEN_DEPTH_STEP;
+						const float keep = std::clamp((bin_top - mglow_min_dist) /
+								render_vector_stats::OFFSCREEN_DEPTH_STEP, 0.0f, 1.0f);
+						mglow_energy += vstats.offscreen_energy[mb] * keep;
+					}
 				}
 				const float mglow_amount = mglow_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
 				if (m_vec_frame_advanced)
@@ -4333,9 +4683,11 @@ int renderer_bgfx::draw(int update)
 				// passes. (The retired chains' tail_accum / Flicker Persist / Scan Accumulate /
 				// Bloom Apply injections lived here; they went with those chains.)
 				const double persist_now = window().machine().time().as_double();
-				const double persist_dt  = (m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
-					? (persist_now - m_vec_persist_prev_t) : 0.0;
-				m_vec_persist_prev_t = persist_now;
+				const double persist_dt = vstats.playback_active
+					? double(vstats.playback_dt_ms) / 1000.0
+					: ((m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
+						? (persist_now - m_vec_persist_prev_t) : 0.0);
+				m_vec_persist_prev_t = vstats.playback_active ? -1.0 : persist_now;
 				const float phos_vals[4] = {
 					float(persist_dt * 1000.0),
 					m_chains->slider_value(0, "phosphor_half_ms",  42.0f),

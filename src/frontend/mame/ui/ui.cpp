@@ -962,6 +962,11 @@ bool mame_ui_manager::update_and_render(render_target &target)
 	machine().ui_input().check_ui_inputs();
 	uint32_t const handler_result = m_handler_callback();
 
+	// MVEC playback controller: unlike popup messages this has its own retained text and is drawn
+	// every UI frame until Alt+O explicitly clears it, so unrelated MAME messages cannot erase it.
+	if (!m_vector_playback_text.empty())
+		draw_text_box(current_ui_target(), m_vector_playback_text, ui::text_layout::text_justify::CENTER, 0.5F, 0.9F, colors().background_color());
+
 	// display any popup messages
 	if (osd_ticks() < m_popup_text_end)
 		draw_text_box(current_ui_target(), messagebox_poptext, ui::text_layout::text_justify::CENTER, 0.5F, 0.9F, colors().background_color());

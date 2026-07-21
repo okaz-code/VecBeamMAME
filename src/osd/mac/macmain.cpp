@@ -35,7 +35,7 @@
 //============================================================
 
 #ifndef INI_PATH
-#define INI_PATH "$HOME/Library/Application Support/APP_NAME;$HOME/.APP_NAME;.;ini"
+#define INI_PATH "$HOME/Library/Application Support/APP_NAME;$HOME/.APP_NAME;.;ini;ini/presets"
 #endif // INI_PATH
 
 //============================================================

@@ -261,6 +261,7 @@ struct render_vector_stats
 {
 	static constexpr int EDGE_GLOW_BINS = 16;
 	static constexpr int   OFFSCREEN_DEPTH_BINS = 16;
+	static constexpr int   MONITOR_GLOW_ANGLE_BINS = 32;
 	static constexpr float OFFSCREEN_DEPTH_STEP = 0.05F;
 
 	u32   frame_id = 0U;            // increments every emulated frame the device drew (0 = no vector device)
@@ -268,12 +269,26 @@ struct render_vector_stats
 	bool  list_stale = false;       // this frame re-showed the previous beam list (no new list started)
 	bool  timed = false;            // per-segment t0/t1 model real cycle-accurate sweep timing (AVG/DVG)
 	float total_energy = 0.0F;      // sum of beam_energy x normalized segment length this frame (EHT load)
+	// MVEC playback-tool state. Stock renderers ignore these fields. BGFX uses playback_dt_ms
+	// instead of wall/emulation time so a held frame freezes temporal effects, while a single step
+	// advances them by exactly one refresh. playback_reset changes after a discontinuous seek.
+	bool  playback_active = false;
+	bool  playback_paused = false;
+	float playback_dt_ms = 0.0F;
+	double playback_time_ms = 0.0;
+	u32   playback_reset = 0U;
+	u64   playback_position = 0U;   // zero-based frame currently displayed
+	u64   playback_total = 0U;
 	// Whole-screen monitor glow source: shaped off-screen beam energy this frame, binned by how far
 	// beyond the visible area the segment reaches (bin i covers [i, i+1) x OFFSCREEN_DEPTH_STEP in
 	// screen fractions; the last bin is open-ended). The consumer applies its own minimum-distance
 	// cutoff by summing the bins beyond it - binning instead of a pre-shaped scalar keeps renderer
 	// tunables (the mglow_min_distance slider) out of the device -> renderer interface.
 	float offscreen_energy[OFFSCREEN_DEPTH_BINS] = {};
+	// Peak overload energy around the screen centre, split by polar angle and off-screen depth.
+	// The monitor-glow renderer uses this to require broad four-quadrant coverage instead of
+	// mistaking one projectile or a dense local explosion for the deliberate outer-face scan.
+	float monitor_glow_coverage[MONITOR_GLOW_ANGLE_BINS][OFFSCREEN_DEPTH_BINS] = {};
 	// Off-screen beam energy binned along the four screen borders (0=left, 1=right, 2=top,
 	// 3=bottom; bins run +y along the sides, +x along top/bottom, in normalized screen space).
 	// Source for a localized bezel-edge glow where a beam leaves the visible area - the CRT face
