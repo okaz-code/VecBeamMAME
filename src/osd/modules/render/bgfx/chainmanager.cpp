@@ -850,6 +850,16 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 	return 0;
 }
 
+void chain_manager::request_temporal_reset()
+{
+	// A pending selection reload already destroys every temporal target, so it also fulfils this
+	// request. Otherwise retain every slider value across the two-frame safe destroy/create cycle.
+	if (m_reload_phase != reload_phase::NONE)
+		return;
+	m_reload_saved_settings = slider_settings();
+	m_reload_slider_id = 0;
+	m_reload_phase = reload_phase::DESTROY;
+}
 void chain_manager::process_pending_reload()
 {
 	if (m_reload_phase == reload_phase::NONE)

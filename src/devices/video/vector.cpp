@@ -27,6 +27,7 @@
 #include "emuopts.h"
 #include "render.h"
 #include "screen.h"
+#include "ui/uimain.h"
 
 #include "util/hashing.h"
 
@@ -35,6 +36,7 @@
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -50,6 +52,41 @@
 // here: the energy is published binned by excursion depth and the renderer applies its own
 // cutoff (the Monitor Glow Min Distance slider, mglow_min_distance).
 static constexpr float OFFSCREEN_ENERGY_MIN = 0.7f;
+static constexpr float MONITOR_GLOW_ENERGY_CAP = 1.0f;
+static constexpr float MONITOR_GLOW_SAMPLE_STEP = 0.04f;
+
+// Record whether overloaded deflection surrounds the tube, rather than summing every off-screen
+// vector into one count-sensitive scalar. Each angle/depth cell stores a capped peak: drawing many
+// concentric arcs in one direction cannot outweigh missing parts of the outer-face scan.
+static void accumulate_monitor_glow_coverage(render_bounds const &coords, float beam_energy,
+		float (&coverage)[render_vector_stats::MONITOR_GLOW_ANGLE_BINS][render_vector_stats::OFFSCREEN_DEPTH_BINS])
+{
+	if (beam_energy <= OFFSCREEN_ENERGY_MIN)
+		return;
+
+	const float dx = coords.x1 - coords.x0, dy = coords.y1 - coords.y0;
+	const float length = sqrtf(dx * dx + dy * dy);
+	const int steps = std::clamp(int(ceilf(length / MONITOR_GLOW_SAMPLE_STEP)), 1, 128);
+	const float energy = std::min(beam_energy - OFFSCREEN_ENERGY_MIN, MONITOR_GLOW_ENERGY_CAP);
+	static constexpr float ANGLE_SCALE = float(render_vector_stats::MONITOR_GLOW_ANGLE_BINS) / 6.2831853071795864769f;
+
+	for (int step = 0; step <= steps; ++step)
+	{
+		const float t = float(step) / float(steps);
+		const float x = coords.x0 + dx * t, y = coords.y0 + dy * t;
+		const float depth = std::max({ -x, x - 1.0f, -y, y - 1.0f, 0.0f });
+		if (depth <= 0.0f)
+			continue;
+
+		float angle = atan2f(y - 0.5f, x - 0.5f);
+		if (angle < 0.0f)
+			angle += 6.2831853071795864769f;
+		const int angle_bin = std::clamp(int(angle * ANGLE_SCALE), 0, render_vector_stats::MONITOR_GLOW_ANGLE_BINS - 1);
+		const int depth_bin = std::min(render_vector_stats::OFFSCREEN_DEPTH_BINS - 1,
+				int(depth / render_vector_stats::OFFSCREEN_DEPTH_STEP));
+		coverage[angle_bin][depth_bin] = std::max(coverage[angle_bin][depth_bin], energy);
+	}
+}
 
 // Localized bezel-edge glow (render_vector_stats::edge_energy): the phosphor face continues behind
 // the bezel, so a beam driven off-screen lights the border near its exit point. A deeper excursion
@@ -220,6 +257,8 @@ public:
 			if (!m_input)
 				fatalerror("Unable to open MVEC playback file '%s'\n", playback_path);
 			read_header();
+			m_tool_announced = true;
+			show_tool_message("Loaded");
 			osd_printf_info("MVEC: playing vector stream from %s\n", playback_path);
 		}
 	}
@@ -237,6 +276,11 @@ public:
 	mode current_mode() const { return m_mode; }
 	bool recording() const { return m_mode == mode::RECORD; }
 	bool playing() const { return m_mode == mode::PLAYBACK; }
+	bool playback_paused() const { return m_tool_paused; }
+	bool playback_advanced() const { return m_playback_advanced; }
+	u32 playback_reset() const { return m_playback_reset; }
+	u64 playback_position() const { return m_play_position < 0 ? 0U : u64(m_play_position); }
+	u64 playback_total() const { return u64(m_frame_index.size()); }
 
 	void finish()
 	{
@@ -305,23 +349,87 @@ public:
 	bool playback_frame(point *dest, int capacity, int &count, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
 	{
 		if (!playing()) return false;
-		if (m_eof)
+		m_playback_advanced = false;
+		poll_playback_tool();
+		if (!m_tool_announced)
 		{
+			m_tool_announced = true;
+			show_tool_message("Ready");
+		}
+
+		u64 target = (m_pending_position != INVALID_POSITION)
+			? m_pending_position
+			: (m_play_position < 0 ? 0U : u64(m_play_position) + (m_tool_paused ? 0U : 1U));
+		m_pending_position = INVALID_POSITION;
+		if (target >= m_frame_index.size())
+		{
+			if (!m_eof)
+				playback_end("End of file");
 			copy_cached(dest, capacity, count, true);
 			stale = true;
+			if (m_tool_overlay)
+				show_tool_message("End of file");
 			return true;
 		}
 
-		u32 magic;
-		if (!read_file_u32(magic, true))
+		if (m_play_position < 0 || target != u64(m_play_position))
 		{
-			playback_end("End of file");
-			copy_cached(dest, capacity, count, true);
-			stale = true;
-			return true;
+			const bool discontinuity = m_play_position >= 0 && target != u64(m_play_position) + 1U;
+			read_indexed_frame(target, stale, timed, generation, visarea);
+			m_play_position = s64(target);
+			m_playback_advanced = true;
+			m_eof = false;
+			if (discontinuity)
+				++m_playback_reset;
 		}
-		if (magic != MVEC_FRAME_MAGIC)
-			fatalerror("MVEC frame marker is invalid at frame %llu\n", (unsigned long long)m_frames);
+		else
+		{
+			const frame_index_entry &entry = m_frame_index[target];
+			stale = entry.stale;
+			timed = entry.timed;
+			generation = entry.generation;
+			visarea = entry.visarea;
+		}
+		copy_cached(dest, capacity, count, stale);
+		if (m_tool_overlay)
+			show_tool_message(m_tool_paused ? "Paused" : "Playing");
+		return true;
+	}
+
+private:
+	static constexpr u64 INVALID_POSITION = std::numeric_limits<u64>::max();
+	struct frame_index_entry
+	{
+		std::streamoff offset = 0;
+		bool stale = false;
+		bool timed = false;
+		u32 generation = 0;
+		rectangle visarea;
+		u64 content_frame = INVALID_POSITION;
+	};
+
+	void read_indexed_frame(u64 index, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
+	{
+		const frame_index_entry &entry = m_frame_index[index];
+		if (entry.stale && entry.content_frame != INVALID_POSITION)
+		{
+			bool source_stale, source_timed;
+			u32 source_generation;
+			rectangle source_visarea;
+			decode_frame(entry.content_frame, source_stale, source_timed, source_generation, source_visarea);
+		}
+		decode_frame(index, stale, timed, generation, visarea);
+	}
+
+	void decode_frame(u64 expected_index, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
+	{
+		m_input.clear();
+		m_input.seekg(m_frame_index[expected_index].offset);
+		if (!m_input)
+			fatalerror("MVEC seek failed at frame %llu\n", (unsigned long long)expected_index);
+		u32 magic;
+		if (!read_file_u32(magic, false) || magic != MVEC_FRAME_MAGIC)
+			fatalerror("MVEC frame marker is invalid at frame %llu\n", (unsigned long long)expected_index);
 		u32 payload_size;
 		if (!read_file_u32(payload_size, false) || payload_size > 128U * 1024U * 1024U)
 			fatalerror("MVEC frame size is invalid\n");
@@ -333,12 +441,12 @@ public:
 			fatalerror("MVEC frame checksum is missing\n");
 		const u32 actual_crc = u32(util::crc32_creator::simple(payload.data(), u32(payload.size())));
 		if (stored_crc != actual_crc)
-			fatalerror("MVEC CRC mismatch at frame %llu\n", (unsigned long long)m_frames);
+			fatalerror("MVEC CRC mismatch at frame %llu\n", (unsigned long long)expected_index);
 
 		payload_reader reader(payload);
 		const u64 frame_number = reader.get_u64();
-		if (frame_number != m_frames)
-			fatalerror("MVEC frame sequence mismatch (expected %llu, got %llu)\n", (unsigned long long)m_frames, (unsigned long long)frame_number);
+		if (frame_number != expected_index)
+			fatalerror("MVEC frame sequence mismatch (expected %llu, got %llu)\n", (unsigned long long)expected_index, (unsigned long long)frame_number);
 		const u32 flags = reader.get_u32();
 		stale = bool(flags & 1U);
 		timed = bool(flags & 2U);
@@ -372,12 +480,7 @@ public:
 		}
 		if (!reader.done())
 			fatalerror("MVEC frame contains unsupported trailing data\n");
-		copy_cached(dest, capacity, count, stale);
-		++m_frames;
-		return true;
 	}
-
-private:
 	void write_header()
 	{
 		std::vector<u8> header;
@@ -408,6 +511,64 @@ private:
 		if (device != m_owner.tag())
 			osd_printf_warning("MVEC: recorded device is '%s', current device is '%s'\n", device.c_str(), m_owner.tag());
 		osd_printf_info("MVEC format %u.%u, machine %s, device %s\n", major, minor, system.c_str(), device.c_str());
+		build_frame_index();
+	}
+
+	void build_frame_index()
+	{
+		u64 last_content = INVALID_POSITION;
+		for (u64 expected = 0; ; ++expected)
+		{
+			const std::streamoff offset = m_input.tellg();
+			u32 magic;
+			if (!read_file_u32(magic, true))
+				break;
+			if (magic != MVEC_FRAME_MAGIC)
+				fatalerror("MVEC frame marker is invalid at frame %llu\n", (unsigned long long)expected);
+			u32 payload_size;
+			if (!read_file_u32(payload_size, false) || payload_size > 128U * 1024U * 1024U)
+				fatalerror("MVEC frame size is invalid\n");
+			std::vector<u8> payload(payload_size);
+			if (!read_exact(payload.data(), payload.size()))
+				fatalerror("MVEC frame payload is truncated\n");
+			u32 stored_crc;
+			if (!read_file_u32(stored_crc, false))
+				fatalerror("MVEC frame checksum is missing\n");
+			if (stored_crc != u32(util::crc32_creator::simple(payload.data(), u32(payload.size()))))
+				fatalerror("MVEC CRC mismatch at frame %llu\n", (unsigned long long)expected);
+
+			payload_reader reader(payload);
+			const u64 number = reader.get_u64();
+			if (number != expected)
+				fatalerror("MVEC frame sequence mismatch while indexing\n");
+			const u32 flags = reader.get_u32();
+			frame_index_entry entry;
+			entry.offset = offset;
+			entry.stale = bool(flags & 1U);
+			entry.timed = bool(flags & 2U);
+			entry.generation = reader.get_u32();
+			entry.visarea.min_x = reader.get_i32(); entry.visarea.max_x = reader.get_i32();
+			entry.visarea.min_y = reader.get_i32(); entry.visarea.max_y = reader.get_i32();
+			const u32 count = reader.get_u32();
+			if (count > MAX_POINTS || payload_size != 36U + count * 66U)
+				fatalerror("MVEC frame payload size is invalid at frame %llu\n", (unsigned long long)expected);
+			if (entry.stale)
+			{
+				if (count)
+					fatalerror("MVEC stale frame unexpectedly contains points\n");
+				entry.content_frame = last_content;
+			}
+			else
+			{
+				entry.content_frame = expected;
+				last_content = expected;
+			}
+			m_frame_index.emplace_back(entry);
+		}
+		m_input.clear();
+		osd_printf_info("MVEC: indexed %llu frames\n", (unsigned long long)m_frame_index.size());
+		if (m_frame_index.empty())
+			fatalerror("MVEC file contains no frames\n");
 	}
 
 	bool read_exact(void *dest, size_t size)
@@ -436,6 +597,116 @@ private:
 		return result;
 	}
 
+	void poll_playback_tool()
+	{
+		input_manager &input = m_owner.machine().input();
+		if (m_goto_mode)
+		{
+			static const input_code digit_codes[10] = {
+				KEYCODE_0, KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_4,
+				KEYCODE_5, KEYCODE_6, KEYCODE_7, KEYCODE_8, KEYCODE_9 };
+			for (int digit = 0; digit < 10; ++digit)
+				if (input.code_pressed_once(digit_codes[digit]) && m_goto_digits.size() < 19)
+					m_goto_digits += char('0' + digit);
+			if (input.code_pressed_once(KEYCODE_BACKSPACE) && !m_goto_digits.empty())
+				m_goto_digits.pop_back();
+			if (input.code_pressed_once(KEYCODE_ESC))
+			{
+				m_goto_mode = false;
+				show_tool_message("Go to cancelled");
+				return;
+			}
+			if (input.code_pressed_once(KEYCODE_ENTER) || input.code_pressed_once(KEYCODE_ENTER_PAD))
+			{
+				if (!m_goto_digits.empty())
+				{
+					u64 value = 0;
+					for (char c : m_goto_digits)
+						value = std::min<u64>(INVALID_POSITION / 10U, value) * 10U + u64(c - '0');
+					request_position(value ? value - 1U : 0U, true);
+				}
+				m_goto_mode = false;
+				m_goto_digits.clear();
+				show_tool_message("Go to");
+				return;
+			}
+			show_tool_message("Enter frame number");
+			return;
+		}
+
+		const bool alt = input.code_pressed(KEYCODE_LALT) || input.code_pressed(KEYCODE_RALT);
+		// Use an explicit chord edge for Alt+O. code_pressed_once() has shared switch memory and can
+		// be sampled elsewhere in the UI/input stack; keeping our own edge makes the toggle deterministic.
+		const bool overlay_chord = alt && input.code_pressed(KEYCODE_O);
+		const bool overlay_pressed = overlay_chord && !m_overlay_key_down;
+		m_overlay_key_down = overlay_chord;
+		if (overlay_pressed)
+		{
+			m_tool_overlay = !m_tool_overlay;
+			if (m_tool_overlay)
+				show_tool_message(m_tool_paused ? "Paused" : "Playing");
+			else
+				m_owner.machine().ui().set_vector_playback_text(std::string());
+			return;
+		}
+		if (!alt)
+			return;
+		if (input.code_pressed_once(KEYCODE_P))
+		{
+			m_tool_paused = !m_tool_paused;
+			show_tool_message(m_tool_paused ? "Paused" : "Playing");
+		}
+		else if (input.code_pressed_once(KEYCODE_LEFT)) request_relative(-1);
+		else if (input.code_pressed_once(KEYCODE_RIGHT)) request_relative(1);
+		else if (input.code_pressed_once(KEYCODE_PGUP)) request_relative(-60);
+		else if (input.code_pressed_once(KEYCODE_PGDN)) request_relative(60);
+		else if (input.code_pressed_once(KEYCODE_HOME)) request_position(0, true);
+		else if (input.code_pressed_once(KEYCODE_END)) request_position(m_frame_index.size() - 1U, true);
+		else if (input.code_pressed_once(KEYCODE_G))
+		{
+			m_goto_mode = true;
+			m_goto_digits.clear();
+			m_tool_paused = true;
+			show_tool_message("Enter frame number");
+		}
+
+	}
+
+	void request_relative(s64 delta)
+	{
+		const s64 base = std::max<s64>(m_play_position, 0);
+		const u64 target = u64(std::clamp<s64>(base + delta, 0, s64(m_frame_index.size() - 1U)));
+		request_position(target, true);
+		show_tool_message(delta < 0 ? "Step back" : "Step forward");
+	}
+
+	void request_position(u64 target, bool pause)
+	{
+		m_pending_position = std::min<u64>(target, m_frame_index.size() - 1U);
+		if (pause)
+			m_tool_paused = true;
+		m_eof = false;
+	}
+
+	void show_tool_message(const char *status)
+	{
+		// Alt+O is authoritative: navigation and EOF status must never resurrect a hidden overlay.
+		if (!m_tool_overlay)
+			return;
+		const u64 shown = (m_pending_position != INVALID_POSITION ? m_pending_position : playback_position()) + 1U;
+		std::string text;
+		if (m_goto_mode)
+			text = util::string_format(
+				"MVEC playback: %s\nFrame: %s / %llu\nEnter: jump  Backspace: erase  Esc: cancel",
+				status, m_goto_digits.empty() ? "_" : m_goto_digits.c_str(),
+				(unsigned long long)m_frame_index.size());
+		else
+			text = util::string_format(
+				"MVEC playback: %s\nFrame: %llu / %llu\nAlt+P play/pause  Alt+Left/Right step\n"
+				"Alt+PgUp/PgDn 60 frames  Alt+Home/End  Alt+G go to  Alt+O overlay",
+				status, (unsigned long long)shown, (unsigned long long)m_frame_index.size());
+		m_owner.machine().ui().set_vector_playback_text(std::move(text));
+	}
 	void enqueue(std::vector<u8> &&chunk)
 	{
 		std::unique_lock<std::mutex> lock(m_mutex);
@@ -492,8 +763,9 @@ private:
 	void playback_end(const char *reason)
 	{
 		m_eof = true;
-		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)m_frames, reason);
-		m_owner.machine().popmessage("Vector playback ended\n%s", reason);
+		m_tool_paused = true;
+		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)m_frame_index.size(), reason);
+		show_tool_message("End of file");
 		if (m_owner.machine().options().vector_exit_after_playback())
 			m_owner.machine().schedule_exit();
 	}
@@ -515,6 +787,17 @@ private:
 	bool m_eof = false;
 	u64 m_frames = 0;
 	std::vector<point> m_cached;
+	std::vector<frame_index_entry> m_frame_index;
+	s64 m_play_position = -1;
+	u64 m_pending_position = INVALID_POSITION;
+	bool m_tool_paused = false;
+	bool m_playback_advanced = false;
+	bool m_tool_announced = false;
+	bool m_tool_overlay = true;
+	bool m_overlay_key_down = false;
+	bool m_goto_mode = false;
+	std::string m_goto_digits;
+	u32 m_playback_reset = 0;
 };
 
 float vector_options::s_flicker = 0.0f;
@@ -795,6 +1078,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// event (window-boundary re-emissions do not recount, matching the notifiers).
 	float stats_total_energy = 0.0f;
 	float stats_offscreen_energy[render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
+	float stats_monitor_glow_coverage[render_vector_stats::MONITOR_GLOW_ANGLE_BINS][render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_edge_energy[4][render_vector_stats::EDGE_GLOW_BINS] = {};
 
 	for (int i = 0; i < m_vector_index; i++)
@@ -820,6 +1104,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		coords.y0 = (float(curpoint->y0) - yoffs) * yscale;
 		coords.x1 = (float(curpoint->x) - xoffs) * xscale;
 		coords.y1 = (float(curpoint->y) - yoffs) * yscale;
+		const render_bounds monitor_coords = coords;
 
 		// Overscan zoom about the 0.5 screen centre (1.0 = none). < 1.0 shrinks the image, revealing
 		// the off-screen beams kept by the symmetric clip window; the renderer clips at the edge.
@@ -852,6 +1137,10 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 				if (curpoint->beam_energy > 0.0f)
 				{
+					// Monitor glow describes physical deflection, not the optional display zoom.
+					// Use the normalized coordinates captured before vector_overscan_x/y.
+					accumulate_monitor_glow_coverage(monitor_coords, curpoint->beam_energy,
+							stats_monitor_glow_coverage);
 					// total beam energy = current (beam_energy) x draw time (proportional to
 					// normalized length at constant velocity), summed over the frame
 					const float lx = coords.x1 - coords.x0, ly = coords.y1 - coords.y0;
@@ -913,13 +1202,28 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// Publish this frame's statistics into the screen container; render_target propagates them
 	// onto the primitive list, where a renderer can read them without touching this device.
 	render_vector_stats stats;
-	stats.frame_id = ++m_stats_frame_id;
+	const bool playback_active = m_stream && m_stream->playing();
+	const bool playback_advanced = !playback_active || m_stream->playback_advanced();
+	if (playback_advanced)
+		++m_stats_frame_id;
+	stats.frame_id = m_stats_frame_id;
 	stats.list_generation = m_list_generation;
 	stats.list_stale = m_beam_list_stale;
 	stats.timed = frame_timed;
 	stats.total_energy = stats_total_energy;
+	stats.playback_active = playback_active;
+	stats.playback_paused = playback_active && m_stream->playback_paused();
+	stats.playback_dt_ms = (playback_active && playback_advanced)
+		? float(screen.frame_period().as_double() * 1000.0) : 0.0f;
+	stats.playback_time_ms = playback_active
+		? double(m_stream->playback_position()) * screen.frame_period().as_double() * 1000.0 : 0.0;
+	stats.playback_reset = playback_active ? m_stream->playback_reset() : 0U;
+	stats.playback_position = playback_active ? m_stream->playback_position() : 0U;
+	stats.playback_total = playback_active ? m_stream->playback_total() : 0U;
 	static_assert(sizeof(stats.offscreen_energy) == sizeof(stats_offscreen_energy));
 	memcpy(stats.offscreen_energy, stats_offscreen_energy, sizeof(stats.offscreen_energy));
+	static_assert(sizeof(stats.monitor_glow_coverage) == sizeof(stats_monitor_glow_coverage));
+	memcpy(stats.monitor_glow_coverage, stats_monitor_glow_coverage, sizeof(stats.monitor_glow_coverage));
 	static_assert(sizeof(stats.edge_energy) == sizeof(stats_edge_energy));
 	memcpy(stats.edge_energy, stats_edge_energy, sizeof(stats.edge_energy));
 	screen.container().set_vector_stats(stats);

@@ -28,7 +28,7 @@ namespace {
 #if defined(SDLMAME_WIN32)
 	#define INI_PATH ".;ini;ini/presets"
 #elif defined(SDLMAME_MACOSX)
-	#define INI_PATH "$HOME/Library/Application Support/APP_NAME;$HOME/.APP_NAME;.;ini"
+	#define INI_PATH "$HOME/Library/Application Support/APP_NAME;$HOME/.APP_NAME;.;ini;ini/presets"
 #else
 	#define INI_PATH "$HOME/.APP_NAME;.;ini"
 #endif // MACOSX
