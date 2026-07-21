@@ -3976,15 +3976,35 @@ int renderer_bgfx::draw(int update)
 						radii.push_back(sqrtf((x-centre_x)*(x-centre_x) + (y-centre_y)*(y-centre_y)));
 					}
 					std::sort(radii.begin(), radii.end());
-					const size_t ri = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.875f + 0.5f));
-					float radius = manual_radius > 0.0f ? manual_radius
-						: radii[ri] + 0.5f * sqrtf(cell_w*cell_w + cell_h*cell_h);
+					const size_t outer_i = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.875f + 0.5f));
+					const size_t inner_i = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.125f + 0.5f));
+					const float cell_diagonal = sqrtf(cell_w*cell_w + cell_h*cell_h);
+					const float auto_outer_radius = radii[outer_i] + 0.5f * cell_diagonal;
+					const float auto_inner_radius = std::max(0.0f, radii[inner_i] - 0.5f * cell_diagonal);
+					float radius = manual_radius > 0.0f ? manual_radius : auto_outer_radius;
 					radius = std::min(radius, 0.45f * std::min(sw, sh));
+
+					// A genuinely thick annulus has two optical boundaries. Emit a weaker inner ring only
+					// when the radial distribution has a clear central hole and enough thickness to rule out
+					// grid quantisation of an ordinary thin circle. Manual radius remains a single-ring mode.
+					const bool split_annulus = manual_radius <= 0.0f && occupied >= 24
+						&& auto_inner_radius > 1.5f * cell_diagonal
+						&& auto_outer_radius - auto_inner_radius > 2.25f * cell_diagonal;
 					const float signal = heat[hottest] - threshold;
 					const float energy_response = -expm1f(-signal / knee);
+					const float magnitude = m_vs.convergence_bloom_gain * energy_response * support_response;
 					const float colour_peak = std::max({sum_r[hottest],sum_g[hottest],sum_b[hottest],1e-4f});
-					conv_blooms.push_back({centre_x,centre_y,m_vs.convergence_bloom_gain*energy_response*support_response,radius,
-						sum_r[hottest]/colour_peak,sum_g[hottest]/colour_peak,sum_b[hottest]/colour_peak,heat[hottest]});
+					const float bloom_r = sum_r[hottest]/colour_peak;
+					const float bloom_g = sum_g[hottest]/colour_peak;
+					const float bloom_b = sum_b[hottest]/colour_peak;
+					conv_blooms.push_back({centre_x,centre_y,magnitude,radius,
+						bloom_r,bloom_g,bloom_b,heat[hottest]});
+					if (split_annulus && conv_blooms.size() < MAX_CONVERGENCE_BLOOMS)
+					{
+						// Inner-boundary scatter is visible but weaker than the exposed outer surface.
+						conv_blooms.push_back({centre_x,centre_y,0.4f*magnitude,auto_inner_radius,
+							bloom_r,bloom_g,bloom_b,0.99f*heat[hottest]});
+					}
 				}
 				std::sort(conv_blooms.begin(), conv_blooms.end(),
 					[](const convergence_bloom &a, const convergence_bloom &b) { return a.peak > b.peak; });
