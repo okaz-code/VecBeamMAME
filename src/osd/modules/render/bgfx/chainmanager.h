@@ -137,6 +137,7 @@ public:
 	// beam_peak_nits / hdr_rolloff_max slider values from it (see apply_hdr_auto). Set once by the
 	// renderer right after construction, before the first load_chains().
 	void set_hdr_display_peak(float nits) { m_hdr_display_peak = nits; }
+	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
 
 private:
 	class chain_desc
@@ -244,6 +245,7 @@ private:
 
 	// HDR auto-config display peak (nits); see set_hdr_display_peak().
 	float                           m_hdr_display_peak = 0.0f;
+	float                           m_hdr_paper_white = 200.0f;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;
