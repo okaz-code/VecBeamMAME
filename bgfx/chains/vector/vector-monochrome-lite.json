@@ -233,7 +233,7 @@
 
 
 		{ "effect": "vector/vector_glow_accum", "name": "Glow Accum Narrow",
-		  "_comment": "Stage 1 (narrow): one-tap seed of glow_accum. The former 9-tap effect had a hard-wired zero defocus offset, so all nine reads sampled the same texel; this dedicated pass is visually equivalent and preserves halation/starburst content.",
+		  "_comment": "Stage 1 (narrow): one-tap seed of glow_accum. The former 9-tap effect had a hard-wired zero defocus offset, so all nine reads sampled the same texel; this dedicated pass is visually equivalent for ordinary glow; explicit halation/starburst content now bypasses this accumulator and tail shaping.",
 		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "analytic_glow", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "texture": "glow" } ],
 		  "uniforms": [ { "uniform": "u_blit_intensity", "slider": "glow_narrow" } ],
@@ -254,16 +254,19 @@
 		  "uniforms": [ { "uniform": "u_blit_intensity", "slider": "glow_wide" } ],
 		  "output": "glow_accum" },
 		{ "effect": "vector/vector_glow_combine_mono_defocus", "name": "Glow Combine",
-		  "_comment": "Fused post-phosphor 9-tap defocus + asymmetric vector pincushion + flat phosphor-body ambient + calibrated glow. No shadow-mask texture is sampled; u_glow_enable guards stale glow_accum when only geometry/ambient keeps this pass active.",
+		  "_comment": "Fused post-phosphor 9-tap defocus + asymmetric vector pincushion + flat phosphor-body ambient + calibrated glow. No shadow-mask texture is sampled; u_glow_enable guards stale glow_accum, while s_optical adds halation/starburst without Glow Tail Curve or Black Toe shaping.",
 		  "disablewhen": [
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "analytic_glow",             "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "ring_gain",                 "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "ring_fill",                 "value": 0.0 },
+			{ "type": "slider", "condition": "equal", "combine": "and", "name": "ray_gain",                  "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "ambient_level",            "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "defocus",                 "value": [ 0, 0 ] },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "vector_pincushion_x_quad",  "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "vector_pincushion_x_cubic", "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "vector_pincushion_y_quad",  "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "vector_pincushion_y_cubic", "value": 0.0 } ],
-		  "input": [ { "sampler": "s_base", "target": "internal" }, { "sampler": "s_bloom", "target": "glow_accum" } ],
+		  "input": [ { "sampler": "s_base", "target": "internal" }, { "sampler": "s_bloom", "target": "glow_accum" }, { "sampler": "s_optical", "texture": "optical" } ],
 		  "uniforms": [
 			{ "uniform": "u_defocus",                    "slider": "defocus" },
 			{ "uniform": "u_vec_pincushion_x_quad",      "slider": "vector_pincushion_x_quad" },

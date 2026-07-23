@@ -1052,6 +1052,11 @@ renderer_bgfx::~renderer_bgfx()
 		bgfx::destroy(m_vec_glow_fb);
 		m_vec_glow_fb = BGFX_INVALID_HANDLE;
 	}
+	if (bgfx::isValid(m_vec_optical_fb))
+	{
+		bgfx::destroy(m_vec_optical_fb);
+		m_vec_optical_fb = BGFX_INVALID_HANDLE;
+	}
 	if (bgfx::isValid(m_vec_np_fb))
 	{
 		bgfx::destroy(m_vec_np_fb);
@@ -1864,6 +1869,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "intensity_overdrive_curve", &renderer_bgfx::vec_slider_cache::intensity_overdrive_curve, 2.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
+	{ "line_cap_junction_suppress", &renderer_bgfx::vec_slider_cache::line_cap_junction_suppress, 0.0f },
 	{ "line_cap_max_size", &renderer_bgfx::vec_slider_cache::line_cap_max_size, 0.0f },
 	{ "line_cap_mode", &renderer_bgfx::vec_slider_cache::line_cap_mode, 0.0f },
 	{ "line_cap_min_size", &renderer_bgfx::vec_slider_cache::line_cap_min_size, 0.0f },
@@ -2047,7 +2053,7 @@ void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) co
 	oy = amt * nz(0xb5e3u);
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -2671,10 +2677,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 		// GLOW buffer (composited AFTER the shadow mask, so this scattered light is not mask-patterned):
 		// the wide analytic glow dot + the halation ring + the inner fill.
-		if (glow_vertex)
+		AnalyticLineVertex *const optics_vertex = m_optical_separate ? optical_vertex : glow_vertex;
+		if (glow_vertex || optics_vertex || ray_vertex)
 		{
 			// analytic glow dot (glow_rgba is 0 when analytic_glow is off -> invisible)
-			if (m_glow_off_glow >= 0) set_dot(glow_vertex, m_glow_off_glow, cx, cy, glow_sig, glow_rgba, 0.0f, 0.0f);
+			if (glow_vertex && m_glow_off_glow >= 0) set_dot(glow_vertex, m_glow_off_glow, cx, cy, glow_sig, glow_rgba, 0.0f, 0.0f);
 
 			// Halation around bright dwell dots (bullets). The rendered brightness includes the dwell
 			// boost, so only bright dots reach the threshold; the rim (gain) and the inner fill have
@@ -2685,10 +2692,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// Halation-from-overdrive (ring_over_gain > 0): the ring stops using the legacy brightness
 			// threshold and instead follows the overdrive heat - strength scales with line_over (the
 			// capped overrange), so only genuinely hot dwell dots grow the "angel ring" and it swells
-			// with the heat. Chains like vector-vectrex composite the glow FBO at a tiny
-			// weight (glow_narrow ~0.02), which would crush the rim - carry (1/glow_narrow - 1) in z
-			// so the shader's (1+z) undoes that weight and the rim lands at its tuned strength
-			// independent of the chain's glow gain. 0 = legacy threshold gate (prior behaviour).
+			// with the heat. The explicit optical FBO bypasses ordinary glow gain and tail shaping,
+			// so the rim lands at its tuned strength independently. 0 = legacy threshold gate.
 			const float ring_link = m_vs.ring_over_gain;
 			float ring_str = 1.0f;
 			const float eff_bright = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
@@ -2724,31 +2729,32 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * strength * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
 			};
+			const float optical_gain_comp = (!m_optical_separate && m_vs.glow_narrow > 1e-4f)
+				? (1.0f / m_vs.glow_narrow) : 1.0f;
 			// Rim at slot 6, inner fill at slot 12. Keep colour at useful RGBA8 precision and carry the
 			// complete sub-1.0 intensity in the float z channel: baking tiny strengths into the vertex colour
 			// quantized them to zero/one and made the controls switch abruptly. Linear gain response restores
-			// a genuinely faint low end; z also cancels the downstream glow_narrow weight without quantization.
-			const float gn_inv = (m_vs.glow_narrow > 1e-4f) ? (1.0f / m_vs.glow_narrow) : 1.0f;
-			if (m_glow_off_ring >= 0)
+			// a genuinely faint low end without quantization.
+			if (optics_vertex && m_glow_off_ring >= 0)
 			{
 				if (ring_on && ring_gain > 0.0f)
 				{
 					const float width = std::max(0.75f, m_vs.ring_width * res);
-					set_ring(glow_vertex, m_glow_off_ring, cx, cy, radius, width, ring_color(1.0f), ring_gain * 0.05f * ring_str * halation_gain * gn_inv - 1.0f);
+					set_ring(optics_vertex, m_glow_off_ring, cx, cy, radius, width, ring_color(1.0f), ring_gain * 0.05f * ring_str * halation_gain * optical_gain_comp - 1.0f);
 				}
 				else
-					set_degenerate(glow_vertex, m_glow_off_ring);
+					set_degenerate(optics_vertex, m_glow_off_ring);
 			}
-			if (m_glow_off_fill >= 0)
+			if (optics_vertex && m_glow_off_fill >= 0)
 			{
 				if (ring_on && ring_fill > 0.0f)
-					set_dot(glow_vertex, m_glow_off_fill, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(1.0f), ring_fill * 0.04f * ring_str * halation_gain * gn_inv - 1.0f, 0.0f);
+					set_dot(optics_vertex, m_glow_off_fill, cx, cy, std::max(1.0f, radius * 0.5f), ring_color(1.0f), ring_fill * 0.04f * ring_str * halation_gain * optical_gain_comp - 1.0f, 0.0f);
 				else
-					set_degenerate(glow_vertex, m_glow_off_fill);
+					set_degenerate(optics_vertex, m_glow_off_fill);
 			}
 			// Overdrive white flare (slot 18): an overdriven dwell dot blooms white-hot here in the glow
 			// buffer (post-mask), at the dot's own size, so it is not patterned by the shadow mask.
-			if (m_glow_off_flare >= 0)
+			if (glow_vertex && m_glow_off_flare >= 0)
 			{
 				if (flare_on)
 					set_dot(glow_vertex, m_glow_off_flare, cx, cy, sigma, flare_rgba, flare_z, wcore);
@@ -2759,7 +2765,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// existing glow_narrow/glow_wide cascade for a real screen-space spread ordinary brightness
 			// never triggers (see the oglow_* comment above for why this differs from analytic_glow /
 			// Overload Bloom).
-			if (m_glow_off_oglow >= 0)
+			if (glow_vertex && m_glow_off_oglow >= 0)
 			{
 				if (oglow_on)
 					set_dot(glow_vertex, m_glow_off_oglow, cx, cy, oglow_sig, oglow_rgba, oglow_z, 0.0f);
@@ -2771,7 +2777,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// percept is drawn explicitly. Only hot dwell dots (overdrive heat > 0) get rays; ALL dots
 			// share ONE fixed orientation (the pattern belongs to the viewer's eye, not the tube), and
 			// both the length and the brightness grow with the heat, so rays fade in as a dot heats up.
-			// Same glow-weight z compensation and min-dwell text gate as the halation ring.
+			// Uses the same min-dwell text gate as the halation ring.
 			if (ray_vertex != nullptr)
 			{
 				const float ray_gain = m_vs.ray_gain;
@@ -2784,8 +2790,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				const float rsig = std::max(0.4f, m_vs.ray_width * res);
 				const float rlen = m_vs.ray_length * res * heat;
 				const float rang = m_vs.ray_angle * 0.017453293f;
-				const float rgn  = m_vs.glow_narrow;
-				const float gn_eff = (rgn > 1e-4f) ? rgn : 1.0f;   // chains without glow_narrow composite ~1:1
+				const float ray_gain_comp = (!m_optical_separate && m_vs.glow_narrow > 1e-4f)
+					? (1.0f / m_vs.glow_narrow) : 1.0f;
 				// Uneven ray lengths (a real eye starburst is irregular): a FIXED per-ray-index pattern,
 				// identical for every dot (the pattern belongs to the viewer's eye, not the tube) and
 				// stable across frames. ray_var blends from all-equal (0) to the full pattern (1).
@@ -2864,7 +2870,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						// back up. Encode the desired deposit as byte x (1+z) instead: faint targets use
 						// z = 0 with a sub-0.5 byte (down to 1/255 x glow weight), bright ones a fixed
 						// 0.5 byte with z carrying the rest.
-						const float want = ray_gain * heat * seg_g[sj] / gn_eff;   // required pre-composite value
+						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp;
 						const float sstr = std::min(want, 0.5f);
 						const float szz  = (want > 0.5f) ? (want * 2.0f - 1.0f) : 0.0f;
 						const uint32_t srgba = ray_color(sstr);
@@ -3050,11 +3056,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		gv(m_glow_off_glow + 4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
 		gv(m_glow_off_glow + 5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
 		}
-		// blank the ring/fill slots (used only by points) when they have a packed slot this frame.
-		// Rays are point-only AND live in their own buffer (ray_vertex, sized by point_count, not
-		// glow_vertex) - lines never had ray slots to blank in the first place.
-		if (m_glow_off_ring >= 0) set_degenerate(glow_vertex, m_glow_off_ring);
-		if (m_glow_off_fill >= 0) set_degenerate(glow_vertex, m_glow_off_fill);
 		// Overdrive white flare (slots 18-23): an overdriven line blooms white-hot here in the glow buffer
 		// (post-mask), at the beam's own sigma (not the wide analytic glow), so it is not mask-patterned.
 		if (m_glow_off_flare >= 0 && flare_on)
@@ -3075,7 +3076,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			fv(m_glow_off_flare + 4, fsx1 - nx * fpad, fsy1 - ny * fpad, fa1, fa1 - seg_len, -fpad);
 			fv(m_glow_off_flare + 5, fsx0 - nx * fpad, fsy0 - ny * fpad, fa0, fa0 - seg_len, -fpad);
 		}
-		else if (m_glow_off_flare >= 0)
+		else if (glow_vertex && m_glow_off_flare >= 0)
 			set_degenerate(glow_vertex, m_glow_off_flare);
 		// Overload Glow (bloom): same wide-halo mechanism as the point path above.
 		if (m_glow_off_oglow >= 0 && oglow_on)
@@ -3096,8 +3097,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			ov(m_glow_off_oglow + 4, osx1 - nx * opad, osy1 - ny * opad, oa1, oa1 - seg_len, -opad);
 			ov(m_glow_off_oglow + 5, osx0 - nx * opad, osy0 - ny * opad, oa0, oa0 - seg_len, -opad);
 		}
-		else if (m_glow_off_oglow >= 0)
+		else if (glow_vertex && m_glow_off_oglow >= 0)
 			set_degenerate(glow_vertex, m_glow_off_oglow);
+	}
+	// Lines do not emit point-only halation geometry, but their reserved optical slots
+	// must still be initialized because the optical buffer is packed per visible vector.
+	AnalyticLineVertex *const optics_vertex = m_optical_separate ? optical_vertex : glow_vertex;
+	if (optics_vertex)
+	{
+		if (m_glow_off_ring >= 0) set_degenerate(optics_vertex, m_glow_off_ring);
+		if (m_glow_off_fill >= 0) set_degenerate(optics_vertex, m_glow_off_fill);
 	}
 }
 
@@ -3515,6 +3524,7 @@ int renderer_bgfx::draw(int update)
 	{
 		if (bgfx::isValid(m_vec_fb))      { bgfx::destroy(m_vec_fb);      m_vec_fb = BGFX_INVALID_HANDLE; }
 		if (bgfx::isValid(m_vec_glow_fb)) { bgfx::destroy(m_vec_glow_fb); m_vec_glow_fb = BGFX_INVALID_HANDLE; }
+		if (bgfx::isValid(m_vec_optical_fb)) { bgfx::destroy(m_vec_optical_fb); m_vec_optical_fb = BGFX_INVALID_HANDLE; }
 		if (bgfx::isValid(m_vec_np_fb))   { bgfx::destroy(m_vec_np_fb);   m_vec_np_fb = BGFX_INVALID_HANDLE; }
 		m_vec_fb_w = m_vec_fb_h = 0;
 		m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
@@ -3539,13 +3549,20 @@ int renderer_bgfx::draw(int update)
 		const float glow_scale = std::clamp(m_chains->slider_value(0, "glow_fbo_scale", 1.0f), 0.1f, 1.0f);
 		const uint16_t target_glow_w = std::max<uint16_t>(1, uint16_t(target_fb_w * glow_scale));
 		const uint16_t target_glow_h = std::max<uint16_t>(1, uint16_t(target_fb_h * glow_scale));
+		const bool optical_supported = m_chains->slider_value(0, "glow_tail_curve", -1.0f) >= 0.0f
+			&& (m_chains->slider_value(0, "ring_gain", -1.0f) >= 0.0f
+				|| m_chains->slider_value(0, "ring_fill", -1.0f) >= 0.0f
+				|| m_chains->slider_value(0, "ray_gain", -1.0f) >= 0.0f);
 		if (cur_w > 0 && cur_h > 0 && (target_fb_w != m_vec_fb_w || target_fb_h != m_vec_fb_h
-			|| target_glow_w != m_vec_glow_fb_w || target_glow_h != m_vec_glow_fb_h))
+			|| target_glow_w != m_vec_glow_fb_w || target_glow_h != m_vec_glow_fb_h
+			|| optical_supported != bgfx::isValid(m_vec_optical_fb)))
 		{
 			if (bgfx::isValid(m_vec_fb))
 				bgfx::destroy(m_vec_fb);
 			if (bgfx::isValid(m_vec_glow_fb))
 				bgfx::destroy(m_vec_glow_fb);
+			if (bgfx::isValid(m_vec_optical_fb))
+				bgfx::destroy(m_vec_optical_fb);
 			if (bgfx::isValid(m_vec_np_fb))
 				bgfx::destroy(m_vec_np_fb);
 			m_vec_fb_w = target_fb_w;
@@ -3563,6 +3580,13 @@ int renderer_bgfx::draw(int update)
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
 			bgfx::TextureHandle gc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_glow_fb = bgfx::createFrameBuffer(1, &gc, true);
+			if (optical_supported)
+			{
+				bgfx::TextureHandle oc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
+				m_vec_optical_fb = bgfx::createFrameBuffer(1, &oc, true);
+			}
+			else
+				m_vec_optical_fb = BGFX_INVALID_HANDLE;
 			bgfx::TextureHandle npc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_np_fb = bgfx::createFrameBuffer(1, &npc, true);
 		}
@@ -3719,24 +3743,6 @@ int renderer_bgfx::draw(int update)
 			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f)), 0.0f, 1.0f) : 1.0f };
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
-		// Gun saturation (gun_saturation slider): per-channel soft-knee compression of the SOURCE
-		// colour near full drive, modelling the CRT gun/phosphor saturating at maximum beam current.
-		// A real monitor shows an over-driven "white" as plain white - mhavoc's in-game white is
-		// colorram $F = R $FF, G/B $CB (the 2-bit red DAC's extra step), and the real red gun is
-		// already saturated so the +25% red never becomes +25% light. A faithful linear display
-		// (especially the HDR present, which never clips the core) keeps the ratio and the pyroids
-		// read salmon/orange. Channels at/below the knee are untouched, so saturated primaries and
-		// ordinary colours keep their hue; only near-full-drive imbalances converge to white. 0 = off.
-		const float gun_sat = std::clamp(m_chains->slider_value(0, "gun_saturation", 0.0f), 0.0f, 1.0f);
-		// The saturation knee remains calibratable for the independent colour-compression model.
-		const float gun_knee = std::clamp(m_chains->slider_value(0, "gun_sat_knee", 0.7f), 0.0f, 0.95f);
-		auto gun_saturate = [gun_sat, gun_knee](float c) {
-			if (c <= gun_knee)
-				return c;
-			const float t = std::min((c - gun_knee) / (1.0f - gun_knee), 1.0f);
-			const float f = 1.0f - powf(1.0f - t, 4.0f);   // fast rise onto the saturated ceiling
-			return c + ((gun_knee + (1.0f - gun_knee) * f) - c) * gun_sat;
-		};
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
 		double cur_first_t0 = -1.0, cur_last_t1 = -1.0;
@@ -3927,8 +3933,16 @@ int renderer_bgfx::draw(int update)
 			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
 			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
 			const int cap_mode = m_line_analytic ? int(std::lround(m_vs.line_cap_mode)) : 0;
+			const float junction_suppress = std::clamp(m_vs.line_cap_junction_suppress, 0.0f, 1.0f);
+			const bool junction_on = cap_mode == 1 && junction_suppress > 0.0f;
+			struct cap_segment
+			{
+				render_primitive *prim;
+				float x0, y0, x1, y1, dx, dy, len2;
+			};
+			std::vector<cap_segment> cap_segments;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
-			if (vertex_dwell > 0.0f || cap_mode == 1)
+			if (vertex_dwell > 0.0f || cap_mode == 1 || junction_on)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
 				const render_primitive *pv = nullptr;
@@ -3943,6 +3957,8 @@ int renderer_bgfx::draw(int update)
 						continue;  // dots have no direction; leave them transparent to the chain
 					const float ndx = ddx / len, ndy = ddy / len;
 					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
+					if (junction_on)
+						cap_segments.push_back({ p, p->bounds.x0, p->bounds.y0, p->bounds.x1, p->bounds.y1, ddx, ddy, len * len });
 					if (pv != nullptr)
 					{
 						const float gx = p->bounds.x0 - pv->bounds.x1;
@@ -3957,6 +3973,74 @@ int renderer_bgfx::draw(int update)
 						}
 					}
 					pv = p; pdx = ndx; pdy = ndy;
+				}
+			}
+
+			// A T junction receives the horizontal body plus the terminating line's 50% axial end and its
+			// blanking-transition cap. Keep the physically useful body overlap, but attenuate only that cap
+			// when an endpoint lands on the interior of a non-parallel vector. A small spatial grid avoids
+			// an O(N^2) scan in text-heavy scenes.
+			if (junction_on && cap_segments.size() > 1)
+			{
+				constexpr float CELL = 32.0f;
+				const float tol = std::max(0.75f, float(s_width[window_index]) / 1920.0f);
+				const float tol2 = tol * tol;
+				auto cell_key = [](int x, int y) -> uint64_t
+				{
+					return (uint64_t(uint32_t(x)) << 32) | uint32_t(y);
+				};
+				std::unordered_map<uint64_t, std::vector<uint32_t>> cap_grid;
+				cap_grid.reserve(cap_segments.size() * 4);
+				for (uint32_t i = 0; i < cap_segments.size(); i++)
+				{
+					const cap_segment &seg = cap_segments[i];
+					const int min_x = int(std::floor((std::min(seg.x0, seg.x1) - tol) / CELL));
+					const int max_x = int(std::floor((std::max(seg.x0, seg.x1) + tol) / CELL));
+					const int min_y = int(std::floor((std::min(seg.y0, seg.y1) - tol) / CELL));
+					const int max_y = int(std::floor((std::max(seg.y0, seg.y1) + tol) / CELL));
+					for (int cy = min_y; cy <= max_y; cy++)
+						for (int cx = min_x; cx <= max_x; cx++)
+							cap_grid[cell_key(cx, cy)].push_back(i);
+				}
+				auto suppress_at = [&](const cap_segment &self, float x, float y, float &boost)
+				{
+					const int cell_x = int(std::floor(x / CELL));
+					const int cell_y = int(std::floor(y / CELL));
+					for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
+					{
+						auto bucket = cap_grid.find(cell_key(cell_x + ox, cell_y + oy));
+						if (bucket == cap_grid.end())
+							continue;
+						for (uint32_t index : bucket->second)
+						{
+							const cap_segment &other = cap_segments[index];
+							if (other.prim == self.prim || other.len2 <= 1e-6f)
+								continue;
+							const float cross = std::abs(self.dx * other.dy - self.dy * other.dx)
+								/ std::sqrt(self.len2 * other.len2);
+							if (cross < 0.2f)
+								continue; // collinear joins and retraces retain their normal blanking cap
+							const float t = ((x - other.x0) * other.dx + (y - other.y0) * other.dy) / other.len2;
+							const float end_margin = std::min(0.25f, tol / std::sqrt(other.len2));
+							if (t <= end_margin || t >= 1.0f - end_margin)
+								continue; // shared endpoints are handled by the existing consecutive-line logic
+							const float qx = other.x0 + t * other.dx, qy = other.y0 + t * other.dy;
+							const float ex = x - qx, ey = y - qy;
+							if (ex * ex + ey * ey <= tol2)
+							{
+								boost *= 1.0f - junction_suppress;
+								return;
+							}
+						}
+					}
+				};
+				for (const cap_segment &seg : cap_segments)
+				{
+					auto boost = vtx_boost.find(seg.prim);
+					if (boost == vtx_boost.end())
+						continue;
+					suppress_at(seg, seg.x0, seg.y0, boost->second.first);
+					suppress_at(seg, seg.x1, seg.y1, boost->second.second);
 				}
 			}
 
@@ -4266,10 +4350,8 @@ int renderer_bgfx::draw(int update)
 			// gaussian that follows the beam exactly - a physical PSF tail, no pyramid and no temporal lag.
 			// Drawn into a SEPARATE FBO (m_vec_glow_fb) so a chain pass can add it AFTER the shadow mask
 			// (scattered light is unmasked). 6 verts/line into that buffer; 0 = off.
-			// The glow FBO carries all post-mask additive scatter: the analytic glow AND the halation
-			// ring / inner fill (so the shadow mask does not pattern them). Allocate it when any of those
-			// is active. Buffer is 18 verts/line: line = glow quad (rest blanked); point = glow dot +
-			// ring + fill.
+			// Modern mono/Vectrex chains route explicit halation rim/fill and starburst rays into a
+			// second post-mask optical FBO; legacy chains retain the original shared-glow path.
 			// Pack the glow buffer: give a 6-vertex slot only to the components active this frame, so a
 			// chain that uses just analytic_glow emits 6 verts/line instead of the full 24 (the other
 			// three were written as degenerate quads but still cost vertex processing).
@@ -4288,16 +4370,19 @@ int renderer_bgfx::draw(int update)
 			// brighter/wider endpoints visible after the line body had decayed, turning a moving
 			// object's trail into a dotted line of cap ghosts).
 			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
-			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb) && (g_glow || g_ring || g_fill || g_flare || g_oglow || g_conv || g_rays > 0);
-			int goff = 0;
+			m_optical_separate = bgfx::isValid(m_vec_optical_fb);
+			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
+				&& (g_glow || g_flare || g_oglow || g_conv || (!m_optical_separate && (g_ring || g_fill || g_rays > 0)));
+			int goff = 0, ooff = 0;
 			m_glow_off_glow = m_glow_off_ring = m_glow_off_fill = m_glow_off_flare = m_glow_off_oglow = -1;
 			m_glow_rays_n = 0;
 			if (g_glow)  { m_glow_off_glow  = goff; goff += 6; }
-			if (g_ring)  { m_glow_off_ring  = goff; goff += 6; }
-			if (g_fill)  { m_glow_off_fill  = goff; goff += 6; }
 			if (g_flare) { m_glow_off_flare = goff; goff += 6; }
 			if (g_oglow) { m_glow_off_oglow = goff; goff += 6; }
+			if (g_ring)  { m_glow_off_ring  = m_optical_separate ? ooff : goff; if (m_optical_separate) ooff += 6; else goff += 6; }
+			if (g_fill)  { m_glow_off_fill  = m_optical_separate ? ooff : goff; if (m_optical_separate) ooff += 6; else goff += 6; }
 			m_glow_vpl = goff;
+			m_optical_vpl = ooff;
 			// Rays: own budget, sized by point_count (see below), not folded into m_glow_vpl.
 			m_glow_rays_n = g_rays;
 			m_ray_vpl = g_rays ? (6 * g_rays * GLOW_RAY_SEGS) : 0;
@@ -4314,6 +4399,9 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer glow_tvb = {};
 			int glow_verts = 0;
 			bool glow_alloc = false;
+			bgfx::TransientVertexBuffer optical_tvb = {};
+			int optical_verts = 0;
+			bool optical_alloc = false;
 			// No-persist buffer: fixed 18 verts/line - slots [0..5] no-persist dot, [6..11] cap0,
 			// [12..17] cap1. Active only in cap_no_persist mode; drawn into m_vec_np_fb.
 			const bool np_on = m_line_analytic && m_caps_glow && bgfx::isValid(m_vec_np_fb);
@@ -4322,14 +4410,14 @@ int renderer_bgfx::draw(int update)
 			int np_verts = 0;
 			bool np_alloc = false;
 			// Starburst rays: own buffer sized by POINT_COUNT x m_ray_vpl, not visible_count - see the
-			// m_ray_vpl comment in drawbgfx.h. Shares m_vec_glow_fb (drawn via a second submit into the
-			// same glow view), so no chain/JSON change is needed.
+			// m_ray_vpl comment in drawbgfx.h. Modern chains submit it to m_vec_optical_fb;
+			// legacy chains keep submitting it to m_vec_glow_fb.
 			bgfx::TransientVertexBuffer ray_tvb = {};
 			int ray_verts = 0;
 			bool ray_alloc = false;
 			bgfx::TransientVertexBuffer conv_tvb = {};
 			bool conv_alloc = false;
-			const bool ray_on = m_line_analytic && m_glow_on && m_ray_vpl > 0 && bgfx::isValid(m_vec_glow_fb);
+			const bool ray_on = m_line_analytic && m_ray_vpl > 0 && bgfx::isValid(m_optical_separate ? m_vec_optical_fb : m_vec_glow_fb);
 			if (visible_count > 0)
 			{
 				const uint32_t needed = uint32_t(visible_count) * verts_per_line;
@@ -4347,6 +4435,16 @@ int renderer_bgfx::draw(int update)
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
 								glow_alloc = (glow_tvb.data != nullptr);
+							}
+						}
+						// Explicit point-optics buffer: halation rim/fill bypass tail shaping.
+						if (m_line_analytic && m_optical_vpl > 0 && bgfx::isValid(m_vec_optical_fb))
+						{
+							const uint32_t oneeded = uint32_t(visible_count) * uint32_t(m_optical_vpl);
+							if (oneeded == bgfx::getAvailTransientVertexBuffer(oneeded, line_decl))
+							{
+								bgfx::allocTransientVertexBuffer(&optical_tvb, oneeded, line_decl);
+								optical_alloc = (optical_tvb.data != nullptr);
 							}
 						}
 						// Best-effort separate no-persist buffer (18 verts/line). If it cannot be
@@ -4417,30 +4515,18 @@ int renderer_bgfx::draw(int update)
 							const bool vp_flicker_excluded = vp_in_bucket && !flicker_partial;
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
-								// Per-vector source-colour adjustments, applied in place for the draw
-								// calls below and restored after (the same primitive list may be
-								// walked again): gun saturation (see gun_saturate above), then
-								// per-channel flicker - attenuate this bucket's colour. A channel at
-								// weight 1.0 goes fully dark (classic), at 0.15 it only dips 15% - it
-								// shimmers rather than blinks.
+								// Per-channel flicker is applied in place for the draw calls below and
+								// restored afterward (the same primitive list may be walked again). A
+								// channel at weight 1.0 goes fully dark (classic), at 0.15 it only dips
+								// 15% - it shimmers rather than blinks.
 								const bool vp_dimmed = vp_in_bucket && flicker_partial;
-								const bool vp_recolor = vp_dimmed || gun_sat > 0.0f;
 								render_color vp_saved_color;
-								if (vp_recolor)
+								if (vp_dimmed)
 								{
 									vp_saved_color = vprim->color;
-									if (gun_sat > 0.0f)
-									{
-										vprim->color.r = gun_saturate(vprim->color.r);
-										vprim->color.g = gun_saturate(vprim->color.g);
-										vprim->color.b = gun_saturate(vprim->color.b);
-									}
-									if (vp_dimmed)
-									{
-										vprim->color.r *= 1.0f - fl_rgb[0];
-										vprim->color.g *= 1.0f - fl_rgb[1];
-										vprim->color.b *= 1.0f - fl_rgb[2];
-									}
+									vprim->color.r *= 1.0f - fl_rgb[0];
+									vprim->color.g *= 1.0f - fl_rgb[1];
+									vprim->color.b *= 1.0f - fl_rgb[2];
 								}
 								if (m_line_analytic)
 								{
@@ -4474,6 +4560,7 @@ int renderer_bgfx::draw(int update)
 										}
 									}
 									AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
+									AnalyticLineVertex *optr = optical_alloc ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
 									AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
 									// Rays are point-only (see the m_ray_vpl comment); classify with the SAME
 									// seg_len <= point_threshold test used for the point_count pre-scan and
@@ -4494,15 +4581,16 @@ int renderer_bgfx::draw(int update)
 										auto dit = m_dwell_scale.find(vprim);
 										if (dit != m_dwell_scale.end()) dsc = dit->second;
 									}
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, npptr, rptr, scap, ecap, sps, dsc);
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, sps, dsc);
 									if (gptr) glow_verts += m_glow_vpl;
+									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
 									if (rptr) ray_verts += m_ray_vpl;
 								}
 								else
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								vertices += verts_per_line;
-								if (vp_recolor)
+								if (vp_dimmed)
 									vprim->color = vp_saved_color;
 							}
 							vprim = vprim->next();
@@ -4695,7 +4783,7 @@ int renderer_bgfx::draw(int update)
 			// ghost). If BOTH allocs failed (transient-buffer pressure on a busy frame) we skip entirely
 			// and LEAVE the FBO, because clearing it to black while unable to redraw the real glow would
 			// make the glow vanish until the scene lightens.
-			if ((glow_alloc || ray_alloc || conv_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
+			if ((glow_alloc || (!m_optical_separate && ray_alloc) || conv_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
 			{
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
@@ -4735,13 +4823,15 @@ int renderer_bgfx::draw(int update)
 					line_eff->submit(glow_view);
 					glow_submitted = true;
 				}
-				if (ray_verts > 0)
+
+				if (!m_optical_separate && ray_verts > 0)
 				{
 					bgfx::setVertexBuffer(0, &ray_tvb);
 					set_glow_uniforms();
 					line_eff->submit(glow_view);
 					glow_submitted = true;
 				}
+
 				if (conv_alloc)
 				{
 					bgfx::setVertexBuffer(0, &conv_tvb);
@@ -4758,6 +4848,49 @@ int renderer_bgfx::draw(int update)
 				}
 				if (!glow_submitted)
 					bgfx::touch(glow_view);   // no glow/ray geometry: just clear the FBO (no stale ghost)
+			}
+
+			// Explicit optical-effects FBO: point halation rim/fill and starburst rays are
+			// composited directly, after ordinary glow tail shaping. Clear every frame so turning
+			// either effect off cannot leave a stale optical image behind.
+			if (m_optical_separate && bgfx::isValid(m_vec_optical_fb))
+			{
+				const uint16_t optical_view = uint16_t(s_current_view++);
+				bgfx::setViewFrameBuffer(optical_view, m_vec_optical_fb);
+				bgfx::setViewRect(optical_view, 0, 0, m_vec_glow_fb_w, m_vec_glow_fb_h);
+				bgfx::setViewClear(optical_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+				bgfx::setViewMode(optical_view, bgfx::ViewMode::Sequential);
+				float oproj[16];
+				bx::mtxOrtho(oproj, 0.0f, float(s_width[window_index]), float(s_height[window_index]),
+					0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+				bgfx::setViewTransform(optical_view, nullptr, oproj);
+				bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
+				auto set_optical_uniforms = [&]() {
+					bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
+					if (inv)
+					{
+						float values[2] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]) };
+						inv->set(values, sizeof(float) * 2); inv->upload();
+					}
+					bgfx_uniform* lp = line_eff->uniform("u_line_params");
+					if (lp)
+					{
+						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 1.0f, 1.0f };
+						lp->set(vals, sizeof(float) * 4); lp->upload();
+					}
+				};
+				bool optical_submitted = false;
+				if (optical_verts > 0)
+				{
+					bgfx::setVertexBuffer(0, &optical_tvb); set_optical_uniforms();
+					line_eff->submit(optical_view); optical_submitted = true;
+				}
+				if (ray_verts > 0)
+				{
+					bgfx::setVertexBuffer(0, &ray_tvb); set_optical_uniforms();
+					line_eff->submit(optical_view); optical_submitted = true;
+				}
+				if (!optical_submitted) bgfx::touch(optical_view);
 			}
 
 			// No-persist FBO: draw the caps / short-dwell dots into m_vec_np_fb (cleared, additive),
@@ -4847,6 +4980,13 @@ int renderer_bgfx::draw(int update)
 				bgfx::TextureHandle glow_color = bgfx::getTexture(m_vec_glow_fb, 0);
 				if (bgfx::isValid(glow_color))
 					m_chains->inject_vector_glow(glow_color, m_vec_fb_w, m_vec_fb_h);
+			}
+			// Expose explicit optical effects separately so the final composite can bypass tail shaping.
+			if (bgfx::isValid(m_vec_optical_fb))
+			{
+				bgfx::TextureHandle optical_color = bgfx::getTexture(m_vec_optical_fb, 0);
+				if (bgfx::isValid(optical_color))
+					m_chains->inject_vector_optical(optical_color, m_vec_glow_fb_w, m_vec_glow_fb_h);
 			}
 			// Expose the no-persist FBO as "npglow0" for the chain's post-pool cap/dot combine pass.
 			if (bgfx::isValid(m_vec_np_fb))

@@ -34,6 +34,13 @@
       ]
     },
     {
+      "name": "s_optical",
+      "type": "int",
+      "values": [
+        2.0
+      ]
+    },
+    {
       "name": "u_defocus",
       "type": "vec4",
       "values": [

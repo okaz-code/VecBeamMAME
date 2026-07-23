@@ -8,6 +8,7 @@ $input v_color0, v_texcoord0
 #include "common.sh"
 SAMPLER2D(s_base, 0);
 SAMPLER2D(s_bloom, 1);
+SAMPLER2D(s_optical, 2);
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_vec_pincushion_x_cubic;
@@ -114,9 +115,9 @@ void main()
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
 	float face=tube_face_factor(v_texcoord0,tube_active),vignette=tube_vignette(v_texcoord0,tube_active);
 	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
-	vec3 glow=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
-	if(u_glow_enable.x>0.0&&!emit_outside)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);
+	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
+	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=texture2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
-	if(band>0.0&&u_glow_enable.x>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));bezel=shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN)*band;}
-	gl_FragColor=vec4((base+glow)*face+ambient+bezel,1.0)*v_color0;
+	if(band>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));vec3 edge_glow=u_glow_enable.x>0.0?shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN):vec3_splat(0.0);vec3 edge_optical=texture2D(s_optical,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN;bezel=(edge_glow+edge_optical)*band;}
+	gl_FragColor=vec4((base+glow+optical)*face+ambient+bezel,1.0)*v_color0;
 }

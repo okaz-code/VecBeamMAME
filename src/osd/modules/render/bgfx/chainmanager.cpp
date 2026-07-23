@@ -723,6 +723,13 @@ void chain_manager::inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t v
 	m_textures.add_provider("glow0", std::move(prov));
 }
 
+void chain_manager::inject_vector_optical(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	m_textures.remove_provider("optical0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("optical0", std::move(prov));
+}
+
 void chain_manager::inject_vector_np(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
 {
 	// Register the no-persist FBO colour attachment as "npglow0"; a chain pass references it as
