@@ -251,6 +251,7 @@ public:
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
+		float line_cap_junction_suppress = 0.0f; // attenuate a cap terminating on another line's interior
 		float line_cap_max_size = 0.0f;    // max cap sigma at 1920-ref; 0 = unlimited (legacy)
 		float line_cap_mode = 0.0f;        // 0 legacy, 1 blank transitions, 2 RAMP flags, 3 off
 		float line_cap_min_size = 0.0f;
@@ -322,6 +323,9 @@ private:
 	// so a reduced raster just samples the same function at lower density - the -lite variant chain
 	// sets 0.5 to quarter the fill cost of the biggest fill-rate consumer (200px oglow footprints).
 	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
+	// Explicit optical effects (halation rim/fill and starburst rays), sampled directly by
+	// the final composite so Glow Tail Curve / Black Toe affect ordinary glow only.
+	bgfx::FrameBufferHandle m_vec_optical_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_glow_fb_w = 0;
 	uint16_t m_vec_glow_fb_h = 0;
 	// No-persist FBO: line end caps and short-dwell junction dots are drawn here (bypassing the
@@ -336,7 +340,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -352,6 +356,7 @@ private:
 	float m_beam_vx = 0.0f, m_beam_vy = 0.0f;   // last actual beam velocity (pixels / second)
 	bool  m_defl_on = false;                    // deflection dynamics active this frame
 	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
+	bool  m_optical_separate = false;            // modern mono/Vectrex: explicit optics bypass glow shaping
 	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)
 	// Glow buffer is packed: only components whose slider is active this frame get a 6-vertex slot, so a
 	// chain using e.g. analytic_glow only emits 6 verts/line instead of the full 24 (the rest were
@@ -366,7 +371,8 @@ private:
 	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
 	bool m_caps_glow = false;    // cap_no_persist: line caps drawn into the separate no-persist FBO (bypass the phosphor pool)
 	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
-	int m_glow_vpl = 0;          // 6 * (active glow components), NOT including rays (see m_ray_vpl)
+	int m_glow_vpl = 0;          // ordinary glow components only
+	int m_optical_vpl = 0;       // halation rim/fill components only
 	// Starburst rays get their OWN buffer sized by POINT count (not visible_count like glow): a ray
 	// costs 6 * ray_count * GLOW_RAY_SEGS verts, drawn only for hot dwell points, but reserving that
 	// per LINE too (the old scheme) starved the transient vertex buffer in busy/text-heavy scenes
