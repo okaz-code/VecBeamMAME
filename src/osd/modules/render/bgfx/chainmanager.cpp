@@ -493,14 +493,16 @@ void chain_manager::apply_hdr_auto()
 	if (m_hdr_display_peak <= 0.0f || !m_options.bgfx_hdr())
 		return;
 
-	// One knob in, two sliders out: put a single full-intensity line at ~55% of the panel peak and
-	// let the hue-preserving roll-off asymptote additive overlaps/overload exactly at the panel peak
-	// (max * beam_peak = display peak). knee stays at the chain default (1.0 = a single line is
-	// untouched). Clamps follow the chain JSON slider ranges (beam_peak_nits 80..2000 step 10,
-	// hdr_rolloff_max 0.5..4.0).
+	// Keep normal vector luminance stable relative to SDR reference white across displays. Tying it
+	// to 55% of display peak made the same chain jump from ~220 nits on a 400-nit HDR monitor to
+	// ~880 nits on a 1600-nit XDR panel. The established chain calibration is 330/200 = 1.65 times
+	// paper white; retain that ratio and use 85% of panel peak only as a safety ceiling. Additive
+	// crossings/overload then use hdr_rolloff_max to approach the actual display peak.
 	const float peak = m_hdr_display_peak;
-	const float beam = std::clamp(std::round(peak * 0.55f / 10.0f) * 10.0f, 100.0f, 2000.0f);
-	const float rmax = std::clamp(peak / beam, 1.1f, 4.0f);
+	const float paper_white = std::max(1.0f, m_hdr_paper_white);
+	const float desired_beam = std::min(1.65f * paper_white, 0.85f * peak);
+	const float beam = std::clamp(std::round(desired_beam / 10.0f) * 10.0f, 80.0f, 2000.0f);
+	const float rmax = std::clamp(peak / beam, 1.1f, 8.0f);
 
 	bool applied = false;
 	for (size_t screen = 0; screen < m_screen_chains.size(); screen++)
@@ -528,8 +530,8 @@ void chain_manager::apply_hdr_auto()
 	if (applied)
 	{
 		osd_printf_verbose(
-				"BGFX: HDR auto-config for a %.0f nit display: beam_peak_nits=%.0f, hdr_rolloff_max=%.2f\n",
-				peak, beam, rmax);
+				"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
+				peak, paper_white, beam, rmax);
 	}
 }
 

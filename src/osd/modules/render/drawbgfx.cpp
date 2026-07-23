@@ -92,6 +92,10 @@ public:
 	// HDR auto-config: display peak (nits) resolved from bgfx_hdr_display_peak at library init
 	// (numeric, or OS query for "auto"); 0 = feature off. Renderers hand it to their chain_manager.
 	float hdr_display_peak_nits() const { return m_hdr_display_peak_nits; }
+	// Effective SDR reference/paper white. On Windows HDR this follows the OS SDR-content level;
+	// elsewhere it retains -bgfx_hdr_paper_white because no absolute SDR-white API is available.
+	float paper_white_nits() const { return m_effective_paper_white_nits; }
+	float detected_sdr_white_nits() const { return m_sdr_white_nits; }
 
 	template <typename T>
 	util::notifier_subscription subscribe_load(void (T::*func)(util::xml::data_node const &), T *obj)
@@ -128,6 +132,8 @@ protected:
 	osd_options const *m_options;
 	uint32_t m_max_texture_size;
 	float m_hdr_display_peak_nits = 0.0f;   // see hdr_display_peak_nits()
+	float m_sdr_white_nits = 0.0f;
+	float m_effective_paper_white_nits = 200.0f;
 
 private:
 	friend class parent_module_holder;
@@ -349,6 +355,13 @@ void video_bgfx::save_config(config_type cfg_type, util::xml::data_node *parentn
 }
 
 
+#if defined(__APPLE__)
+static float detect_edr_headroom(void *nwh);
+#endif
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+static bool detect_windows_hdr_active(void *nwh);
+#endif
+
 //============================================================
 //  video_bgfx::init_bgfx_library
 //============================================================
@@ -356,6 +369,8 @@ void video_bgfx::save_config(config_type cfg_type, util::xml::data_node *parentn
 bool video_bgfx::init_bgfx_library(osd_window &window)
 {
 	osd_dim const wdim = window.get_size_pixels();
+	s_bgfx_hdr_active = false;
+	s_bgfx_edr_active = false;
 
 	bgfx::Init init;
 	init.type = bgfx::RendererType::Count;
@@ -364,15 +379,6 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	init.resolution.height = wdim.height();
 	init.resolution.numBackBuffers = 1;
 	init.resolution.reset = video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE;
-	// HDR PoC: request an HDR10 swapchain (PQ / Rec.2020 with an RGB10A2 backbuffer). bgfx only
-	// raises BGFX_CAPS_HDR10 when the OS output is already in HDR mode (d3d11/d3d12), checked
-	// after init below.
-	if (m_options->bgfx_hdr())
-	{
-		s_bgfx_hdr_active = true;
-		init.resolution.reset |= BGFX_RESET_HDR10;
-		init.resolution.format = bgfx::TextureFormat::RGB10A2;
-	}
 	if (!set_platform_data(init.platformData, window))
 	{
 		osd_printf_error("Setting BGFX platform data failed\n");
@@ -399,21 +405,45 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	else
 		osd_printf_warning("Unknown BGFX backend type '%s', going with auto-detection.\n", backend);
 
+	// On Windows, creating an SDR swapchain first and changing it to HDR10 after bgfx::init makes
+	// Windows Auto HDR classify the process as an SDR game and show its notification.  Preflight the
+	// target monitor and start D3D11/D3D12 (including Windows auto-selection) in HDR10 immediately.
+	// Other displays/backends retain the safe SDR bootstrap and the post-init capability fallback.
+	bool initial_hdr = false;
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+	const bool d3d_hdr_backend = backend == "auto"
+		|| init.type == bgfx::RendererType::Direct3D11
+		|| init.type == bgfx::RendererType::Direct3D12;
+	initial_hdr = m_options->bgfx_hdr() && d3d_hdr_backend && detect_windows_hdr_active(init.platformData.nwh);
+	if (initial_hdr)
+	{
+		init.resolution.reset |= BGFX_RESET_HDR10;
+		init.resolution.format = bgfx::TextureFormat::RGB10A2;
+		osd_printf_verbose("BGFX: Windows HDR is active; creating the initial swapchain as HDR10\n");
+	}
+#endif
+
 	if (!bgfx::init(init))
 		return false;
 
-	// HDR PoC: fall back to SDR when the device/output cannot do HDR10 (Windows HDR off,
-	// non-d3d11/12 backend, SDR monitor).
-	if (s_bgfx_hdr_active && (bgfx::getCaps()->supported & BGFX_CAPS_HDR10) == 0)
+	// Enable HDR only after the real renderer/output capability is known. This makes HDR-on-by-default
+	// safe for SDR monitors and unsupported backends: they keep the already-created SDR swapchain.
+	const bool hdr_requested = m_options->bgfx_hdr();
+	s_bgfx_hdr_active = hdr_requested && ((bgfx::getCaps()->supported & BGFX_CAPS_HDR10) != 0);
+	if (hdr_requested && !s_bgfx_hdr_active)
+		osd_printf_warning("BGFX: HDR/EDR requested but unavailable; using the SDR swapchain\n");
+
+	// macOS uses an extended-linear Metal layer rather than HDR10/PQ. The Metal capability means the
+	// API exists; current headroom must also exceed 1.0 or this particular screen is effectively SDR.
+	s_bgfx_edr_active = s_bgfx_hdr_active && (bgfx::getRendererType() == bgfx::RendererType::Metal);
+#if defined(__APPLE__)
+	if (s_bgfx_edr_active && detect_edr_headroom(init.platformData.nwh) <= 1.0f)
 	{
-		osd_printf_warning("BGFX: HDR10 requested but not available (is Windows HDR on, backend d3d11/d3d12?), falling back to SDR\n");
+		osd_printf_warning("BGFX: Metal EDR has no current display headroom; using SDR output\n");
+		s_bgfx_edr_active = false;
 		s_bgfx_hdr_active = false;
 	}
-
-	// macOS EDR: on the Metal backend an "HDR10" reset is honoured as Extended Dynamic Range (see
-	// renderer_mtl.mm) - extended-linear float layer, no PQ. Flag it so the present pass takes the
-	// linear EDR branch instead of the Windows PQ encode.
-	s_bgfx_edr_active = s_bgfx_hdr_active && (bgfx::getRendererType() == bgfx::RendererType::Metal);
+#endif
 
 	// Explicit confirmation (non-visual). With -bgfx_hdr the renderer is in one of three states; print
 	// which, so EDR/HDR10 can be verified from the log instead of by eye (-verbose). The display still
@@ -429,9 +459,14 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 			osd_printf_verbose("BGFX: HDR present path = SDR fallback (HDR requested but unavailable)\n");
 	}
 
-	bgfx::reset(wdim.width(), wdim.height(),
-		(video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | (s_bgfx_hdr_active ? BGFX_RESET_HDR10 : 0),
-		s_bgfx_hdr_active ? bgfx::TextureFormat::RGB10A2 : bgfx::TextureFormat::Count);
+	// Avoid recreating the swapchain when the preflight state already matches the final capability
+	// result.  A reset remains necessary for non-Windows paths and for a failed/changed preflight.
+	if (initial_hdr != s_bgfx_hdr_active)
+	{
+		bgfx::reset(wdim.width(), wdim.height(),
+			(video_config.waitvsync ? BGFX_RESET_VSYNC : BGFX_RESET_NONE) | (s_bgfx_hdr_active ? BGFX_RESET_HDR10 : 0),
+			s_bgfx_hdr_active ? bgfx::TextureFormat::RGB10A2 : bgfx::TextureFormat::Count);
+	}
 
 	// Enable debug text if requested
 	bool bgfx_debug = m_options->bgfx_debug();
@@ -460,6 +495,97 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 //============================================================
 
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+
+// Return whether Windows Advanced Color/HDR is enabled for the monitor containing this window.
+// This is deliberately queried before bgfx creates its first swapchain so Auto HDR never observes
+// a transient SDR presentation path when native HDR10 was requested.
+static bool detect_windows_hdr_active(void *nwh)
+{
+	if (nwh == nullptr)
+		return false;
+	const HMONITOR monitor = MonitorFromWindow(reinterpret_cast<HWND>(nwh), MONITOR_DEFAULTTONEAREST);
+	if (monitor == nullptr)
+		return false;
+	MONITORINFOEXW monitor_info = {};
+	monitor_info.cbSize = sizeof(monitor_info);
+	if (!GetMonitorInfoW(monitor, &monitor_info))
+		return false;
+
+	UINT32 path_count = 0, mode_count = 0;
+	if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count, &mode_count) != ERROR_SUCCESS)
+		return false;
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
+	if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths.data(), &mode_count, modes.data(), nullptr) != ERROR_SUCCESS)
+		return false;
+	paths.resize(path_count);
+
+	for (const DISPLAYCONFIG_PATH_INFO &path : paths)
+	{
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+		source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source.header.size = sizeof(source);
+		source.header.adapterId = path.sourceInfo.adapterId;
+		source.header.id = path.sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS
+			|| _wcsicmp(source.viewGdiDeviceName, monitor_info.szDevice) != 0)
+			continue;
+
+		DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO color = {};
+		color.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+		color.header.size = sizeof(color);
+		color.header.adapterId = path.targetInfo.adapterId;
+		color.header.id = path.targetInfo.id;
+		return DisplayConfigGetDeviceInfo(&color.header) == ERROR_SUCCESS && color.advancedColorEnabled;
+	}
+	return false;
+}
+
+// Query the Windows Advanced Color SDR-content white level for the monitor containing this window.
+// DISPLAYCONFIG_SDR_WHITE_LEVEL is expressed in thousandths of the canonical 80-nit SDR white, so
+// nits = value * 80 / 1000. This inbox Win32 route avoids a Windows App SDK runtime dependency.
+static float detect_sdr_white_nits(void *nwh)
+{
+	if (nwh == nullptr)
+		return 0.0f;
+	const HMONITOR monitor = MonitorFromWindow(reinterpret_cast<HWND>(nwh), MONITOR_DEFAULTTONEAREST);
+	if (monitor == nullptr)
+		return 0.0f;
+	MONITORINFOEXW monitor_info = {};
+	monitor_info.cbSize = sizeof(monitor_info);
+	if (!GetMonitorInfoW(monitor, &monitor_info))
+		return 0.0f;
+
+	UINT32 path_count = 0, mode_count = 0;
+	if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count, &mode_count) != ERROR_SUCCESS)
+		return 0.0f;
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
+	if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths.data(), &mode_count, modes.data(), nullptr) != ERROR_SUCCESS)
+		return 0.0f;
+	paths.resize(path_count);
+
+	for (const DISPLAYCONFIG_PATH_INFO &path : paths)
+	{
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+		source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source.header.size = sizeof(source);
+		source.header.adapterId = path.sourceInfo.adapterId;
+		source.header.id = path.sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS
+			|| _wcsicmp(source.viewGdiDeviceName, monitor_info.szDevice) != 0)
+			continue;
+
+		DISPLAYCONFIG_SDR_WHITE_LEVEL white = {};
+		white.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+		white.header.size = sizeof(white);
+		white.header.adapterId = path.targetInfo.adapterId;
+		white.header.id = path.targetInfo.id;
+		if (DisplayConfigGetDeviceInfo(&white.header) == ERROR_SUCCESS && white.SDRWhiteLevel > 0)
+			return 80.0f * float(white.SDRWhiteLevel) / 1000.0f;
+	}
+	return 0.0f;
+}
 
 // Ask DXGI for the panel's advertised peak luminance (DXGI_OUTPUT_DESC1.MaxLuminance) of the monitor
 // the window is on. dxgi.dll is loaded dynamically so no import-library dependency is added; local
@@ -528,12 +654,16 @@ static float detect_edr_headroom(void *nwh)
 	if (screen == nullptr)
 		return 0.0f;
 
-	// maximumPotentialExtendedDynamicRangeColorComponentValue: the display's best-case headroom
-	// (stable across brightness changes), macOS 10.15+.
-	const SEL sel = sel_registerName("maximumPotentialExtendedDynamicRangeColorComponentValue");
-	if (!reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), sel))
-		return 0.0f;
-	return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, sel));
+	// Use the currently available headroom for presentation; it reflects brightness, display mode and
+	// thermal/power limits. Fall back to the potential maximum only on older AppKit versions that do
+	// not expose the current value.
+	const SEL current_sel = sel_registerName("maximumExtendedDynamicRangeColorComponentValue");
+	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), current_sel))
+		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, current_sel));
+	const SEL potential_sel = sel_registerName("maximumPotentialExtendedDynamicRangeColorComponentValue");
+	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), potential_sel))
+		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, potential_sel));
+	return 0.0f;
 }
 
 #endif
@@ -541,6 +671,22 @@ static float detect_edr_headroom(void *nwh)
 void video_bgfx::resolve_hdr_display_peak(void *nwh)
 {
 	m_hdr_display_peak_nits = 0.0f;
+	m_sdr_white_nits = 0.0f;
+	m_effective_paper_white_nits = float(std::max(1, m_options->bgfx_hdr_paper_white()));
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+	m_sdr_white_nits = detect_sdr_white_nits(nwh);
+	if (m_sdr_white_nits > 0.0f)
+	{
+		osd_printf_verbose("BGFX: Windows SDR reference white resolved to %.1f nits\n", m_sdr_white_nits);
+		// HDR10 is absolute-nit output, so anchor MAME UI/artwork white to the same level Windows
+		// uses for SDR content. SDR output and macOS EDR remain relative and keep the option value.
+		if (s_bgfx_hdr_active && !s_bgfx_edr_active)
+			m_effective_paper_white_nits = m_sdr_white_nits;
+	}
+	else
+		osd_printf_verbose("BGFX: Windows SDR reference white query unavailable; using %0.0f nits\n",
+			m_effective_paper_white_nits);
+#endif
 	if (!m_options->bgfx_hdr())
 		return;
 
@@ -561,21 +707,23 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 		peak = detect_hdr_display_peak_nits(nwh);
 		if (peak <= 0.0f)
-			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: DXGI query failed, assuming 1000 nits\n");
+			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: DXGI query failed; keeping chain HDR defaults\n");
 #elif defined(__APPLE__)
-		// EDR works in headroom (multiples of SDR white) rather than absolute nits; converting via
-		// paper_white keeps the single downstream derivation (beam at 55% of "peak") correct, since
-		// the EDR present divides by paper_white again.
+		// EDR works in headroom (multiples of SDR white) rather than absolute nits. Converting through
+		// paper white lets the shared auto-calibration keep normal beam/SDR-white ratio stable while
+		// reserving the remaining EDR headroom for overlaps and overload.
 		const float headroom = detect_edr_headroom(nwh);
 		if (headroom > 1.0f)
-			peak = headroom * float(m_options->bgfx_hdr_paper_white());
+		{
+			osd_printf_verbose("BGFX: macOS current EDR headroom resolved to %.2fx SDR white\n", headroom);
+			peak = headroom * m_effective_paper_white_nits;
+		}
 		else
-			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: EDR headroom query failed, assuming 1000 nits\n");
+			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: EDR headroom query failed; keeping chain HDR defaults\n");
 #else
-		osd_printf_warning("BGFX: bgfx_hdr_display_peak auto is not supported on this platform, assuming 1000 nits\n");
+		osd_printf_warning("BGFX: bgfx_hdr_display_peak auto is not supported on this platform; keeping chain HDR defaults\n");
 #endif
-		if (peak <= 0.0f)
-			peak = 1000.0f;
+
 	}
 	else
 	{
@@ -985,6 +1133,7 @@ int renderer_bgfx::create()
 	// HDR auto-config: hand over the resolved display peak before the first load_chains() so the
 	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win).
 	m_chains->set_hdr_display_peak(m_module().hdr_display_peak_nits());
+	m_chains->set_hdr_paper_white(m_module().paper_white_nits());
 	m_sliders_dirty = true;
 
 	uint32_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
@@ -3798,11 +3947,11 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
-			// Convergence bloom is reserved for genuinely massive local beam convergence. Ordinary
-			// overloaded projectiles keep their normal per-line overload glow, but cannot bridge into a
-			// giant envelope. Connected components are formed only from cells already over the density
-			// threshold, then gated by the number of hot cells and vector/cell hits supporting that core.
-			struct convergence_bloom { float x, y, magnitude, radius, r, g, b, peak; };
+			// Convergence bloom is driven by excess energy deposited on the phosphor, not by recognising
+			// a particular game object or shape. Compact local maxima (projectiles, small convergences)
+			// get a narrow, weak bloom of their own; only a genuinely large energetic region becomes the
+			// broad boundary bloom used by events such as the Death Star explosion.
+			struct convergence_bloom { float x, y, magnitude, radius, r, g, b, peak, falloff_scale; };
 			static constexpr int MAX_CONVERGENCE_BLOOMS = 8;
 			std::vector<convergence_bloom> conv_blooms;
 			const bool conv_on = m_line_analytic && m_vs.convergence_bloom_gain > 0.0f;
@@ -3849,35 +3998,49 @@ int renderer_bgfx::draw(int update)
 					if (is_point) over *= std::max(1.0f, m_vs.overload_dot_gain);
 					over = std::clamp(over, 0.0f, 4.0f);
 					if (over <= 0.0f) continue;
-					const int steps = std::max(1, int(std::ceil(std::max(fabsf(dx) / cell_w, fabsf(dy) / cell_h))));
-					int previous = -1;
-					for (int step = 0; step <= steps; step++)
+					// Integrate excess energy along the actual phosphor path. The old one-hit-per-cell
+					// accounting gave a very short Vectrex character stroke the same support as a line
+					// crossing an entire cell. Normalising by the cell diagonal retains approximately the
+					// old scale for a full-cell traversal while making short strokes proportionally weaker.
+					const float cell_diagonal = sqrtf(cell_w * cell_w + cell_h * cell_h);
+					const int steps = is_point ? 1 : std::max(1,
+						int(std::ceil(std::max(fabsf(dx) / cell_w, fabsf(dy) / cell_h))));
+					const float path_weight = is_point ? 1.0f : len / (float(steps) * cell_diagonal);
+					for (int step = 0; step < steps; step++)
 					{
-						const float t = float(step) / float(steps);
+						const float t = is_point ? 0.0f : (float(step) + 0.5f) / float(steps);
 						const float x = p->bounds.x0 + dx * t, y = p->bounds.y0 + dy * t;
 						const int ix = std::clamp(int(x / cell_w), 0, CONV_W - 1);
 						const int iy = std::clamp(int(y / cell_h), 0, CONV_H - 1);
 						const int cell = iy * CONV_W + ix;
-						if (cell == previous) continue;
-						previous = cell;
-						heat[cell] += over;
-						sum_r[cell] += p->color.r * over;
-						sum_g[cell] += p->color.g * over;
-						sum_b[cell] += p->color.b * over;
+						const float deposited = over * path_weight;
+						heat[cell] += deposited;
+						sum_r[cell] += p->color.r * deposited;
+						sum_g[cell] += p->color.g * deposited;
+						sum_b[cell] += p->color.b * deposited;
 						if (hit_count[cell] != std::numeric_limits<uint16_t>::max()) hit_count[cell]++;
 						if (has_direction)
 						{
-							tan_xx[cell] += dir_x * dir_x;
-							tan_xy[cell] += dir_x * dir_y;
-							tan_yy[cell] += dir_y * dir_y;
-							tan_bx[cell] += dir_x * tangent_rhs;
-							tan_by[cell] += dir_y * tangent_rhs;
+							tan_xx[cell] += deposited * dir_x * dir_x;
+							tan_xy[cell] += deposited * dir_x * dir_y;
+							tan_yy[cell] += deposited * dir_y * dir_y;
+							tan_bx[cell] += deposited * dir_x * tangent_rhs;
+							tan_by[cell] += deposited * dir_y * tangent_rhs;
 						}
 					}
 				}
 
+				// The macro field integrates a broad, individually sub-threshold ring at half the local
+				// threshold. Local blooms still require the full threshold, so lowering the macro field
+				// does not make ordinary text/projectiles visibly bloom by itself.
+				const float macro_threshold = 0.5f * threshold;
 				std::array<uint8_t, CONV_W * CONV_H> hot = {};
-				for (int i = 0; i < CONV_W * CONV_H; i++) hot[i] = heat[i] > threshold;
+				std::array<uint8_t, CONV_W * CONV_H> local_hot = {};
+				for (int i = 0; i < CONV_W * CONV_H; i++)
+				{
+					hot[i] = heat[i] > macro_threshold;
+					local_hot[i] = heat[i] > threshold;
+				}
 				std::array<int16_t, CONV_W * CONV_H> label;
 				std::array<int16_t, CONV_W * CONV_H> queue = {};
 				label.fill(-1);
@@ -3908,6 +4071,12 @@ int renderer_bgfx::draw(int update)
 				const float knee = std::max(0.01f, m_vs.convergence_bloom_knee);
 				const float min_support = std::max(0.0f, m_vs.convergence_bloom_min_support);
 				const float manual_radius = m_vs.convergence_bloom_source_radius * (m_vec_res_w / 1920.0f);
+				const float cell_diagonal = sqrtf(cell_w * cell_w + cell_h * cell_h);
+				std::vector<uint8_t> macro_component(size_t(components), 0);
+
+				// Macro stage: a physically large hot area receives the broad boundary bloom. Requiring
+				// spatial extent prevents several compact projectiles from becoming one giant envelope;
+				// unlike the previous direction-isotropy test, this does not privilege circular/radial art.
 				for (int component = 0; component < components; component++)
 				{
 					float centre_x = 0.0f, centre_y = 0.0f;
@@ -3923,10 +4092,10 @@ int renderer_bgfx::draw(int update)
 						fit_bx += tan_bx[cell]; fit_by += tan_by[cell];
 						if (hottest < 0 || heat[cell] > heat[hottest]) hottest = cell;
 					}
-					if (!occupied || hottest < 0) continue;
+					if (occupied < 24 || hottest < 0) continue;
 
-					// The support gate rejects ordinary projectiles even if several of them happen to touch.
-					// A 15% smooth knee prevents the dense explosion from popping abruptly at the boundary.
+					// Min Support now controls only the transition into a broad macro bloom. Compact
+					// candidates remain eligible for the weak local stage below instead of popping on/off.
 					const float support = float(occupied) * sqrtf(float(hits));
 					float support_response = 1.0f;
 					if (min_support > 0.0f)
@@ -3938,20 +4107,11 @@ int renderer_bgfx::draw(int update)
 					}
 					if (support_response <= 0.0f) continue;
 
-					// Three overlapping enemy shots have enough samples to pass support alone, but their
-					// directions are nearly isotropic. Moderate candidates must retain the directional
-					// coherence of a circular sweep; an extremely supported explosion bypasses this gate.
-					const float trace = fit_xx + fit_yy;
-					const float discr = sqrtf(std::max(0.0f,
-						(fit_xx - fit_yy) * (fit_xx - fit_yy) + 4.0f * fit_xy * fit_xy));
-					const float direction_isotropy = (trace > 1e-4f) ? (trace - discr) / (trace + discr) : 1.0f;
-					if (min_support > 0.0f && support < 4.0f * min_support && direction_isotropy > 0.65f)
-						continue;
-
-					// Fallback is the hot-cell centroid. For circular/arc geometry, intersect the segment
-					// normals in least squares. Unlike the centroid, this stays at the true circle centre
-					// when only the deliberately bright upper-right arc survives the density threshold.
+					// Fallback is the hot-cell centroid. Where the deposited paths do have a stable common
+					// centre, the tangent least-squares fit keeps a partial bright arc from pulling the bloom.
+					// It refines placement only; it is not a shape acceptance test.
 					centre_x /= float(occupied); centre_y /= float(occupied);
+					const float trace = fit_xx + fit_yy;
 					const float determinant = fit_xx * fit_yy - fit_xy * fit_xy;
 					const float determinant_norm = (trace > 1e-4f) ? determinant / (trace * trace) : 0.0f;
 					if (determinant_norm > 0.02f)
@@ -3978,16 +4138,12 @@ int renderer_bgfx::draw(int update)
 					std::sort(radii.begin(), radii.end());
 					const size_t outer_i = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.875f + 0.5f));
 					const size_t inner_i = std::min(radii.size()-1, size_t(float(radii.size()-1)*0.125f + 0.5f));
-					const float cell_diagonal = sqrtf(cell_w*cell_w + cell_h*cell_h);
 					const float auto_outer_radius = radii[outer_i] + 0.5f * cell_diagonal;
 					const float auto_inner_radius = std::max(0.0f, radii[inner_i] - 0.5f * cell_diagonal);
 					float radius = manual_radius > 0.0f ? manual_radius : auto_outer_radius;
 					radius = std::min(radius, 0.45f * std::min(sw, sh));
 
-					// A genuinely thick annulus has two optical boundaries. Emit a weaker inner ring only
-					// when the radial distribution has a clear central hole and enough thickness to rule out
-					// grid quantisation of an ordinary thin circle. Manual radius remains a single-ring mode.
-					const bool split_annulus = manual_radius <= 0.0f && occupied >= 24
+					const bool split_annulus = manual_radius <= 0.0f
 						&& auto_inner_radius > 1.5f * cell_diagonal
 						&& auto_outer_radius - auto_inner_radius > 2.25f * cell_diagonal;
 					const float signal = heat[hottest] - threshold;
@@ -3997,15 +4153,90 @@ int renderer_bgfx::draw(int update)
 					const float bloom_r = sum_r[hottest]/colour_peak;
 					const float bloom_g = sum_g[hottest]/colour_peak;
 					const float bloom_b = sum_b[hottest]/colour_peak;
+					macro_component[size_t(component)] = 1;
 					conv_blooms.push_back({centre_x,centre_y,magnitude,radius,
-						bloom_r,bloom_g,bloom_b,heat[hottest]});
+						bloom_r,bloom_g,bloom_b,heat[hottest],1.0f});
 					if (split_annulus && conv_blooms.size() < MAX_CONVERGENCE_BLOOMS)
 					{
-						// Inner-boundary scatter is visible but weaker than the exposed outer surface.
 						conv_blooms.push_back({centre_x,centre_y,0.4f*magnitude,auto_inner_radius,
-							bloom_r,bloom_g,bloom_b,0.99f*heat[hottest]});
+							bloom_r,bloom_g,bloom_b,0.99f*heat[hottest],1.0f});
 					}
 				}
+
+				// Local stage: find independent excess-energy peaks instead of using a component's outer
+				// bounds. Each compact projectile therefore gets a small bloom; nearby projectiles do not
+				// inflate one shared radius. The smooth excess integral has no object-count cutoff.
+				struct local_candidate { int cell; float peak; };
+				std::vector<local_candidate> local_candidates;
+				for (int cell = 0; cell < CONV_W * CONV_H; cell++)
+				{
+					if (!local_hot[cell] || label[cell] < 0 || macro_component[size_t(label[cell])]) continue;
+					const int cx = cell % CONV_W, cy = cell / CONV_W;
+					bool maximum = true;
+					for (int oy = -1; oy <= 1 && maximum; oy++) for (int ox = -1; ox <= 1; ox++)
+					{
+						if (!ox && !oy) continue;
+						const int xx = cx + ox, yy = cy + oy;
+						if (xx < 0 || xx >= CONV_W || yy < 0 || yy >= CONV_H) continue;
+						const int neighbour = yy * CONV_W + xx;
+						if (heat[neighbour] > heat[cell]
+							|| (heat[neighbour] == heat[cell] && neighbour < cell)) maximum = false;
+					}
+					if (maximum) local_candidates.push_back({cell,heat[cell]});
+				}
+				std::sort(local_candidates.begin(), local_candidates.end(),
+					[](const local_candidate &a, const local_candidate &b) { return a.peak > b.peak; });
+				std::array<uint8_t, CONV_W * CONV_H> local_suppressed = {};
+				for (const local_candidate &candidate : local_candidates)
+				{
+					if (conv_blooms.size() >= MAX_CONVERGENCE_BLOOMS || local_suppressed[candidate.cell]) continue;
+					const int pcx = candidate.cell % CONV_W, pcy = candidate.cell / CONV_W;
+					float excess_sum = 0.0f, wx = 0.0f, wy = 0.0f;
+					float colour_r = 0.0f, colour_g = 0.0f, colour_b = 0.0f;
+					for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
+					{
+						const int xx = pcx + ox, yy = pcy + oy;
+						if (xx < 0 || xx >= CONV_W || yy < 0 || yy >= CONV_H) continue;
+						const int cell = yy * CONV_W + xx;
+						const float excess = std::max(0.0f, heat[cell] - threshold);
+						if (excess <= 0.0f) continue;
+						const float x = (float(xx) + 0.5f) * cell_w;
+						const float y = (float(yy) + 0.5f) * cell_h;
+						excess_sum += excess; wx += excess * x; wy += excess * y;
+						colour_r += sum_r[cell]; colour_g += sum_g[cell]; colour_b += sum_b[cell];
+					}
+					if (excess_sum <= 0.0f) continue;
+					const float centre_x = wx / excess_sum, centre_y = wy / excess_sum;
+					float radial_sum = 0.0f;
+					for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
+					{
+						const int xx = pcx + ox, yy = pcy + oy;
+						if (xx < 0 || xx >= CONV_W || yy < 0 || yy >= CONV_H) continue;
+						const int cell = yy * CONV_W + xx;
+						const float excess = std::max(0.0f, heat[cell] - threshold);
+						const float x = (float(xx) + 0.5f) * cell_w;
+						const float y = (float(yy) + 0.5f) * cell_h;
+						radial_sum += excess * ((x-centre_x)*(x-centre_x) + (y-centre_y)*(y-centre_y));
+					}
+					const float auto_radius = std::clamp(sqrtf(radial_sum / excess_sum) + 0.35f * cell_diagonal,
+						0.35f * cell_diagonal, 1.5f * cell_diagonal);
+					const float radius = manual_radius > 0.0f ? manual_radius : auto_radius;
+					const float energy_response = -expm1f(-(candidate.peak - threshold) / knee);
+					const float local_response = -expm1f(-excess_sum / std::max(knee, threshold));
+					const float magnitude = 0.22f * m_vs.convergence_bloom_gain * energy_response * local_response;
+					if (magnitude <= 1e-4f) continue;
+					const float colour_peak = std::max({colour_r,colour_g,colour_b,1e-4f});
+					conv_blooms.push_back({centre_x,centre_y,magnitude,radius,
+						colour_r/colour_peak,colour_g/colour_peak,colour_b/colour_peak,candidate.peak,0.35f});
+					for (int oy = -2; oy <= 2; oy++) for (int ox = -2; ox <= 2; ox++)
+					{
+						if (ox*ox + oy*oy > 4) continue;
+						const int xx = pcx + ox, yy = pcy + oy;
+						if (xx >= 0 && xx < CONV_W && yy >= 0 && yy < CONV_H)
+							local_suppressed[yy * CONV_W + xx] = 1;
+					}
+				}
+
 				std::sort(conv_blooms.begin(), conv_blooms.end(),
 					[](const convergence_bloom &a, const convergence_bloom &b) { return a.peak > b.peak; });
 				if (conv_blooms.size() > MAX_CONVERGENCE_BLOOMS) conv_blooms.resize(MAX_CONVERGENCE_BLOOMS);
@@ -4135,10 +4366,11 @@ int renderer_bgfx::draw(int update)
 							if (conv_alloc)
 							{
 								AnalyticLineVertex *cv = reinterpret_cast<AnalyticLineVertex *>(conv_tvb.data);
-								const float falloff = std::max(1.0f, m_vs.convergence_bloom_falloff * (m_vec_res_w / 1920.0f));
+								const float base_falloff = std::max(1.0f, m_vs.convergence_bloom_falloff * (m_vec_res_w / 1920.0f));
 								for (size_t bloom_index = 0; bloom_index < conv_blooms.size(); bloom_index++)
 								{
 									const convergence_bloom &bloom = conv_blooms[bloom_index];
+									const float falloff = std::max(1.0f, base_falloff * bloom.falloff_scale);
 									const float pad = bloom.radius + 3.5f * falloff + 0.5f;
 									const uint32_t rgba = u32Color(uint32_t(std::clamp(bloom.r,0.0f,1.0f)*255.0f+0.5f),
 										uint32_t(std::clamp(bloom.g,0.0f,1.0f)*255.0f+0.5f),
@@ -4781,7 +5013,7 @@ int renderer_bgfx::draw(int update)
 			const float w = float(s_width[0]);
 			const float h = float(s_height[0]);
 			const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
-			const float paper_white = float(m_module().options().bgfx_hdr_paper_white());
+			const float paper_white = m_module().paper_white_nits();
 			// Keep the HDR beam calibration in absolute nits, but give SDR its own normalized
 			// beam level. Reusing beam_peak in SDR made a nominal beam 330/200 = 1.65 with
 			// the common defaults, clipping it before useful SDR-only shaping could occur.
@@ -4948,7 +5180,7 @@ int renderer_bgfx::draw(int update)
 			{
 				float vals[4] = {
 					m_chains->slider_value(0, "beam_peak_nits", 1000.0f),
-					float(m_module().options().bgfx_hdr_paper_white()),
+					m_module().paper_white_nits(),
 					s_bgfx_hdr_active ? 1.0f : 0.0f,
 					s_bgfx_edr_active ? 1.0f : 0.0f };
 				hp->set(vals, sizeof(float) * 4);
