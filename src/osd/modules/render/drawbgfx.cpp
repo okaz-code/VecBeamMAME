@@ -654,16 +654,29 @@ static float detect_edr_headroom(void *nwh)
 	if (screen == nullptr)
 		return 0.0f;
 
-	// Use the currently available headroom for presentation; it reflects brightness, display mode and
-	// thermal/power limits. Fall back to the potential maximum only on older AppKit versions that do
-	// not expose the current value.
+	// Prefer currently available headroom because it reflects brightness, display mode and thermal/
+	// power limits.  Before the CAMetalLayer requests EDR, however, some macOS versions report 1.0
+	// here even on an XDR display.  In that bootstrap state consult the potential value as capability;
+	// otherwise the SDR decision prevents the EDR layer from ever being enabled (a circular test).
 	const SEL current_sel = sel_registerName("maximumExtendedDynamicRangeColorComponentValue");
+	float current = 0.0f;
 	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), current_sel))
-		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, current_sel));
+		current = float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, current_sel));
+	if (current > 1.0f)
+		return current;
+
 	const SEL potential_sel = sel_registerName("maximumPotentialExtendedDynamicRangeColorComponentValue");
 	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), potential_sel))
-		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, potential_sel));
-	return 0.0f;
+	{
+		const float potential = float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, potential_sel));
+		if (potential > current)
+		{
+			osd_printf_verbose("BGFX: macOS EDR current headroom %.2f; using potential headroom %.2f for bootstrap\n",
+				current, potential);
+			return potential;
+		}
+	}
+	return current;
 }
 
 #endif
