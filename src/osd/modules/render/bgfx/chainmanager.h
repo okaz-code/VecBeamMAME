@@ -136,11 +136,15 @@ public:
 	// Recreate the active chain while preserving slider values, clearing temporal FBO history.
 	void request_temporal_reset();
 
-	// HDR auto-config: the display peak luminance (nits) resolved from the bgfx_hdr_display_peak
-	// option (numeric, or OS-detected for "auto"); 0 = feature off. When set, load_chains() derives
-	// beam_peak_nits / hdr_rolloff_max slider values from it (see apply_hdr_auto). Set once by the
-	// renderer right after construction, before the first load_chains().
-	void set_hdr_display_peak(float nits) { m_hdr_display_peak = nits; }
+	// HDR auto-config calibration peak. This is an absolute display peak where the platform exposes
+	// one, or a nominal paper-white scale for relative macOS EDR auto. When set, load_chains()
+	// derives beam_peak_nits / hdr_rolloff_max slider values from it (see apply_hdr_auto). Set once
+	// by the renderer right after construction, before the first load_chains().
+	void set_hdr_display_peak(float nits, bool absolute = true)
+	{
+		m_hdr_display_peak = nits;
+		m_hdr_display_peak_absolute = absolute;
+	}
 	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
 
 private:
@@ -247,9 +251,10 @@ private:
 	int32_t                         m_reload_slider_id = 0;
 	std::vector<std::vector<float>> m_reload_saved_settings;
 
-	// HDR auto-config display peak (nits); see set_hdr_display_peak().
+	// HDR auto-config calibration peak; absolute nits when known, nominal paper-white units for EDR auto.
 	float                           m_hdr_display_peak = 0.0f;
 	float                           m_hdr_paper_white = 200.0f;
+	bool                            m_hdr_display_peak_absolute = true;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;

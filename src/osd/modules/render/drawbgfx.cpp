@@ -92,13 +92,19 @@ public:
 	util::xml::data_node &persistent_settings() { return *m_persistent_settings; }
 	osd_options const &options() const { return *m_options; }
 	uint32_t max_texture_size() const { return m_max_texture_size; }
-	// HDR auto-config: display peak (nits) resolved from bgfx_hdr_display_peak at library init
-	// (numeric, or OS query for "auto"); 0 = feature off. Renderers hand it to their chain_manager.
+	// HDR auto-config: absolute display peak when known, plus a calibration scale used by chains.
+	// macOS auto only exposes relative EDR headroom, so it deliberately has no absolute peak.
 	float hdr_display_peak_nits() const { return m_hdr_display_peak_nits; }
+	float hdr_calibration_peak_nits() const { return m_hdr_calibration_peak_nits; }
 	// Effective SDR reference/paper white. On Windows HDR this follows the OS SDR-content level;
 	// elsewhere it retains -bgfx_hdr_paper_white because no absolute SDR-white API is available.
 	float paper_white_nits() const { return m_effective_paper_white_nits; }
 	float detected_sdr_white_nits() const { return m_sdr_white_nits; }
+	// macOS EDR is expressed relative to the screen's current reference white. With an explicit
+	// display peak, peak/headroom recovers that physical scale; auto remains headroom-relative.
+	float edr_reference_white_nits() const { return m_edr_reference_white_nits; }
+	float edr_headroom() const { return m_edr_headroom; }
+	bool hdr_display_peak_is_absolute() const { return m_hdr_display_peak_absolute; }
 
 	template <typename T>
 	util::notifier_subscription subscribe_load(void (T::*func)(util::xml::data_node const &), T *obj)
@@ -134,9 +140,13 @@ protected:
 	util::xml::file::ptr m_persistent_settings;
 	osd_options const *m_options;
 	uint32_t m_max_texture_size;
-	float m_hdr_display_peak_nits = 0.0f;   // see hdr_display_peak_nits()
+	float m_hdr_display_peak_nits = 0.0f;   // absolute peak only; see hdr_display_peak_nits()
+	float m_hdr_calibration_peak_nits = 0.0f; // absolute nits, or nominal paper-white units for EDR auto
 	float m_sdr_white_nits = 0.0f;
 	float m_effective_paper_white_nits = 200.0f;
+	float m_edr_reference_white_nits = 200.0f;
+	float m_edr_headroom = 0.0f;
+	bool m_hdr_display_peak_absolute = false;
 
 private:
 	friend class parent_module_holder;
@@ -687,8 +697,12 @@ static float detect_edr_headroom(void *nwh)
 void video_bgfx::resolve_hdr_display_peak(void *nwh)
 {
 	m_hdr_display_peak_nits = 0.0f;
+	m_hdr_calibration_peak_nits = 0.0f;
 	m_sdr_white_nits = 0.0f;
 	m_effective_paper_white_nits = float(std::max(1, m_options->bgfx_hdr_paper_white()));
+	m_edr_reference_white_nits = m_effective_paper_white_nits;
+	m_edr_headroom = 0.0f;
+	m_hdr_display_peak_absolute = false;
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 	m_sdr_white_nits = detect_sdr_white_nits(nwh);
 	if (m_sdr_white_nits > 0.0f)
@@ -725,13 +739,13 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 		if (peak <= 0.0f)
 			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: DXGI query failed; keeping chain HDR defaults\n");
 #elif defined(__APPLE__)
-		// EDR works in headroom (multiples of SDR white) rather than absolute nits. Converting through
-		// paper white lets the shared auto-calibration keep normal beam/SDR-white ratio stable while
-		// reserving the remaining EDR headroom for overlaps and overload.
+		// NSScreen exposes a ratio, not absolute luminance. Keep auto calibration in the same nominal
+		// paper-white units, but do not present the product as a measured physical display peak.
 		const float headroom = detect_edr_headroom(nwh);
 		if (headroom > 1.0f)
 		{
 			osd_printf_verbose("BGFX: macOS current EDR headroom resolved to %.2fx SDR white\n", headroom);
+			m_edr_headroom = headroom;
 			peak = headroom * m_effective_paper_white_nits;
 		}
 		else
@@ -748,12 +762,42 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 			peak = 0.0f;
 	}
 
-	if (peak > 0.0f && peak < 400.0f)
+#if defined(__APPLE__)
+	if (s_bgfx_edr_active && peak > 0.0f && peak_opt != OSDOPTVAL_AUTO)
+	{
+		const float headroom = detect_edr_headroom(nwh);
+		if (headroom > 1.0f)
+		{
+			m_edr_headroom = headroom;
+			m_edr_reference_white_nits = peak / headroom;
+			m_hdr_display_peak_absolute = true;
+			osd_printf_verbose(
+					"BGFX: macOS EDR absolute calibration: peak=%.0f nits, headroom=%.2fx, reference white=%.1f nits\n",
+					peak, headroom, m_edr_reference_white_nits);
+		}
+		else
+			osd_printf_warning("BGFX: macOS EDR headroom unavailable; using nominal paper-white scaling\n");
+	}
+#else
+	m_hdr_display_peak_absolute = peak > 0.0f;
+#endif
+
+	if (peak > 0.0f && peak < 400.0f && (m_hdr_display_peak_absolute || !s_bgfx_edr_active))
 		osd_printf_warning("BGFX: bgfx_hdr_display_peak %.0f nits is very low for an HDR display\n", peak);
 	if (peak > 0.0f)
-		osd_printf_verbose("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
-				(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
-	m_hdr_display_peak_nits = peak;
+	{
+#if defined(__APPLE__)
+		if (s_bgfx_edr_active && peak_opt == OSDOPTVAL_AUTO)
+			osd_printf_verbose(
+					"BGFX: macOS EDR auto calibration scale %.0f nominal nits; absolute display peak is unknown\n",
+					peak);
+		else
+#endif
+			osd_printf_verbose("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
+					(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
+	}
+	m_hdr_calibration_peak_nits = peak;
+	m_hdr_display_peak_nits = m_hdr_display_peak_absolute ? peak : 0.0f;
 }
 
 
@@ -1157,7 +1201,9 @@ int renderer_bgfx::create()
 			max_prescale_size);
 	// HDR auto-config: hand over the resolved display peak before the first load_chains() so the
 	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win).
-	m_chains->set_hdr_display_peak(m_module().hdr_display_peak_nits());
+	m_chains->set_hdr_display_peak(
+			m_module().hdr_calibration_peak_nits(),
+			m_module().hdr_display_peak_is_absolute());
 	m_chains->set_hdr_paper_white(m_module().paper_white_nits());
 	m_sliders_dirty = true;
 
@@ -5437,9 +5483,12 @@ int renderer_bgfx::draw(int update)
 			bgfx_uniform *hp = m_hdr_present_effect->uniform("u_hdr_params");
 			if (hp)
 			{
+				const float output_reference_white = s_bgfx_edr_active
+					? m_module().edr_reference_white_nits()
+					: m_module().paper_white_nits();
 				float vals[4] = {
 					m_chains->slider_value(0, "beam_peak_nits", 1000.0f),
-					m_module().paper_white_nits(),
+					output_reference_white,
 					s_bgfx_hdr_active ? 1.0f : 0.0f,
 					s_bgfx_edr_active ? 1.0f : 0.0f };
 				hp->set(vals, sizeof(float) * 4);
@@ -5559,7 +5608,9 @@ void renderer_bgfx::process_hdr_diagnostics()
 	const float rolloff_knee = m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f) * beam_peak;
 	const float rolloff_ceil = m_chains->slider_value(0, "hdr_rolloff_max", 1.3f) * beam_peak;
 	const float sat_protect = m_chains->slider_value(0, "hdr_sat_protect", 0.0f);
-	float display_peak = m_module().hdr_display_peak_nits();
+	float display_peak = m_module().hdr_display_peak_is_absolute()
+		? m_module().hdr_display_peak_nits()
+		: m_module().hdr_calibration_peak_nits();
 	if (display_peak <= 0.0f)
 		display_peak = rolloff_ceil;
 	const float hot_threshold = 0.8f * display_peak;
@@ -5613,17 +5664,47 @@ void renderer_bgfx::process_hdr_diagnostics()
 	while (!top.empty()) { top_sum += top.top(); top.pop(); }
 	const double pixel_count = double(std::max<size_t>(1, m_hdr_diag_pixels.size()));
 	const float usage = display_peak > 0.0f ? 100.0f * post_peak / display_peak : 0.0f;
-	const float headroom = m_module().paper_white_nits() > 0.0f
-		? display_peak / m_module().paper_white_nits() : 0.0f;
+	const float edr_reference = m_module().edr_reference_white_nits();
+	const float headroom = s_bgfx_edr_active
+		? m_module().edr_headroom()
+		: (m_module().paper_white_nits() > 0.0f
+			? display_peak / m_module().paper_white_nits() : 0.0f);
 	const char *mode = s_bgfx_edr_active ? "macOS EDR" : (s_bgfx_hdr_active ? "HDR10" : "SDR fallback");
-	window().machine().ui().set_hdr_diagnostic_text(util::string_format(
-		"HDR diagnostic (%s)\nDisplay peak: %.0f nits  Headroom: %.2fx\n"
-		"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
-		"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
-		"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
-		mode, display_peak, headroom, beam_peak, pre_peak, post_peak, usage,
-		unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
-		(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
+	if (s_bgfx_edr_active && !m_module().hdr_display_peak_is_absolute())
+	{
+		const float inv_reference = 1.0f / std::max(edr_reference, 1.0f);
+		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
+			"HDR diagnostic (macOS EDR, relative)\nAbsolute display peak: unknown  Available headroom: %.2fx\n"
+			"Beam peak: %.2fx  Pre-rolloff max: %.2fx\n"
+			"Post-rolloff max: %.2fx (%.1f%% headroom)  Top %u avg: %.2fx\n"
+			"Pixels >=80%% headroom: %llu  Frame avg: %.3fx",
+			headroom, beam_peak * inv_reference, pre_peak * inv_reference,
+			post_peak * inv_reference, usage, unsigned(top_count),
+			(top_count ? float(top_sum / double(top_count)) : 0.0f) * inv_reference,
+			(unsigned long long)hot_pixels, float(post_sum / pixel_count) * inv_reference));
+	}
+	else if (s_bgfx_edr_active)
+	{
+		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
+			"HDR diagnostic (macOS EDR, absolute)\nDisplay peak: %.0f nits  Reference white: %.1f nits  Headroom: %.2fx\n"
+			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
+			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
+			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
+			display_peak, edr_reference, headroom, beam_peak, pre_peak, post_peak, usage,
+			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
+			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
+	}
+	else
+	{
+		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
+			"HDR diagnostic (%s)\nDisplay peak: %.0f nits  Headroom: %.2fx\n"
+			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
+			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
+			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
+			mode, display_peak, headroom, beam_peak, pre_peak, post_peak, usage,
+			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
+			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
+	}
 }
 
 void renderer_bgfx::update_hdr_diagnostics()

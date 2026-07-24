@@ -6,7 +6,7 @@ $input v_color0, v_texcoord0
 // (vector + artwork). Encode it for the backbuffer: Rec.2020 + ST.2084 PQ for an HDR10
 // swapchain (Windows/DXGI), linear extended for macOS EDR, or gamma (paper_white -> 1.0)
 // for the SDR fallback.
-// u_hdr_params = (beam_peak, paper_white, hdr_active, edr_active)
+// u_hdr_params = (beam_peak, output_reference_white, hdr_active, edr_active)
 
 #include "common.sh"
 
@@ -19,7 +19,7 @@ uniform vec4 u_sdr_rolloff;      // (knee, ceiling, shadow_curve, 0) SDR-only, p
 
 void main()
 {
-	float paper_white = u_hdr_params.y;
+	float output_reference_white = u_hdr_params.y;
 	bool  hdr         = u_hdr_params.z > 0.5;
 	bool  edr         = u_hdr_params.w > 0.5;   // macOS EDR: linear extended output instead of PQ
 
@@ -64,13 +64,14 @@ void main()
 	{
 		// macOS EDR (extendedLinearSRGB colorspace): the compositor expects LINEAR values where
 		// 1.0 == SDR reference white and values >1.0 use the display's HDR headroom. The working
-		// target is in absolute nits with the artwork/backdrop seeded at paper_white nits, so
-		// normalising by paper_white maps SDR white -> 1.0 and over-bright vectors (overload,
-		// additive crossings) into the headroom. No PQ and no gamma encode: the layer colorspace
-		// applies the display transfer, so this is also correct on non-EDR displays where the
+		// target is in nominal/absolute nits. Numeric macOS peak calibration supplies the physical
+		// EDR reference-white scale; relative auto mode supplies the nominal paper-white scale.
+		// Over-bright vectors and additive crossings therefore map into the available headroom.
+		// No PQ and no gamma encode: the layer colorspace applies the display transfer, so this is
+		// also correct on non-EDR displays where the
 		// >1.0 portion simply clips to SDR white. (709 primaries == sRGB primaries, so the P22
 		// phosphor-gamut push below is skipped for EDR; it targets the Rec.2020 PQ container.)
-		outc = L / max(paper_white, 1.0);
+		outc = L / max(output_reference_white, 1.0);
 	}
 	else if (hdr)
 	{
@@ -99,7 +100,7 @@ void main()
 	}
 	else
 	{
-		vec3 Ln = L / max(paper_white, 1.0);   // 1.0 = SDR reference white
+		vec3 Ln = L / max(output_reference_white, 1.0);   // 1.0 = SDR reference white
 
 		// SDR-only highlight shoulder: the roll-off above (u_hdr_rolloff) is anchored to beam_peak,
 		// tuned for HDR's absolute-nits headroom - it typically still leaves values above paper_white
