@@ -59,6 +59,7 @@
 		{"type":"float","name":"deflection_settle","text":"Deflection Settle (us)","default":5.0,"min":0.5,"max":30.0,"step":0.5,"format":"%2.1f","screen":"vector"},
 		{"type":"float","name":"deflection_damping","text":"Deflection Damping","default":0.5,"min":0.05,"max":1.5,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"]},
+		{"type":"float","name":"scan_variation","text":"Untimed Scan Variation (%)","default":0.0,"min":0.0,"max":100.0,"step":5.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"energy_infl","text":"Energy Influence","default":0.6,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"energy_speed_norm","text":"Energy Speed Norm (scr/ms)","default":0.6,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"energy_curve","text":"Energy Curve","default":1.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},

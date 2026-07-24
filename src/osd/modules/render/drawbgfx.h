@@ -187,6 +187,9 @@ private:
 	//   dots parked at one spot (the Vectrex driver model's "Dwell accum limit" equivalent).
 	std::unordered_map<const render_primitive*, float> m_stroke_speed;
 	std::unordered_map<const render_primitive*, float> m_dwell_scale;
+	// Optional display-list arrival attenuation for untimed vector sources. Built once per frame from
+	// cumulative segment length; values affect final light deposit only, never energy or beam width.
+	std::unordered_map<const render_primitive*, float> m_scan_attenuation;
 
 public:
 	// Per-frame cache of every chain slider the per-vector hot paths read. slider_value() is a
@@ -237,6 +240,7 @@ public:
 		float energy_jitter_ramp = 0.5f;
 		float energy_line_max = 4.0f;
 		float energy_model = 0.0f;
+		float scan_variation = 0.0f;  // untimed list-arrival variation, percent; 0 = disabled
 		float energy_obj_knee = 0.75f;
 		float energy_obj_lift = 0.0f;     // 0 = off (chains without the slider unchanged)
 		float energy_obj_max = 3.0f;
@@ -342,7 +346,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -481,10 +485,23 @@ private:
 	uint32_t m_vec_prev_frame_id = 0;
 	bool m_vec_frame_advanced = false;
 	uint32_t m_vec_playback_reset = 0; // last MVEC discontinuity serial whose temporal history was cleared
-	// Resolution basis for beam width / bloom / defocus scaling: width of the exact full-screen
-	// VECTORBUF background quad after layout, rotation and aspect-fit transforms. This avoids both
-	// pillarbox over-scaling and scene-dependent under-scaling on sparse screens.
+	// Exact VECTORBUF face dimensions after layout, rotation and aspect-fit transforms. Spot-size
+	// controls retain their historical "pixels at a 1920-wide 4:3 face" calibration: on a height-fit
+	// display the physical height is converted to its 4:3-equivalent width; on a width-fit display the
+	// physical width is already that reference. This makes the scale independent of game orientation
+	// without changing the established landscape 4:3 defaults.
 	float m_vec_res_w = 0.0f;
+	float m_vec_res_h = 0.0f;
+	float vec_res_scale()
+	{
+		const uint32_t si = window().index();
+		const float window_w = std::max(1.0f, float(s_width[si]));
+		const float window_h = std::max(1.0f, float(s_height[si]));
+		const float fill_w = m_vec_res_w / window_w;
+		const float fill_h = m_vec_res_h / window_h;
+		const float reference_w = (fill_h + 1.0e-4f >= fill_w) ? (m_vec_res_h * (4.0f / 3.0f)) : m_vec_res_w;
+		return reference_w / 1920.0f;
+	}
 	// Emulated time (seconds) at the previous present, used to time-calibrate the max-persist
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
