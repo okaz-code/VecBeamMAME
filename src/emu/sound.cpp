@@ -26,6 +26,7 @@
 #include "util/language.h"
 
 #include <algorithm>
+#include <fstream>
 
 //**************************************************************************
 //  DEBUGGING
@@ -33,6 +34,44 @@
 
 #define LOG_OUTPUT_FUNC m_machine.logerror
 
+namespace {
+
+bool read_wave_u16(std::ifstream &input, u16 &value)
+{
+	u8 data[2];
+	input.read(reinterpret_cast<char *>(data), sizeof(data));
+	if (input.gcount() != sizeof(data))
+		return false;
+	value = u16(data[0]) | (u16(data[1]) << 8);
+	return true;
+}
+
+bool read_wave_u32(std::ifstream &input, u32 &value)
+{
+	u8 data[4];
+	input.read(reinterpret_cast<char *>(data), sizeof(data));
+	if (input.gcount() != sizeof(data))
+		return false;
+	value = u32(data[0]) | (u32(data[1]) << 8) | (u32(data[2]) << 16) | (u32(data[3]) << 24);
+	return true;
+}
+
+} // anonymous namespace
+
+struct sound_manager::vector_wave_state
+{
+	std::ifstream input;
+	u32 sample_rate = 0;
+	u16 channels = 0;
+	u64 data_offset = 0;
+	u64 total_frames = 0;
+	u64 cursor = 0;
+	std::atomic<u64> requested_frame{ 0 };
+	std::atomic<u32> request_generation{ 0 };
+	std::atomic<bool> paused{ false };
+	u32 applied_generation = 0;
+	std::vector<u8> bytes;
+};
 #define LOG_OSD_INFO    (1U << 1)
 #define LOG_MAPPING     (1U << 2)
 #define LOG_OSD_STREAMS (1U << 3)
@@ -935,6 +974,9 @@ void sound_manager::after_devices_init()
 	m_record_buffer.resize(m_outputs_count * machine().sample_rate(), 0);
 	m_record_samples = 0;
 
+	// MVEC audio uses an automatic <stream>.wav companion at the machine mix rate.
+	start_vector_audio();
+
 	// Create resamplers and setup history
 	rebuild_all_resamplers();
 
@@ -1080,6 +1122,9 @@ void sound_manager::run_effects()
 				eb.commit(dest_index);
 			}
 		}
+
+		// Replace the unrelated live game mix with frame-synchronised MVEC companion audio.
+		inject_vector_audio();
 #ifndef SOUND_DISABLE_THREADING
 		dlock.unlock();
 #endif
@@ -1237,6 +1282,152 @@ void sound_manager::stop_recording()
 }
 
 
+//-------------------------------------------------
+//  start_vector_audio - open the automatic MVEC
+//  companion WAV for recording or playback
+//-------------------------------------------------
+
+void sound_manager::start_vector_audio()
+{
+	const char *const record_path = machine().options().vector_record();
+	const char *const playback_path = machine().options().vector_playback();
+	if (record_path && *record_path)
+	{
+		const std::string path = std::string(record_path) + ".wav";
+		m_vector_wavfile = util::wav_open(path, machine().sample_rate(), m_outputs_count);
+		if (m_vector_wavfile)
+			osd_printf_info("MVEC: recording companion audio to %s\n", path);
+		else
+			osd_printf_warning("MVEC: unable to create companion audio '%s'\n", path);
+		return;
+	}
+	if (!playback_path || !*playback_path)
+		return;
+
+	const std::string path = std::string(playback_path) + ".wav";
+	auto wave = std::make_unique<vector_wave_state>();
+	wave->input.open(path, std::ios::binary);
+	if (!wave->input)
+	{
+		osd_printf_warning("MVEC: companion audio '%s' was not found; playback will be silent\n", path);
+		return;
+	}
+
+	char riff[4], wave_tag[4];
+	u32 riff_size;
+	wave->input.read(riff, sizeof(riff));
+	if (!read_wave_u32(wave->input, riff_size))
+		riff_size = 0;
+	wave->input.read(wave_tag, sizeof(wave_tag));
+	bool have_format = false, have_data = false;
+	u16 format = 0, bits = 0, block_align = 0;
+	while (wave->input && !have_data)
+	{
+		char id[4];
+		u32 size;
+		wave->input.read(id, sizeof(id));
+		if (wave->input.gcount() != sizeof(id) || !read_wave_u32(wave->input, size))
+			break;
+		const std::streamoff payload = wave->input.tellg();
+		if (!std::memcmp(id, "fmt ", 4) && size >= 16)
+		{
+			u32 byte_rate;
+			have_format = read_wave_u16(wave->input, format)
+				&& read_wave_u16(wave->input, wave->channels)
+				&& read_wave_u32(wave->input, wave->sample_rate)
+				&& read_wave_u32(wave->input, byte_rate)
+				&& read_wave_u16(wave->input, block_align)
+				&& read_wave_u16(wave->input, bits);
+		}
+		else if (!std::memcmp(id, "data", 4))
+		{
+			wave->data_offset = u64(payload);
+			wave->total_frames = block_align ? size / block_align : 0;
+			have_data = true;
+			break;
+		}
+		wave->input.clear();
+		wave->input.seekg(payload + std::streamoff(size + (size & 1U)));
+	}
+
+	if (std::memcmp(riff, "RIFF", 4) || std::memcmp(wave_tag, "WAVE", 4)
+		|| !have_format || !have_data || format != 1 || bits != 16
+		|| wave->channels != m_outputs_count || wave->sample_rate != machine().sample_rate())
+	{
+		osd_printf_warning("MVEC: companion audio '%s' is incompatible (requires 16-bit PCM, %u Hz, %u channels); playback will be silent\n",
+			path, machine().sample_rate(), m_outputs_count);
+		return;
+	}
+	wave->input.clear();
+	wave->input.seekg(std::streamoff(wave->data_offset));
+	m_vector_wave = std::move(wave);
+	osd_printf_info("MVEC: playing companion audio from %s\n", path);
+}
+
+void sound_manager::vector_playback_sync(double time_seconds, bool paused, bool discontinuity)
+{
+	if (!m_vector_wave)
+		return;
+	m_vector_wave->paused.store(paused, std::memory_order_release);
+	if (discontinuity)
+	{
+		const double position = std::max(time_seconds, 0.0) * double(m_vector_wave->sample_rate);
+		m_vector_wave->requested_frame.store(std::min<u64>(u64(position + 0.5), m_vector_wave->total_frames), std::memory_order_relaxed);
+		m_vector_wave->request_generation.fetch_add(1, std::memory_order_release);
+	}
+}
+
+void sound_manager::inject_vector_audio()
+{
+	if (!m_vector_wave || m_speakers.empty())
+		return;
+	vector_wave_state &wave = *m_vector_wave;
+	const u32 generation = wave.request_generation.load(std::memory_order_acquire);
+	if (generation != wave.applied_generation)
+	{
+		wave.cursor = wave.requested_frame.load(std::memory_order_relaxed);
+		wave.input.clear();
+		wave.input.seekg(std::streamoff(wave.data_offset + wave.cursor * wave.channels * sizeof(s16)));
+		wave.applied_generation = generation;
+	}
+
+	const u32 samples = m_speakers.front().m_effects_buffer.available_samples();
+	const bool silent = wave.paused.load(std::memory_order_acquire)
+		|| bool(m_muted & ~MUTE_REASON_VECTOR_PLAYBACK) || wave.cursor >= wave.total_frames;
+	if (!silent)
+	{
+		const u64 remaining = wave.total_frames - wave.cursor;
+		const u32 wanted = u32(std::min<u64>(samples, remaining));
+		wave.bytes.resize(size_t(samples) * wave.channels * sizeof(s16));
+		wave.input.read(reinterpret_cast<char *>(wave.bytes.data()), std::streamsize(size_t(wanted) * wave.channels * sizeof(s16)));
+		const u32 got = u32(wave.input.gcount() / (wave.channels * sizeof(s16)));
+		if (got < samples)
+			std::fill(wave.bytes.begin() + size_t(got) * wave.channels * sizeof(s16), wave.bytes.end(), 0);
+		wave.cursor += got;
+	}
+
+	for (speaker_info &speaker : m_speakers)
+	{
+		auto &dest = speaker.m_effects_buffer;
+		const u32 count = dest.available_samples();
+		for (u32 channel = 0; channel != speaker.m_channels; ++channel)
+		{
+			sample_t *output = const_cast<sample_t *>(dest.ptrs(channel, 0));
+			const u32 source_channel = speaker.m_first_output + channel;
+			for (u32 sample = 0; sample != count; ++sample)
+			{
+				if (silent)
+					output[sample] = 0.0f;
+				else
+				{
+					const size_t offset = (size_t(sample) * wave.channels + source_channel) * sizeof(s16);
+					const u16 value = u16(wave.bytes[offset]) | (u16(wave.bytes[offset + 1]) << 8);
+					output[sample] = float(s16(value)) / 32768.0f;
+				}
+			}
+		}
+	}
+}
 //-------------------------------------------------
 //  mute - mute sound output
 //-------------------------------------------------
@@ -2736,6 +2927,8 @@ void sound_manager::streams_update()
 	machine().video().add_sound_to_recording(m_record_buffer.data(), m_record_samples);
 	if(m_wavfile)
 		util::wav_add_data_16(*m_wavfile, m_record_buffer.data(), m_record_samples * m_outputs_count);
+	if(m_vector_wavfile)
+		util::wav_add_data_16(*m_vector_wavfile, m_record_buffer.data(), m_record_samples * m_outputs_count);
 }
 
 //**// Resampler management

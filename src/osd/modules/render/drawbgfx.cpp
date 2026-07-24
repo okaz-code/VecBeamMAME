@@ -33,6 +33,7 @@
 #include "config.h"
 #include "render.h"
 #include "rendutil.h"
+#include "ui/uimain.h"
 
 // complete slider_state type (for core->description access)
 #include "../frontend/mame/ui/slider.h"
@@ -76,6 +77,8 @@ extern void *GetOSWindow(void *wincontroller);
 #include "imgui/imgui.h"
 
 #include <algorithm>
+#include <functional>
+#include <queue>
 #include <unordered_map>
 
 
@@ -916,6 +919,8 @@ char const *const renderer_bgfx::WINDOW_PREFIX = "Window 0, ";
 //  STATICS
 //============================================================
 
+static uint32_t s_bgfx_frame_number = 0;
+
 uint32_t renderer_bgfx::s_current_view = 0;
 uint32_t renderer_bgfx::s_width[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t renderer_bgfx::s_height[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -1064,6 +1069,8 @@ renderer_bgfx::~renderer_bgfx()
 	}
 	m_vec_fb_w = m_vec_fb_h = 0;
 	m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
+	destroy_hdr_diagnostics();
+	window().machine().ui().set_hdr_diagnostic_text(std::string());
 
 	bgfx::reset(0, 0, BGFX_RESET_NONE);
 
@@ -1835,6 +1842,8 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "convergence_bloom_min_support", &renderer_bgfx::vec_slider_cache::convergence_bloom_min_support, 110.0f },
 	{ "convergence_bloom_source_radius", &renderer_bgfx::vec_slider_cache::convergence_bloom_source_radius, 0.0f },
 	{ "convergence_bloom_threshold", &renderer_bgfx::vec_slider_cache::convergence_bloom_threshold, 8.0f },
+	{ "convergence_global_gain", &renderer_bgfx::vec_slider_cache::convergence_global_gain, 0.0f },
+	{ "convergence_global_coverage", &renderer_bgfx::vec_slider_cache::convergence_global_coverage, 0.55f },
 	{ "deflection_damping", &renderer_bgfx::vec_slider_cache::deflection_damping, 0.5f },
 	{ "deflection_dynamics", &renderer_bgfx::vec_slider_cache::deflection_dynamics, 0.0f },
 	{ "deflection_settle", &renderer_bgfx::vec_slider_cache::deflection_settle, 5.0f },
@@ -3641,6 +3650,10 @@ int renderer_bgfx::draw(int update)
 			m_vec_playback_reset = vstats.playback_reset;
 			m_chains->request_temporal_reset();
 			m_mglow_smoothed = 0.0f;
+			m_conv_global_x = m_conv_global_y = 0.5f;
+			m_conv_global_gain = 0.0f;
+			m_conv_global_coverage = 0.55f;
+			m_conv_global_color[0] = m_conv_global_color[1] = m_conv_global_color[2] = 1.0f;
 			m_hv_smoothed = 0.0f;
 			m_hv_load_norm = 0.0f;
 			std::memset(m_edge_smooth, 0, sizeof(m_edge_smooth));
@@ -4044,6 +4057,13 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
+			// Keep the displayed flare in renderer state so its attack/release can be smoothed below.
+			// Candidate analysis writes a separate target; a missing target now decays instead of popping off.
+			float conv_global_target_x = 0.5f, conv_global_target_y = 0.5f;
+			float conv_global_target_gain = 0.0f;
+			float conv_global_target_coverage = std::max(0.05f, m_vs.convergence_global_coverage);
+			float conv_global_target_color[3] = { 1.0f, 1.0f, 1.0f };
+
 			// Convergence bloom is driven by excess energy deposited on the phosphor, not by recognising
 			// a particular game object or shape. Compact local maxima (projectiles, small convergences)
 			// get a narrow, weak bloom of their own; only a genuinely large energetic region becomes the
@@ -4051,7 +4071,7 @@ int renderer_bgfx::draw(int update)
 			struct convergence_bloom { float x, y, magnitude, radius, r, g, b, peak, falloff_scale; };
 			static constexpr int MAX_CONVERGENCE_BLOOMS = 8;
 			std::vector<convergence_bloom> conv_blooms;
-			const bool conv_on = m_line_analytic && m_vs.convergence_bloom_gain > 0.0f;
+			const bool conv_on = m_line_analytic && (m_vs.convergence_bloom_gain > 0.0f || m_vs.convergence_global_gain > 0.0f);
 			if (conv_on)
 			{
 				static constexpr int CONV_W = 32, CONV_H = 32;
@@ -4179,21 +4199,40 @@ int renderer_bgfx::draw(int update)
 					float centre_x = 0.0f, centre_y = 0.0f;
 					float fit_xx = 0.0f, fit_xy = 0.0f, fit_yy = 0.0f, fit_bx = 0.0f, fit_by = 0.0f;
 					int occupied = 0, hits = 0, hottest = -1;
+					float component_signal = 0.0f;
+					float component_r = 0.0f, component_g = 0.0f, component_b = 0.0f;
 					for (int cell = 0; cell < CONV_W * CONV_H; cell++)
 					{
 						if (!hot[cell] || label[cell] != component) continue;
 						centre_x += (float(cell % CONV_W) + 0.5f) * cell_w;
 						centre_y += (float(cell / CONV_W) + 0.5f) * cell_h;
 						occupied++; hits += hit_count[cell];
+						component_signal += std::min(std::max(heat[cell] - macro_threshold, 0.0f), knee);
+						component_r += sum_r[cell]; component_g += sum_g[cell]; component_b += sum_b[cell];
 						fit_xx += tan_xx[cell]; fit_xy += tan_xy[cell]; fit_yy += tan_yy[cell];
 						fit_bx += tan_bx[cell]; fit_by += tan_by[cell];
 						if (hottest < 0 || heat[cell] > heat[hottest]) hottest = cell;
 					}
-					if (occupied < 24 || hottest < 0) continue;
+					if (hottest < 0) continue;
 
-					// Min Support now controls only the transition into a broad macro bloom. Compact
-					// candidates remain eligible for the weak local stage below instead of popping on/off.
 					const float support = float(occupied) * sqrtf(float(hits));
+					auto smootherstep = [](float x)
+					{
+						x = std::clamp(x, 0.0f, 1.0f);
+						return x * x * x * (x * (x * 6.0f - 15.0f) + 10.0f);
+					};
+
+					// Global scatter starts below the old 24-cell cliff and reaches full spatial eligibility
+					// at 32 cells. The quintic has zero slope at both ends, so individual cells entering or
+					// leaving the binary connectivity field cannot visibly switch the whole face on/off.
+					const float extent_response = smootherstep((float(occupied) - 16.0f) / 16.0f);
+					float global_support_response = 1.0f;
+					if (min_support > 0.0f)
+						global_support_response = smootherstep((support - 0.60f * min_support) /
+							std::max(1e-3f, 0.40f * min_support));
+
+					// The boundary-ring macro stage keeps its existing, stricter 24-cell/85%-support gate.
+					// Only the full-face scatter receives the wider continuous onset.
 					float support_response = 1.0f;
 					if (min_support > 0.0f)
 					{
@@ -4202,7 +4241,6 @@ int renderer_bgfx::draw(int update)
 							std::max(1e-3f, min_support - support_start), 0.0f, 1.0f);
 						support_response = x * x * (3.0f - 2.0f * x);
 					}
-					if (support_response <= 0.0f) continue;
 
 					// Fallback is the hot-cell centroid. Where the deposited paths do have a stable common
 					// centre, the tangent least-squares fit keeps a partial bright arc from pulling the bloom.
@@ -4222,6 +4260,27 @@ int renderer_bgfx::draw(int update)
 							centre_x = fitted_x; centre_y = fitted_y;
 						}
 					}
+
+					// A macro event also excites a very broad, low-level glass/face scatter. Drive it from
+					// capped energy integrated over the whole component, rather than the hottest quadrant,
+					// so an asymmetric bright arc cannot pull or overdrive the full-screen flare.
+					const float global_norm = knee * std::max(6.0f, 0.25f * float(occupied));
+					const float global_response = -expm1f(-component_signal / std::max(global_norm, 1e-3f));
+					const float global_gain = m_vs.convergence_global_gain * global_response
+						* extent_response * global_support_response;
+					if (global_gain > conv_global_target_gain)
+					{
+						conv_global_target_x = std::clamp(centre_x / sw, 0.0f, 1.0f);
+						conv_global_target_y = std::clamp(centre_y / sh, 0.0f, 1.0f);
+						conv_global_target_gain = global_gain;
+						conv_global_target_coverage = std::max(0.05f, m_vs.convergence_global_coverage);
+						const float component_peak = std::max({component_r, component_g, component_b, 1e-4f});
+						conv_global_target_color[0] = component_r / component_peak;
+						conv_global_target_color[1] = component_g / component_peak;
+						conv_global_target_color[2] = component_b / component_peak;
+					}
+
+					if (occupied < 24 || support_response <= 0.0f) continue;
 
 					std::vector<float> radii;
 					radii.reserve(size_t(occupied));
@@ -4251,12 +4310,15 @@ int renderer_bgfx::draw(int update)
 					const float bloom_g = sum_g[hottest]/colour_peak;
 					const float bloom_b = sum_b[hottest]/colour_peak;
 					macro_component[size_t(component)] = 1;
-					conv_blooms.push_back({centre_x,centre_y,magnitude,radius,
-						bloom_r,bloom_g,bloom_b,heat[hottest],1.0f});
-					if (split_annulus && conv_blooms.size() < MAX_CONVERGENCE_BLOOMS)
+					if (magnitude > 1e-4f)
 					{
-						conv_blooms.push_back({centre_x,centre_y,0.4f*magnitude,auto_inner_radius,
-							bloom_r,bloom_g,bloom_b,0.99f*heat[hottest],1.0f});
+						conv_blooms.push_back({centre_x,centre_y,magnitude,radius,
+							bloom_r,bloom_g,bloom_b,heat[hottest],1.0f});
+						if (split_annulus && conv_blooms.size() < MAX_CONVERGENCE_BLOOMS)
+						{
+							conv_blooms.push_back({centre_x,centre_y,0.4f*magnitude,auto_inner_radius,
+								bloom_r,bloom_g,bloom_b,0.99f*heat[hottest],1.0f});
+						}
 					}
 				}
 
@@ -4338,6 +4400,38 @@ int renderer_bgfx::draw(int update)
 					[](const convergence_bloom &a, const convergence_bloom &b) { return a.peak > b.peak; });
 				if (conv_blooms.size() > MAX_CONVERGENCE_BLOOMS) conv_blooms.resize(MAX_CONVERGENCE_BLOOMS);
 			}
+
+			// Glass/face scatter has a short asymmetric temporal response. This is separate from
+			// phosphor persistence: it removes one-frame eligibility pops while retaining a prompt
+			// flash. Paused/static presents hold the state, and MVEC discontinuities clear it above.
+			const float global_dt_ms = m_vec_frame_advanced ? std::max(0.0f, float(flicker_dt_ms)) : 0.0f;
+			const float global_tau_ms = (conv_global_target_gain > m_conv_global_gain) ? 50.0f : 140.0f;
+			const float global_alpha = (global_dt_ms > 0.0f)
+				? 1.0f - expf(-global_dt_ms / global_tau_ms) : 0.0f;
+			if (conv_global_target_gain > 1e-6f)
+			{
+				if (m_conv_global_gain <= 1e-6f)
+				{
+					m_conv_global_x = conv_global_target_x;
+					m_conv_global_y = conv_global_target_y;
+					m_conv_global_coverage = conv_global_target_coverage;
+					for (int channel = 0; channel < 3; channel++)
+						m_conv_global_color[channel] = conv_global_target_color[channel];
+				}
+				else
+				{
+					m_conv_global_x += global_alpha * (conv_global_target_x - m_conv_global_x);
+					m_conv_global_y += global_alpha * (conv_global_target_y - m_conv_global_y);
+					m_conv_global_coverage += global_alpha * (conv_global_target_coverage - m_conv_global_coverage);
+					for (int channel = 0; channel < 3; channel++)
+						m_conv_global_color[channel] += global_alpha
+							* (conv_global_target_color[channel] - m_conv_global_color[channel]);
+				}
+			}
+			m_conv_global_gain += global_alpha * (conv_global_target_gain - m_conv_global_gain);
+			if (m_conv_global_gain < 1e-6f)
+				m_conv_global_gain = 0.0f;
+
 			// Deflection-amplifier dynamics: when on, each analytic line is drawn as a
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
 			// DEFL_NOUT*6 verts (+ the two caps). The beam integrator state is reset at the start of each
@@ -5071,6 +5165,18 @@ int renderer_bgfx::draw(int update)
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 
+				// Broad convergence flare is composited directly in the final glow pass. It is post-mask
+				// scattered light, clipped only to the tube face, and never warps the vector geometry.
+				const float conv_global_vals[4] = { m_conv_global_x, m_conv_global_y,
+					m_conv_global_gain, m_conv_global_coverage };
+				const float conv_global_color[4] = { m_conv_global_color[0], m_conv_global_color[1],
+					m_conv_global_color[2], 0.0f };
+				for (const char *entry : { "add_mglow", "Glow Combine" })
+				{
+					m_chains->inject_entry_uniform(0, entry, "u_convergence_global", conv_global_vals, 4);
+					m_chains->inject_entry_uniform(0, entry, "u_convergence_global_color", conv_global_color, 4);
+				}
+
 				// Ambient is reflected room light, not beam emission. The SDR seed scales the
 				// completed chain by sdr_beam_level, so pre-compensate only ambient here; beam,
 				// optical glow, monitor glow and bezel reflection retain the SDR exposure.
@@ -5385,6 +5491,8 @@ int renderer_bgfx::draw(int update)
 		}
 	}
 
+	update_hdr_diagnostics();
+
 	// The blit block was moved before buffer_primitives (see above); nothing to do here.
 	// The UI was already submitted to m_ortho_view (the late view) inside buffer_primitives.
 
@@ -5406,11 +5514,179 @@ int renderer_bgfx::draw(int update)
 
 	if (window().index() == osd_common_t::window_list().size() - 1)
 	{
-		bgfx::frame();
+		s_bgfx_frame_number = bgfx::frame();
 	}
 
 
 	return 0;
+}
+
+namespace {
+
+float decode_r11g11b10_channel(uint32_t bits, int mantissa_bits)
+{
+	const uint32_t mantissa_mask = (1U << mantissa_bits) - 1U;
+	const uint32_t mantissa = bits & mantissa_mask;
+	const uint32_t exponent = (bits >> mantissa_bits) & 0x1fU;
+	if (exponent == 0U)
+		return std::ldexp(float(mantissa), 1 - 15 - mantissa_bits);
+	if (exponent == 0x1fU)
+		return mantissa ? 0.0f : std::numeric_limits<float>::infinity();
+	return std::ldexp(1.0f + float(mantissa) / float(1U << mantissa_bits), int(exponent) - 15);
+}
+
+} // anonymous namespace
+
+void renderer_bgfx::destroy_hdr_diagnostics()
+{
+	if (bgfx::isValid(m_hdr_diag_texture))
+		bgfx::destroy(m_hdr_diag_texture);
+	m_hdr_diag_texture = BGFX_INVALID_HANDLE;
+	m_hdr_diag_pixels.clear();
+	m_hdr_diag_w = m_hdr_diag_h = 0;
+	m_hdr_diag_ready_frame = 0;
+	m_hdr_diag_sample_counter = 0;
+	m_hdr_diag_pending = false;
+}
+
+void renderer_bgfx::process_hdr_diagnostics()
+{
+	if (!m_hdr_diag_pending || s_bgfx_frame_number < m_hdr_diag_ready_frame)
+		return;
+	m_hdr_diag_pending = false;
+
+	const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
+	const float rolloff_knee = m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f) * beam_peak;
+	const float rolloff_ceil = m_chains->slider_value(0, "hdr_rolloff_max", 1.3f) * beam_peak;
+	const float sat_protect = m_chains->slider_value(0, "hdr_sat_protect", 0.0f);
+	float display_peak = m_module().hdr_display_peak_nits();
+	if (display_peak <= 0.0f)
+		display_peak = rolloff_ceil;
+	const float hot_threshold = 0.8f * display_peak;
+
+	float pre_peak = 0.0f;
+	float post_peak = 0.0f;
+	double post_sum = 0.0;
+	uint64_t hot_pixels = 0;
+	uint64_t over_1000 = 0;
+	std::priority_queue<float, std::vector<float>, std::greater<float>> top;
+	constexpr size_t TOP_COUNT = 128;
+
+	for (uint32_t packed : m_hdr_diag_pixels)
+	{
+		float rgb[3] = {
+			decode_r11g11b10_channel(packed, 6),
+			decode_r11g11b10_channel(packed >> 11, 6),
+			decode_r11g11b10_channel(packed >> 22, 5) };
+		if (!std::isfinite(rgb[0]) || !std::isfinite(rgb[1]) || !std::isfinite(rgb[2]))
+			continue;
+		const float original = std::max({ rgb[0], rgb[1], rgb[2] });
+		pre_peak = std::max(pre_peak, original);
+		if (rolloff_ceil > rolloff_knee && original > rolloff_knee)
+		{
+			const float minimum = std::min({ rgb[0], rgb[1], rgb[2] });
+			const float saturation = (1.0f - minimum / std::max(original, 1e-4f)) * sat_protect;
+			const float effective_ceil = rolloff_ceil + (rolloff_knee - rolloff_ceil)
+				* std::clamp(saturation, 0.0f, 1.0f);
+			const float over = original - rolloff_knee;
+			const float range = std::max(effective_ceil - rolloff_knee, 1e-4f);
+			const float rolled = rolloff_knee + range * over / (over + range);
+			const float scale = rolled / original;
+			rgb[0] *= scale; rgb[1] *= scale; rgb[2] *= scale;
+		}
+		const float post = std::max({ rgb[0], rgb[1], rgb[2] });
+		post_peak = std::max(post_peak, post);
+		post_sum += post;
+		if (post >= hot_threshold) ++hot_pixels;
+		if (post >= 1000.0f) ++over_1000;
+		if (top.size() < TOP_COUNT)
+			top.push(post);
+		else if (post > top.top())
+		{
+			top.pop();
+			top.push(post);
+		}
+	}
+
+	double top_sum = 0.0;
+	const size_t top_count = top.size();
+	while (!top.empty()) { top_sum += top.top(); top.pop(); }
+	const double pixel_count = double(std::max<size_t>(1, m_hdr_diag_pixels.size()));
+	const float usage = display_peak > 0.0f ? 100.0f * post_peak / display_peak : 0.0f;
+	const float headroom = m_module().paper_white_nits() > 0.0f
+		? display_peak / m_module().paper_white_nits() : 0.0f;
+	const char *mode = s_bgfx_edr_active ? "macOS EDR" : (s_bgfx_hdr_active ? "HDR10" : "SDR fallback");
+	window().machine().ui().set_hdr_diagnostic_text(util::string_format(
+		"HDR diagnostic (%s)\nDisplay peak: %.0f nits  Headroom: %.2fx\n"
+		"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
+		"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
+		"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
+		mode, display_peak, headroom, beam_peak, pre_peak, post_peak, usage,
+		unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
+		(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
+}
+
+void renderer_bgfx::update_hdr_diagnostics()
+{
+	if (window().index() != 0)
+		return;
+	const bool requested = m_vec_hdr_chain && m_chains && m_chains->has_applicable_chain(0)
+		&& m_chains->slider_value(0, "hdr_diagnostics", 0.0f) > 0.5f;
+	if (!requested)
+	{
+		window().machine().ui().set_hdr_diagnostic_text(std::string());
+		if (!m_hdr_diag_pending || s_bgfx_frame_number >= m_hdr_diag_ready_frame)
+			destroy_hdr_diagnostics();
+		return;
+	}
+
+	if (!(s_bgfx_hdr_active || s_bgfx_edr_active))
+	{
+		if (m_hdr_diag_pending && s_bgfx_frame_number >= m_hdr_diag_ready_frame)
+			process_hdr_diagnostics();
+		if (!m_hdr_diag_pending)
+			destroy_hdr_diagnostics();
+		window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic unavailable: HDR/EDR output is not active");
+		return;
+	}
+
+	process_hdr_diagnostics();
+	if (m_hdr_diag_pending || ++m_hdr_diag_sample_counter < 30U || m_hdr_work == nullptr)
+		return;
+	m_hdr_diag_sample_counter = 0;
+
+	const uint16_t width = m_hdr_work->width();
+	const uint16_t height = m_hdr_work->height();
+	if (!bgfx::isValid(m_hdr_diag_texture) || width != m_hdr_diag_w || height != m_hdr_diag_h)
+	{
+		destroy_hdr_diagnostics();
+		m_hdr_diag_w = width;
+		m_hdr_diag_h = height;
+		const uint64_t flags = BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK
+			| BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP
+			| BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
+		const bgfx::Caps *caps = bgfx::getCaps();
+		m_hdr_diag_supported = (caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)
+			&& (caps->supported & BGFX_CAPS_TEXTURE_BLIT)
+			&& bgfx::isTextureValid(0, false, 1, bgfx::TextureFormat::RG11B10F, flags);
+		if (!m_hdr_diag_supported)
+		{
+			window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic unavailable: RG11B10F readback is not supported by this backend");
+			return;
+		}
+		m_hdr_diag_texture = bgfx::createTexture2D(width, height, false, 1,
+			bgfx::TextureFormat::RG11B10F, flags);
+		m_hdr_diag_pixels.resize(size_t(width) * size_t(height));
+		window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic: sampling final linear-nits buffer...");
+	}
+
+	if (!bgfx::isValid(m_hdr_diag_texture) || m_hdr_diag_pixels.empty())
+		return;
+	const uint16_t diag_view = uint16_t(s_current_view++);
+	bgfx::setViewName(diag_view, "HDR diagnostic readback");
+	bgfx::blit(diag_view, m_hdr_diag_texture, 0, 0, m_hdr_work->texture());
+	m_hdr_diag_ready_frame = bgfx::readTexture(m_hdr_diag_texture, m_hdr_diag_pixels.data());
+	m_hdr_diag_pending = true;
 }
 
 void renderer_bgfx::update_recording()

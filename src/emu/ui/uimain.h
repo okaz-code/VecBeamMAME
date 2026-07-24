@@ -39,6 +39,9 @@ public:
 	// Dedicated persistent overlay used by the MVEC playback controller; empty hides it.
 	virtual void set_vector_playback_text(std::string message) { }
 
+	// Dedicated persistent overlay used by the bgfx HDR luminance diagnostic; empty hides it.
+	virtual void set_hdr_diagnostic_text(std::string message) { }
+
 	virtual void menu_reset() { }
 
 	virtual bool set_ui_event_handler(std::function<bool ()> &&handler) { return false; }
