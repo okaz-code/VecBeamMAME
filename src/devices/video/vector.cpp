@@ -257,6 +257,10 @@ public:
 			if (!m_input)
 				fatalerror("Unable to open MVEC playback file '%s'\n", playback_path);
 			read_header();
+			// MVEC contains final vector primitives, not an emulated audio timeline. Keep the game
+			// machine running to feed the renderer/UI, but never expose its unrelated frame-zero audio
+			// after a seek or while the vector stream is paused.
+			m_owner.machine().sound().vector_playback_mute(true);
 			m_tool_announced = true;
 			show_tool_message("Loaded");
 			osd_printf_info("MVEC: playing vector stream from %s\n", playback_path);
@@ -278,6 +282,15 @@ public:
 	bool playing() const { return m_mode == mode::PLAYBACK; }
 	bool playback_paused() const { return m_tool_paused; }
 	bool playback_advanced() const { return m_playback_advanced; }
+	void sync_playback_audio(attotime frame_period)
+	{
+		const bool discontinuity = !m_audio_sync_valid || m_audio_reset != m_playback_reset || m_audio_paused != m_tool_paused;
+		const double time_seconds = double(playback_position()) * frame_period.as_double();
+		m_owner.machine().sound().vector_playback_sync(time_seconds, m_tool_paused, discontinuity);
+		m_audio_sync_valid = true;
+		m_audio_reset = m_playback_reset;
+		m_audio_paused = m_tool_paused;
+	}
 	u32 playback_reset() const { return m_playback_reset; }
 	u64 playback_position() const { return m_play_position < 0 ? 0U : u64(m_play_position); }
 	u64 playback_total() const { return u64(m_frame_index.size()); }
@@ -304,6 +317,7 @@ public:
 		else if (m_mode == mode::PLAYBACK)
 		{
 			m_input.close();
+			m_owner.machine().sound().vector_playback_mute(false);
 		}
 		m_mode = mode::NONE;
 	}
@@ -664,6 +678,10 @@ private:
 		else if (input.code_pressed_once(KEYCODE_END)) request_position(m_frame_index.size() - 1U, true);
 		else if (input.code_pressed_once(KEYCODE_G))
 		{
+			// A hidden overlay makes the modal frame-number input indistinguishable
+			// from an input lock. Entering go-to mode always makes its prompt visible;
+			// Alt+O remains the explicit way to hide it again afterwards.
+			m_tool_overlay = true;
 			m_goto_mode = true;
 			m_goto_digits.clear();
 			m_tool_paused = true;
@@ -792,6 +810,9 @@ private:
 	u64 m_pending_position = INVALID_POSITION;
 	bool m_tool_paused = false;
 	bool m_playback_advanced = false;
+	bool m_audio_sync_valid = true;
+	bool m_audio_paused = false;
+	u32 m_audio_reset = 0;
 	bool m_tool_announced = false;
 	bool m_tool_overlay = true;
 	bool m_overlay_key_down = false;
@@ -1040,6 +1061,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			playback_stale, frame_timed, playback_generation, visarea);
 		m_vector_index = playback_count;
 		m_list_generation = playback_generation;
+		m_stream->sync_playback_audio(screen.frame_period());
 		m_min_intensity = 255;
 		m_max_intensity = 0;
 		for (int i = 0; i < m_vector_index; ++i)

@@ -216,6 +216,8 @@ public:
 		float convergence_bloom_min_support = 110.0f;
 		float convergence_bloom_source_radius = 0.0f;
 		float convergence_bloom_threshold = 8.0f;
+		float convergence_global_gain = 0.0f;
+		float convergence_global_coverage = 0.55f;
 		float deflection_damping = 0.5f;
 		float deflection_dynamics = 0.0f;
 		float deflection_settle = 5.0f;
@@ -399,6 +401,27 @@ private:
 	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
+	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
+	// interval; the CPU applies the exact present roll-off to report requested/post-rolloff nits.
+	bgfx::TextureHandle m_hdr_diag_texture = BGFX_INVALID_HANDLE;
+	std::vector<uint32_t> m_hdr_diag_pixels;
+	uint16_t m_hdr_diag_w = 0;
+	uint16_t m_hdr_diag_h = 0;
+	uint32_t m_hdr_diag_ready_frame = 0;
+	uint32_t m_hdr_diag_sample_counter = 0;
+	bool m_hdr_diag_pending = false;
+	bool m_hdr_diag_supported = true;
+	void update_hdr_diagnostics();
+	void destroy_hdr_diagnostics();
+	void process_hdr_diagnostics();
+
+	// Broad glass/face scatter emitted only by a macro convergence-bloom component. Coordinates are
+	// full-window UV; gain is linear relative to one nominal beam and coverage is sigma/half-diagonal.
+	float m_conv_global_x = 0.5f;
+	float m_conv_global_y = 0.5f;
+	float m_conv_global_gain = 0.0f;
+	float m_conv_global_coverage = 0.55f;
+	float m_conv_global_color[3] = { 1.0f, 1.0f, 1.0f };
 
 	std::map<uint32_t, rectangle_packer::packed_rectangle> m_hash_to_entry;
 	std::vector<rectangle_packer::packable_rectangle> m_texinfo;

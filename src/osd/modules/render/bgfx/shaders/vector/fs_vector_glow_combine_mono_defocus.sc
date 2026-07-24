@@ -20,6 +20,8 @@ uniform vec4 u_quad_dims;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_ambient_output_scale;
+uniform vec4 u_convergence_global;
+uniform vec4 u_convergence_global_color;
 uniform vec4 u_tube_distortion;
 uniform vec4 u_tube_cubic_distortion;
 uniform vec4 u_tube_distort_corner;
@@ -117,7 +119,10 @@ void main()
 	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=texture2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
+	vec2 global_delta=(v_texcoord0-u_convergence_global.xy)*u_target_dims.xy;float global_sigma=max(u_convergence_global.w*0.5*length(u_target_dims.xy),1.0);
+	float global_weight=u_convergence_global.z*exp(-0.5*dot(global_delta,global_delta)/(global_sigma*global_sigma));
+	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*global_weight*face;
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
 	if(band>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));vec3 edge_glow=u_glow_enable.x>0.0?shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN):vec3_splat(0.0);vec3 edge_optical=texture2D(s_optical,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN;bezel=(edge_glow+edge_optical)*band;}
-	gl_FragColor=vec4((base+glow+optical)*face+ambient+bezel,1.0)*v_color0;
+	gl_FragColor=vec4((base+glow+optical)*face+ambient+global_out+bezel,1.0)*v_color0;
 }

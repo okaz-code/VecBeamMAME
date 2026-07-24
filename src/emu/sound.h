@@ -68,6 +68,7 @@
 #include "wavwrite.h"
 #include "interface/audio.h"
 
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -358,12 +359,14 @@ private:
 class sound_manager
 {
 	friend class sound_stream;
+	struct vector_wave_state;
 
 	// reasons for muting
 	static constexpr u8 MUTE_REASON_PAUSE = 0x01;
 	static constexpr u8 MUTE_REASON_UI = 0x02;
 	static constexpr u8 MUTE_REASON_DEBUGGER = 0x04;
 	static constexpr u8 MUTE_REASON_SYSTEM = 0x08;
+	static constexpr u8 MUTE_REASON_VECTOR_PLAYBACK = 0x10;
 
 	// stream updates
 	static const attotime STREAMS_UPDATE_ATTOTIME;
@@ -439,9 +442,12 @@ public:
 	bool ui_mute() const { return bool(m_muted & MUTE_REASON_UI); }
 	bool debugger_mute() const { return bool(m_muted & MUTE_REASON_DEBUGGER); }
 	bool system_mute() const { return bool(m_muted & MUTE_REASON_SYSTEM); }
+	bool vector_playback_mute() const { return bool(m_muted & MUTE_REASON_VECTOR_PLAYBACK); }
 	void ui_mute(bool turn_off) { mute(turn_off, MUTE_REASON_UI); }
 	void debugger_mute(bool turn_off) { mute(turn_off, MUTE_REASON_DEBUGGER); }
 	void system_mute(bool turn_off) { mute(turn_off, MUTE_REASON_SYSTEM); }
+	void vector_playback_mute(bool turn_off) { mute(turn_off, MUTE_REASON_VECTOR_PLAYBACK); }
+	void vector_playback_sync(double time_seconds, bool paused, bool discontinuity);
 
 	// master gain
 	float master_gain() const { return m_master_gain; }
@@ -603,6 +609,8 @@ private:
 	void rebuild_all_resamplers();
 	void rebuild_all_stream_resamplers();
 	void run_effects();
+	void start_vector_audio();
+	void inject_vector_audio();
 
 	u64 rate_and_time_to_index(attotime time, u32 sample_rate) const;
 	u64 rate_and_last_sync_to_index(u32 sample_rate) const { return rate_and_time_to_index(m_last_sync_time, sample_rate); }
@@ -658,6 +666,8 @@ private:
 	bool m_nosound_mode;                   // true if we're in "nosound" mode
 	int m_unique_id;                       // unique ID used for stream identification
 	util::wav_file_ptr m_wavfile;          // WAV file for streaming
+	util::wav_file_ptr m_vector_wavfile;   // MVEC companion WAV recording
+	std::unique_ptr<vector_wave_state> m_vector_wave; // MVEC companion WAV playback
 
 	// streams data
 	std::vector<std::unique_ptr<sound_stream>> m_stream_list; // list of streams

@@ -967,6 +967,10 @@ bool mame_ui_manager::update_and_render(render_target &target)
 	if (!m_vector_playback_text.empty())
 		draw_text_box(current_ui_target(), m_vector_playback_text, ui::text_layout::text_justify::CENTER, 0.5F, 0.9F, colors().background_color());
 
+	// bgfx HDR luminance diagnostic: retained independently from popups and the MVEC controller.
+	if (!m_hdr_diagnostic_text.empty())
+		draw_text_box(current_ui_target(), m_hdr_diagnostic_text, ui::text_layout::text_justify::LEFT, 0.01F, 0.01F, colors().background_color());
+
 	// display any popup messages
 	if (osd_ticks() < m_popup_text_end)
 		draw_text_box(current_ui_target(), messagebox_poptext, ui::text_layout::text_justify::CENTER, 0.5F, 0.9F, colors().background_color());

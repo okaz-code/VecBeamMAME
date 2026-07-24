@@ -26,6 +26,8 @@ uniform vec4 u_tex_size2;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_ambient_output_scale;
+uniform vec4 u_convergence_global;       // (centre uv x/y, gain, sigma / half-diagonal)
+uniform vec4 u_convergence_global_color; // normalised linear scatter colour
 uniform vec4 u_ambient_mask;
 uniform vec4 u_tube_distortion;
 uniform vec4 u_tube_cubic_distortion;
@@ -311,6 +313,11 @@ void main()
 	if (u_glow_enable.x > 0.0 && !emit_outside)
 		glow = shape_glow(color_transform(texture2D(s_bloom, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN);
 
+	vec2 global_delta = (v_texcoord0 - u_convergence_global.xy) * u_target_dims.xy;
+	float global_sigma = max(u_convergence_global.w * 0.5 * length(u_target_dims.xy), 1.0);
+	float global_weight = u_convergence_global.z * exp(-0.5 * dot(global_delta, global_delta) / (global_sigma * global_sigma));
+	vec3 global_out = max(u_convergence_global_color.rgb, vec3_splat(0.0)) * global_weight * face;
+
 	vec3 bezel = vec3_splat(0.0);
 	float band = bezel_band(v_texcoord0, tube_active);
 	if (band > 0.0)
@@ -321,5 +328,5 @@ void main()
 		bezel = shape_glow(edge_light + monitor_light) * band;
 	}
 
-	gl_FragColor = vec4((base * mask_factor + glow) * face + ambient_out + monitor_out + bezel, 1.0) * v_color0;
+	gl_FragColor = vec4((base * mask_factor + glow) * face + ambient_out + monitor_out + global_out + bezel, 1.0) * v_color0;
 }
