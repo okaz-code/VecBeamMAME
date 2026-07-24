@@ -529,9 +529,14 @@ void chain_manager::apply_hdr_auto()
 
 	if (applied)
 	{
-		osd_printf_verbose(
-				"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
-				peak, paper_white, beam, rmax);
+		if (m_hdr_display_peak_absolute)
+			osd_printf_verbose(
+					"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
+					peak, paper_white, beam, rmax);
+		else
+			osd_printf_verbose(
+					"BGFX: EDR relative auto-config: headroom=%.2fx, beam=%.2fx reference white, rolloff max=%.2f\n",
+					peak / paper_white, beam / paper_white, rmax);
 	}
 }
 
