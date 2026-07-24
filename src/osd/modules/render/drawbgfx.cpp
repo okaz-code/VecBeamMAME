@@ -1791,7 +1791,7 @@ int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, d
 	const float strength = std::clamp(m_vs.deflection_dynamics, 0.0f, 1.0f);
 	const float settle_us = std::max(0.1f, m_vs.deflection_settle);
 	const float zeta     = std::clamp(m_vs.deflection_damping, 0.05f, 2.0f);
-	const float res      = m_vec_res_w / 1920.0f;
+	const float res      = vec_res_scale();
 
 	double T = draw_secs;
 	if (!(T > 1e-9)) T = 1e-6;   // untimed / degenerate: nominal time (settles to straight)
@@ -1909,6 +1909,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_jitter_ramp", &renderer_bgfx::vec_slider_cache::energy_jitter_ramp, 0.5f },
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
+	{ "scan_variation", &renderer_bgfx::vec_slider_cache::scan_variation, 0.0f },
 	{ "energy_obj_knee", &renderer_bgfx::vec_slider_cache::energy_obj_knee, 0.75f },
 	{ "energy_obj_lift", &renderer_bgfx::vec_slider_cache::energy_obj_lift, 0.0f },
 	{ "energy_obj_max", &renderer_bgfx::vec_slider_cache::energy_obj_max, 3.0f },
@@ -2108,7 +2109,7 @@ void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) co
 	oy = amt * nz(0xb5e3u);
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
 	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
@@ -2353,8 +2354,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		beam_units *= m_vs.point_width_scale;
 		normal_beam_units *= m_vs.point_width_scale;
 	}
-	float width = beam_units * (m_vec_res_w / 1920.0f);
-	const float normal_width = std::max(0.5f, normal_beam_units * (m_vec_res_w / 1920.0f));
+	float width = beam_units * vec_res_scale();
+	const float normal_width = std::max(0.5f, normal_beam_units * vec_res_scale());
 	const float ovld = 0.0f;
 	if (width < 0.5f) width = 0.5f;
 
@@ -2495,16 +2496,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * deposit_scale * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * deposit_scale * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * deposit_scale * 255.0f + 0.5f), 255),
 		uint32_t(core_alpha * 255.0f + 0.5f));
 
 	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
 	// patterned by the mask). White, peak proportional to the overdrive; peak > 1 is carried in z (the
 	// shader multiplies the deposit by 1+z) exactly like the body overrange. flare_on gates the slot.
 	const bool  flare_on   = (line_over > 0.0f);
-	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor;
+	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor * deposit_scale;
 	const float flare_z    = std::max(0.0f, flare_peak - 1.0f);
 	// Flare colour = the beam's own hue at full strength, NOT fixed white: the 3D imager (and any
 	// colour source) puts a colour filter in front of the whole tube, so even the white-hot overload
@@ -2545,7 +2546,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			? overload_width_amount
 			: std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
 		if (over_e > 0.0f)
-			sigma += overload_bloom * (m_vec_res_w / 1920.0f) * over_e * 4.0f;
+			sigma += overload_bloom * vec_res_scale() * over_e * 4.0f;
 	}
 	// Edge defocus (per jmargolin.com/vgens): at large deflection angles the spot defocuses
 	// astigmatically, so sigma grows toward the screen edges. The segment midpoint's radius is
@@ -2561,12 +2562,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float my = (y0 + y1) * 0.5f - sh * 0.5f;
 		float r = (halfdiag > 0.0f) ? std::min(sqrtf(mx * mx + my * my) / halfdiag, 1.0f) : 0.0f;
 		const float ecurve = m_vs.edge_defocus_curve;
-		sigma += edge_def * (m_vec_res_w / 1920.0f) * powf(r, ecurve);
+		sigma += edge_def * vec_res_scale() * powf(r, ecurve);
 	}
 	// HV droop defocus: the same supply sag that dims the picture widens the spot (capped ~2.5 px at
 	// 1920-ref, scaled by the load). Pairs with the dim applied to length_factor above.
 	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
-		sigma += hv_droop * 2.5f * (m_vec_res_w / 1920.0f) * m_hv_load_norm;
+		sigma += hv_droop * 2.5f * vec_res_scale() * m_hv_load_norm;
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
 	// vanish. Points now use the same box-integrated AA as lines (see fs_vector_line_analytic point
 	// mode), so they can share the line's thin floor - this keeps a point and a connected line of equal
@@ -2601,7 +2602,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// the actual cause of the Death Star explosion frame-rate drop. Ramping footprint with intensity
 	// keeps the dramatic wide halo for genuinely hot vectors while making barely-overloaded ones cheap.
 	const float oglow_ramp = std::min(1.0f, oglow_mag);
-	const float oglow_sig = sigma + std::max(0.0f, m_vs.overload_glow_width * (m_vec_res_w / 1920.0f)) * oglow_ramp;
+	const float oglow_sig = sigma + std::max(0.0f, m_vs.overload_glow_width * vec_res_scale()) * oglow_ramp;
 	const float pad = wcore + 3.5f * sigma + 0.5f;
 
 	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
@@ -2669,7 +2670,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// no temporal lag) and its broad tail accumulates across lines into the scene glow. The glow quad
 	// goes in the slots right after the body + caps. m_glow_on gates it (analytic_glow 0 = off).
 	const float glow_str  = m_vs.analytic_glow;
-	const float glow_w    = m_vs.analytic_glow_width * (m_vec_res_w / 1920.0f);
+	const float glow_w    = m_vs.analytic_glow_width * vec_res_scale();
 	const float glow_sig  = sigma + std::max(0.0f, glow_w);
 	// Glow onset: only sources brighter than glow_threshold glow, ramped by glow_curve - so faint
 	// stars stay dark while bright bullets/explosions bloom. glow_threshold 0 + glow_curve 1 reproduce
@@ -2681,7 +2682,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float g_onset = std::max(0.0f, g_bI - glow_thr);
 	const float g_mag   = glow_str * ((glow_crv == 1.0f) ? g_onset : powf(g_onset, glow_crv));
 	const float g_peak  = std::max(std::max(std::max(prim->color.r, prim->color.g), prim->color.b), 1e-4f);
-	const float g_scale = g_mag / g_peak;
+	const float g_scale = g_mag * deposit_scale / g_peak;
 	const uint32_t glow_rgba = u32Color(
 		std::min<uint32_t>(uint32_t(prim->color.r * g_scale * 255.0f + 0.5f), 255),
 		std::min<uint32_t>(uint32_t(prim->color.g * g_scale * 255.0f + 0.5f), 255),
@@ -2774,14 +2775,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			if (ring_on && ring_min_dwell > 0.0f && prim->t0 >= 0.0 && prim->t1 > prim->t0
 				&& (prim->t1 - prim->t0) * 1e6 < double(ring_min_dwell))
 				ring_on = false;
-			const float res = m_vec_res_w / 1920.0f;
+			const float res = vec_res_scale();
 			const float radius = std::max(2.0f, m_vs.ring_radius * res);
 			const float da = std::clamp(display_a, 0.0f, 1.0f);
 			auto ring_color = [&](float strength) -> uint32_t {
 				return u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
 			};
 			const float optical_gain_comp = (!m_optical_separate && m_vs.glow_narrow > 1e-4f)
@@ -2925,7 +2926,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						// back up. Encode the desired deposit as byte x (1+z) instead: faint targets use
 						// z = 0 with a sub-0.5 byte (down to 1/255 x glow weight), bright ones a fixed
 						// 0.5 byte with z carrying the rest.
-						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp;
+						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp * deposit_scale;
 						const float sstr = std::min(want, 0.5f);
 						const float szz  = (want > 0.5f) ? (want * 2.0f - 1.0f) : 0.0f;
 						const uint32_t srgba = ray_color(sstr);
@@ -3000,7 +3001,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				sg_cap = std::max(sig_floor, sg_cap * (1.0f - flat_f));
 			}
 			sg_cap *= std::max(0.1f, m_vs.line_cap_width);
-			const float cap_max = m_vs.line_cap_max_size * (m_vec_res_w / 1920.0f);
+			const float cap_max = m_vs.line_cap_max_size * vec_res_scale();
 			if (cap_max > 0.0f)
 			{
 				const float extent = cap_wcore + sg_cap;
@@ -3014,9 +3015,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			auto cap_rgba_for = [&](float boost) -> uint32_t {
 				const float s = cap_scale * boost;
 				return u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * s * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * s * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
 			};
 			// No brightness compensation: the dedicated no-persist FBO is combined 1:1 (the JSON's
@@ -3313,7 +3314,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// the junction-dot scale; this legacy path keeps the simple behaviour).
 	if (as_point) beam_units *= m_vs.point_width_scale;
 	// beam_units are pixel widths at a 1920px-wide window; scale to the current resolution.
-	float width = beam_units * (m_vec_res_w / 1920.0f);
+	float width = beam_units * vec_res_scale();
 	const float ovld = 0.0f;  // overload model removed; the width transfer handles beam widening
 	if (width < 0.5f) width = 0.5f;
 
@@ -3380,7 +3381,7 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	// Cap radius in pixels, scaled to resolution against a 1920px-wide base so the on-screen cap
 	// size stays constant across window resolutions. The cap only expands the line when it exceeds
 	// the line-body radius r; thicker lines (r >= cap radius) get a plain rounded end.
-	const float cap_res_scale = m_vec_res_w / 1920.0f;
+	const float cap_res_scale = vec_res_scale();
 	// Cap radius interpolates line_cap_min_size..line_cap_size by line intensity (prim->color.a) via
 	// the Line Cap Intensity Curve (pow exponent); curve 0 (default) keeps the full size for every line.
 	const float cap_full   = m_vs.line_cap_size * cap_res_scale;
@@ -3715,7 +3716,9 @@ int renderer_bgfx::draw(int update)
 		m_vec_frame_advanced = (vstats.frame_id != m_vec_prev_frame_id);
 		m_vec_prev_frame_id = vstats.frame_id;
 
+
 		int vector_count = 0;   // all vector lines (decides the FBO path)
+		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
 		// Point-classified count, using the SAME as_point test put_analytic_line uses (seg_len <=
 		// point_threshold). Starburst rays (and only rays - see the glow buffer sizing below) are
@@ -3820,6 +3823,8 @@ int renderer_bgfx::draw(int update)
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 			{
 				vector_count++;
+				if (!(scan->t0 >= 0.0 && scan->t1 > scan->t0))
+					untimed_vector_count++;
 				// Gather this frame's own busyness stats here (free - already walking every vector for
 				// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
 				if (flicker_on)
@@ -3880,6 +3885,10 @@ int renderer_bgfx::draw(int update)
 		m_vec_res_w = (screen_w > 1.0f)
 			? std::clamp(screen_w, 64.0f, float(s_width[window_index]))
 			: float(s_width[window_index]);
+		const float screen_h = screen_max_y - screen_min_y;
+		m_vec_res_h = (screen_h > 1.0f)
+			? std::clamp(screen_h, 64.0f, float(s_height[window_index]))
+			: float(s_height[window_index]);
 
 		// The same stable CRT-face rectangle is the physical boundary from which bezel reflection glows.
 		m_edge_box_min_x = screen_min_x; m_edge_box_max_x = screen_max_x;
@@ -3891,6 +3900,46 @@ int renderer_bgfx::draw(int update)
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
 			m_vec_time_ms = vstats.playback_active
 			? vstats.playback_time_ms : window().machine().time().as_double() * 1000.0;
+
+			// Untimed display-list arrival fallback. Approximate constant deflection speed with cumulative
+			// segment length (including a one-pixel/dot-width floor), then attenuate each primitive at its
+			// temporal midpoint. scan_variation is an intuitive 0..100% strength: 25% is approximately the
+			// subtle #15692 response (oldest light ~0.89), while the cubic term makes the upper range useful
+			// for pronounced tuning (oldest light ~0.25 at 100%). This final-deposit scale never changes
+			// energy, width or overload decisions.
+			m_scan_attenuation.clear();
+			if (m_line_analytic && m_vs.scan_variation > 0.0f && untimed_vector_count > 1)
+			{
+				double total_scan_length = 0.0;
+				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+				{
+					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags)
+						|| (p->t0 >= 0.0 && p->t1 > p->t0))
+						continue;
+					const double dx = p->bounds.x1 - p->bounds.x0, dy = p->bounds.y1 - p->bounds.y0;
+					total_scan_length += std::max(std::hypot(dx, dy), std::max(double(p->width), 1.0));
+				}
+				if (total_scan_length > 1.0e-9)
+				{
+					m_scan_attenuation.reserve(size_t(untimed_vector_count));
+					const float strength = std::clamp(m_vs.scan_variation * 0.01f, 0.0f, 1.0f);
+					const float dimming = 0.4f * strength + 0.35f * strength * strength * strength;
+					const float oldest_scale = 1.0f - dimming;
+					double elapsed_scan_length = 0.0;
+					for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+					{
+						if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags)
+							|| (p->t0 >= 0.0 && p->t1 > p->t0))
+							continue;
+						const double dx = p->bounds.x1 - p->bounds.x0, dy = p->bounds.y1 - p->bounds.y0;
+						const double length = std::max(std::hypot(dx, dy), std::max(double(p->width), 1.0));
+						const float arrival = float((elapsed_scan_length + 0.5 * length) / total_scan_length);
+						const float age = 1.0f - std::clamp(arrival, 0.0f, 1.0f);
+						m_scan_attenuation.emplace(p, std::pow(oldest_scale, age));
+						elapsed_scan_length += length;
+					}
+				}
+			}
 
 			// HV supply droop load: peak-track this frame's total beam energy
 			// with gentle decay (so it does not flicker against vsync when a frame is stale),
@@ -4042,7 +4091,7 @@ int renderer_bgfx::draw(int update)
 			if (junction_on && cap_segments.size() > 1)
 			{
 				constexpr float CELL = 32.0f;
-				const float tol = std::max(0.75f, float(s_width[window_index]) / 1920.0f);
+				const float tol = std::max(0.75f, vec_res_scale());
 				const float tol2 = tol * tol;
 				auto cell_key = [](int x, int y) -> uint64_t
 				{
@@ -4233,7 +4282,7 @@ int renderer_bgfx::draw(int update)
 
 				const float knee = std::max(0.01f, m_vs.convergence_bloom_knee);
 				const float min_support = std::max(0.0f, m_vs.convergence_bloom_min_support);
-				const float manual_radius = m_vs.convergence_bloom_source_radius * (m_vec_res_w / 1920.0f);
+				const float manual_radius = m_vs.convergence_bloom_source_radius * vec_res_scale();
 				const float cell_diagonal = sqrtf(cell_w * cell_w + cell_h * cell_h);
 				std::vector<uint8_t> macro_component(size_t(components), 0);
 
@@ -4617,7 +4666,7 @@ int renderer_bgfx::draw(int update)
 							if (conv_alloc)
 							{
 								AnalyticLineVertex *cv = reinterpret_cast<AnalyticLineVertex *>(conv_tvb.data);
-								const float base_falloff = std::max(1.0f, m_vs.convergence_bloom_falloff * (m_vec_res_w / 1920.0f));
+								const float base_falloff = std::max(1.0f, m_vs.convergence_bloom_falloff * vec_res_scale());
 								for (size_t bloom_index = 0; bloom_index < conv_blooms.size(); bloom_index++)
 								{
 									const convergence_bloom &bloom = conv_blooms[bloom_index];
@@ -4721,7 +4770,10 @@ int renderer_bgfx::draw(int update)
 										auto dit = m_dwell_scale.find(vprim);
 										if (dit != m_dwell_scale.end()) dsc = dit->second;
 									}
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, sps, dsc);
+									float scan_scale = 1.0f;
+									auto ait = m_scan_attenuation.find(vprim);
+									if (ait != m_scan_attenuation.end()) scan_scale = ait->second;
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, sps, dsc, scan_scale);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -4839,7 +4891,7 @@ int renderer_bgfx::draw(int update)
 			}
 			if (edge_alloc)
 			{
-				const float res_scale = m_vec_res_w / 1920.0f;
+				const float res_scale = vec_res_scale();
 				const float sig  = std::max(1.0f, m_chains->slider_value(0, "edge_glow_width", 10.0f) * res_scale);
 				const float half = std::max(4.0f, 0.5f * m_chains->slider_value(0, "edge_glow_length", 80.0f) * res_scale);
 				const float edge_threshold = std::max(0.0f, m_chains->slider_value(0, "edge_glow_threshold", 0.0f));
