@@ -711,6 +711,11 @@ private:
 		// Alt+O is authoritative: navigation and EOF status must never resurrect a hidden overlay.
 		if (!m_tool_overlay)
 			return;
+#if defined(__APPLE__)
+		const char *const modifier_name = "Option";
+#else
+		const char *const modifier_name = "Alt";
+#endif
 		const u64 shown = (m_pending_position != INVALID_POSITION ? m_pending_position : playback_position()) + 1U;
 		std::string text;
 		if (m_goto_mode)
@@ -720,9 +725,10 @@ private:
 				(unsigned long long)m_frame_index.size());
 		else
 			text = util::string_format(
-				"MVEC playback: %s\nFrame: %llu / %llu\nAlt+P play/pause  Alt+Left/Right step\n"
-				"Alt+PgUp/PgDn 60 frames  Alt+Home/End  Alt+G go to  Alt+O overlay",
-				status, (unsigned long long)shown, (unsigned long long)m_frame_index.size());
+				"MVEC playback: %s\nFrame: %llu / %llu\n%s+P play/pause  %s+Left/Right step\n"
+				"%s+PgUp/PgDn 60 frames  %s+Home/End  %s+G go to  %s+O overlay",
+				status, (unsigned long long)shown, (unsigned long long)m_frame_index.size(),
+				modifier_name, modifier_name, modifier_name, modifier_name, modifier_name, modifier_name);
 		m_owner.machine().ui().set_vector_playback_text(std::move(text));
 	}
 	void enqueue(std::vector<u8> &&chunk)
