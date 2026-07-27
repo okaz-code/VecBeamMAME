@@ -9,6 +9,7 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_base, 0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_optical, 2);
+SAMPLER2D(s_glass_scatter, 3);
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_vec_pincushion_x_cubic;
@@ -36,6 +37,10 @@ uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_glow_inside;
 uniform vec4 u_glow_tail_curve;
 uniform vec4 u_glow_black_toe;
+uniform vec4 u_smoked_glass_rgb;
+uniform vec4 u_smoked_glass_transmission;
+uniform vec4 u_glass_forward_scatter;
+uniform vec4 u_glass_surface_illumination;
 #define PINCUSHION_GAIN (5.0 / 30.0)
 #define GLOW_BRIGHTNESS_GAIN 2.67
 
@@ -95,6 +100,17 @@ vec3 shape_glow(vec3 c)
 	float pivot=0.25,curve=max(u_glow_tail_curve.x,0.1);float shaped=peak<pivot?pivot*pow(max(peak/pivot,1e-6),curve):peak;
 	float toe=max(u_glow_black_toe.x,0.0);if(toe>0.0)shaped*=smoothstep(0.0,toe,peak);return c*(shaped/peak);
 }
+vec3 apply_glass_optics(vec3 c,vec3 scatter_source)
+{
+	float transmission=clamp(u_smoked_glass_transmission.x*0.01,0.0,1.0);
+	float forward_scatter=clamp(u_glass_forward_scatter.x*0.01,0.0,1.0);
+	float surface_illumination=max(u_glass_surface_illumination.x*0.01,0.0);
+	if(transmission>=1.0&&forward_scatter<=0.0&&surface_illumination<=0.0)return c;
+	vec3 glass_rgb=clamp(u_smoked_glass_rgb.rgb*0.01,vec3_splat(0.0),vec3_splat(1.0));
+	vec3 glass_filter=mix(glass_rgb,vec3_splat(1.0),transmission);
+	vec3 transmitted=(c+scatter_source*forward_scatter)*glass_filter;
+	return transmitted+scatter_source*surface_illumination;
+}
 vec2 vector_pincushion_uv(vec2 texcoord)
 {
 	vec2 uv=texcoord*2.0-1.0;float x=uv.x,y=uv.y,y2=y*y,x2=x*x;
@@ -124,5 +140,8 @@ void main()
 	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*global_weight*face;
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
 	if(band>0.0){vec2 edge_uv=clamp(emit_uv,vec2_splat(0.0),vec2_splat(1.0));vec3 edge_glow=u_glow_enable.x>0.0?shape_glow(texture2D(s_bloom,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN):vec3_splat(0.0);vec3 edge_optical=texture2D(s_optical,edge_uv).rgb*GLOW_BRIGHTNESS_GAIN;bezel=(edge_glow+edge_optical)*band;}
-	gl_FragColor=vec4((base+glow+optical)*face+ambient+global_out+bezel,1.0)*v_color0;
+	vec3 composite=(base+glow+optical)*face+ambient+global_out+bezel;
+	float glass_activity=max(u_glass_forward_scatter.x,u_glass_surface_illumination.x);vec3 glass_light=vec3_splat(0.0);
+	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0));
+	gl_FragColor=vec4(apply_glass_optics(composite,glass_light),1.0)*v_color0;
 }

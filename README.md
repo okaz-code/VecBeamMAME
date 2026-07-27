@@ -1,4 +1,15 @@
-# MAME
+# VecBeamMAME
+
+VecBeamMAME is an experimental fork of MAME focused on physically motivated,
+HDR-aware vector display simulation.  The current development line is the
+`vector-beam-sim` branch, and the `balanced` BGFX vector chains are the
+recommended renderer configurations.
+
+VecBeamMAME is not an official MAME release.  For the vector chain variants,
+controls, and smoked-glass optical model, see the
+[vector BGFX chain guide](bgfx/chains/vector/README.md).
+
+## Upstream MAME
 
 ## What is MAME?
 

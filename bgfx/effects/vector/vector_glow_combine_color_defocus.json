@@ -41,6 +41,13 @@
       ]
     },
     {
+      "name": "s_glass_scatter",
+      "type": "int",
+      "values": [
+        3.0
+      ]
+    },
+    {
       "name": "u_defocus",
       "type": "vec4",
       "values": [
@@ -535,6 +542,46 @@
       "type": "vec4",
       "values": [
         1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_smoked_glass_rgb",
+      "type": "vec4",
+      "values": [
+        62.0,
+        62.0,
+        62.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_smoked_glass_transmission",
+      "type": "vec4",
+      "values": [
+        100.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_glass_forward_scatter",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_glass_surface_illumination",
+      "type": "vec4",
+      "values": [
+        0.0,
         0.0,
         0.0,
         0.0

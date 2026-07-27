@@ -10,6 +10,7 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_base,  0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_mask,  2);
+SAMPLER2D(s_glass_scatter, 3);
 
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
@@ -43,6 +44,10 @@ uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_glow_inside;
 uniform vec4 u_glow_tail_curve;
 uniform vec4 u_glow_black_toe;
+uniform vec4 u_smoked_glass_rgb;
+uniform vec4 u_smoked_glass_transmission;
+uniform vec4 u_glass_forward_scatter;
+uniform vec4 u_glass_surface_illumination;
 uniform vec4 u_mglow_amount;
 uniform vec4 u_mglow_brightness;
 uniform vec4 u_mglow_edge_diff;
@@ -276,6 +281,23 @@ vec3 shape_glow(vec3 c)
 	return c * (shaped / peak);
 }
 
+vec3 apply_glass_optics(vec3 c, vec3 scatter_source)
+{
+	// The transmission slider interpolates between the configured glass colour and clear glass.
+	float transmission = clamp(u_smoked_glass_transmission.x * 0.01, 0.0, 1.0);
+	float forward_scatter = clamp(u_glass_forward_scatter.x * 0.01, 0.0, 1.0);
+	float surface_illumination = max(u_glass_surface_illumination.x * 0.01, 0.0);
+	// Default settings are an exact identity and do not sample the glass-scatter texture.
+	if (transmission >= 1.0 && forward_scatter <= 0.0 && surface_illumination <= 0.0) return c;
+	vec3 glass_rgb = clamp(u_smoked_glass_rgb.rgb * 0.01, vec3_splat(0.0), vec3_splat(1.0));
+	vec3 glass_filter = mix(glass_rgb, vec3_splat(1.0), transmission);
+	// Forward scatter adds a transmitted halo without converting or attenuating the direct image.
+	vec3 transmitted = (c + scatter_source * forward_scatter) * glass_filter;
+	// Surface illumination is reflected toward the viewer and therefore bypasses bulk transmission.
+	vec3 surface_lit = scatter_source * surface_illumination;
+	return transmitted + surface_lit;
+}
+
 void main()
 {
 	float tube_active = tube_active_amount();
@@ -328,5 +350,10 @@ void main()
 		bezel = shape_glow(edge_light + monitor_light) * band;
 	}
 
-	gl_FragColor = vec4((base * mask_factor + glow) * face + ambient_out + monitor_out + global_out + bezel, 1.0) * v_color0;
+	vec3 composite = (base * mask_factor + glow) * face + ambient_out + monitor_out + global_out + bezel;
+	float glass_activity = max(u_glass_forward_scatter.x, u_glass_surface_illumination.x);
+	vec3 glass_light = vec3_splat(0.0);
+	if (glass_activity > 0.0 && !emit_outside)
+		glass_light = max(color_transform(texture2D(s_glass_scatter, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN, vec3_splat(0.0));
+	gl_FragColor = vec4(apply_glass_optics(composite, glass_light), 1.0) * v_color0;
 }
