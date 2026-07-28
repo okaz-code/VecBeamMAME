@@ -373,6 +373,7 @@ static float detect_edr_headroom(void *nwh);
 #endif
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 static bool detect_windows_hdr_active(void *nwh);
+static float detect_windows_refresh_hz(void *nwh);
 #endif
 
 //============================================================
@@ -397,6 +398,16 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 		osd_printf_error("Setting BGFX platform data failed\n");
 		return false;
 	}
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
+	// Publish the actual desktop refresh to the core render target.  This is
+	// consumed by vector_present_rate=auto after the renderer is initialized.
+	const float monitor_refresh = detect_windows_refresh_hz(init.platformData.nwh);
+	if (monitor_refresh > 1.0f && window.target())
+	{
+		window.target()->set_max_update_rate(monitor_refresh);
+		osd_printf_verbose("BGFX: active monitor refresh %.3f Hz\n", monitor_refresh);
+	}
+#endif
 
 	std::string_view const backend(m_options->bgfx_backend());
 	if (backend == "auto")
@@ -552,6 +563,48 @@ static bool detect_windows_hdr_active(void *nwh)
 		return DisplayConfigGetDeviceInfo(&color.header) == ERROR_SUCCESS && color.advancedColorEnabled;
 	}
 	return false;
+}
+
+// Return the active desktop refresh for the monitor containing this window.
+// DISPLAYCONFIG_PATH_TARGET_INFO keeps the fractional numerator/denominator,
+// avoiding the integer rounding of legacy EnumDisplaySettings APIs.
+static float detect_windows_refresh_hz(void *nwh)
+{
+	if (nwh == nullptr)
+		return 0.0f;
+	const HMONITOR monitor = MonitorFromWindow(reinterpret_cast<HWND>(nwh), MONITOR_DEFAULTTONEAREST);
+	if (monitor == nullptr)
+		return 0.0f;
+	MONITORINFOEXW monitor_info = {};
+	monitor_info.cbSize = sizeof(monitor_info);
+	if (!GetMonitorInfoW(monitor, &monitor_info))
+		return 0.0f;
+
+	UINT32 path_count = 0, mode_count = 0;
+	if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count, &mode_count) != ERROR_SUCCESS)
+		return 0.0f;
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
+	if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths.data(), &mode_count, modes.data(), nullptr) != ERROR_SUCCESS)
+		return 0.0f;
+	paths.resize(path_count);
+
+	for (const DISPLAYCONFIG_PATH_INFO &path : paths)
+	{
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+		source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source.header.size = sizeof(source);
+		source.header.adapterId = path.sourceInfo.adapterId;
+		source.header.id = path.sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS
+			|| _wcsicmp(source.viewGdiDeviceName, monitor_info.szDevice) != 0)
+			continue;
+
+		const DISPLAYCONFIG_RATIONAL &rate = path.targetInfo.refreshRate;
+		if (rate.Numerator && rate.Denominator)
+			return float(double(rate.Numerator) / double(rate.Denominator));
+	}
+	return 0.0f;
 }
 
 // Query the Windows Advanced Color SDR-content white level for the monitor containing this window.
@@ -3474,7 +3527,24 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 
 int renderer_bgfx::draw(int update)
 {
+	const int64_t vector_perf_draw_begin = bx::getHPCounter();
 	int window_index = window().index();
+	m_vec_chain_ran = false;
+	m_vec_deposited_source = false;
+	m_vector_perf_scan_ms = 0.0;
+	m_vector_perf_analysis_ms = 0.0;
+	m_vector_perf_energy_ms = 0.0;
+	m_vector_perf_cap_ms = 0.0;
+	m_vector_perf_convergence_ms = 0.0;
+	m_vector_perf_geometry_ms = 0.0;
+	m_vector_perf_submit_ms = 0.0;
+	int64_t vector_perf_source_begin = 0;
+	int64_t vector_perf_scan_end = 0;
+	int64_t vector_perf_energy_end = 0;
+	int64_t vector_perf_cap_end = 0;
+	int64_t vector_perf_convergence_end = 0;
+	int64_t vector_perf_analysis_end = 0;
+	int64_t vector_perf_geometry_end = 0;
 
 	m_seen_views.clear();
 	if (m_ortho_view)
@@ -3645,6 +3715,14 @@ int renderer_bgfx::draw(int update)
 				m_vec_optical_fb = BGFX_INVALID_HANDLE;
 			bgfx::TextureHandle npc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
 			m_vec_np_fb = bgfx::createFrameBuffer(1, &npc, true);
+			// A recreated target has no retained excitation. Force the current
+			// primitive list through the full source path even if emulation has
+			// not advanced since the resize/chain switch.
+			m_vec_prev_frame_id = ~uint32_t(0);
+			m_vec_cached_vector_count = 0;
+			m_vec_cached_content_w = m_vec_cached_content_h = 0;
+			m_vec_phosphor_budget = 1.0;
+			m_vec_phosphor_last_hpc = 0;
 		}
 	}
 
@@ -3682,6 +3760,7 @@ int renderer_bgfx::draw(int update)
 	m_vectors_in_fbo = false;
 	if (window_index == 0 && bgfx::isValid(m_vec_fb) && atlas_valid)
 	{
+		vector_perf_source_begin = bx::getHPCounter();
 		// Only LINEs with PRIMFLAG_VECTOR go to the FBO, to keep UI lines out of the phosphor path
 		// (which would ghost them). UI / MAME-menu LINEs stay on the normal buffer_primitives path
 		// (View 0, cleared each frame).
@@ -3710,14 +3789,32 @@ int renderer_bgfx::draw(int update)
 			m_flicker_prev_t0 = -1.0;
 			m_flicker_prev_t1 = -1.0;
 			m_vec_persist_prev_t = -1.0;
+			m_vec_phosphor_budget = 1.0;
+			m_vec_phosphor_last_hpc = 0;
 		}
-		// Track whether the device drew a new emulated frame since the previous present, so pause /
-		// menu stills (no emulation progress) can freeze the phosphor tail and persistence pools.
-		m_vec_frame_advanced = (vstats.frame_id != m_vec_prev_frame_id);
-		m_vec_prev_frame_id = vstats.frame_id;
+		// The video manager explicitly marks its additional presentation-only updates. A normal
+		// screen update always re-scans the retained vector display list, even when list_stale says
+		// its contents did not change. list_stale is a generation/content hint, not a blank-beam
+		// frame: using it to suppress the source made almost half of Star Wars' stock-rate screen
+		// updates black and produced severe flicker that no chain slider could disable.
+		const bool vector_present_repeat = window().machine().video().vector_presenting();
+		m_vec_frame_advanced = !vector_present_repeat && (vstats.frame_id != m_vec_prev_frame_id);
+		if (!vector_present_repeat)
+			m_vec_prev_frame_id = vstats.frame_id;
+		// frame_update can reach the OSD at about 60 Hz even when this vector screen only
+		// generated a new physical refresh at about 41 Hz (Star Wars). The video-manager
+		// presentation flag alone therefore misclassified unchanged frame_id calls as fresh
+		// sources and rebuilt every analytic vector up to 60 times per second. frame_id advances
+		// on every real vector screen_update, including a retained/list_stale CRT redraw, so it
+		// is the correct source boundary without reintroducing the old list_stale flicker bug.
+		const bool deposit_vector_source = (window().machine().video().vector_present_rate() == 0)
+			? !vector_present_repeat
+			: m_vec_frame_advanced;
+		m_vec_deposited_source = deposit_vector_source;
 
 
-		int vector_count = 0;   // all vector lines (decides the FBO path)
+		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
+			// all vector lines (decides the FBO path); cached for source-free re-presents
 		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
 		// Point-classified count, using the SAME as_point test put_analytic_line uses (seg_len <=
@@ -3748,6 +3845,14 @@ int renderer_bgfx::draw(int update)
 		const bool flicker_on = vstats.timed;
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
+		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero
+		// depths are a hard off switch: no bucket exclusion, dimming or phase accumulation may occur.
+		// Legacy chains without the separate depth sliders retain their flicker_rgb fallback.
+		const float fl_rgb[3] = {
+			std::clamp(m_chains->slider_value(0, "flicker_red_depth",   m_chains->slider_value_indexed(0, "flicker_rgb", 0, 1.0f)), 0.0f, 1.0f),
+			std::clamp(m_chains->slider_value(0, "flicker_green_depth", m_chains->slider_value_indexed(0, "flicker_rgb", 1, 1.0f)), 0.0f, 1.0f),
+			std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f)), 0.0f, 1.0f) };
+		const bool flicker_has_depth = fl_rgb[0] > 0.0005f || fl_rgb[1] > 0.0005f || fl_rgb[2] > 0.0005f;
 		// "Busy" is judged by the REAL DRAW-TIME SPAN this present's list took to sweep (last_t1 -
 		// first_t0, already tracked below for the bucket span anyway), not raw vector count: a
 		// text-heavy scene (Star Wars attract-mode scores) has a huge vector COUNT from many short
@@ -3758,7 +3863,7 @@ int renderer_bgfx::draw(int update)
 		// different average line lengths. flicker_thresh_ms is in real elapsed ms (t0/t1 are seconds).
 		const double flicker_thresh_ms = flicker_on ? double(m_chains->slider_value(0, "flicker_thresh_ms", 12.0f)) : 1e18;
 		const double flicker_draw_ms = (last_t1 > first_t0) ? (last_t1 - first_t0) * 1000.0 : 0.0;
-		const bool flicker_busy = flicker_on && flicker_draw_ms > flicker_thresh_ms;
+		const bool flicker_busy = flicker_on && flicker_has_depth && flicker_draw_ms > flicker_thresh_ms;
 		// Real-time-paced cycling (not once-per-PRESENT): advancing by a fixed +1 per present ties the
 		// perceived flicker rate directly to whatever the ACTUAL achieved present rate happens to be -
 		// a busy/heavy scene that runs below full rate (GPU-bound) cycles slower than a light one, and
@@ -3774,7 +3879,11 @@ int renderer_bgfx::draw(int update)
 				? double(flicker_hpc_now - m_flicker_last_hpc) * 1000.0 / double(bx::getHPFrequency()) : 0.0;
 		// MVEC playback is a frame-domain tool: pause means zero elapsed display time, and a
 		// one-frame step advances temporal effects by one recorded machine refresh.
-		const double flicker_dt_ms = vstats.playback_active ? double(vstats.playback_dt_ms) : flicker_real_dt_ms;
+		// A host-rate repeat presents the same recorded MVEC frame and must not advance
+		// frame-domain effects a second time.
+		const double flicker_dt_ms = vstats.playback_active
+			? (m_vec_frame_advanced ? double(vstats.playback_dt_ms) : 0.0)
+			: flicker_real_dt_ms;
 		m_flicker_last_hpc = flicker_hpc_now;
 		if (flicker_busy)
 		{
@@ -3799,10 +3908,6 @@ int renderer_bgfx::draw(int update)
 		// (mono/Vectrex chains have no flicker_rgb slider and stay on it).
 		// Separate depth controls let blue retain a mathematically non-zero shimmer below the old
 		// colour slider's 0.01 step. Legacy chains still fall back to flicker_rgb components.
-		const float fl_rgb[3] = {
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_red_depth",   m_chains->slider_value_indexed(0, "flicker_rgb", 0, 1.0f)), 0.0f, 1.0f) : 1.0f,
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_green_depth", m_chains->slider_value_indexed(0, "flicker_rgb", 1, 1.0f)), 0.0f, 1.0f) : 1.0f,
-			flicker_busy ? std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f)), 0.0f, 1.0f) : 1.0f };
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
@@ -3817,82 +3922,101 @@ int renderer_bgfx::draw(int update)
 		float screen_min_x = 0.0f, screen_min_y = 0.0f;
 		float screen_max_x = float(s_width[window_index]), screen_max_y = float(s_height[window_index]);
 		bool have_screen_rect = false;
-		render_primitive *scan = window().m_primlist->first();
-		while (scan != nullptr)
+		if (deposit_vector_source)
 		{
-			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
+			render_primitive *scan = window().m_primlist->first();
+			while (scan != nullptr)
 			{
-				vector_count++;
-				if (!(scan->t0 >= 0.0 && scan->t1 > scan->t0))
-					untimed_vector_count++;
-				// Gather this frame's own busyness stats here (free - already walking every vector for
-				// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
-				if (flicker_on)
+				if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags))
 				{
-					cur_raw_count++;
-					if (scan->t0 >= 0.0)
+					vector_count++;
+					if (!(scan->t0 >= 0.0 && scan->t1 > scan->t0))
+						untimed_vector_count++;
+					// Gather this frame's own busyness stats here (free - already walking every vector for
+					// vector_count) for NEXT present's flicker decision; see the flicker_busy comment above.
+					if (flicker_on)
 					{
-						if (cur_first_t0 < 0.0) cur_first_t0 = scan->t0;
-						cur_last_t1 = std::max(cur_last_t1, scan->t1);
+						cur_raw_count++;
+						if (scan->t0 >= 0.0)
+						{
+							if (cur_first_t0 < 0.0) cur_first_t0 = scan->t0;
+							cur_last_t1 = std::max(cur_last_t1, scan->t1);
+						}
+					}
+					// This present's rotating bucket is excluded (not drawn) - the phosphor pool decays it;
+					// vector_count (list membership / staleness) still counts it so a flicker-only frame is
+					// not mistaken for a stale/empty one. In per-channel mode (flicker_partial) the bucket's
+					// vectors are DRAWN dimmed instead of skipped, so they must be counted here - the write
+					// loop's buffer sizing depends on this count staying in lockstep.
+					bool flicker_excluded = false;
+					if (flicker_busy && !flicker_partial && scan->t0 >= 0.0)
+					{
+						const int bucket = std::clamp(int((scan->t0 - first_t0) / flicker_span), 0, flicker_n - 1);
+						flicker_excluded = (bucket == flicker_active_bucket);
+					}
+					if (!flicker_excluded)
+					{
+						visible_count++;
+						// Squared-distance point/dot classification (no sqrt): pt_thresh is a threshold
+						// compare, so comparing squares is equivalent and cheaper - same test as the write
+						// loop's r_is_point below (must stay IDENTICAL, it decides ray-buffer sizing here vs
+						// ray routing there).
+						const float sdx = scan->bounds.x1 - scan->bounds.x0, sdy = scan->bounds.y1 - scan->bounds.y0;
+						if (sdx * sdx + sdy * sdy <= pt_thresh * pt_thresh)
+							point_count++;
 					}
 				}
-				// This present's rotating bucket is excluded (not drawn) - the phosphor pool decays it;
-				// vector_count (list membership / staleness) still counts it so a flicker-only frame is
-				// not mistaken for a stale/empty one. In per-channel mode (flicker_partial) the bucket's
-				// vectors are DRAWN dimmed instead of skipped, so they must be counted here - the write
-				// loop's buffer sizing depends on this count staying in lockstep.
-				bool flicker_excluded = false;
-				if (flicker_busy && !flicker_partial && scan->t0 >= 0.0)
+				else if (scan->type == render_primitive::QUAD && PRIMFLAG_GET_VECTORBUF(scan->flags))
 				{
-					const int bucket = std::clamp(int((scan->t0 - first_t0) / flicker_span), 0, flicker_n - 1);
-					flicker_excluded = (bucket == flicker_active_bucket);
+					const float x0 = std::min(scan->bounds.x0, scan->bounds.x1);
+					const float x1 = std::max(scan->bounds.x0, scan->bounds.x1);
+					const float y0 = std::min(scan->bounds.y0, scan->bounds.y1);
+					const float y1 = std::max(scan->bounds.y0, scan->bounds.y1);
+					if (!have_screen_rect)
+					{
+						screen_min_x = x0; screen_max_x = x1;
+						screen_min_y = y0; screen_max_y = y1;
+						have_screen_rect = true;
+					}
+					else
+					{
+						// Defensive union for a view containing more than one vector screen.
+						screen_min_x = std::min(screen_min_x, x0); screen_max_x = std::max(screen_max_x, x1);
+						screen_min_y = std::min(screen_min_y, y0); screen_max_y = std::max(screen_max_y, y1);
+					}
 				}
-				if (!flicker_excluded)
-				{
-					visible_count++;
-					// Squared-distance point/dot classification (no sqrt): pt_thresh is a threshold
-					// compare, so comparing squares is equivalent and cheaper - same test as the write
-					// loop's r_is_point below (must stay IDENTICAL, it decides ray-buffer sizing here vs
-					// ray routing there).
-					const float sdx = scan->bounds.x1 - scan->bounds.x0, sdy = scan->bounds.y1 - scan->bounds.y0;
-					if (sdx * sdx + sdy * sdy <= pt_thresh * pt_thresh)
-						point_count++;
-				}
+				scan = scan->next();
 			}
-			else if (scan->type == render_primitive::QUAD && PRIMFLAG_GET_VECTORBUF(scan->flags))
-			{
-				const float x0 = std::min(scan->bounds.x0, scan->bounds.x1);
-				const float x1 = std::max(scan->bounds.x0, scan->bounds.x1);
-				const float y0 = std::min(scan->bounds.y0, scan->bounds.y1);
-				const float y1 = std::max(scan->bounds.y0, scan->bounds.y1);
-				if (!have_screen_rect)
-				{
-					screen_min_x = x0; screen_max_x = x1;
-					screen_min_y = y0; screen_max_y = y1;
-					have_screen_rect = true;
-				}
-				else
-				{
-					// Defensive union for a view containing more than one vector screen.
-					screen_min_x = std::min(screen_min_x, x0); screen_max_x = std::max(screen_max_x, x1);
-					screen_min_y = std::min(screen_min_y, y0); screen_max_y = std::max(screen_max_y, y1);
-				}
-			}
-			scan = scan->next();
-		}
-		if (flicker_on) { m_flicker_prev_count = cur_raw_count; m_flicker_prev_t0 = cur_first_t0; m_flicker_prev_t1 = cur_last_t1; }
-		const float screen_w = screen_max_x - screen_min_x;
-		m_vec_res_w = (screen_w > 1.0f)
-			? std::clamp(screen_w, 64.0f, float(s_width[window_index]))
-			: float(s_width[window_index]);
-		const float screen_h = screen_max_y - screen_min_y;
-		m_vec_res_h = (screen_h > 1.0f)
-			? std::clamp(screen_h, 64.0f, float(s_height[window_index]))
-			: float(s_height[window_index]);
+			m_vec_cached_vector_count = vector_count;
+			if (flicker_on) { m_flicker_prev_count = cur_raw_count; m_flicker_prev_t0 = cur_first_t0; m_flicker_prev_t1 = cur_last_t1; }
+			const float screen_w = screen_max_x - screen_min_x;
+			m_vec_res_w = (screen_w > 1.0f)
+				? std::clamp(screen_w, 64.0f, float(s_width[window_index]))
+				: float(s_width[window_index]);
+			const float screen_h = screen_max_y - screen_min_y;
+			m_vec_res_h = (screen_h > 1.0f)
+				? std::clamp(screen_h, 64.0f, float(s_height[window_index]))
+				: float(s_height[window_index]);
 
-		// The same stable CRT-face rectangle is the physical boundary from which bezel reflection glows.
-		m_edge_box_min_x = screen_min_x; m_edge_box_max_x = screen_max_x;
-		m_edge_box_min_y = screen_min_y; m_edge_box_max_y = screen_max_y;
+			// The same stable CRT-face rectangle is the physical boundary from which bezel reflection glows.
+			m_edge_box_min_x = screen_min_x; m_edge_box_max_x = screen_max_x;
+			m_edge_box_min_y = screen_min_y; m_edge_box_max_y = screen_max_y;
+		}
+
+		// Host-rate vector presentation re-runs the chain between emulated vector
+		// frames. The retained primitive list still contains the previous source
+		// frame, but it must excite the phosphor only once. Keep vector_count so
+		// the FBO clear and temporal chain continue to run; suppress allocations
+		// and draws for repeated presents so the fresh excitation inputs are black.
+		if (!deposit_vector_source)
+		{
+			visible_count = 0;
+			point_count = 0;
+		}
+		vector_perf_scan_end = bx::getHPCounter();
+		if (deposit_vector_source)
+			m_vector_perf_scan_ms = double(vector_perf_scan_end - vector_perf_source_begin)
+				* 1000.0 / double(bx::getHPFrequency());
 
 		if (vector_count > 0)
 		{
@@ -3971,7 +4095,7 @@ int renderer_bgfx::draw(int update)
 			m_dwell_scale.clear();
 			const bool stroke_agg_on = m_line_analytic && m_vs.energy_model > 0.0f && m_vs.energy_stroke_agg > 0.5f;
 			const bool dwell_cap_on  = m_line_analytic && m_vs.energy_model > 0.0f && m_vs.energy_dwell_cap < 15.99f;
-			if (stroke_agg_on || dwell_cap_on)
+			if (deposit_vector_source && (stroke_agg_on || dwell_cap_on))
 			{
 				const float e_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
 						: float(std::max(s_width[window_index], s_height[window_index]));
@@ -4028,6 +4152,10 @@ int renderer_bgfx::draw(int update)
 				}
 				flush_run();   // a stroke still open at the list end (no RAMP-off seen)
 			}
+			vector_perf_energy_end = bx::getHPCounter();
+			if (deposit_vector_source)
+				m_vector_perf_energy_ms = double(vector_perf_energy_end - vector_perf_scan_end)
+					* 1000.0 / double(bx::getHPFrequency());
 
 			// Vertex-dwell endpoint dots: neighbour-aware pass over the vector list in
 			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
@@ -4047,10 +4175,11 @@ int renderer_bgfx::draw(int update)
 			{
 				render_primitive *prim;
 				float x0, y0, x1, y1, dx, dy, len2;
+				bool crowded0 = false, crowded1 = false;
 			};
 			std::vector<cap_segment> cap_segments;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
-			if (vertex_dwell > 0.0f || cap_mode == 1 || junction_on)
+			if (deposit_vector_source && (vertex_dwell > 0.0f || cap_mode == 1 || junction_on))
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
 				const render_primitive *pv = nullptr;
@@ -4090,25 +4219,94 @@ int renderer_bgfx::draw(int update)
 			// an O(N^2) scan in text-heavy scenes.
 			if (junction_on && cap_segments.size() > 1)
 			{
-				constexpr float CELL = 32.0f;
+				// Fine cells sharply reduce the candidate count in vector-dense radial
+				// frames.  Keep the coarser grid for ordinary scenes, where constructing
+				// a large mostly-empty grid would cost more than the saved comparisons.
+				const float CELL = cap_segments.size() >= 512 ? 8.0f : 32.0f;
 				const float tol = std::max(0.75f, vec_res_scale());
 				const float tol2 = tol * tol;
 				auto cell_key = [](int x, int y) -> uint64_t
 				{
 					return (uint64_t(uint32_t(x)) << 32) | uint32_t(y);
 				};
-				std::unordered_map<uint64_t, std::vector<uint32_t>> cap_grid;
-				cap_grid.reserve(cap_segments.size() * 4);
+				// A radial event can place thousands of segment endpoints on the exact same
+				// centre pixel.  Such a point cannot be a simple T junction: every candidate
+				// in the hot centre bucket is rejected as another endpoint.  Mark these
+				// high-degree shared vertices once so suppress_at does not repeat that
+				// fruitless O(N^2) bucket walk for every radial segment.
+				if (cap_segments.size() >= 64)
+				{
+					std::unordered_map<uint64_t, uint16_t> endpoint_degree;
+					endpoint_degree.reserve(cap_segments.size());
+					auto endpoint_key = [&](float x, float y) -> uint64_t
+					{
+						return cell_key(int(std::lround(x)), int(std::lround(y)));
+					};
+					for (const cap_segment &seg : cap_segments)
+					{
+						uint16_t &degree0 = endpoint_degree[endpoint_key(seg.x0, seg.y0)];
+						if (degree0 != std::numeric_limits<uint16_t>::max())
+							degree0++;
+						uint16_t &degree1 = endpoint_degree[endpoint_key(seg.x1, seg.y1)];
+						if (degree1 != std::numeric_limits<uint16_t>::max())
+							degree1++;
+					}
+					constexpr uint16_t CROWDED_VERTEX_DEGREE = 8;
+					for (cap_segment &seg : cap_segments)
+					{
+						seg.crowded0 = endpoint_degree[endpoint_key(seg.x0, seg.y0)] >= CROWDED_VERTEX_DEGREE;
+						seg.crowded1 = endpoint_degree[endpoint_key(seg.x1, seg.y1)] >= CROWDED_VERTEX_DEGREE;
+					}
+				}
+				int min_cell_x = std::numeric_limits<int>::max();
+				int min_cell_y = std::numeric_limits<int>::max();
+				int max_cell_x = std::numeric_limits<int>::min();
+				int max_cell_y = std::numeric_limits<int>::min();
+				for (const cap_segment &seg : cap_segments)
+				{
+					const int x0 = int(std::floor(seg.x0 / CELL));
+					const int y0 = int(std::floor(seg.y0 / CELL));
+					const int x1 = int(std::floor(seg.x1 / CELL));
+					const int y1 = int(std::floor(seg.y1 / CELL));
+					min_cell_x = std::min(min_cell_x, std::min(x0, x1));
+					min_cell_y = std::min(min_cell_y, std::min(y0, y1));
+					max_cell_x = std::max(max_cell_x, std::max(x0, x1));
+					max_cell_y = std::max(max_cell_y, std::max(y0, y1));
+				}
+				const int grid_width = max_cell_x - min_cell_x + 1;
+				const int grid_height = max_cell_y - min_cell_y + 1;
+				std::vector<std::vector<uint32_t>> cap_grid(size_t(grid_width) * size_t(grid_height));
+				auto grid_index = [&](int x, int y) -> size_t
+				{
+					return size_t(y - min_cell_y) * size_t(grid_width) + size_t(x - min_cell_x);
+				};
 				for (uint32_t i = 0; i < cap_segments.size(); i++)
 				{
 					const cap_segment &seg = cap_segments[i];
-					const int min_x = int(std::floor((std::min(seg.x0, seg.x1) - tol) / CELL));
-					const int max_x = int(std::floor((std::max(seg.x0, seg.x1) + tol) / CELL));
-					const int min_y = int(std::floor((std::min(seg.y0, seg.y1) - tol) / CELL));
-					const int max_y = int(std::floor((std::max(seg.y0, seg.y1) + tol) / CELL));
-					for (int cy = min_y; cy <= max_y; cy++)
-						for (int cx = min_x; cx <= max_x; cx++)
-							cap_grid[cell_key(cx, cy)].push_back(i);
+					// Index only cells traversed by the segment centreline. The old AABB fill
+					// registered every cell in a diagonal line's bounding rectangle, making a
+					// dense radial event (the Death Star explosion) approach O(N^2) candidate
+					// work even though almost all candidates were geometrically unrelated.
+					// Endpoint lookup already searches a 3x3 neighbourhood and the final exact
+					// distance test uses tol, so centreline cells retain the same result.
+					const int cell_x0 = int(std::floor(seg.x0 / CELL));
+					const int cell_y0 = int(std::floor(seg.y0 / CELL));
+					const int cell_x1 = int(std::floor(seg.x1 / CELL));
+					const int cell_y1 = int(std::floor(seg.y1 / CELL));
+					const int steps = std::max(std::abs(cell_x1 - cell_x0), std::abs(cell_y1 - cell_y0));
+					uint64_t previous = std::numeric_limits<uint64_t>::max();
+					for (int step = 0; step <= steps; ++step)
+					{
+						const float t = steps ? float(step) / float(steps) : 0.0f;
+						const int cx = int(std::floor((seg.x0 + (seg.x1 - seg.x0) * t) / CELL));
+						const int cy = int(std::floor((seg.y0 + (seg.y1 - seg.y0) * t) / CELL));
+						const uint64_t key = cell_key(cx, cy);
+						if (key != previous)
+						{
+							cap_grid[grid_index(cx, cy)].push_back(i);
+							previous = key;
+						}
+					}
 				}
 				auto suppress_at = [&](const cap_segment &self, float x, float y, float &boost)
 				{
@@ -4116,21 +4314,34 @@ int renderer_bgfx::draw(int update)
 					const int cell_y = int(std::floor(y / CELL));
 					for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
 					{
-						auto bucket = cap_grid.find(cell_key(cell_x + ox, cell_y + oy));
-						if (bucket == cap_grid.end())
+						const int query_x = cell_x + ox;
+						const int query_y = cell_y + oy;
+						if (query_x < min_cell_x || query_x > max_cell_x
+							|| query_y < min_cell_y || query_y > max_cell_y)
 							continue;
-						for (uint32_t index : bucket->second)
+						const std::vector<uint32_t> &bucket = cap_grid[grid_index(query_x, query_y)];
+						for (uint32_t index : bucket)
 						{
 							const cap_segment &other = cap_segments[index];
 							if (other.prim == self.prim || other.len2 <= 1e-6f)
 								continue;
-							const float cross = std::abs(self.dx * other.dy - self.dy * other.dx)
-								/ std::sqrt(self.len2 * other.len2);
-							if (cross < 0.2f)
+							// Dense radial events have thousands of segments sharing the same centre.
+							// They are endpoint joins, never T junctions. Reject them before the angle
+							// and projection work instead of discovering that after several divides/sqrts.
+							const float oe0x = x - other.x0, oe0y = y - other.y0;
+							const float oe1x = x - other.x1, oe1y = y - other.y1;
+							if (oe0x * oe0x + oe0y * oe0y <= tol2
+								|| oe1x * oe1x + oe1y * oe1y <= tol2)
+								continue;
+							const float cross = self.dx * other.dy - self.dy * other.dx;
+							if (cross * cross < 0.04f * self.len2 * other.len2)
 								continue; // collinear joins and retraces retain their normal blanking cap
 							const float t = ((x - other.x0) * other.dx + (y - other.y0) * other.dy) / other.len2;
-							const float end_margin = std::min(0.25f, tol / std::sqrt(other.len2));
-							if (t <= end_margin || t >= 1.0f - end_margin)
+							if (t <= 0.0f || t >= 1.0f)
+								continue;
+							const float end_t = 1.0f - t;
+							if ((t <= 0.25f && t * t * other.len2 <= tol2)
+								|| (end_t <= 0.25f && end_t * end_t * other.len2 <= tol2))
 								continue; // shared endpoints are handled by the existing consecutive-line logic
 							const float qx = other.x0 + t * other.dx, qy = other.y0 + t * other.dy;
 							const float ex = x - qx, ey = y - qy;
@@ -4147,10 +4358,19 @@ int renderer_bgfx::draw(int update)
 					auto boost = vtx_boost.find(seg.prim);
 					if (boost == vtx_boost.end())
 						continue;
-					suppress_at(seg, seg.x0, seg.y0, boost->second.first);
-					suppress_at(seg, seg.x1, seg.y1, boost->second.second);
+					// Connected consecutive vectors already have a zero cap.  Suppressing
+					// that cap cannot change the result, so avoid an otherwise expensive
+					// spatial query.  Dense AVG frames have roughly 90% zero-cap endpoints.
+					if (!seg.crowded0 && boost->second.first > 0.0f)
+						suppress_at(seg, seg.x0, seg.y0, boost->second.first);
+					if (!seg.crowded1 && boost->second.second > 0.0f)
+						suppress_at(seg, seg.x1, seg.y1, boost->second.second);
 				}
 			}
+			vector_perf_cap_end = bx::getHPCounter();
+			if (deposit_vector_source)
+				m_vector_perf_cap_ms = double(vector_perf_cap_end - vector_perf_energy_end)
+					* 1000.0 / double(bx::getHPFrequency());
 
 			// Keep the displayed flare in renderer state so its attack/release can be smoothed below.
 			// Candidate analysis writes a separate target; a missing target now decays instead of popping off.
@@ -4166,7 +4386,8 @@ int renderer_bgfx::draw(int update)
 			struct convergence_bloom { float x, y, magnitude, radius, r, g, b, peak, falloff_scale; };
 			static constexpr int MAX_CONVERGENCE_BLOOMS = 8;
 			std::vector<convergence_bloom> conv_blooms;
-			const bool conv_on = m_line_analytic && (m_vs.convergence_bloom_gain > 0.0f || m_vs.convergence_global_gain > 0.0f);
+			const bool conv_on = deposit_vector_source && m_line_analytic
+				&& (m_vs.convergence_bloom_gain > 0.0f || m_vs.convergence_global_gain > 0.0f);
 			if (conv_on)
 			{
 				static constexpr int CONV_W = 32, CONV_H = 32;
@@ -4214,13 +4435,56 @@ int renderer_bgfx::draw(int update)
 					// accounting gave a very short Vectrex character stroke the same support as a line
 					// crossing an entire cell. Normalising by the cell diagonal retains approximately the
 					// old scale for a full-cell traversal while making short strokes proportionally weaker.
+					//
+					// Clip to the phosphor face before subdividing. Death Star's explosion contains many
+					// long off-screen vectors; subdividing their complete physical deflection path and
+					// clamping every outside sample to an edge cell both wasted substantial CPU time and
+					// incorrectly deposited off-screen energy onto the phosphor edge. Monitor/bezel glow
+					// already receives the full unclipped path through the device statistics.
+					float path_t0 = 0.0f, path_t1 = 1.0f;
+					if (is_point)
+					{
+						if (mid_x < 0.0f || mid_x > sw || mid_y < 0.0f || mid_y > sh)
+							continue;
+					}
+					else
+					{
+						auto clip_test = [&](float pclip, float qclip)
+						{
+							if (std::abs(pclip) < 1.0e-8f)
+								return qclip >= 0.0f;
+							const float r = qclip / pclip;
+							if (pclip < 0.0f)
+							{
+								if (r > path_t1) return false;
+								path_t0 = std::max(path_t0, r);
+							}
+							else
+							{
+								if (r < path_t0) return false;
+								path_t1 = std::min(path_t1, r);
+							}
+							return true;
+						};
+						if (!clip_test(-dx, p->bounds.x0)
+							|| !clip_test(dx, sw - p->bounds.x0)
+							|| !clip_test(-dy, p->bounds.y0)
+							|| !clip_test(dy, sh - p->bounds.y0)
+							|| path_t1 <= path_t0)
+							continue;
+					}
+					const float path_fraction = path_t1 - path_t0;
+					const float path_dx = dx * path_fraction;
+					const float path_dy = dy * path_fraction;
+					const float path_len = is_point ? 0.0f : len * path_fraction;
 					const float cell_diagonal = sqrtf(cell_w * cell_w + cell_h * cell_h);
 					const int steps = is_point ? 1 : std::max(1,
-						int(std::ceil(std::max(fabsf(dx) / cell_w, fabsf(dy) / cell_h))));
-					const float path_weight = is_point ? 1.0f : len / (float(steps) * cell_diagonal);
+						int(std::ceil(std::max(fabsf(path_dx) / cell_w, fabsf(path_dy) / cell_h))));
+					const float path_weight = is_point ? 1.0f : path_len / (float(steps) * cell_diagonal);
 					for (int step = 0; step < steps; step++)
 					{
-						const float t = is_point ? 0.0f : (float(step) + 0.5f) / float(steps);
+						const float t = is_point ? 0.0f : path_t0
+							+ ((float(step) + 0.5f) / float(steps)) * path_fraction;
 						const float x = p->bounds.x0 + dx * t, y = p->bounds.y0 + dy * t;
 						const int ix = std::clamp(int(x / cell_w), 0, CONV_W - 1);
 						const int iy = std::clamp(int(y / cell_h), 0, CONV_H - 1);
@@ -4495,6 +4759,10 @@ int renderer_bgfx::draw(int update)
 					[](const convergence_bloom &a, const convergence_bloom &b) { return a.peak > b.peak; });
 				if (conv_blooms.size() > MAX_CONVERGENCE_BLOOMS) conv_blooms.resize(MAX_CONVERGENCE_BLOOMS);
 			}
+			vector_perf_convergence_end = bx::getHPCounter();
+			if (deposit_vector_source)
+				m_vector_perf_convergence_ms = double(vector_perf_convergence_end - vector_perf_cap_end)
+					* 1000.0 / double(bx::getHPFrequency());
 
 			// Glass/face scatter has a short asymmetric temporal response. This is separate from
 			// phosphor persistence: it removes one-frame eligibility pops while retaining a prompt
@@ -4526,6 +4794,10 @@ int renderer_bgfx::draw(int update)
 			m_conv_global_gain += global_alpha * (conv_global_target_gain - m_conv_global_gain);
 			if (m_conv_global_gain < 1e-6f)
 				m_conv_global_gain = 0.0f;
+			vector_perf_analysis_end = bx::getHPCounter();
+			if (deposit_vector_source)
+				m_vector_perf_analysis_ms = double(vector_perf_analysis_end - vector_perf_scan_end)
+					* 1000.0 / double(bx::getHPFrequency());
 
 			// Deflection-amplifier dynamics: when on, each analytic line is drawn as a
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
@@ -4790,6 +5062,10 @@ int renderer_bgfx::draw(int update)
 					}
 				}
 			}
+			vector_perf_geometry_end = bx::getHPCounter();
+			if (deposit_vector_source)
+				m_vector_perf_geometry_ms = double(vector_perf_geometry_end - vector_perf_analysis_end)
+					* 1000.0 / double(bx::getHPFrequency());
 
 			// The FBO view runs (cleared) whenever vector primitives exist: a frame whose lines
 			// were all drawn in another time window must present as a dark frame - the chain's
@@ -4870,12 +5146,18 @@ int renderer_bgfx::draw(int update)
 				// real time): the raw bins follow the frame's exact sweep pattern and flicker hard;
 				// phosphor/scatter persistence and the eye smooth the real thing. 0 = off (raw bins).
 				const float persist_ms = m_chains->slider_value(0, "edge_glow_persist", 120.0f);
-				const float e_decay = (persist_ms > 0.5f && flicker_dt_ms > 0.0)
-						? powf(0.5f, float(flicker_dt_ms) / persist_ms) : 0.0f;
+				const bool advance_edge_time = vstats.playback_active
+					? m_vec_frame_advanced
+					: (m_vec_frame_advanced
+						|| ((window().machine().video().vector_present_rate() > 0) && !window().machine().paused()));
+				const float e_decay = !advance_edge_time ? 1.0f
+					: ((persist_ms > 0.5f && flicker_dt_ms > 0.0)
+						? powf(0.5f, float(flicker_dt_ms) / persist_ms) : 0.0f);
 				for (int es = 0; es < 4; es++)
 					for (int eb = 0; eb < render_vector_stats::EDGE_GLOW_BINS; eb++)
 					{
-						m_edge_smooth[es][eb] = std::max(vstats.edge_energy[es][eb], m_edge_smooth[es][eb] * e_decay);
+						const float fresh_edge = deposit_vector_source ? vstats.edge_energy[es][eb] : 0.0f;
+						m_edge_smooth[es][eb] = std::max(fresh_edge, m_edge_smooth[es][eb] * e_decay);
 						if (m_edge_smooth[es][eb] > 1e-3f)
 							edge_quads++;
 					}
@@ -5090,10 +5372,13 @@ int renderer_bgfx::draw(int update)
 			// while drawn, no afterimage, and never fed into the narrow/wide glow cascade. Uses the same
 			// analytic line effect as the body view (same u_line_params), unlike the soft
 			// glow view. Only when caps are routed here and the buffer was allocated.
-			// Gated on the buffer ALLOCATION (see the glow block): a successful alloc means we own the
-			// no-persist FBO this frame and clear it - even with no caps / junction dots - so the chain's
-			// "NoPersist Combine" never re-adds a previous frame's dots forever (the dot ghost). An alloc
-			// failure (busy frame) skips and leaves the FBO rather than blacking the dots out.
+			// Gated on source-frame buffer ALLOCATION (see the glow block): a successful alloc means we
+			// own the no-persist FBO for a NEW emulated vector refresh and clear it - even with no caps /
+			// junction dots - so "NoPersist Combine" cannot carry them into the next source frame.
+			// Presentation-only repeats must retain this FBO, however. Clearing it on every 144 Hz repeat
+			// made short-dwell stars/dots exist for just the first host present of a 41/60 Hz source frame,
+			// producing a regular blink unrelated to the flicker model. An allocation failure likewise
+			// leaves the last complete source image intact rather than blacking the dots out.
 			if (np_alloc && bgfx::isValid(m_vec_np_fb))
 			{
 				const uint16_t np_view = uint16_t(s_current_view);
@@ -5133,6 +5418,9 @@ int renderer_bgfx::draw(int update)
 					bgfx::touch(np_view);   // no caps / junction dots: just clear the FBO (no stale ghost)
 			}
 		}
+		if (deposit_vector_source && vector_perf_geometry_end)
+			m_vector_perf_submit_ms = double(bx::getHPCounter() - vector_perf_geometry_end)
+				* 1000.0 / double(bx::getHPFrequency());
 	}
 
 	// chain: inject the FBO into the chain system and render it.
@@ -5146,21 +5434,31 @@ int renderer_bgfx::draw(int update)
 		{
 			const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(s_width[window_index]) * m_vec_render_scale + 0.5f));
 			const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(s_height[window_index]) * m_vec_render_scale + 0.5f));
-			uint16_t content_w = render_w;
-			uint16_t content_h = render_h;
-			float content_area = 0.0f;
-			for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
+			uint16_t content_w = m_vec_cached_content_w ? std::min(m_vec_cached_content_w, render_w) : render_w;
+			uint16_t content_h = m_vec_cached_content_h ? std::min(m_vec_cached_content_h, render_h) : render_h;
+			const bool refresh_content_bounds = m_vec_frame_advanced
+				|| (window().machine().video().vector_present_rate() == 0)
+				|| !m_vec_cached_content_w || !m_vec_cached_content_h;
+			if (refresh_content_bounds)
 			{
-				if (scan->type != render_primitive::QUAD || !PRIMFLAG_GET_VECTORBUF(scan->flags))
-					continue;
-				const float bounds_w = std::abs(scan->bounds.x1 - scan->bounds.x0);
-				const float bounds_h = std::abs(scan->bounds.y1 - scan->bounds.y0);
-				const float area = bounds_w * bounds_h;
-				if (area <= content_area)
-					continue;
-				content_area = area;
-				content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_render_scale)), 1, int(render_w)));
-				content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_render_scale)), 1, int(render_h)));
+				content_w = render_w;
+				content_h = render_h;
+				float content_area = 0.0f;
+				for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
+				{
+					if (scan->type != render_primitive::QUAD || !PRIMFLAG_GET_VECTORBUF(scan->flags))
+						continue;
+					const float bounds_w = std::abs(scan->bounds.x1 - scan->bounds.x0);
+					const float bounds_h = std::abs(scan->bounds.y1 - scan->bounds.y0);
+					const float area = bounds_w * bounds_h;
+					if (area <= content_area)
+						continue;
+					content_area = area;
+					content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_render_scale)), 1, int(render_w)));
+					content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_render_scale)), 1, int(render_h)));
+				}
+				m_vec_cached_content_w = content_w;
+				m_vec_cached_content_h = content_h;
 			}
 			m_chains->inject_vector_screen(vec_color,
 				render_w, render_h,
@@ -5199,6 +5497,54 @@ int renderer_bgfx::draw(int update)
 			// Guard against null chain (e.g. chain change from menu, or failed load).
 			if (m_chains->has_applicable_chain(0))
 			{
+				const bool vector_repeat = (window().machine().video().vector_present_rate() > 0)
+					&& !m_vec_frame_advanced;
+				bgfx_target *const completed_hdr = m_chains->targets().target(0, "screen_hdr");
+				const bool can_represent_completed = vector_repeat && completed_hdr
+					&& bgfx::isValid(completed_hdr->texture());
+				const int present_rate = int(window().machine().video().vector_present_rate());
+				const int phosphor_rate = std::clamp(
+					window().machine().options().vector_phosphor_rate(), 0, 360);
+				const int64_t phosphor_hpc_now = bx::getHPCounter();
+				const double phosphor_real_dt_ms = m_vec_phosphor_last_hpc
+					? double(phosphor_hpc_now - m_vec_phosphor_last_hpc) * 1000.0
+						/ double(bx::getHPFrequency())
+					: 0.0;
+				m_vec_phosphor_last_hpc = phosphor_hpc_now;
+				bool run_vector_chain = true;
+
+				// Keep presentation at the requested monitor rate, but optionally cap the expensive
+				// temporal phosphor/monitor chain at vector_phosphor_rate updates per real second.
+				// A new emulated source frame is never delayed; it may borrow against the budget.
+				// Presentation-only frames wait for a complete token and otherwise re-present the
+				// retained screen_hdr output. A zero rate disables this cap.
+				// The gate is restricted to chains with that retained final target, so legacy chains
+				// that render directly to the backbuffer keep their original behaviour.
+				if (phosphor_rate > 0 && present_rate > phosphor_rate && completed_hdr)
+				{
+					m_vec_phosphor_budget = std::min(1.0, m_vec_phosphor_budget
+						+ std::max(0.0, phosphor_real_dt_ms) * double(phosphor_rate) / 1000.0);
+					if (!vector_repeat)
+					{
+						m_vec_phosphor_budget = std::max(-1.0, m_vec_phosphor_budget - 1.0);
+					}
+					else if (can_represent_completed && m_vec_phosphor_budget < 1.0)
+					{
+						run_vector_chain = false;
+					}
+					else
+					{
+						m_vec_phosphor_budget = std::max(-1.0, m_vec_phosphor_budget - 1.0);
+					}
+				}
+				else
+				{
+					m_vec_phosphor_budget = 1.0;
+				}
+
+				if (run_vector_chain)
+				{
+				m_vec_chain_ran = true;
 				// Feed the monitor glow into the chain's glow pass (no-op without an "add_mglow"
 				// pass). The device publishes the shaped off-screen beam energy binned by how far
 				// beyond the visible area the beam reached (render_vector_stats::offscreen_energy;
@@ -5293,7 +5639,7 @@ int renderer_bgfx::draw(int update)
 				// Bloom Apply injections lived here; they went with those chains.)
 				const double persist_now = window().machine().time().as_double();
 				const double persist_dt = vstats.playback_active
-					? double(vstats.playback_dt_ms) / 1000.0
+					? (m_vec_frame_advanced ? double(vstats.playback_dt_ms) / 1000.0 : 0.0)
 					: ((m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
 						? (persist_now - m_vec_persist_prev_t) : 0.0);
 				m_vec_persist_prev_t = vstats.playback_active ? -1.0 : persist_now;
@@ -5333,8 +5679,10 @@ int renderer_bgfx::draw(int update)
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos_rgb", phos_rgb_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos_rgb", phos_rgb_vals, 4);
 
-				uint32_t chain_views = m_chains->process_screen_chains(s_current_view, window());
+				uint32_t chain_views = m_chains->process_screen_chains(
+						s_current_view, window(), vector_repeat);
 				s_current_view += chain_views;
+				}
 			}
 		}
 	}
@@ -5615,7 +5963,91 @@ int renderer_bgfx::draw(int update)
 
 	if (window().index() == osd_common_t::window_list().size() - 1)
 	{
+		const int64_t vector_perf_frame_begin = bx::getHPCounter();
 		s_bgfx_frame_number = bgfx::frame();
+		const int64_t vector_perf_frame_end = bx::getHPCounter();
+
+		if (window_index == 0 && m_module().options().bgfx_debug())
+		{
+			const double to_ms = 1000.0 / double(bx::getHPFrequency());
+			const double prep_ms = double(vector_perf_frame_begin - vector_perf_draw_begin) * to_ms;
+			const double frame_ms = double(vector_perf_frame_end - vector_perf_frame_begin) * to_ms;
+			const int bucket_index = m_vec_deposited_source ? 0 : (m_vec_chain_ran ? 1 : 2);
+			vector_perf_bucket &bucket = m_vector_perf[bucket_index];
+			bucket.prep_total_ms += prep_ms;
+			bucket.prep_max_ms = std::max(bucket.prep_max_ms, prep_ms);
+			bucket.prim_total_ms += m_vector_perf_prim_ms;
+			bucket.prim_max_ms = std::max(bucket.prim_max_ms, m_vector_perf_prim_ms);
+			bucket.frame_total_ms += frame_ms;
+			bucket.frame_max_ms = std::max(bucket.frame_max_ms, frame_ms);
+			bucket.scan_total_ms += m_vector_perf_scan_ms;
+			bucket.scan_max_ms = std::max(bucket.scan_max_ms, m_vector_perf_scan_ms);
+			bucket.analysis_total_ms += m_vector_perf_analysis_ms;
+			bucket.analysis_max_ms = std::max(bucket.analysis_max_ms, m_vector_perf_analysis_ms);
+			bucket.energy_total_ms += m_vector_perf_energy_ms;
+			bucket.energy_max_ms = std::max(bucket.energy_max_ms, m_vector_perf_energy_ms);
+			bucket.cap_total_ms += m_vector_perf_cap_ms;
+			bucket.cap_max_ms = std::max(bucket.cap_max_ms, m_vector_perf_cap_ms);
+			bucket.convergence_total_ms += m_vector_perf_convergence_ms;
+			bucket.convergence_max_ms = std::max(bucket.convergence_max_ms, m_vector_perf_convergence_ms);
+			bucket.geometry_total_ms += m_vector_perf_geometry_ms;
+			bucket.geometry_max_ms = std::max(bucket.geometry_max_ms, m_vector_perf_geometry_ms);
+			bucket.submit_total_ms += m_vector_perf_submit_ms;
+			bucket.submit_max_ms = std::max(bucket.submit_max_ms, m_vector_perf_submit_ms);
+			bucket.count++;
+
+			const bgfx::Stats *const stats = bgfx::getStats();
+			if (stats && stats->gpuTimerFreq > 0 && stats->gpuTimeEnd >= stats->gpuTimeBegin)
+			{
+				const double gpu_ms = double(stats->gpuTimeEnd - stats->gpuTimeBegin)
+					* 1000.0 / double(stats->gpuTimerFreq);
+				m_vector_perf_gpu_max_ms = std::max(m_vector_perf_gpu_max_ms, gpu_ms);
+			}
+
+			if (!m_vector_perf_window_hpc)
+				m_vector_perf_window_hpc = vector_perf_frame_end;
+			if (vector_perf_frame_end - m_vector_perf_window_hpc >= bx::getHPFrequency())
+			{
+				static constexpr const char *labels[3] = { "source", "repeat-chain", "repeat-cached" };
+				for (int i = 0; i < 3; ++i)
+				{
+					const vector_perf_bucket &b = m_vector_perf[i];
+					if (b.count)
+					{
+						osd_printf_info(
+							"BGFX PERF %-13s n=%u prep avg/max %.3f/%.3f ms, "
+							"primitives %.3f/%.3f ms, frame-wait %.3f/%.3f ms\n",
+							labels[i], b.count,
+							b.prep_total_ms / double(b.count), b.prep_max_ms,
+							b.prim_total_ms / double(b.count), b.prim_max_ms,
+							b.frame_total_ms / double(b.count), b.frame_max_ms);
+					}
+				}
+				const vector_perf_bucket &source = m_vector_perf[0];
+				if (source.count)
+				{
+					osd_printf_info(
+						"BGFX PERF source-detail scan %.3f/%.3f, analysis %.3f/%.3f, "
+						"geometry %.3f/%.3f, submit %.3f/%.3f ms (avg/max)\n",
+						source.scan_total_ms / double(source.count), source.scan_max_ms,
+						source.analysis_total_ms / double(source.count), source.analysis_max_ms,
+						source.geometry_total_ms / double(source.count), source.geometry_max_ms,
+						source.submit_total_ms / double(source.count), source.submit_max_ms);
+					osd_printf_info(
+						"BGFX PERF analysis-detail energy %.3f/%.3f, cap-junction %.3f/%.3f, "
+						"convergence %.3f/%.3f ms (avg/max)\n",
+						source.energy_total_ms / double(source.count), source.energy_max_ms,
+						source.cap_total_ms / double(source.count), source.cap_max_ms,
+						source.convergence_total_ms / double(source.count), source.convergence_max_ms);
+				}
+				osd_printf_info("BGFX PERF gpu-frame max %.3f ms, cached vectors %d\n",
+					m_vector_perf_gpu_max_ms, m_vec_cached_vector_count);
+				for (vector_perf_bucket &b : m_vector_perf)
+					b = vector_perf_bucket();
+				m_vector_perf_gpu_max_ms = 0.0;
+				m_vector_perf_window_hpc = vector_perf_frame_end;
+			}
+		}
 	}
 
 
@@ -5941,6 +6373,7 @@ void renderer_bgfx::setup_ortho_view()
 
 render_primitive_list *renderer_bgfx::get_primitives()
 {
+	const int64_t vector_perf_prim_begin = bx::getHPCounter();
 	// determines whether the screen container is transformed by the chain's shaders
 	bool chain_transform = false;
 
@@ -5952,6 +6385,24 @@ render_primitive_list *renderer_bgfx::get_primitives()
 	}
 
 	osd_dim wdim = window().get_size_pixels();
+	const float pixel_aspect = window().pixel_aspect();
+	const bool reuse_vector_primitives = window().machine().video().vector_presenting()
+		&& m_vector_present_primlist
+		&& wdim.width() == m_vector_present_prim_w
+		&& wdim.height() == m_vector_present_prim_h
+		&& pixel_aspect == m_vector_present_prim_aspect
+		&& chain_transform == m_vector_present_prim_transform;
+
+	// A presentation-only refresh has no intervening screen/UI container update. Reusing the
+	// already transformed list avoids rebuilding thousands of retained vector primitives at
+	// 120/144 Hz. A new emulated frame clears vector_presenting before entering here, so it always
+	// takes the normal rebuild path and refreshes the cache.
+	if (reuse_vector_primitives)
+	{
+		m_vector_perf_prim_ms = 0.0;
+		return m_vector_present_primlist;
+	}
+
 	if (wdim.width() > 0 && wdim.height() > 0)
 	{
 		// Keep target bounds at the 1x window (2x supersample bounds cause atlas bleeding in MAME UI
@@ -5960,11 +6411,18 @@ render_primitive_list *renderer_bgfx::get_primitives()
 		window().target()->set_bounds(
 			wdim.width(),
 			wdim.height(),
-			window().pixel_aspect());
+			pixel_aspect);
 	}
 
 	window().target()->set_transform_container(!chain_transform);
-	return &window().target()->get_primitives();
+	m_vector_present_primlist = &window().target()->get_primitives();
+	m_vector_present_prim_w = wdim.width();
+	m_vector_present_prim_h = wdim.height();
+	m_vector_present_prim_aspect = pixel_aspect;
+	m_vector_present_prim_transform = chain_transform;
+	m_vector_perf_prim_ms = double(bx::getHPCounter() - vector_perf_prim_begin)
+		* 1000.0 / double(bx::getHPFrequency());
+	return m_vector_present_primlist;
 }
 
 renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, render_primitive** prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index)

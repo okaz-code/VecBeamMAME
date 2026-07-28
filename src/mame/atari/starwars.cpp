@@ -321,11 +321,9 @@ void starwars_state::starwars(machine_config &config)
 	/* video hardware */
 	VECTOR(config, "vector", 0);
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_VECTOR));
-	// The real XY monitor has no refresh rate (the VGGO cadence is game-driven); the stock
-	// ~41Hz value only approximated the list cadence. The screen rate is just the presentation
-	// sampling window - 60Hz gives judder-free pacing on 60Hz hosts. The IRQ is a free-running
-	// periodic timer, so game speed is unaffected.
-	screen.set_refresh_hz(60);
+	// Match the stock MAME sampling cadence (~41.016 Hz). Host-rate presentation is handled
+	// independently by vector_present_rate, while the game IRQ remains a free-running timer.
+	screen.set_refresh_hz(CLOCK_3KHZ / 12 / 6);
 	screen.set_size(400, 300);
 	screen.set_visarea(0, 250, 0, 280);
 	screen.set_screen_update("vector", FUNC(vector_device::screen_update));

@@ -66,7 +66,7 @@ public:
 	~chain_manager();
 
 	uint32_t update_screen_textures(uint32_t view, render_primitive *starting_prim, osd_window& window);
-	uint32_t process_screen_chains(uint32_t view, osd_window& window);
+	uint32_t process_screen_chains(uint32_t view, osd_window& window, bool vector_repeat = false);
 
 	// inject a GPU-rendered FBO as "screen0" for vector game chain processing.
 	// Must be called before process_screen_chains() each frame.
@@ -199,7 +199,7 @@ private:
 	bool needs_sliders();
 
 	uint32_t count_screens(render_primitive* prim);
-	void process_screen_quad(uint32_t view, uint32_t screen, screen_prim &prim, osd_window& window);
+	uint32_t process_screen_quad(uint32_t view, uint32_t screen, screen_prim &prim, osd_window& window, bool vector_repeat);
 
 	running_machine&            m_machine;
 	const osd_options&          m_options;

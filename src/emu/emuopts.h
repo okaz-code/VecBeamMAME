@@ -124,6 +124,8 @@
 #define OPTION_VECTOR_RECORD        "vector_record"
 #define OPTION_VECTOR_PLAYBACK      "vector_playback"
 #define OPTION_VECTOR_EXIT_AFTER_PLAYBACK "vector_exit_after_playback"
+#define OPTION_VECTOR_PRESENT_RATE  "vector_present_rate"
+#define OPTION_VECTOR_PHOSPHOR_RATE "vector_phosphor_rate"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -416,6 +418,8 @@ public:
 	const char *vector_record() const { return value(OPTION_VECTOR_RECORD); }
 	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
 	bool vector_exit_after_playback() const { return bool_value(OPTION_VECTOR_EXIT_AFTER_PLAYBACK); }
+	int vector_present_rate() const;
+	int vector_phosphor_rate() const { return int_value(OPTION_VECTOR_PHOSPHOR_RATE); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }

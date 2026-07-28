@@ -6,7 +6,8 @@ HDR-aware vector display simulation.  The current development line is the
 recommended renderer configurations.
 
 VecBeamMAME is not an official MAME release.  For the vector chain variants,
-controls, and smoked-glass optical model, see the
+controls, high-refresh presentation, MVEC capture/playback, and smoked-glass
+optical model, see the
 [vector BGFX chain guide](bgfx/chains/vector/README.md).
 
 ## Upstream MAME

@@ -83,6 +83,10 @@ static void video_notifier_callback(const char *outname, s32 value, void *param)
 video_manager::video_manager(running_machine &machine)
 	: m_machine(machine)
 	, m_screenless_frame_timer(nullptr)
+	, m_vector_present_timer(nullptr)
+	, m_vector_present_rate(0)
+	, m_vector_present_auto(false)
+	, m_vector_presenting(false)
 	, m_output_changed(false)
 	, m_throttle_last_ticks(0)
 	, m_throttle_realtime(attotime::zero)
@@ -181,6 +185,23 @@ video_manager::video_manager(running_machine &machine)
 		m_screenless_frame_timer->adjust(screen_device::DEFAULT_FRAME_PERIOD, 0, screen_device::DEFAULT_FRAME_PERIOD);
 		machine.output().set_global_notifier(video_notifier_callback, this);
 	}
+	else
+	{
+		const int configured_present_rate = machine.options().vector_present_rate();
+		m_vector_present_auto = configured_present_rate < 0;
+		m_vector_present_rate = m_vector_present_auto ? 60U : u32(std::clamp(configured_present_rate, 0, 360));
+		bool have_vector_screen = false;
+		for (screen_device &screen : screen_device_enumerator(machine.root_device()))
+			have_vector_screen = have_vector_screen || (screen.screen_type() == SCREEN_TYPE_VECTOR);
+
+		if (m_vector_present_rate && have_vector_screen)
+		{
+			m_vector_present_timer = machine.scheduler().timer_alloc(timer_expired_delegate(FUNC(video_manager::vector_present_update_callback), this));
+			m_vector_present_timer->adjust(vector_present_period());
+			osd_printf_verbose("Vector presentation timer enabled at %s%u Hz\n",
+				m_vector_present_auto ? "auto, initial " : "", m_vector_present_rate);
+		}
+	}
 }
 
 
@@ -220,6 +241,15 @@ void video_manager::frame_update(bool from_debugger)
 	bool skipped_it = m_skipping_this_frame;
 	bool const update_screens = (phase == machine_phase::RUNNING) && (!machine().paused() || machine().options().update_in_pause());
 	bool anything_changed = update_screens && finish_screen_updates();
+	// The first host-rate presentation after an actual emulated screen update must run the complete
+	// vector chain. frame_update itself may run more often than a vector screen's refresh (Star Wars
+	// is about 41 Hz while the general update path can run at 60 Hz); resetting on every call promoted
+	// unchanged retained lists to fresh sources and repeated the expensive per-vector CPU preparation
+	// up to 60 times per second. update_quads reports a due vector screen update as changed even when
+	// the device retained the same display list, which is still a real CRT redraw and must remain a
+	// source presentation.
+	if (anything_changed && m_vector_present_timer)
+		m_vector_presenting = false;
 
 	// update inputs and draw the user interface
 	machine().osd().input_update(true);
@@ -236,20 +266,27 @@ void video_manager::frame_update(bool from_debugger)
 	else
 		m_empty_skip_count = 0;
 
-	// if we're throttling, synchronize before rendering
 	attotime current_time = machine().time();
-	if (!from_debugger && phase > machine_phase::INIT && !m_low_latency && effective_throttle())
-		update_throttle(current_time);
-
-	// ask the OSD to update
+	if (!vector_present_active())
 	{
-		auto profile = g_profiler.start(PROFILER_BLIT);
-		machine().osd().update(!from_debugger && skipped_it);
-	}
+		// This is a normal OSD update (including pause, fast-forward and -nothrottle), never a cached
+		// vector re-presentation.
+		m_vector_presenting = false;
 
-	// we synchronize after rendering instead of before, if low latency mode is enabled
-	if (!from_debugger && phase > machine_phase::INIT && m_low_latency && effective_throttle())
-		update_throttle(current_time);
+		// if we're throttling, synchronize before rendering
+		if (!from_debugger && phase > machine_phase::INIT && !m_low_latency && effective_throttle())
+			update_throttle(current_time);
+
+		// ask the OSD to update
+		{
+			auto profile = g_profiler.start(PROFILER_BLIT);
+			machine().osd().update(!from_debugger && skipped_it);
+		}
+
+		// we synchronize after rendering instead of before, if low latency mode is enabled
+		if (!from_debugger && phase > machine_phase::INIT && m_low_latency && effective_throttle())
+			update_throttle(current_time);
+	}
 
 	machine().osd().input_update(false);
 	emulator_info::periodic_check();
@@ -529,6 +566,50 @@ void video_manager::screenless_update_callback(s32 param)
 
 
 //-------------------------------------------------
+//  vector_present_update_callback - submit the
+//  latest committed vector frame at the requested
+//  presentation rate without advancing a machine
+//  frame
+//-------------------------------------------------
+
+void video_manager::vector_present_update_callback(s32 param)
+{
+	update_vector_present_rate();
+	if (vector_present_active())
+		present_update(machine().time());
+
+	// Use a one-shot timer so speed changes are reflected without accumulating
+	// phase error from the previous effective emulation rate.
+	m_vector_present_timer->adjust(vector_present_period());
+}
+
+
+//-------------------------------------------------
+//  update_vector_present_rate - resolve an auto
+//  presentation rate after the OSD renderer has
+//  published its active monitor refresh
+//-------------------------------------------------
+
+void video_manager::update_vector_present_rate()
+{
+	if (!m_vector_present_auto)
+		return;
+
+	const float monitor_rate = machine().render().max_update_rate();
+	if (monitor_rate <= 1.0f)
+		return;
+
+	const u32 resolved = u32(std::clamp(int(std::lround(monitor_rate)), 1, 360));
+	if (resolved != m_vector_present_rate)
+	{
+		osd_printf_verbose("Vector presentation rate auto-detected at %.3f Hz; using %u Hz\n",
+			monitor_rate, resolved);
+		m_vector_present_rate = resolved;
+	}
+}
+
+
+//-------------------------------------------------
 //  postload - callback for resetting things after
 //  state has been loaded
 //-------------------------------------------------
@@ -597,6 +678,61 @@ inline bool video_manager::effective_throttle() const
 
 	// otherwise, it's up to the user
 	return throttled();
+}
+
+
+//-------------------------------------------------
+//  vector_present_active - return whether the
+//  independent vector presentation clock owns OSD
+//  updates at the current instant
+//-------------------------------------------------
+
+inline bool video_manager::vector_present_active() const
+{
+	return m_vector_present_timer
+		&& (machine().phase() == machine_phase::RUNNING)
+		&& !machine().paused()
+		&& !m_fastforward
+		&& effective_throttle();
+}
+
+
+//-------------------------------------------------
+//  vector_present_period - convert one host
+//  presentation interval to emulated time
+//-------------------------------------------------
+
+attotime video_manager::vector_present_period() const
+{
+	// update_throttle maps emulated time through m_speed. Scheduling this
+	// amount of emulated time therefore retains a constant real presentation
+	// rate for slow-motion and other non-default speed settings.
+	double const emulated_hz = (double(m_vector_present_rate) * 1000.0) / double(std::max<u32>(m_speed, 1));
+	return attotime::from_hz(emulated_hz);
+}
+
+
+//-------------------------------------------------
+//  present_update - perform an OSD-only update
+//  without screen commits, input polling, machine
+//  frame notification or frameskip accounting
+//-------------------------------------------------
+
+void video_manager::present_update(attotime current_time)
+{
+	if (!m_low_latency && effective_throttle())
+		update_throttle(current_time);
+
+	{
+		auto profile = g_profiler.start(PROFILER_BLIT);
+		machine().osd().update(false);
+		// A complete chain presentation is now cached. Any additional timer callback before the
+		// next emulated screen update is a repeat and can use the lightweight path.
+		m_vector_presenting = true;
+	}
+
+	if (m_low_latency && effective_throttle())
+		update_throttle(current_time);
 }
 
 

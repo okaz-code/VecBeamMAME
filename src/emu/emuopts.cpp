@@ -20,6 +20,7 @@
 #include "corestr.h"
 #include "path.h"
 
+#include <cstdlib>
 #include <stack>
 
 
@@ -146,6 +147,8 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_RECORD,                              nullptr,     core_options::option_type::PATH,       "record final vector beam events to an MVEC stream" },
 	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
 	{ OPTION_VECTOR_EXIT_AFTER_PLAYBACK,                 "0",         core_options::option_type::BOOLEAN,    "close the program at the end of vector playback" },
+	{ OPTION_VECTOR_PRESENT_RATE ";vecpresent",          "0",         core_options::option_type::STRING,     "present vector video at this rate without changing emulation timing (0 = off, auto = monitor rate)" },
+	{ OPTION_VECTOR_PHOSPHOR_RATE ";vecphosphor(0-360)", "0",         core_options::option_type::INTEGER,    "limit vector phosphor/monitor chain updates per second during high-rate presentation (0 = unlimited)" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },
@@ -478,6 +481,18 @@ emu_options::~emu_options()
 //-------------------------------------------------
 //  system_name
 //-------------------------------------------------
+
+int emu_options::vector_present_rate() const
+{
+	const char *const setting = value(OPTION_VECTOR_PRESENT_RATE);
+	if (setting && !core_stricmp(setting, "auto"))
+		return -1;
+
+	char *end = nullptr;
+	const long rate = setting ? std::strtol(setting, &end, 10) : 0;
+	return (end && !*end) ? std::clamp(int(rate), 0, 360) : 0;
+}
+
 
 const char *emu_options::system_name() const
 {

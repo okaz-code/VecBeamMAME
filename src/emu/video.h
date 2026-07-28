@@ -53,6 +53,8 @@ public:
 	bool throttled() const { return m_throttled; }
 	float throttle_rate() const { return m_throttle_rate; }
 	bool fastforward() const { return m_fastforward; }
+	bool vector_presenting() const { return m_vector_presenting; }
+	u32 vector_present_rate() const { return m_vector_present_rate; }
 
 	// setters
 	void set_frameskip(int frameskip);
@@ -92,15 +94,20 @@ private:
 	// internal helpers
 	void exit();
 	void screenless_update_callback(s32 param);
+	void vector_present_update_callback(s32 param);
 	void postload();
 
 	// effective value helpers
 	bool effective_autoframeskip() const;
 	bool effective_throttle() const;
+	bool vector_present_active() const;
+	void update_vector_present_rate();
 
 	// speed and throttling helpers
 	int original_speed_setting() const;
+	attotime vector_present_period() const;
 	bool finish_screen_updates();
+	void present_update(attotime current_time);
 	void update_throttle(attotime emutime);
 	osd_ticks_t throttle_until_ticks(osd_ticks_t target_ticks);
 	void update_frameskip();
@@ -119,6 +126,10 @@ private:
 
 	// screenless systems
 	emu_timer *         m_screenless_frame_timer;   // timer to signal VBLANK start
+	emu_timer *         m_vector_present_timer;     // optional host-rate vector presentation timer
+	u32                 m_vector_present_rate;      // requested presentation rate in Hz (0 = disabled)
+	bool                m_vector_present_auto;      // resolve presentation rate from the active monitor
+	bool                m_vector_presenting;        // current OSD update is a presentation-only vector refresh
 	bool                m_output_changed;           // did an output element change?
 
 	// throttling calculations

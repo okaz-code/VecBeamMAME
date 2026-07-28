@@ -30,14 +30,16 @@ public:
 	bgfx_chain(std::string &&name, std::string &&author, bool transform, target_manager& targets, std::vector<bgfx_slider*> &&sliders, std::vector<bgfx_parameter*> &&params, std::vector<bgfx_chain_entry*> &&entries, std::vector<bgfx_target*> &&target_list, uint32_t screen_index);
 	~bgfx_chain();
 
-	void process(chain_manager::screen_prim &prim, int view, int screen, texture_manager& textures, osd_window &window);
+	uint32_t process(chain_manager::screen_prim &prim, int view, int screen, texture_manager& textures, osd_window &window, bool vector_repeat = false);
+	uint32_t prepare_vector_repeat(int view, int screen);
+	bool supports_vector_repeat() const;
 	void repopulate_targets();
 
 	// Getters
 	const std::string &name() const { return m_name; }
 	std::vector<bgfx_slider*>& sliders() { return m_sliders; }
 	std::vector<bgfx_chain_entry*>& entries() { return m_entries; }
-	uint32_t applicable_passes();
+	uint32_t applicable_passes(bool vector_repeat = false);
 	bool transform() const { return m_transform; }
 	bool has_converter() const { return m_has_converter; }
 	bool has_adjuster() const { return m_has_adjuster; }
@@ -69,6 +71,8 @@ private:
 	bool                                m_has_converter;
 	bool                                m_has_adjuster;
 	bool                                m_vector_engine = false;
+
+	bool vector_repeat_entry(const bgfx_chain_entry& entry) const;
 };
 
 #endif // MAME_RENDER_BGFX_CHAIN_H

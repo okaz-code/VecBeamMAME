@@ -153,6 +153,54 @@ private:
 	// Original display_mode
 	osd_dim m_dimensions;
 
+	// The host-rate vector presentation timer may ask for several presentations of the same
+	// emulated frame. render_target::get_primitives() rebuilds and transforms the complete vector
+	// list, so retain the list produced for the first presentation and reuse it for the additional
+	// ones. The render target owns the list; this is a non-owning pointer valid until its next build.
+	render_primitive_list *m_vector_present_primlist = nullptr;
+	int m_vector_present_prim_w = 0;
+	int m_vector_present_prim_h = 0;
+	float m_vector_present_prim_aspect = 0.0f;
+	bool m_vector_present_prim_transform = false;
+	double m_vector_perf_prim_ms = 0.0;
+
+	struct vector_perf_bucket
+	{
+		double prep_total_ms = 0.0;
+		double prep_max_ms = 0.0;
+		double prim_total_ms = 0.0;
+		double prim_max_ms = 0.0;
+		double frame_total_ms = 0.0;
+		double frame_max_ms = 0.0;
+		double scan_total_ms = 0.0;
+		double scan_max_ms = 0.0;
+		double analysis_total_ms = 0.0;
+		double analysis_max_ms = 0.0;
+		double energy_total_ms = 0.0;
+		double energy_max_ms = 0.0;
+		double cap_total_ms = 0.0;
+		double cap_max_ms = 0.0;
+		double convergence_total_ms = 0.0;
+		double convergence_max_ms = 0.0;
+		double geometry_total_ms = 0.0;
+		double geometry_max_ms = 0.0;
+		double submit_total_ms = 0.0;
+		double submit_max_ms = 0.0;
+		uint32_t count = 0;
+	};
+	vector_perf_bucket m_vector_perf[3]; // source, repeat with chain, cached repeat
+	int64_t m_vector_perf_window_hpc = 0;
+	double m_vector_perf_gpu_max_ms = 0.0;
+	double m_vector_perf_scan_ms = 0.0;
+	double m_vector_perf_analysis_ms = 0.0;
+	double m_vector_perf_energy_ms = 0.0;
+	double m_vector_perf_cap_ms = 0.0;
+	double m_vector_perf_convergence_ms = 0.0;
+	double m_vector_perf_geometry_ms = 0.0;
+	double m_vector_perf_submit_ms = 0.0;
+	bool m_vec_chain_ran = false;
+	bool m_vec_deposited_source = false;
+
 	std::unique_ptr<texture_manager> m_textures;
 	std::unique_ptr<target_manager> m_targets;
 	std::unique_ptr<shader_manager> m_shaders;
@@ -482,8 +530,11 @@ private:
 	// True when a new emulated frame arrived at this present (render_vector_stats::frame_id
 	// advanced since the previous present). Drives the chain's phosphor-tail freeze: re-presents
 	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.
-	uint32_t m_vec_prev_frame_id = 0;
+	uint32_t m_vec_prev_frame_id = ~uint32_t(0);
 	bool m_vec_frame_advanced = false;
+	int m_vec_cached_vector_count = 0; // retained-list count reused by host-rate re-presents
+	uint16_t m_vec_cached_content_w = 0;
+	uint16_t m_vec_cached_content_h = 0;
 	uint32_t m_vec_playback_reset = 0; // last MVEC discontinuity serial whose temporal history was cleared
 	// Exact VECTORBUF face dimensions after layout, rotation and aspect-fit transforms. Spot-size
 	// controls retain their historical "pixels at a 1920-wide 4:3 face" calibration: on a height-fit
@@ -506,6 +557,11 @@ private:
 	// (Flicker Persist) decay: hold light for ~flicker_persist ms of emulated time, refresh-
 	// independent. -1 = not yet sampled. dt==0 (paused / no emulation progress) holds the image.
 	double m_vec_persist_prev_t = -1.0;
+	// Token budget for the expensive phosphor/monitor chain. Additional presentation-only
+	// frames may consume at most vector_phosphor_rate tokens per second; emulation source
+	// frames are always processed immediately and may temporarily borrow one token.
+	double m_vec_phosphor_budget = 1.0;
+	int64_t m_vec_phosphor_last_hpc = 0;
 
 	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
 	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. The
