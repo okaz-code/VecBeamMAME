@@ -29,7 +29,8 @@ vector_phosphor_rate 0
 - `auto` obtains the active monitor refresh rate after the BGFX window is
   initialized.  On Windows, the exact fractional desktop rate is queried and
   rounded to the nearest whole presentation rate (for example, 143.988 Hz is
-  presented at 144 Hz).
+  presented at 144 Hz).  On macOS, the window's `NSScreen` maximum frame rate
+  is used (normally 60 Hz, or up to 120 Hz on a ProMotion display).
 - A number from 1 to 360 selects a fixed presentation rate.
 
 Additional presents reuse the most recently completed vector output.  They do

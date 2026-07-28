@@ -370,6 +370,7 @@ void video_bgfx::save_config(config_type cfg_type, util::xml::data_node *parentn
 
 #if defined(__APPLE__)
 static float detect_edr_headroom(void *nwh);
+static float detect_macos_refresh_hz(void *nwh);
 #endif
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 static bool detect_windows_hdr_active(void *nwh);
@@ -398,10 +399,14 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 		osd_printf_error("Setting BGFX platform data failed\n");
 		return false;
 	}
-#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
-	// Publish the actual desktop refresh to the core render target.  This is
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS) || defined(__APPLE__)
+	// Publish the active monitor refresh to the core render target. This is
 	// consumed by vector_present_rate=auto after the renderer is initialized.
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 	const float monitor_refresh = detect_windows_refresh_hz(init.platformData.nwh);
+#else
+	const float monitor_refresh = detect_macos_refresh_hz(init.platformData.nwh);
+#endif
 	if (monitor_refresh > 1.0f && window.target())
 	{
 		window.target()->set_max_update_rate(monitor_refresh);
@@ -702,6 +707,34 @@ static float detect_hdr_display_peak_nits(void *nwh)
 }
 
 #elif defined(__APPLE__)
+
+// Return the maximum presentation rate of the NSScreen containing this window.
+// This is the appropriate scheduling target for a ProMotion display: macOS may
+// vary the instantaneous refresh, while maximumFramesPerSecond reports the
+// display's current maximum (normally 60 or 120 Hz).
+static float detect_macos_refresh_hz(void *nwh)
+{
+	using msg_id_fn = id (*)(id, SEL);
+	using msg_int_fn = intptr_t (*)(id, SEL);
+	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
+
+	id screen = nullptr;
+	if (nwh != nullptr)
+		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), sel_registerName("screen"));
+	if (screen == nullptr)
+		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(
+				reinterpret_cast<id>(objc_getClass("NSScreen")), sel_registerName("mainScreen"));
+	if (screen == nullptr)
+		return 0.0f;
+
+	const SEL refresh_sel = sel_registerName("maximumFramesPerSecond");
+	if (!reinterpret_cast<msg_resp_fn>(objc_msgSend)(
+			screen, sel_registerName("respondsToSelector:"), refresh_sel))
+		return 0.0f;
+
+	const intptr_t refresh = reinterpret_cast<msg_int_fn>(objc_msgSend)(screen, refresh_sel);
+	return (refresh > 1 && refresh <= 1000) ? float(refresh) : 0.0f;
+}
 
 // EDR headroom (multiples of SDR reference white) of the window's screen, via the ObjC runtime so no
 // .mm needs to be added to the build. nwh is the NSWindow under SDL/Metal. Returns 0 on failure.
