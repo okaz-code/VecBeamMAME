@@ -570,7 +570,7 @@ bgfx_chain* chain_manager::screen_chain(uint32_t screen)
 	}
 }
 
-void chain_manager::process_screen_quad(uint32_t view, uint32_t screen, screen_prim &prim, osd_window& window)
+uint32_t chain_manager::process_screen_quad(uint32_t view, uint32_t screen, screen_prim &prim, osd_window& window, bool vector_repeat)
 {
 	const bool any_targets_rebuilt = m_targets.update_target_sizes(screen, prim.m_tex_width, prim.m_tex_height, TARGET_STYLE_GUEST, m_user_prescale, m_max_prescale_size);
 	if (any_targets_rebuilt)
@@ -585,8 +585,10 @@ void chain_manager::process_screen_quad(uint32_t view, uint32_t screen, screen_p
 	}
 
 	bgfx_chain* chain = screen_chain(screen);
-	chain->process(prim, view, screen, m_textures, window);
-	view += chain->applicable_passes();
+	const bool repeat_fast_path = vector_repeat && chain->supports_vector_repeat();
+	uint32_t used_views = repeat_fast_path ? chain->prepare_vector_repeat(view, screen) : 0;
+	used_views += chain->process(prim, view + used_views, screen, m_textures, window, repeat_fast_path);
+	return used_views;
 }
 
 // inject a GPU-rendered FBO as "screen0" for vector game chain processing.
@@ -1059,7 +1061,7 @@ uint32_t chain_manager::update_screen_textures(uint32_t view, render_primitive *
 	return m_screen_prims.size();
 }
 
-uint32_t chain_manager::process_screen_chains(uint32_t view, osd_window& window)
+uint32_t chain_manager::process_screen_chains(uint32_t view, osd_window& window, bool vector_repeat)
 {
 	// Process each screen as necessary
 	uint32_t used_views = 0;
@@ -1097,8 +1099,7 @@ uint32_t chain_manager::process_screen_chains(uint32_t view, osd_window& window)
 			}
 		}
 
-		process_screen_quad(view + used_views, screen_index, prim, window);
-		used_views += screen_chain(screen_index)->applicable_passes();
+		used_views += process_screen_quad(view + used_views, screen_index, prim, window, vector_repeat);
 
 		screen_index++;
 	}

@@ -159,7 +159,7 @@ namespace {
 
 constexpr u32 MVEC_FRAME_MAGIC = 0x4d415246U; // "FRAM" in little-endian byte order
 constexpr u16 MVEC_VERSION_MAJOR = 1;
-constexpr u16 MVEC_VERSION_MINOR = 0;
+constexpr u16 MVEC_VERSION_MINOR = 1;
 constexpr size_t MVEC_QUEUE_LIMIT = 256U * 1024U * 1024U;
 std::mutex s_mvec_claim_mutex;
 bool s_mvec_claimed = false;
@@ -243,6 +243,7 @@ public:
 		if (record)
 		{
 			m_mode = mode::RECORD;
+			m_recorded_frame_period = m_owner.screen().frame_period().attoseconds();
 			m_output.open(record_path, std::ios::binary | std::ios::trunc);
 			if (!m_output)
 				fatalerror("Unable to open MVEC record file '%s'\n", record_path);
@@ -282,10 +283,16 @@ public:
 	bool playing() const { return m_mode == mode::PLAYBACK; }
 	bool playback_paused() const { return m_tool_paused; }
 	bool playback_advanced() const { return m_playback_advanced; }
-	void sync_playback_audio(attotime frame_period)
+	attotime playback_frame_period() const
+	{
+		return (m_recorded_frame_period > 0)
+			? attotime(0, m_recorded_frame_period)
+			: m_owner.screen().frame_period();
+	}
+	void sync_playback_audio()
 	{
 		const bool discontinuity = !m_audio_sync_valid || m_audio_reset != m_playback_reset || m_audio_paused != m_tool_paused;
-		const double time_seconds = double(playback_position()) * frame_period.as_double();
+		const double time_seconds = double(playback_position()) * playback_frame_period().as_double();
 		m_owner.machine().sound().vector_playback_sync(time_seconds, m_tool_paused, discontinuity);
 		m_audio_sync_valid = true;
 		m_audio_reset = m_playback_reset;
@@ -418,6 +425,7 @@ private:
 		bool stale = false;
 		bool timed = false;
 		u32 generation = 0;
+		u32 point_count = 0;
 		rectangle visarea;
 		u64 content_frame = INVALID_POSITION;
 	};
@@ -504,6 +512,7 @@ private:
 		append_u32(header, 0x12345678U);
 		append_string(header, m_owner.machine().system().name);
 		append_string(header, m_owner.tag());
+		append_i64(header, m_recorded_frame_period);
 		m_output.write(reinterpret_cast<const char *>(header.data()), std::streamsize(header.size()));
 		if (!m_output) fatalerror("Unable to write MVEC header\n");
 	}
@@ -516,16 +525,30 @@ private:
 		u16 major, minor; u32 endian;
 		if (!read_file_u16(major) || !read_file_u16(minor) || !read_file_u32(endian, false))
 			fatalerror("MVEC header is truncated\n");
-		if (major != MVEC_VERSION_MAJOR || endian != 0x12345678U)
+		if (major != MVEC_VERSION_MAJOR || minor > MVEC_VERSION_MINOR || endian != 0x12345678U)
 			fatalerror("MVEC format version or byte order is unsupported\n");
 		const std::string system = read_file_string();
 		const std::string device = read_file_string();
+		if (minor >= 1 && !read_file_i64(m_recorded_frame_period))
+			fatalerror("MVEC recorded frame period is truncated\n");
 		if (system != m_owner.machine().system().name)
 			fatalerror("MVEC file is for machine '%s', not '%s'\n", system.c_str(), m_owner.machine().system().name);
 		if (device != m_owner.tag())
 			osd_printf_warning("MVEC: recorded device is '%s', current device is '%s'\n", device.c_str(), m_owner.tag());
 		osd_printf_info("MVEC format %u.%u, machine %s, device %s\n", major, minor, system.c_str(), device.c_str());
 		build_frame_index();
+		if (m_recorded_frame_period <= 0)
+			m_recorded_frame_period = infer_frame_period();
+		if (m_recorded_frame_period <= 0)
+		{
+			m_recorded_frame_period = m_owner.screen().frame_period().attoseconds();
+			osd_printf_warning("MVEC: no recorded frame rate; using current screen rate %.6f Hz\n",
+				playback_frame_period().as_hz());
+		}
+		else
+		{
+			osd_printf_info("MVEC: playback source rate %.6f Hz\n", playback_frame_period().as_hz());
+		}
 	}
 
 	void build_frame_index()
@@ -564,6 +587,7 @@ private:
 			entry.visarea.min_x = reader.get_i32(); entry.visarea.max_x = reader.get_i32();
 			entry.visarea.min_y = reader.get_i32(); entry.visarea.max_y = reader.get_i32();
 			const u32 count = reader.get_u32();
+			entry.point_count = count;
 			if (count > MAX_POINTS || payload_size != 36U + count * 66U)
 				fatalerror("MVEC frame payload size is invalid at frame %llu\n", (unsigned long long)expected);
 			if (entry.stale)
@@ -585,6 +609,64 @@ private:
 			fatalerror("MVEC file contains no frames\n");
 	}
 
+	attoseconds_t infer_frame_period()
+	{
+		// Version 1.0 did not store a frame period. Timed vector streams still
+		// contain absolute t0 values, so estimate the period from the median
+		// inter-frame advance. Seek directly to the first point timestamp in a
+		// bounded sample of indexed frames; do not reread multi-gigabyte payloads.
+		std::vector<double> periods;
+		const size_t stride = std::max<size_t>(1, m_frame_index.size() / 4096);
+		long double previous_time = 0.0L;
+		u64 previous_frame = 0;
+		bool have_previous = false;
+		for (size_t i = 0; i < m_frame_index.size(); i += stride)
+		{
+			const frame_index_entry &entry = m_frame_index[i];
+			if (entry.stale || !entry.point_count)
+				continue;
+
+			// frame marker/size (8), payload header (36), point fields before t0 (25)
+			m_input.clear();
+			m_input.seekg(entry.offset + std::streamoff(69));
+			u8 bytes[12];
+			if (!read_exact(bytes, sizeof(bytes)))
+				continue;
+			auto get_u32 = [](const u8 *p) -> u32
+			{
+				return u32(p[0]) | (u32(p[1]) << 8) | (u32(p[2]) << 16) | (u32(p[3]) << 24);
+			};
+			auto get_u64 = [&](const u8 *p) -> u64
+			{
+				return u64(get_u32(p)) | (u64(get_u32(p + 4)) << 32);
+			};
+			const s32 seconds = s32(get_u32(bytes));
+			const s64 attoseconds = s64(get_u64(bytes + 4));
+			if (seconds < 0 || seconds >= 100000000 || attoseconds < 0 || attoseconds >= ATTOSECONDS_PER_SECOND)
+				continue;
+			const long double current_time = static_cast<long double>(seconds)
+				+ static_cast<long double>(attoseconds) / static_cast<long double>(ATTOSECONDS_PER_SECOND);
+			if (have_previous && current_time > previous_time)
+			{
+				const double period = double((current_time - previous_time)
+					/ static_cast<long double>(u64(i) - previous_frame));
+				if (period >= 0.001 && period <= 1.0)
+					periods.push_back(period);
+			}
+			previous_time = current_time;
+			previous_frame = u64(i);
+			have_previous = true;
+		}
+		m_input.clear();
+		if (periods.empty())
+			return 0;
+		std::sort(periods.begin(), periods.end());
+		const double median = periods[periods.size() / 2];
+		const attoseconds_t result = attoseconds_t(std::llround(median * double(ATTOSECONDS_PER_SECOND)));
+		osd_printf_info("MVEC: inferred legacy source rate %.6f Hz from timed beam events\n", 1.0 / median);
+		return result;
+	}
+
 	bool read_exact(void *dest, size_t size)
 	{
 		m_input.read(reinterpret_cast<char *>(dest), std::streamsize(size));
@@ -602,6 +684,17 @@ private:
 		if (got == 0 && allow_clean_eof) return false;
 		if (got != sizeof(b)) return false;
 		value = u32(b[0]) | (u32(b[1]) << 8) | (u32(b[2]) << 16) | (u32(b[3]) << 24); return true;
+	}
+	bool read_file_i64(s64 &value)
+	{
+		u8 b[8];
+		if (!read_exact(b, sizeof(b)))
+			return false;
+		u64 raw = 0;
+		for (unsigned shift = 0; shift < 64; shift += 8)
+			raw |= u64(b[shift / 8]) << shift;
+		value = s64(raw);
+		return true;
 	}
 	std::string read_file_string()
 	{
@@ -825,6 +918,7 @@ private:
 	bool m_goto_mode = false;
 	std::string m_goto_digits;
 	u32 m_playback_reset = 0;
+	attoseconds_t m_recorded_frame_period = 0;
 };
 
 float vector_options::s_flicker = 0.0f;
@@ -887,6 +981,16 @@ void vector_device::device_start()
 
 	// MVEC capture/playback is independent of the legacy analysis CSV dump.
 	m_stream = std::make_unique<stream_state>(*this);
+	if (m_stream->playing())
+	{
+		const attotime period = m_stream->playback_frame_period();
+		if (period != screen().frame_period())
+		{
+			osd_printf_info("MVEC: configuring vector screen from %.6f Hz to recorded %.6f Hz\n",
+				screen().frame_period().as_hz(), period.as_hz());
+			screen().configure(screen().width(), screen().height(), screen().visible_area(), period.attoseconds());
+		}
+	}
 }
 
 void vector_device::device_stop()
@@ -1067,7 +1171,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			playback_stale, frame_timed, playback_generation, visarea);
 		m_vector_index = playback_count;
 		m_list_generation = playback_generation;
-		m_stream->sync_playback_audio(screen.frame_period());
+		m_stream->sync_playback_audio();
 		m_min_intensity = 255;
 		m_max_intensity = 0;
 		for (int i = 0; i < m_vector_index; ++i)
@@ -1241,10 +1345,12 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.total_energy = stats_total_energy;
 	stats.playback_active = playback_active;
 	stats.playback_paused = playback_active && m_stream->playback_paused();
+	const attotime playback_period = playback_active
+		? m_stream->playback_frame_period() : screen.frame_period();
 	stats.playback_dt_ms = (playback_active && playback_advanced)
-		? float(screen.frame_period().as_double() * 1000.0) : 0.0f;
+		? float(playback_period.as_double() * 1000.0) : 0.0f;
 	stats.playback_time_ms = playback_active
-		? double(m_stream->playback_position()) * screen.frame_period().as_double() * 1000.0 : 0.0;
+		? double(m_stream->playback_position()) * playback_period.as_double() * 1000.0 : 0.0;
 	stats.playback_reset = playback_active ? m_stream->playback_reset() : 0U;
 	stats.playback_position = playback_active ? m_stream->playback_position() : 0U;
 	stats.playback_total = playback_active ? m_stream->playback_total() : 0U;

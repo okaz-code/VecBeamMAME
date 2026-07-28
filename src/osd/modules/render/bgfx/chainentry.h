@@ -44,7 +44,8 @@ public:
 		float screen_scale_x, float screen_scale_y, float screen_offset_x, float screen_offset_y, uint32_t rotation_type, bool swap_xy, int32_t screen);
 
 	// Getters
-	std::string name() const { return m_name; }
+	const std::string& name() const { return m_name; }
+	const std::string& output() const { return m_output; }
 	std::vector<bgfx_input_pair*>& inputs() { return m_inputs; }
 	bool skip();
 

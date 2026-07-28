@@ -87,7 +87,7 @@ void bgfx_chain::repopulate_targets()
 	}
 }
 
-void bgfx_chain::process(chain_manager::screen_prim &prim, int view, int screen, texture_manager& textures, osd_window& window)
+uint32_t bgfx_chain::process(chain_manager::screen_prim &prim, int view, int screen, texture_manager& textures, osd_window& window, bool vector_repeat)
 {
 	screen_device_enumerator screen_iterator(window.machine().root_device());
 	screen_device* screen_device = screen_iterator.byindex(screen);
@@ -130,7 +130,7 @@ void bgfx_chain::process(chain_manager::screen_prim &prim, int view, int screen,
 	int current_view = view;
 	for (size_t i = 0; i < m_entries.size(); i++)
 	{
-		if (!m_entries[i]->skip())
+		if ((!vector_repeat || vector_repeat_entry(*m_entries[i])) && !m_entries[i]->skip())
 		{
 			m_entries[i]->submit(current_view, prim, textures, screen_count, screen_width, screen_height, screen_scale_x, screen_scale_y, screen_offset_x, screen_offset_y,
 				rotation_type, swap_xy, screen);
@@ -150,14 +150,76 @@ void bgfx_chain::process(chain_manager::screen_prim &prim, int view, int screen,
 	{
 		param->tick(frameTimeInSeconds * toMs);
 	}
+
+	return uint32_t(current_view - view);
 }
 
-uint32_t bgfx_chain::applicable_passes()
+bool bgfx_chain::vector_repeat_entry(const bgfx_chain_entry& entry) const
+{
+	const std::string& name = entry.name();
+	return name == "Phosphor"
+		|| name == "Phosphor Apply"
+		|| name == "add_mglow"
+		|| name == "Glow Combine"
+		|| name == "Final Blit (unwarped -> screen_hdr)";
+}
+
+bool bgfx_chain::supports_vector_repeat() const
+{
+	if (!m_vector_engine)
+		return false;
+
+	bool has_internal_input = false;
+	bool has_phosphor = false;
+	bool has_phosphor_apply = false;
+	bool has_final = false;
+	for (const bgfx_chain_entry* entry : m_entries)
+	{
+		const std::string& name = entry->name();
+		has_internal_input |= name == "Initial Blit (linearize, screen -> internal)";
+		has_phosphor |= name == "Phosphor";
+		has_phosphor_apply |= name == "Phosphor Apply";
+		has_final |= name == "add_mglow"
+			|| name == "Final Blit (unwarped -> screen_hdr)";
+	}
+
+	return has_internal_input && has_phosphor && has_phosphor_apply && has_final
+		&& (m_targets.target(m_screen_index, "internal") != nullptr)
+		&& (m_targets.target(m_screen_index, "glow_accum") != nullptr);
+}
+
+uint32_t bgfx_chain::prepare_vector_repeat(int view, int screen)
+{
+	uint32_t used_views = 0;
+	// A repeat present rebuilds the current phosphor emission in "internal", but it deliberately
+	// skips the expensive narrow/wide glow cascade. Preserve glow_accum (and the glow_lo pyramid)
+	// from the latest full emulated frame so add_mglow can composite that cached bloom. Clearing
+	// glow_accum here made most high-rate presents appear to use the minimal default-vector chain.
+	for (const char* name : { "internal" })
+	{
+		bgfx_target* target = m_targets.target(screen, name);
+		if (target == nullptr || target->width() == 0 || target->height() == 0)
+			continue;
+
+		const uint16_t clear_view = uint16_t(view + used_views++);
+		bgfx::setViewFrameBuffer(clear_view, target->target());
+		bgfx::setViewRect(clear_view, 0, 0, target->width(), target->height());
+		bgfx::setViewClear(clear_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
+		bgfx::touch(clear_view);
+
+		// Match bgfx_chain_entry::submit(): after writing the current page,
+		// expose it as the input texture for the following selected pass.
+		target->page_flip();
+	}
+	return used_views;
+}
+
+uint32_t bgfx_chain::applicable_passes(bool vector_repeat)
 {
 	int applicable_passes = 0;
 	for (bgfx_chain_entry* entry : m_entries)
 	{
-		if (!entry->skip())
+		if ((!vector_repeat || vector_repeat_entry(*entry)) && !entry->skip())
 		{
 			applicable_passes++;
 		}
