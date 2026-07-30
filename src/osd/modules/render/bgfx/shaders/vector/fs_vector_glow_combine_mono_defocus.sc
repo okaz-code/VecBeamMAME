@@ -112,21 +112,30 @@ vec3 shape_glow(vec3 c)
 	float pivot=0.25,curve=max(u_glow_tail_curve.x,0.1);float shaped=peak<pivot?pivot*pow(max(peak/pivot,1e-6),curve):peak;
 	float toe=max(u_glow_black_toe.x,0.0);if(toe>0.0)shaped*=smoothstep(0.0,toe,peak);return c*(shaped/peak);
 }
+vec2 bezel_source_min()
+{
+	vec2 content_scale=min(tube_quad_dims()/max(u_target_dims.xy,vec2_splat(1.0)),vec2_splat(1.0));
+	return (vec2_splat(1.0)-content_scale)*0.5;
+}
+vec2 bezel_source_max(){return vec2_splat(1.0)-bezel_source_min();}
 vec2 bezel_source_axis(vec2 source_uv)
 {
-	float nearest=abs(source_uv.x);vec2 axis=vec2(0.0,1.0);
-	float candidate=abs(1.0-source_uv.x);if(candidate<nearest){nearest=candidate;axis=vec2(1.0,-1.0);}
-	candidate=abs(source_uv.y);if(candidate<nearest){nearest=candidate;axis=vec2(2.0,1.0);}
-	candidate=abs(1.0-source_uv.y);if(candidate<nearest)axis=vec2(3.0,-1.0);
+	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
+	float nearest=abs(source_uv.x-content_min.x);vec2 axis=vec2(0.0,1.0);
+	float candidate=abs(content_max.x-source_uv.x);if(candidate<nearest){nearest=candidate;axis=vec2(1.0,-1.0);}
+	candidate=abs(source_uv.y-content_min.y);if(candidate<nearest){nearest=candidate;axis=vec2(2.0,1.0);}
+	candidate=abs(content_max.y-source_uv.y);if(candidate<nearest)axis=vec2(3.0,-1.0);
 	return axis;
 }
 vec2 bezel_source_edge(vec2 source_uv,vec2 axis)
 {
-	vec2 margin=min(vec2_splat(max(u_bezel_glow_width.x,1.0))/max(u_target_dims.xy,vec2_splat(1.0)),vec2_splat(0.49));
-	if(axis.x<0.5)return vec2(0.0,clamp(source_uv.y,margin.y,1.0-margin.y));
-	if(axis.x<1.5)return vec2(1.0,clamp(source_uv.y,margin.y,1.0-margin.y));
-	if(axis.x<2.5)return vec2(clamp(source_uv.x,margin.x,1.0-margin.x),0.0);
-	return vec2(clamp(source_uv.x,margin.x,1.0-margin.x),1.0);
+	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
+	vec2 reach=vec2_splat(max(u_bezel_glow_width.x,1.0))/max(u_target_dims.xy,vec2_splat(1.0));
+	vec2 tangent_min=min(content_min+reach,content_max),tangent_max=max(content_max-reach,content_min);
+	if(axis.x<0.5)return vec2(content_min.x,clamp(source_uv.y,tangent_min.y,tangent_max.y));
+	if(axis.x<1.5)return vec2(content_max.x,clamp(source_uv.y,tangent_min.y,tangent_max.y));
+	if(axis.x<2.5)return vec2(clamp(source_uv.x,tangent_min.x,tangent_max.x),content_min.y);
+	return vec2(clamp(source_uv.x,tangent_min.x,tangent_max.x),content_max.y);
 }
 vec2 bezel_source_step(vec2 axis)
 {
@@ -173,8 +182,9 @@ vec3 bezel_corner_light(vec2 source_uv)
 	bool left=source_uv.x<0.5,top=source_uv.y<0.5;
 	vec2 vertical_axis=left?vec2(0.0,1.0):vec2(1.0,-1.0);
 	vec2 horizontal_axis=top?vec2(2.0,1.0):vec2(3.0,-1.0);
-	float vertical_distance=min(abs(source_uv.x),abs(1.0-source_uv.x));
-	float horizontal_distance=min(abs(source_uv.y),abs(1.0-source_uv.y));
+	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
+	float vertical_distance=min(abs(source_uv.x-content_min.x),abs(content_max.x-source_uv.x));
+	float horizontal_distance=min(abs(source_uv.y-content_min.y),abs(content_max.y-source_uv.y));
 	float corner_blend=max(u_bezel_glow_width.x,1.0)/max(min(u_target_dims.x,u_target_dims.y),1.0);
 	float distance_delta=vertical_distance-horizontal_distance;
 	if(distance_delta<=-corner_blend)return bezel_axis_light(source_uv,vertical_axis);

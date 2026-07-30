@@ -310,14 +310,28 @@ vec3 apply_bezel_length_gain(vec2 uv, vec3 light)
 		+ long_light * max(u_bezel_long_reflection.x, 0.0);
 }
 
+vec2 bezel_source_min()
+{
+	vec2 content_scale = min(tube_quad_dims() / max(u_target_dims.xy, vec2_splat(1.0)), vec2_splat(1.0));
+	return (vec2_splat(1.0) - content_scale) * 0.5;
+}
+
+vec2 bezel_source_max()
+{
+	return vec2_splat(1.0) - bezel_source_min();
+}
+
 vec3 bezel_bloom_axis(vec2 edge_uv, vec2 inward)
 {
 	vec2 source_reach_uv = vec2_splat(max(u_bezel_glow_width.x, 1.0)) / max(u_target_dims.xy, vec2_splat(1.0));
-	vec2 corner_margin_uv = min(source_reach_uv, vec2_splat(0.49));
+	vec2 content_min = bezel_source_min();
+	vec2 content_max = bezel_source_max();
+	vec2 tangent_min = min(content_min + source_reach_uv, content_max);
+	vec2 tangent_max = max(content_max - source_reach_uv, content_min);
 	if (abs(inward.x) > 0.5)
-		edge_uv.y = clamp(edge_uv.y, corner_margin_uv.y, 1.0 - corner_margin_uv.y);
+		edge_uv.y = clamp(edge_uv.y, tangent_min.y, tangent_max.y);
 	else
-		edge_uv.x = clamp(edge_uv.x, corner_margin_uv.x, 1.0 - corner_margin_uv.x);
+		edge_uv.x = clamp(edge_uv.x, tangent_min.x, tangent_max.x);
 	vec2 reach_uv = inward * source_reach_uv;
 	vec2 best_uv = edge_uv;
 	vec3 source = apply_bezel_length_gain(best_uv, texture2D(s_bezel_source, best_uv).rgb);
@@ -349,10 +363,12 @@ vec3 bezel_bloom_source(vec2 source_uv)
 	// switching on the exact diagonal (which produced a visible triangular seam).
 	bool left = source_uv.x < 0.5;
 	bool top = source_uv.y < 0.5;
-	vec2 vertical_edge = vec2(left ? 0.0 : 1.0, clamp(source_uv.y, 0.0, 1.0));
-	vec2 horizontal_edge = vec2(clamp(source_uv.x, 0.0, 1.0), top ? 0.0 : 1.0);
-	float vertical_distance = min(abs(source_uv.x), abs(1.0 - source_uv.x));
-	float horizontal_distance = min(abs(source_uv.y), abs(1.0 - source_uv.y));
+	vec2 content_min = bezel_source_min();
+	vec2 content_max = bezel_source_max();
+	vec2 vertical_edge = vec2(left ? content_min.x : content_max.x, clamp(source_uv.y, content_min.y, content_max.y));
+	vec2 horizontal_edge = vec2(clamp(source_uv.x, content_min.x, content_max.x), top ? content_min.y : content_max.y);
+	float vertical_distance = min(abs(source_uv.x - content_min.x), abs(content_max.x - source_uv.x));
+	float horizontal_distance = min(abs(source_uv.y - content_min.y), abs(content_max.y - source_uv.y));
 	float corner_blend = max(u_bezel_glow_width.x, 1.0)
 		/ max(min(u_target_dims.x, u_target_dims.y), 1.0);
 	float distance_delta = vertical_distance - horizontal_distance;
