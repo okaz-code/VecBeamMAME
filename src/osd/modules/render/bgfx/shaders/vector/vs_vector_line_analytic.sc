@@ -1,5 +1,5 @@
 $input a_position, a_color0, a_texcoord0, a_texcoord1
-$output v_color0, v_texcoord1, v_texcoord0
+$output v_color0, v_texcoord1, v_texcoord0, v_texcoord2
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -27,4 +27,7 @@ void main()
 	v_color0 = a_color0;
 	v_texcoord1 = a_texcoord1;
 	v_texcoord0 = vec2(a_position.z, a_texcoord0.x);
+	// Spare vertex component carries the CPU-side Long-line classification.
+	// The fragment shader writes classified Long light to a second MRT target.
+	v_texcoord2 = vec2(a_texcoord0.y, 0.0);
 }

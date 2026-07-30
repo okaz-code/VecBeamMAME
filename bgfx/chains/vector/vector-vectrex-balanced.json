@@ -284,7 +284,7 @@
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "smoked_glass_transmission",  "value": 100.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "glass_forward_scatter",       "value": 0.0 },
 			{ "type": "slider", "condition": "equal", "combine": "and", "name": "glass_surface_illumination",  "value": 0.0 } ],
-		  "input": [ { "sampler": "s_base", "target": "internal" }, { "sampler": "s_bloom", "target": "glow_accum" }, { "sampler": "s_optical", "texture": "optical" }, { "sampler": "s_glass_scatter", "target": "glow_lo3" } ],
+		  "input": [ { "sampler": "s_base", "target": "internal" }, { "sampler": "s_bloom", "target": "glow_accum" }, { "sampler": "s_optical", "texture": "optical" }, { "sampler": "s_glass_scatter", "target": "glow_lo3" }, { "sampler": "s_bezel_source", "texture": "glow" }, { "sampler": "s_bezel_length", "texture": "bezel_length" } ],
 		  "uniforms": [
 			{ "uniform": "u_defocus",                    "slider": "defocus" },
 			{ "uniform": "u_vec_pincushion_x_quad",      "slider": "vector_pincushion_x_quad" },

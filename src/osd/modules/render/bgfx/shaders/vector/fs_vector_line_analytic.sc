@@ -1,4 +1,4 @@
-$input v_color0, v_texcoord1, v_texcoord0
+$input v_color0, v_texcoord1, v_texcoord0, v_texcoord2
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -138,5 +138,9 @@ void main()
 	// halation geometry may carry -1 < z < 0 so its gain is not quantized through RGBA8 vertex colour.
 	// The additive SRC_ALPHA blend deposits colour.rgb * out.a into the float FBO.
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
-	gl_FragColor = v_color0 * vec4(1.0, 1.0, 1.0, fade * over_mult);
+	vec4 deposit = v_color0 * vec4(1.0, 1.0, 1.0, fade * over_mult);
+	gl_FragData[0] = deposit;
+	// The glow FBO binds a second colour attachment containing only the
+	// CPU-classified Long contribution. Other views leave target 1 unbound.
+	gl_FragData[1] = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a);
 }

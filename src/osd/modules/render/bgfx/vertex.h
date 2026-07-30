@@ -44,7 +44,7 @@ struct AnalyticLineVertex
 	float m_z;
 	uint32_t m_rgba;
 	float m_u;      // flat-core half-width in pixels (0 = plain gaussian cross-section)
-	float m_v;      // spare
+	float m_v;      // per-primitive Long-line classification (glow MRT metadata)
 	float m_a;      // signed axial distance from p0
 	float m_b;      // signed axial distance from p1 (= a - len)
 	float m_d;      // perpendicular distance (line) / second axis offset (point)

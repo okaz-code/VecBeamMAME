@@ -356,7 +356,9 @@
 		  "input": [
 			{ "sampler": "s_base",  "target": "internal" },
 			{ "sampler": "s_bloom", "target": "glow_accum" },
-			{ "sampler": "s_mask",  "option": "bgfx_shadow_mask", "selection": "Shadow Mask" } ],
+			{ "sampler": "s_mask",  "option": "bgfx_shadow_mask", "selection": "Shadow Mask" },
+			{ "sampler": "s_bezel_source", "texture": "glow" },
+			{ "sampler": "s_bezel_length", "texture": "bezel_length" } ],
 		  "uniforms": [
 			{ "uniform": "u_defocus",                    "slider": "defocus" },
 			{ "uniform": "u_vec_pincushion_x_quad",      "slider": "vector_pincushion_x_quad" },

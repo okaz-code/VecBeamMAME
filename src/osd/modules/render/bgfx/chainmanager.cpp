@@ -730,6 +730,14 @@ void chain_manager::inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t v
 	m_textures.add_provider("glow0", std::move(prov));
 }
 
+void chain_manager::inject_vector_bezel_length(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	// Per-primitive Long contribution generated alongside analytic glow by MRT.
+	m_textures.remove_provider("bezel_length0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("bezel_length0", std::move(prov));
+}
+
 void chain_manager::inject_vector_optical(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
 {
 	m_textures.remove_provider("optical0");

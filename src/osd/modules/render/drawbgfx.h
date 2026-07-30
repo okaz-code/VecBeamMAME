@@ -255,6 +255,7 @@ public:
 		float beam_width_min = 1.0f;
 		float beam_width_over_scale = -1.0f;
 		float beam_width_overmax = 4.0f;
+		float bezel_long_threshold = 160.0f;
 		float bright_curve = 1.0f;
 		float bright_normal_cap = 1.0f;
 		float bright_sigmoid = 0.0f;
@@ -532,6 +533,7 @@ private:
 	// without emulation progress (pause, menu stills) must neither decay nor pump the pools.
 	uint32_t m_vec_prev_frame_id = ~uint32_t(0);
 	bool m_vec_frame_advanced = false;
+	float m_vec_bezel_threshold_drawn = -1.0f;
 	int m_vec_cached_vector_count = 0; // retained-list count reused by host-rate re-presents
 	uint16_t m_vec_cached_content_w = 0;
 	uint16_t m_vec_cached_content_h = 0;

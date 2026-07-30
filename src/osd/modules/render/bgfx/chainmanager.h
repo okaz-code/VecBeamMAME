@@ -83,6 +83,7 @@ public:
 	// can composite it AFTER the shadow mask (scattered light is not masked). Must be called before
 	// process_screen_chains() each frame when analytic glow is active.
 	void inject_vector_glow(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
+	void inject_vector_bezel_length(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
 
 	// Register the explicit optical-effects FBO as "optical0". Halation rims/fill and
 	// starburst rays stay separate from ordinary glow so tail shaping cannot suppress them.
