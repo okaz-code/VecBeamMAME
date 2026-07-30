@@ -4,7 +4,6 @@ The `balanced` chains are the recommended VecBeamMAME vector display
 configurations:
 
 - `vector-color-balanced`
-- `vector-color-balanced-portrait`
 - `vector-monochrome-balanced_1`
 - `vector-monochrome-balanced_2`
 - `vector-vectrex-balanced`

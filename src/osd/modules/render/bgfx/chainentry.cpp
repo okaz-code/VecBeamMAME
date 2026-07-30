@@ -95,7 +95,13 @@ void bgfx_chain_entry::submit(int view, chain_manager::screen_prim &prim, textur
 	}
 
 	bgfx::TransientVertexBuffer buffer;
-	put_screen_buffer(view_width, view_height, tint, &buffer);
+	if (!put_screen_buffer(view_width, view_height, tint, &buffer))
+	{
+		// Transient buffers are shared by every submit in the frame.  A chain pass becoming
+		// active at runtime (for example Deconvergence when a convergence slider leaves zero)
+		// can exhaust the remaining space.  Never pass an uninitialised handle to bgfx.
+		return;
+	}
 	bgfx::setVertexBuffer(0, &buffer);
 
 	setup_auto_uniforms(prim, textures, screen_count, view_width, view_height, screen_width, screen_height, screen_scale_x, screen_scale_y, screen_offset_x, screen_offset_y,
@@ -344,7 +350,7 @@ bool bgfx_chain_entry::setup_view(texture_manager &textures, int view, uint16_t 
 	return true;
 }
 
-void bgfx_chain_entry::put_screen_buffer(uint16_t screen_width, uint16_t screen_height, uint32_t screen_tint, bgfx::TransientVertexBuffer* buffer) const
+bool bgfx_chain_entry::put_screen_buffer(uint16_t screen_width, uint16_t screen_height, uint32_t screen_tint, bgfx::TransientVertexBuffer* buffer) const
 {
 	if (6 == bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl))
 	{
@@ -352,7 +358,7 @@ void bgfx_chain_entry::put_screen_buffer(uint16_t screen_width, uint16_t screen_
 	}
 	else
 	{
-		return;
+		return false;
 	}
 
 	auto* vertex = reinterpret_cast<ScreenVertex*>(buffer->data);
@@ -410,6 +416,7 @@ void bgfx_chain_entry::put_screen_buffer(uint16_t screen_width, uint16_t screen_
 	vertex[5].m_rgba = screen_tint;
 	vertex[5].m_u = u[0];
 	vertex[5].m_v = v[0];
+	return true;
 }
 
 bool bgfx_chain_entry::skip()
