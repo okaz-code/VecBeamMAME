@@ -5522,6 +5522,12 @@ int renderer_bgfx::draw(int update)
 					content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_render_scale)), 1, int(render_w)));
 					content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_render_scale)), 1, int(render_h)));
 				}
+				if (content_w != m_vec_cached_content_w || content_h != m_vec_cached_content_h)
+				{
+					osd_printf_verbose(
+						"BGFX: vector content %ux%u within output %ux%u, raster FBO %ux%u\n",
+						content_w, content_h, render_w, render_h, m_vec_fb_w, m_vec_fb_h);
+				}
 				m_vec_cached_content_w = content_w;
 				m_vec_cached_content_h = content_h;
 			}
