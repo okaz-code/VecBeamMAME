@@ -138,6 +138,28 @@ void bgfx_target::page_flip()
 	}
 }
 
+uint32_t bgfx_target::clear(uint32_t view)
+{
+	if (!m_initialized || m_page_count == 0 || width() == 0 || height() == 0)
+		return 0;
+
+	// Clear both pages of feedback targets and leave the active page unchanged.  This is used for
+	// temporal discontinuities (for example an MVEC seek), where recreating the whole chain would
+	// leave one frame without the HDR composite and make SDR-white UI flash at HDR peak.
+	for (uint32_t page = 0; page < m_page_count; page++)
+	{
+		const uint16_t clear_view = uint16_t(view + page);
+		bgfx::setViewFrameBuffer(clear_view, target());
+		bgfx::setViewRect(clear_view, 0, 0, width(), height());
+		bgfx::setViewClear(clear_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000, 1.0f, 0);
+		bgfx::setViewMode(clear_view, bgfx::ViewMode::Sequential);
+		bgfx::touch(clear_view);
+		page_flip();
+	}
+
+	return m_page_count;
+}
+
 bgfx::FrameBufferHandle bgfx_target::target()
 {
 	if (!m_initialized) return BGFX_INVALID_HANDLE;

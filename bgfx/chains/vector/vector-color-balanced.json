@@ -19,11 +19,11 @@
 
 	"sliders": [
 		// ---- Phosphor persistence ----
-		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":5.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
+		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":15.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":3.0,"min":0.4,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"phosphor_total_ms","text":"Phosphor Total (ms)","default":500.0,"min":20.0,"max":1500.0,"step":10.0,"format":"%4.0f","screen":"vector"},
 		{"type":"float","name":"phos_debug","text":"DEBUG Phosphor View","default":0.0,"min":0.0,"max":4.0,"step":1.0,"format":"%1.0f","screen":"vector"},
-		{"type":"float","name":"phosphor_energy_decay","text":"Phosphor Energy Decay (bright faster)","default":0.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"phosphor_energy_decay","text":"Phosphor Energy Decay (bright faster)","default":1.8,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"color","name":"phosphor_rgb_decay","text":"Phosphor RGB Decay (halflife x)","default":[1.0,1.05,0.95],"max":[3.0,3.0,3.0],"min":[0.2,0.2,0.2],"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector"},
 
@@ -114,8 +114,8 @@
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":15.0,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"glow_threshold","text":"Glow Source Threshold","default":0.5,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"glow_curve","text":"Glow Source Curve","default":0.25,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.015,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector"},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.006,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector"},
+		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.005,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector"},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.004,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector"},
 		{"type":"float","name":"glow_wide_reach","text":"Glow Wide Reach (deep tail)","default":8.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.4,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"mglow_coefficient","text":"Monitor Glow Coefficient","default":0.4,"min":0.0,"max":10.0,"step":0.05,"format":"%2.2f","screen":"vector"},
@@ -133,9 +133,9 @@
 		{"type":"float","name":"flicker_thresh_ms","text":"Cyclic Flicker Threshold (draw ms)","default":24.0,"min":0.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"flicker_buckets","text":"Cyclic Flicker Buckets (N)","default":9.0,"min":2.0,"max":16.0,"step":1.0,"format":"%2.0f","screen":"vector"},
 		{"type":"float","name":"flicker_period_ms","text":"Cyclic Flicker Step (ms)","default":20.0,"min":2.0,"max":100.0,"step":0.5,"format":"%2.1f","screen":"vector"},
-		{"type":"float","name":"flicker_red_depth","text":"Cyclic Flicker Red Depth","default":0.6,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"flicker_green_depth","text":"Cyclic Flicker Green Depth","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"flicker_blue_depth","text":"Cyclic Flicker Blue Fine Depth","default":0.06,"min":0.0,"max":0.1,"step":0.001,"format":"%1.3f","screen":"vector"},
+		{"type":"float","name":"flicker_red_depth","text":"Cyclic Flicker Red Depth","default":1.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"flicker_green_depth","text":"Cyclic Flicker Green Depth","default":1.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"flicker_blue_depth","text":"Cyclic Flicker Blue Fine Depth","default":0.1,"min":0.0,"max":0.1,"step":0.001,"format":"%1.3f","screen":"vector"},
 		{"type":"float","name":"energy_jitter","text":"Energy Jitter (near saturation)","default":0.0006,"min":0.0,"max":0.005,"step":5E-05,"format":"%1.5f","screen":"vector"},
 		{"type":"float","name":"energy_jitter_base","text":"Energy Jitter Base (all vectors)","default":0.003,"min":0.0,"max":0.005,"step":0.0001,"format":"%1.4f","screen":"vector"},
 		{"type":"float","name":"beam_noise","text":"Beam Position Noise (px)","default":0.25,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector"},

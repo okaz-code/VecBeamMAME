@@ -133,7 +133,7 @@ public:
 	// from the renderer at a clean frame boundary rather than mid-frame inside the slider callback -
 	// see the member comment on m_reload_pending. No-op when nothing is pending.
 	void process_pending_reload();
-	// Recreate the active chain while preserving slider values, clearing temporal FBO history.
+	// Clear temporal FBO history without destroying the active chain.
 	void request_temporal_reset();
 
 	// HDR auto-config calibration peak. This is an absolute display peak where the platform exposes
@@ -250,6 +250,7 @@ private:
 	reload_phase                    m_reload_phase = reload_phase::NONE;
 	int32_t                         m_reload_slider_id = 0;
 	std::vector<std::vector<float>> m_reload_saved_settings;
+	bool                            m_temporal_reset_pending = false;
 
 	// HDR auto-config calibration peak; absolute nits when known, nominal paper-white units for EDR auto.
 	float                           m_hdr_display_peak = 0.0f;

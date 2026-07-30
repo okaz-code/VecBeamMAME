@@ -32,6 +32,7 @@ public:
 
 	uint32_t process(chain_manager::screen_prim &prim, int view, int screen, texture_manager& textures, osd_window &window, bool vector_repeat = false);
 	uint32_t prepare_vector_repeat(int view, int screen);
+	uint32_t clear_targets(int view);
 	bool supports_vector_repeat() const;
 	void repopulate_targets();
 

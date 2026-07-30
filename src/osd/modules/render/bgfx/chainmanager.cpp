@@ -868,15 +868,12 @@ int32_t chain_manager::slider_changed(int id, std::string *str, int32_t newval)
 
 void chain_manager::request_temporal_reset()
 {
-	// A pending selection reload already destroys every temporal target, so it also fulfils this
-	// request. Otherwise retain every slider value across the two-frame safe destroy/create cycle.
-	if (m_reload_phase != reload_phase::NONE)
-		return;
-	m_reload_saved_settings = slider_settings();
-	// Unlike a chain-selection change, a temporal reset recreates the same
-	// chain on every screen.  Do not exclude screen 0 from slider restoration.
-	m_reload_slider_id = -1;
-	m_reload_phase = reload_phase::DESTROY;
+	// Keep the chain alive so its HDR UI composite remains active on the discontinuity frame.
+	// process_screen_chains() clears every current target (both pages for feedback targets) before
+	// submitting the selected MVEC frame. A simultaneous selection reload already creates
+	// zero-initialized targets, so no additional clear is required.
+	if (m_reload_phase == reload_phase::NONE)
+		m_temporal_reset_pending = true;
 }
 void chain_manager::process_pending_reload()
 {
@@ -1099,11 +1096,15 @@ uint32_t chain_manager::process_screen_chains(uint32_t view, osd_window& window,
 			}
 		}
 
+		if (m_temporal_reset_pending)
+			used_views += screen_chain(screen_index)->clear_targets(view + used_views);
+
 		used_views += process_screen_quad(view + used_views, screen_index, prim, window, vector_repeat);
 
 		screen_index++;
 	}
 
+	m_temporal_reset_pending = false;
 	bgfx::setViewFrameBuffer(view + used_views, BGFX_INVALID_HANDLE);
 
 	return used_views;
