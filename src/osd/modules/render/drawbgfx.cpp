@@ -1962,6 +1962,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "beam_width_min", &renderer_bgfx::vec_slider_cache::beam_width_min, 1.0f },
 	{ "beam_width_over_scale", &renderer_bgfx::vec_slider_cache::beam_width_over_scale, -1.0f },
 	{ "beam_width_overmax", &renderer_bgfx::vec_slider_cache::beam_width_overmax, 4.0f },
+	{ "bezel_long_threshold", &renderer_bgfx::vec_slider_cache::bezel_long_threshold, 160.0f },
 	{ "bright_curve", &renderer_bgfx::vec_slider_cache::bright_curve, 1.0f },
 	{ "bright_normal_cap", &renderer_bgfx::vec_slider_cache::bright_normal_cap, 1.0f },
 	{ "bright_sigmoid", &renderer_bgfx::vec_slider_cache::bright_sigmoid, 0.0f },
@@ -2224,6 +2225,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	float dx = x1 - x0, dy = y1 - y0;
 	const float seg_len = sqrtf(dx * dx + dy * dy);
+	// Store a per-primitive Long classification in the glow MRT rather than an
+	// average length. The final shader can then subtract Long from total light
+	// and retain exact Short/Long separation even when their broad glows overlap.
+	const float bezel_threshold = std::max(m_vs.bezel_long_threshold, 1.0f);
+	const float bezel_feather = std::max(2.0f, bezel_threshold * 0.1f);
+	const float bezel_t = std::clamp((seg_len - (bezel_threshold - bezel_feather))
+		/ (2.0f * bezel_feather), 0.0f, 1.0f);
+	const float bezel_long_mix = bezel_t * bezel_t * (3.0f - 2.0f * bezel_t);
 
 	const float point_threshold = m_vs.line_point_threshold;
 	const bool as_point = (seg_len <= point_threshold);
@@ -3188,7 +3197,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const float ga0 = -gpad, ga1 = seg_len + gpad;
 		auto gv = [&](int i, float x, float y, float a, float b, float d) {
 			glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = 0.0f; glow_vertex[i].m_rgba = glow_rgba;
-			glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = 0.0f;
+			glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 			glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = glow_sig;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
@@ -3208,7 +3217,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float fa0 = -fpad, fa1 = seg_len + fpad;
 			auto fv = [&](int i, float x, float y, float a, float b, float d) {
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = flare_z; glow_vertex[i].m_rgba = flare_rgba;
-				glow_vertex[i].m_u = wcore; glow_vertex[i].m_v = 0.0f;
+				glow_vertex[i].m_u = wcore; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
 			};
 			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
@@ -3229,7 +3238,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float oa0 = -opad, oa1 = seg_len + opad;
 			auto ov = [&](int i, float x, float y, float a, float b, float d) {
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = oglow_z; glow_vertex[i].m_rgba = oglow_rgba;
-				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = 0.0f;
+				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
@@ -3737,8 +3746,11 @@ int renderer_bgfx::draw(int update)
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
 			bgfx::TextureHandle at[2] = { tc, td };
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
-			bgfx::TextureHandle gc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
-			m_vec_glow_fb = bgfx::createFrameBuffer(1, &gc, true);
+			bgfx::TextureHandle gc[2] = {
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf)
+			};
+			m_vec_glow_fb = bgfx::createFrameBuffer(2, gc, true);
 			if (optical_supported)
 			{
 				bgfx::TextureHandle oc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
@@ -3838,15 +3850,23 @@ int renderer_bgfx::draw(int update)
 		m_vec_frame_advanced = !vector_present_repeat && (vstats.frame_id != m_vec_prev_frame_id);
 		if (!vector_present_repeat)
 			m_vec_prev_frame_id = vstats.frame_id;
+		// Long/Short classification is generated per primitive into the glow MRT.
+		// Rebuild that source when its threshold changes, including while MVEC is
+		// paused on one frame. Keep m_vec_frame_advanced unchanged so temporal
+		// decay receives dt=0 rather than treating a UI edit as a new CRT refresh.
+		const bool bezel_threshold_changed =
+			fabsf(m_vs.bezel_long_threshold - m_vec_bezel_threshold_drawn) > 0.001f;
+		m_vec_bezel_threshold_drawn = m_vs.bezel_long_threshold;
 		// frame_update can reach the OSD at about 60 Hz even when this vector screen only
 		// generated a new physical refresh at about 41 Hz (Star Wars). The video-manager
 		// presentation flag alone therefore misclassified unchanged frame_id calls as fresh
 		// sources and rebuilt every analytic vector up to 60 times per second. frame_id advances
 		// on every real vector screen_update, including a retained/list_stale CRT redraw, so it
 		// is the correct source boundary without reintroducing the old list_stale flicker bug.
-		const bool deposit_vector_source = (window().machine().video().vector_present_rate() == 0)
-			? !vector_present_repeat
-			: m_vec_frame_advanced;
+		const bool deposit_vector_source = bezel_threshold_changed
+			|| ((window().machine().video().vector_present_rate() == 0)
+				? !vector_present_repeat
+				: m_vec_frame_advanced);
 		m_vec_deposited_source = deposit_vector_source;
 
 
@@ -4611,6 +4631,15 @@ int renderer_bgfx::draw(int update)
 					}
 					if (hottest < 0) continue;
 
+					// A broad convergence event represents one energetic swept region.  A field of
+					// independent dwell points can occupy the same connected 32x32 area (QB-3's title
+					// backdrop is the canonical case), but must retain only its per-point/local bloom
+					// instead of becoming one boundary or full-face flash.  tan_xx + tan_yy is exactly
+					// the deposited line energy because every contributing direction is unit length;
+					// point deposits intentionally add no tangent support.
+					const float trace = fit_xx + fit_yy;
+					if (trace <= 1e-4f) continue;
+
 					const float support = float(occupied) * sqrtf(float(hits));
 					auto smootherstep = [](float x)
 					{
@@ -4642,7 +4671,6 @@ int renderer_bgfx::draw(int update)
 					// centre, the tangent least-squares fit keeps a partial bright arc from pulling the bloom.
 					// It refines placement only; it is not a shape acceptance test.
 					centre_x /= float(occupied); centre_y /= float(occupied);
-					const float trace = fit_xx + fit_yy;
 					const float determinant = fit_xx * fit_yy - fit_xy * fit_xy;
 					const float determinant_norm = (trace > 1e-4f) ? determinant / (trace * trace) : 0.0f;
 					if (determinant_norm > 0.02f)
@@ -5505,8 +5533,11 @@ int renderer_bgfx::draw(int update)
 			if (bgfx::isValid(m_vec_glow_fb))
 			{
 				bgfx::TextureHandle glow_color = bgfx::getTexture(m_vec_glow_fb, 0);
+				bgfx::TextureHandle bezel_length = bgfx::getTexture(m_vec_glow_fb, 1);
 				if (bgfx::isValid(glow_color))
 					m_chains->inject_vector_glow(glow_color, m_vec_fb_w, m_vec_fb_h);
+				if (bgfx::isValid(bezel_length))
+					m_chains->inject_vector_bezel_length(bezel_length, m_vec_glow_fb_w, m_vec_glow_fb_h);
 			}
 			// Expose explicit optical effects separately so the final composite can bypass tail shaping.
 			if (bgfx::isValid(m_vec_optical_fb))

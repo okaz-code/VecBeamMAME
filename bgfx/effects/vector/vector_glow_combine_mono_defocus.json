@@ -48,6 +48,20 @@
       ]
     },
     {
+      "name": "s_bezel_source",
+      "type": "int",
+      "values": [
+        4.0
+      ]
+    },
+    {
+      "name": "s_bezel_length",
+      "type": "int",
+      "values": [
+        5.0
+      ]
+    },
+    {
       "name": "u_defocus",
       "type": "vec4",
       "values": [
@@ -302,6 +316,36 @@
       "type": "vec4",
       "values": [
         0.25,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_long_reflection",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_short_reflection",
+      "type": "vec4",
+      "values": [
+        0.1,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_bezel_long_threshold",
+      "type": "vec4",
+      "values": [
+        160.0,
         0.0,
         0.0,
         0.0

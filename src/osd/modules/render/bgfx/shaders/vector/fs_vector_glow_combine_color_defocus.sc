@@ -11,6 +11,8 @@ SAMPLER2D(s_base,  0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_mask,  2);
 SAMPLER2D(s_glass_scatter, 3);
+SAMPLER2D(s_bezel_source, 4);
+SAMPLER2D(s_bezel_length, 5);
 
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
@@ -42,6 +44,10 @@ uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
 uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_glow_inside;
+uniform vec4 u_monitor_bezel_reflection;
+uniform vec4 u_bezel_long_reflection;
+uniform vec4 u_bezel_short_reflection;
+uniform vec4 u_bezel_long_threshold;
 uniform vec4 u_glow_tail_curve;
 uniform vec4 u_glow_black_toe;
 uniform vec4 u_smoked_glass_rgb;
@@ -191,17 +197,30 @@ float tube_vignette(vec2 uv, float active)
 	return saturate(smoothstep(radius, radius - blur, len));
 }
 
+float bezel_signed_distance(vec2 uv, float active)
+{
+	if (active < 0.5) return -1.0;
+	vec2 aspect = tube_aspect();
+	vec2 q = tube_quad_coord(uv, active) * aspect;
+	float tube_radius = clamp(u_tube_round_corner.x * 0.25, 0.0, 0.45);
+	float glow_radius = clamp(max(u_bezel_glow_width.x, 1.0) * 1.25 / max(min(tube_quad_dims().x, tube_quad_dims().y), 1.0), 0.0, 0.45);
+	return round_box(q, vec2_splat(0.5) * aspect, max(tube_radius, glow_radius));
+}
+
 float bezel_band(vec2 uv, float active)
 {
-	if (active < 0.5 || u_ambient_level.x <= 0.0 || u_bezel_glow_strength.x <= 0.0) return 0.0;
+	if (active < 0.5 || u_ambient_level.x <= 0.0) return 0.0;
+	float line_gain = max(u_bezel_glow_strength.x, 0.0);
+	float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
+	if (line_gain <= 0.0 && monitor_gain <= 0.0) return 0.0;
 	vec2 dims = tube_quad_dims();
-	float signed_px = tube_signed_distance(uv, active) * min(dims.x, dims.y);
+	float signed_px = bezel_signed_distance(uv, active) * min(dims.x, dims.y);
 	float width_px = max(u_bezel_glow_width.x, 1.0);
 	float curve = max(u_bezel_glow_curve.x, 0.25);
 	float inside_balance = clamp(u_bezel_glow_inside.x, 0.0, 1.0);
 	float outside = exp(-pow(max(signed_px, 0.0) / width_px, curve));
 	float inside = inside_balance * exp(-pow(max(-signed_px, 0.0) / width_px, curve));
-	return u_bezel_glow_strength.x * mix(inside, outside, step(0.0, signed_px));
+	return mix(inside, outside, step(0.0, signed_px));
 }
 vec2 vector_pincushion_uv(vec2 texcoord)
 {
@@ -281,6 +300,72 @@ vec3 shape_glow(vec3 c)
 	return c * (shaped / peak);
 }
 
+vec3 apply_bezel_length_gain(vec2 uv, vec3 light)
+{
+	// MRT attachment 1 is already classified per primitive, before additive
+	// overlap. Subtraction therefore separates coincident broad glows exactly.
+	vec3 long_light = min(max(texture2D(s_bezel_length, uv).rgb, vec3_splat(0.0)), light);
+	vec3 short_light = max(light - long_light, vec3_splat(0.0));
+	return short_light * max(u_bezel_short_reflection.x, 0.0)
+		+ long_light * max(u_bezel_long_reflection.x, 0.0);
+}
+
+vec3 bezel_bloom_axis(vec2 edge_uv, vec2 inward)
+{
+	vec2 source_reach_uv = vec2_splat(max(u_bezel_glow_width.x, 1.0)) / max(u_target_dims.xy, vec2_splat(1.0));
+	vec2 corner_margin_uv = min(source_reach_uv, vec2_splat(0.49));
+	if (abs(inward.x) > 0.5)
+		edge_uv.y = clamp(edge_uv.y, corner_margin_uv.y, 1.0 - corner_margin_uv.y);
+	else
+		edge_uv.x = clamp(edge_uv.x, corner_margin_uv.x, 1.0 - corner_margin_uv.x);
+	vec2 reach_uv = inward * source_reach_uv;
+	vec2 best_uv = edge_uv;
+	vec3 source = apply_bezel_length_gain(best_uv, texture2D(s_bezel_source, best_uv).rgb);
+	float best_peak = max(source.r, max(source.g, source.b));
+	vec2 candidate_uv = edge_uv + reach_uv * 0.125;
+	vec3 candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	float candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
+	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
+	candidate_uv = edge_uv + reach_uv * 0.25;
+	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
+	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
+	candidate_uv = edge_uv + reach_uv * 0.5;
+	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
+	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
+	candidate_uv = edge_uv + reach_uv;
+	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
+	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
+
+	return color_transform(source) * GLOW_BRIGHTNESS_GAIN;
+}
+
+vec3 bezel_bloom_source(vec2 source_uv)
+{
+	// Evaluate the nearest vertical and horizontal edges independently. Around
+	// a corner, blend them over approximately one bezel-glow width instead of
+	// switching on the exact diagonal (which produced a visible triangular seam).
+	bool left = source_uv.x < 0.5;
+	bool top = source_uv.y < 0.5;
+	vec2 vertical_edge = vec2(left ? 0.0 : 1.0, clamp(source_uv.y, 0.0, 1.0));
+	vec2 horizontal_edge = vec2(clamp(source_uv.x, 0.0, 1.0), top ? 0.0 : 1.0);
+	float vertical_distance = min(abs(source_uv.x), abs(1.0 - source_uv.x));
+	float horizontal_distance = min(abs(source_uv.y), abs(1.0 - source_uv.y));
+	float corner_blend = max(u_bezel_glow_width.x, 1.0)
+		/ max(min(u_target_dims.x, u_target_dims.y), 1.0);
+	float distance_delta = vertical_distance - horizontal_distance;
+	if (distance_delta <= -corner_blend)
+		return bezel_bloom_axis(vertical_edge, vec2(left ? 1.0 : -1.0, 0.0));
+	if (distance_delta >= corner_blend)
+		return bezel_bloom_axis(horizontal_edge, vec2(0.0, top ? 1.0 : -1.0));
+	vec3 vertical_light = bezel_bloom_axis(vertical_edge, vec2(left ? 1.0 : -1.0, 0.0));
+	vec3 horizontal_light = bezel_bloom_axis(horizontal_edge, vec2(0.0, top ? 1.0 : -1.0));
+	float horizontal_weight = smoothstep(-corner_blend, corner_blend, distance_delta);
+	return mix(vertical_light, horizontal_light, horizontal_weight);
+}
+
 vec3 apply_glass_optics(vec3 c, vec3 scatter_source)
 {
 	// The transmission slider interpolates between the configured glass colour and clear glass.
@@ -344,10 +429,11 @@ void main()
 	float band = bezel_band(v_texcoord0, tube_active);
 	if (band > 0.0)
 	{
-		vec2 edge_uv = clamp(emit_uv, vec2_splat(0.0), vec2_splat(1.0));
-		vec3 edge_light = u_glow_enable.x > 0.0 ? color_transform(texture2D(s_bloom, edge_uv).rgb) * GLOW_BRIGHTNESS_GAIN : vec3_splat(0.0);
+		float line_gain = max(u_bezel_glow_strength.x, 0.0);
+		float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
+		vec3 edge_light = line_gain > 0.0 && u_glow_enable.x > 0.0 ? bezel_bloom_source(emit_uv) : vec3_splat(0.0);
 		vec3 monitor_light = vec3_splat(mintensity) * monitor_tint;
-		bezel = shape_glow(edge_light + monitor_light) * band;
+		bezel = shape_glow(edge_light) * (band * line_gain) + shape_glow(monitor_light) * (band * monitor_gain);
 	}
 
 	vec3 composite = (base * mask_factor + glow) * face + ambient_out + monitor_out + global_out + bezel;
