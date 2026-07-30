@@ -3771,7 +3771,11 @@ int renderer_bgfx::draw(int update)
 		bool have_vectors = false;
 		for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
 			if (scan->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(scan->flags)) { have_vectors = true; break; }
-		if (have_vectors)
+		// MVEC exposes its help overlay before the first recorded vector frame can be submitted.
+		// Bootstrap the selected vector chain in that state as well, so the overlay is composited at
+		// HDR paper white from its first visible frame instead of briefly drawing into HDR10 directly.
+		const bool playback_active = window().m_primlist->vector_stats().playback_active;
+		if (have_vectors || playback_active)
 		{
 			m_chains->ensure_vector_screen_slot();
 			// Restore slider values from config once, the first time, after the chain is loaded

@@ -33,6 +33,7 @@ public:
 	virtual ~bgfx_target();
 
 	void page_flip();
+	uint32_t clear(uint32_t view);
 
 	// Getters
 	bgfx::FrameBufferHandle     target();

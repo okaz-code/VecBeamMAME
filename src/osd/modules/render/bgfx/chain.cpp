@@ -214,6 +214,17 @@ uint32_t bgfx_chain::prepare_vector_repeat(int view, int screen)
 	return used_views;
 }
 
+uint32_t bgfx_chain::clear_targets(int view)
+{
+	uint32_t used_views = 0;
+	for (bgfx_target *target : m_target_list)
+	{
+		if (target != nullptr)
+			used_views += target->clear(view + used_views);
+	}
+	return used_views;
+}
+
 uint32_t bgfx_chain::applicable_passes(bool vector_repeat)
 {
 	int applicable_passes = 0;
