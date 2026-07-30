@@ -72,7 +72,7 @@ private:
 
 	bool setup_view(texture_manager& textures, int view, uint16_t screen_width, uint16_t screen_height, int32_t screen,
 		uint16_t &out_view_width, uint16_t &out_view_height) const;
-	void put_screen_buffer(uint16_t screen_width, uint16_t screen_height, uint32_t screen_tint, bgfx::TransientVertexBuffer* buffer) const;
+	bool put_screen_buffer(uint16_t screen_width, uint16_t screen_height, uint32_t screen_tint, bgfx::TransientVertexBuffer* buffer) const;
 
 	std::string                         m_name;
 	bgfx_effect*                        m_effect;
