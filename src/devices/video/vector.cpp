@@ -1250,6 +1250,24 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 		if (curpoint->intensity != 0)
 		{
+			// A zero-length lit event can either be a deliberately parked, stand-alone dot
+			// (bullet/star) or a brief Z pause at a line junction.  Point-only optical effects
+			// such as halation and starburst belong only to the former.  Preserve the core dot
+			// in both cases, but tag a point touching either adjacent visible segment so the
+			// renderer can suppress only its optical geometry.  Deriving this here also works
+			// for old MVEC recordings, which predate the metadata bit.
+			u32 cap_flags = curpoint->cap_flags;
+			if (curpoint->x0 == curpoint->x && curpoint->y0 == curpoint->y)
+			{
+				const point *const prev = (i > 0) ? &m_vector_list[i - 1] : nullptr;
+				const point *const next = (i + 1 < m_vector_index) ? &m_vector_list[i + 1] : nullptr;
+				const bool joins_prev = prev && prev->intensity != 0
+					&& prev->x == curpoint->x && prev->y == curpoint->y;
+				const bool joins_next = next && next->intensity != 0
+					&& next->x0 == curpoint->x && next->y0 == curpoint->y;
+				if (joins_prev || joins_next)
+					cap_flags |= VECTOR_CAP_POINT_OPTICS_SUPPRESS;
+			}
 			screen.container().add_line(
 					coords.x0, coords.y0, coords.x1, coords.y1,
 					beam_width,
@@ -1258,7 +1276,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					curpoint->beam_energy,
 					curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
 					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double(),
-					curpoint->cap_flags);
+					cap_flags);
 			// Points surviving into a second emission (window-boundary blend) re-emit their
 			// primitive but must not re-fire the notifiers: one beam event, one notification.
 			if (!curpoint->emitted)

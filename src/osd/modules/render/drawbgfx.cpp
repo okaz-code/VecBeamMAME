@@ -2238,6 +2238,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	const float point_threshold = m_vs.line_point_threshold;
 	const bool as_point = (seg_len <= point_threshold);
+	// Halation and starburst describe a deliberately parked, isolated beam.  Do not
+	// generate them for merely short segments, or for zero-length Z pauses connected
+	// to visible lines (vector_device marks those with cap_flags bit 2).  The ordinary
+	// point core, Z rise-time response, glow and overload handling remain unchanged.
+	const bool point_optics = (seg_len <= 1.0e-4f)
+		&& !(prim->cap_flags & VECTOR_CAP_POINT_OPTICS_SUPPRESS);
 
 	// DAC / integrator position noise: jitter each endpoint by a time-coherent, position-keyed offset
 	// (analog deflection noise). Applied AFTER the point/line classification (so a dot - whose two
@@ -2855,11 +2861,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			{
 				ring_str = ring_link * line_over;
 
-				ring_on = halation_gain > 0.0f && (ring_gain > 0.0f || ring_fill > 0.0f) && ring_str > 0.0f;
+				ring_on = point_optics && halation_gain > 0.0f
+					&& (ring_gain > 0.0f || ring_fill > 0.0f) && ring_str > 0.0f;
 			}
 			else
 			{
-				ring_on = halation_gain > 0.0f && (ring_gain > 0.0f || ring_fill > 0.0f)
+				ring_on = point_optics && halation_gain > 0.0f
+					&& (ring_gain > 0.0f || ring_fill > 0.0f)
 					&& eff_bright >= m_vs.ring_threshold;
 			}
 			// Small-text leak: tiny text strokes move the beam less than the point threshold, so they
@@ -2936,7 +2944,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				const float ray_gain = m_vs.ray_gain;
 				const float rov_max  = m_vs.overload_max;
 				const float heat = std::clamp(line_over / ((rov_max > 1.0f) ? (rov_max - 1.0f) : 2.0f), 0.0f, 1.0f);
-				bool rays_on = (ray_gain > 0.0f && heat > 0.0f);
+				bool rays_on = point_optics && (ray_gain > 0.0f && heat > 0.0f);
 				if (rays_on && ring_min_dwell > 0.0f && prim->t0 >= 0.0 && prim->t1 > prim->t0
 					&& (prim->t1 - prim->t0) * 1e6 < double(ring_min_dwell))
 					rays_on = false;

@@ -144,6 +144,11 @@ constexpr u32 PRIMFLAG_GET_VECTOR(u32 x)    { return (x & PRIMFLAG_VECTOR_MASK) 
 constexpr u32 PRIMFLAG_VECTORBUF(u32 x)     { return x << PRIMFLAG_VECTORBUF_SHIFT; }
 constexpr u32 PRIMFLAG_GET_VECTORBUF(u32 x) { return (x & PRIMFLAG_VECTORBUF_MASK) >> PRIMFLAG_VECTORBUF_SHIFT; }
 
+// Per-vector metadata carried separately from the generic primitive flags.
+constexpr u8 VECTOR_CAP_START                 = 0x01U;
+constexpr u8 VECTOR_CAP_END                   = 0x02U;
+constexpr u8 VECTOR_CAP_POINT_OPTICS_SUPPRESS = 0x04U;
+
 
 //**************************************************************************
 //  TYPE DEFINITIONS
@@ -239,7 +244,7 @@ public:
 	u32                 flags = 0U;         // flags
 	float               width = 0.0F;       // width (for line primitives)
 	float               beam_energy = 0.0F; // normalized (0..1) beam energy for renderer overload/overdrive effects (0 = none; ignored by stock renderers)
-	u8                  cap_flags = 0U;     // line end-cap gating: bit0 = start is a stroke (RAMP) terminus, bit1 = end is; 0 = none (ignored by stock renderers)
+	u8                  cap_flags = 0U;     // VECTOR_CAP_* metadata (ignored by stock renderers)
 	double              t0 = -1.0;          // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
 	double              t1 = -1.0;          // absolute machine time (s) the beam finished drawing this line
 	render_texinfo      texture;            // texture info (for quad primitives)
@@ -521,7 +526,7 @@ private:
 		float               m_beam_energy;      // normalized (0..1) beam energy for renderer overload effects (lines only; 0 = none)
 		double              m_t0;               // absolute machine time (s) the beam started drawing this line (< 0 = untimed; lines only)
 		double              m_t1;               // absolute machine time (s) the beam finished drawing this line
-		u8                  m_cap_flags;        // line end-cap terminus bits (bit0 start, bit1 end; lines only)
+		u8                  m_cap_flags;        // vector metadata (see render_primitive::cap_flags)
 		render_texture *    m_texture;          // pointer to the source texture (quads only)
 	};
 
