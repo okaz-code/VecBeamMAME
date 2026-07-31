@@ -215,6 +215,10 @@ private:
 	// m_vec_render_scale scales the analytic vector FBO base and native vector-chain targets.
 	// The final BGFX swapchain, UI and artwork remain at the physical window resolution.
 	float m_vec_render_scale = 1.0f;
+	// m_output_scale reduces the VecBeam HDR composite before a final full-window upscale.
+	// The analytic vector path uses min(render, output), avoiding accidental double scaling.
+	float m_output_scale = 1.0f;
+	float m_vec_effective_scale = 1.0f;
 	// m_vec_supersample is applied after m_vec_render_scale (both dimensions).
 	uint16_t m_vec_supersample = 1;
 	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
@@ -452,10 +456,12 @@ private:
 	// and a final pass PQ-encodes the result (gamma on an SDR swapchain).
 	bool m_vec_hdr_chain = false;          // active chain is HDR-type (has a screen_hdr target)
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
+	bgfx_target *m_hdr_present_work = nullptr; // encoded composite before optional output upscale
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
 	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
+	bgfx_effect *m_hdr_upscale_effect = nullptr;  // encoded composite -> physical output blit
 	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
 	// interval; the CPU applies the exact present roll-off to report requested/post-rolloff nits.
 	bgfx::TextureHandle m_hdr_diag_texture = BGFX_INVALID_HANDLE;

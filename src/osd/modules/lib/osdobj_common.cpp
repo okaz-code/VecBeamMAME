@@ -157,6 +157,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_BACKEND,                    "auto",            core_options::option_type::STRING,   "BGFX backend to use (d3d9, d3d11, d3d12, metal, opengl, gles, vulkan)" },
 	{ OSDOPTION_BGFX_DEBUG,                      "0",               core_options::option_type::BOOLEAN,  "enable BGFX debugging statistics" },
 	{ OSDOPTION_BGFX_SCREEN_CHAINS,              "",                core_options::option_type::STRING,   "comma-delimited list of screen chain JSON names, colon-delimited per-window" },
+	{ OSDOPTION_BGFX_OUTPUT_SCALE "(0.25-1.0)",   "1.0",             core_options::option_type::FLOAT,    "VecBeam HDR composite resolution relative to the output window; final image is upscaled to the window" },
 	{ OSDOPTION_BGFX_RENDER_SCALE "(0.1-1.0)",   "1.0",             core_options::option_type::FLOAT,    "analytic vector internal render scale; final BGFX output, UI and artwork remain at window resolution" },
 	{ OSDOPTION_BGFX_VEC_SUPERSAMPLE "(1-2)",    "1",               core_options::option_type::INTEGER,  "vector FBO supersampling factor (1 = window resolution, 2 = 2x); only used by chains declaring vector_engine=analytic" },
 	{ OSDOPTION_BGFX_VEC_LINE_SHADER,            "analytic",         core_options::option_type::STRING,   "vector line renderer (classic = quad + cap fans, analytic = gaussian line integral); only used by chains declaring vector_engine=analytic" },

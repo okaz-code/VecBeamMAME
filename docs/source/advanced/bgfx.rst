@@ -169,6 +169,19 @@ bgfx_screen_chains
 
     Note that the commas are on the outside edges, and any colons are in the
     middle.
+bgfx_output_scale
+    Sets the VecBeam HDR composite resolution relative to the output window.
+    The default is ``1.0``.  Values from ``0.25`` through ``1.0`` are accepted;
+    for example, ``0.5`` composites the vector image, artwork and user interface
+    and performs HDR/SDR output conversion at half the window width and height,
+    then linearly upscales the result to the physical window.
+
+    This option is independent of the display mode and works in both windowed
+    and full-screen modes.  It only applies to vector chains that provide the
+    VecBeam ``screen_hdr`` target.  The analytic vector renderer uses the lower
+    of ``bgfx_output_scale`` and ``bgfx_render_scale`` rather than multiplying
+    them, so setting both to ``0.5`` does not reduce the vector image to quarter
+    size.
 bgfx_render_scale
     Sets the internal resolution scale for the analytic vector renderer and its
     native BGFX chain targets.  The default is ``1.0``.  For example, ``0.5``

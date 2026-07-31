@@ -157,7 +157,7 @@
 		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.25,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_width","text":"Bezel Glow Width (px)","default":32.0,"min":2.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_curve","text":"Bezel Glow Curve","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"bezel_glow_inside","text":"Bezel Glow Inside Balance","default":0.25,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"bezel_glow_inside","text":"Bezel Glow Inside Balance","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":0.8,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"glow_black_toe","text":"Glow Black Toe","default":0.002,"min":0.0,"max":0.05,"step":0.001,"format":"%1.3f","screen":"vector"},
 

@@ -1307,9 +1307,11 @@ int renderer_bgfx::create()
 	{
 		const int ss = m_module().options().bgfx_vec_supersample();
 		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
+		m_output_scale = std::clamp(m_module().options().bgfx_output_scale(), 0.25f, 1.0f);
 		m_vec_render_scale = std::clamp(m_module().options().bgfx_render_scale(), 0.1f, 1.0f);
-		osd_printf_verbose("BGFX: analytic vector render scale %.2f, supersample %u (effective raster scale %.2f)\n",
-			m_vec_render_scale, unsigned(m_vec_supersample), m_vec_render_scale * float(m_vec_supersample));
+		m_vec_effective_scale = std::min(m_vec_render_scale, m_output_scale);
+		osd_printf_verbose("BGFX: analytic vector render scale %.2f, output limit %.2f, supersample %u (effective raster scale %.2f)\n",
+			m_vec_render_scale, m_output_scale, unsigned(m_vec_supersample), m_vec_effective_scale * float(m_vec_supersample));
 	}
 
 	// load the analytic-AA vector line effect
@@ -1330,6 +1332,7 @@ int renderer_bgfx::create()
 		// SDR swapchain, where the present pass gamma-encodes instead of PQ).
 		m_hdr_screen_effect  = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_screen");
 		m_hdr_present_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vector_hdr_present");
+		m_hdr_upscale_effect = m_effects->get_or_load_effect(m_module().options(), "misc/blit");
 		m_hdr_gui_effect[BLENDMODE_NONE]         = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_opaque");
 		m_hdr_gui_effect[BLENDMODE_ALPHA]        = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_blend");
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
@@ -3715,8 +3718,8 @@ int renderer_bgfx::draw(int update)
 	{
 		const uint16_t cur_w = uint16_t(s_width[window_index]);
 		const uint16_t cur_h = uint16_t(s_height[window_index]);
-		const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(cur_w) * m_vec_render_scale + 0.5f));
-		const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(cur_h) * m_vec_render_scale + 0.5f));
+		const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(cur_w) * m_vec_effective_scale + 0.5f));
+		const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(cur_h) * m_vec_effective_scale + 0.5f));
 		const uint16_t target_fb_w = uint16_t(render_w * m_vec_supersample);
 		const uint16_t target_fb_h = uint16_t(render_h * m_vec_supersample);
 		// glow_fbo_scale: the active chain's glow-FBO resolution factor (a fast-variant chain sets 0.5
@@ -5537,8 +5540,8 @@ int renderer_bgfx::draw(int update)
 		bgfx::TextureHandle vec_color = bgfx::getTexture(m_vec_fb, 0);
 		if (bgfx::isValid(vec_color))
 		{
-			const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(s_width[window_index]) * m_vec_render_scale + 0.5f));
-			const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(s_height[window_index]) * m_vec_render_scale + 0.5f));
+			const uint16_t render_w = std::max<uint16_t>(1, uint16_t(float(s_width[window_index]) * m_vec_effective_scale + 0.5f));
+			const uint16_t render_h = std::max<uint16_t>(1, uint16_t(float(s_height[window_index]) * m_vec_effective_scale + 0.5f));
 			uint16_t content_w = m_vec_cached_content_w ? std::min(m_vec_cached_content_w, render_w) : render_w;
 			uint16_t content_h = m_vec_cached_content_h ? std::min(m_vec_cached_content_h, render_h) : render_h;
 			const bool refresh_content_bounds = m_vec_frame_advanced
@@ -5559,8 +5562,8 @@ int renderer_bgfx::draw(int update)
 					if (area <= content_area)
 						continue;
 					content_area = area;
-					content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_render_scale)), 1, int(render_w)));
-					content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_render_scale)), 1, int(render_h)));
+					content_w = uint16_t(std::clamp(int(std::lround(bounds_w * m_vec_effective_scale)), 1, int(render_w)));
+					content_h = uint16_t(std::clamp(int(std::lround(bounds_h * m_vec_effective_scale)), 1, int(render_h)));
 				}
 				if (content_w != m_vec_cached_content_w || content_h != m_vec_cached_content_h)
 				{
@@ -5733,7 +5736,7 @@ int renderer_bgfx::draw(int update)
 				// chains run their native targets at bgfx_render_scale.  Pass that scale to the
 				// final combine so its pixel-domain bezel band and source-search reach shrink with
 				// the internal target and remain the same size after the full-resolution present.
-				const float render_scale_vals[4] = { m_vec_render_scale, 0.0f, 0.0f, 0.0f };
+				const float render_scale_vals[4] = { m_vec_effective_scale, 0.0f, 0.0f, 0.0f };
 				for (const char *entry : { "add_mglow", "Glow Combine" })
 				{
 					m_chains->inject_entry_uniform(0, entry, "u_vector_render_scale", render_scale_vals, 4);
@@ -5824,12 +5827,25 @@ int renderer_bgfx::draw(int update)
 		if (m_vec_hdr_chain)
 		{
 			// (re)create the linear work target (absolute nits): vector screen + artwork composited
-			const uint16_t uw = uint16_t(s_width[0]);
-			const uint16_t uh = uint16_t(s_height[0]);
+			const uint16_t uw = std::max<uint16_t>(1, uint16_t(float(s_width[0]) * m_output_scale + 0.5f));
+			const uint16_t uh = std::max<uint16_t>(1, uint16_t(float(s_height[0]) * m_output_scale + 0.5f));
+			bool target_changed = false;
 			if (uw > 0 && uh > 0 && (m_hdr_work == nullptr || m_hdr_work->width() != uw || m_hdr_work->height() != uh))
+			{
 				m_hdr_work = m_targets->create_target("hdr_work", bgfx::TextureFormat::RG11B10F, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
+				target_changed = true;
+			}
+			if (m_output_scale < 1.0f
+				&& (m_hdr_present_work == nullptr || m_hdr_present_work->width() != uw || m_hdr_present_work->height() != uh))
+			{
+				m_hdr_present_work = m_targets->create_target("hdr_present_work", bgfx::TextureFormat::RG11B10F, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+				target_changed = true;
+			}
+			if (target_changed)
+				osd_printf_verbose("BGFX: output scale %.2f, composite %ux%u, physical %ux%u\n",
+					m_output_scale, unsigned(uw), unsigned(uh), unsigned(s_width[0]), unsigned(s_height[0]));
 			// Safety: drop to the plain SDR path if the work target could not be created.
-			if (m_hdr_work == nullptr)
+			if (m_hdr_work == nullptr || (m_output_scale < 1.0f && m_hdr_present_work == nullptr))
 				m_vec_hdr_chain = false;
 		}
 
@@ -5851,7 +5867,7 @@ int renderer_bgfx::draw(int update)
 			// the artwork view; overwrites the whole target so no clear is needed.
 			const uint16_t seed_view = uint16_t(s_current_view++);
 			bgfx::setViewFrameBuffer(seed_view, m_hdr_work->target());
-			bgfx::setViewRect(seed_view, 0, 0, uint16_t(w), uint16_t(h));
+			bgfx::setViewRect(seed_view, 0, 0, m_hdr_work->width(), m_hdr_work->height());
 			bgfx::setViewClear(seed_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 			bgfx::setViewMode(seed_view, bgfx::ViewMode::Sequential);
 			float seed_proj[16];
@@ -5865,6 +5881,13 @@ int renderer_bgfx::draw(int update)
 				vertex(&v[3], 0,0,0,0xffffffff,0,0); vertex(&v[4], w,h,0,0xffffffff,1,1); vertex(&v[5], 0,h,0,0xffffffff,0,1);
 				bgfx_uniform *p = m_hdr_screen_effect->uniform("u_hdr_params");
 				if (p) { float val[4] = { seed_peak, 0,0,0 }; p->set(val, sizeof(float)*4); p->upload(); }
+				bgfx_uniform *iv = m_hdr_screen_effect->uniform("u_inv_view_dims");
+				if (iv)
+				{
+					float val[4] = { -1.0f / float(m_hdr_work->width()), 1.0f / float(m_hdr_work->height()), 0.0f, 0.0f };
+					iv->set(val, sizeof(val));
+					iv->upload();
+				}
 				bgfx_uniform *st = m_hdr_screen_effect->uniform("s_tex");
 				// Bind a fallback if screen_hdr has not been written yet this frame (e.g. the chain
 				// did not run because the FBO/atlas was not ready): an unbound sampler is fatal on Metal.
@@ -5945,8 +5968,10 @@ int renderer_bgfx::draw(int update)
 			bgfx_uniform* inv_view_dims = gui->uniform("u_inv_view_dims");
 			if (inv_view_dims)
 			{
-				float values[2] = { -1.0f / s_width[window_index], 1.0f / s_height[window_index] };
-				inv_view_dims->set(values, sizeof(float) * 2);
+				const float view_w = m_vec_hdr_chain && m_hdr_work ? float(m_hdr_work->width()) : float(s_width[window_index]);
+				const float view_h = m_vec_hdr_chain && m_hdr_work ? float(m_hdr_work->height()) : float(s_height[window_index]);
+				float values[4] = { -1.0f / view_w, 1.0f / view_h, 0.0f, 0.0f };
+				inv_view_dims->set(values, sizeof(values));
 				inv_view_dims->upload();
 			}
 
@@ -5965,7 +5990,9 @@ int renderer_bgfx::draw(int update)
 	// nits. Encode it to the backbuffer (PQ for HDR10, gamma for the SDR fallback).
 	if (m_vec_hdr_chain && window_index == 0 && m_hdr_present_effect != nullptr && m_hdr_work != nullptr)
 	{
-		if (6 == bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl))
+		const bool scaled_output = m_output_scale < 1.0f && m_hdr_present_work != nullptr && m_hdr_upscale_effect != nullptr;
+		const uint32_t required_vertices = scaled_output ? 12 : 6;
+		if (required_vertices == bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl))
 		{
 			bgfx::TransientVertexBuffer vb;
 			bgfx::allocTransientVertexBuffer(&vb, 6, ScreenVertex::ms_decl);
@@ -5991,8 +6018,10 @@ int renderer_bgfx::draw(int update)
 				present_fb = m_avi_target->target();
 			else if (m_framebuffer != nullptr)
 				present_fb = m_framebuffer->target();
-			bgfx::setViewFrameBuffer(present_view, present_fb);
-			bgfx::setViewRect(present_view, 0, 0, uint16_t(w), uint16_t(h));
+			bgfx::setViewFrameBuffer(present_view, scaled_output ? m_hdr_present_work->target() : present_fb);
+			bgfx::setViewRect(present_view, 0, 0,
+				scaled_output ? m_hdr_present_work->width() : uint16_t(w),
+				scaled_output ? m_hdr_present_work->height() : uint16_t(h));
 			// opaque blit fully overwrites the backbuffer (the chain wrote screen_hdr, not it)
 			bgfx::setViewClear(present_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 			bgfx::setViewMode(present_view, bgfx::ViewMode::Sequential);
@@ -6055,8 +6084,54 @@ int renderer_bgfx::draw(int update)
 			const bgfx::TextureHandle present_src = (m_hdr_work && bgfx::isValid(m_hdr_work->texture()))
 					? m_hdr_work->texture() : m_chains->textures().dummy_handle();
 			if (st) bgfx::setTexture(0, st->handle(), present_src);
+			bgfx_uniform *present_dims = m_hdr_present_effect->uniform("u_inv_view_dims");
+			if (present_dims)
+			{
+				const float present_w = scaled_output ? float(m_hdr_present_work->width()) : w;
+				const float present_h = scaled_output ? float(m_hdr_present_work->height()) : h;
+				float vals[4] = { -1.0f / present_w, 1.0f / present_h, 0.0f, 0.0f };
+				present_dims->set(vals, sizeof(vals));
+				present_dims->upload();
+			}
 			bgfx::setVertexBuffer(0, &vb);
 			m_hdr_present_effect->submit(present_view);
+
+			// Keep the physical swapchain at the display mode selected by the host.  Only the
+			// VecBeam composite and its tone-map/PQ pass are reduced; this final bilinear copy is
+			// deliberately the sole full-resolution pass when bgfx_output_scale is below 1.0.
+			if (scaled_output)
+			{
+				bgfx::TransientVertexBuffer upscale_vb;
+				bgfx::allocTransientVertexBuffer(&upscale_vb, 6, ScreenVertex::ms_decl);
+				ScreenVertex *uv = reinterpret_cast<ScreenVertex *>(upscale_vb.data);
+				vertex(&uv[0], 0.0f, 0.0f, 0.0f, 0xffffffff, 0.0f, 0.0f);
+				vertex(&uv[1], w,    0.0f, 0.0f, 0xffffffff, 1.0f, 0.0f);
+				vertex(&uv[2], w,    h,    0.0f, 0xffffffff, 1.0f, 1.0f);
+				vertex(&uv[3], 0.0f, 0.0f, 0.0f, 0xffffffff, 0.0f, 0.0f);
+				vertex(&uv[4], w,    h,    0.0f, 0xffffffff, 1.0f, 1.0f);
+				vertex(&uv[5], 0.0f, h,    0.0f, 0xffffffff, 0.0f, 1.0f);
+
+				const uint16_t upscale_view = uint16_t(s_current_view++);
+				bgfx::setViewFrameBuffer(upscale_view, present_fb);
+				bgfx::setViewRect(upscale_view, 0, 0, uint16_t(w), uint16_t(h));
+				bgfx::setViewClear(upscale_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+				bgfx::setViewMode(upscale_view, bgfx::ViewMode::Sequential);
+				bgfx::setViewTransform(upscale_view, nullptr, present_proj);
+
+				bgfx_uniform *upscale_tex = m_hdr_upscale_effect->uniform("s_tex");
+				if (upscale_tex)
+					bgfx::setTexture(0, upscale_tex->handle(), m_hdr_present_work->texture(),
+						BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+				bgfx_uniform *upscale_dims = m_hdr_upscale_effect->uniform("u_inv_view_dims");
+				if (upscale_dims)
+				{
+					float vals[4] = { -1.0f / w, 1.0f / h, 0.0f, 0.0f };
+					upscale_dims->set(vals, sizeof(vals));
+					upscale_dims->upload();
+				}
+				bgfx::setVertexBuffer(0, &upscale_vb);
+				m_hdr_upscale_effect->submit(upscale_view);
+			}
 		}
 	}
 
@@ -6464,14 +6539,14 @@ void renderer_bgfx::setup_ortho_view()
 		if (m_hdr_work_view == UINT_MAX)
 		{
 			m_hdr_work_view = s_current_view++;
-			const uint16_t vw = uint16_t(s_width[window().index()]);
-			const uint16_t vh = uint16_t(s_height[window().index()]);
+			const uint16_t vw = m_hdr_work->width();
+			const uint16_t vh = m_hdr_work->height();
 			bgfx::setViewFrameBuffer(uint16_t(m_hdr_work_view), m_hdr_work->target());
 			bgfx::setViewRect(uint16_t(m_hdr_work_view), 0, 0, vw, vh);
 			bgfx::setViewClear(uint16_t(m_hdr_work_view), BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 			bgfx::setViewMode(uint16_t(m_hdr_work_view), bgfx::ViewMode::Sequential);
 			float proj[16];
-			bx::mtxOrtho(proj, 0.0f, float(vw), float(vh), 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
+			bx::mtxOrtho(proj, 0.0f, float(s_width[window().index()]), float(s_height[window().index()]), 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
 			bgfx::setViewTransform(uint16_t(m_hdr_work_view), nullptr, proj);
 		}
 		m_ortho_view->set_backbuffer(m_hdr_work);
