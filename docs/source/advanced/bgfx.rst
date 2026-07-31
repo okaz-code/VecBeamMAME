@@ -185,6 +185,82 @@ bgfx_shadow_mask
     **slot-mask.png**.
 
 
+VecBeamMAME analytic vector chains
+----------------------------------
+
+VecBeamMAME provides four recommended ``balanced`` BGFX chains for vector
+screens:
+
+* ``vector-color-balanced``
+* ``vector-monochrome-balanced_1``
+* ``vector-monochrome-balanced_2``
+* ``vector-vectrex-balanced``
+
+Select the chain in the video options menu, or specify it with
+``-video bgfx -bgfx_screen_chains chain-name``.  The chain defaults include the
+current *Star Wars*, *Asteroids* and Vectrex calibration work.  Per-system CFG
+slider values continue to override the chain defaults.
+
+Overload-driven HV droop
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+HV droop globally dims and defocuses the vectors to represent EHT supply sag.
+Ordinary lines do not contribute to the effect.  The analytic renderer
+integrates only the energy above ``Overload Threshold`` for non-point line
+primitives:
+
+.. code-block:: text
+
+    overload load =
+        sum(max(line energy - overload threshold, 0)
+            * line length / reference screen width)
+
+    droop load =
+        clamp((peak-tracked overload load - HV Droop Overload Onset)
+              / HV Droop Load Ref, 0, 1)
+
+``HV Droop (dim+defocus)``
+    Sets the maximum effect strength.  At 1.0 and full load, line deposits are
+    dimmed by up to 40% and the spot sigma gains approximately 2.5 pixels at
+    the 1920-pixel reference width.
+
+``HV Droop Overload Onset``
+    Rejects isolated overload.  A total overload at or below the onset has
+    exactly no global dimming or defocus.
+
+``HV Droop Load Ref``
+    Sets the additional overload above the onset required to reach full droop.
+
+The load source is active only when ``Overdrive (hot core)`` is enabled.
+Stationary dwell points are excluded, preventing a single hot dot or bullet
+from dimming the whole face.  The peak-tracked value decays after a mass
+overload event to model supply recovery.
+
+Glow and point optics
+~~~~~~~~~~~~~~~~~~~~~
+
+``Glow Narrow`` and ``Glow Wide`` provide the near and broad line glow.  The
+extended wide-glow reach replaces the separate local Convergence Bloom effect,
+so the local bloom and its tuning controls are not exposed by the vector
+chains.
+
+The balanced chains retain ``Convergence Global Bloom`` and
+``Convergence Global Coverage``.  This path responds only to a large connected
+overload region and produces a broad full-face scatter, without adding a local
+convergence halo to compact objects.
+
+For chains with point optics, the slider menu groups the controls in this
+order:
+
+#. Halation gain and ring controls
+#. Starburst gain, count, length, randomness, width and angle
+#. Ordinary analytic glow controls
+
+Deflection Dynamics and its settle/damping controls are not exposed by the
+vector chains.  Vector geometry therefore follows the source trajectory
+without the optional renderer-side second-order deflection simulation.
+
+
 Tweaking BGFX HLSL Settings inside MAME
 ---------------------------------------
 
