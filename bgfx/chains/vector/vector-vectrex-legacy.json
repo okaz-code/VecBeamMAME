@@ -57,9 +57,6 @@
 		{ "type": "float", "name": "vertex_dwell",     "text": "Vertex Dwell (corner dots)",  "default": 0.0, "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Deflection dynamics (AVG) ----
-		{ "type": "float", "name": "deflection_dynamics", "text": "Deflection Dynamics (AVG)", "default": 0.0, "min": 0.0,  "max": 0.2,  "step": 0.005, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "deflection_settle",   "text": "Deflection Settle (us)",    "default": 5.0, "min": 0.5,  "max": 30.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
-		{ "type": "float", "name": "deflection_damping",  "text": "Deflection Damping",        "default": 0.5, "min": 0.05, "max": 1.5,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 
 		// ---- Overload / overdrive ----
 		{ "type": "float", "name": "overload_threshold","text": "Overload Threshold",        "default": 0.3, "min": 0.1,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
@@ -87,6 +84,14 @@
 		{ "type": "float", "name": "ring_width",               "text": "Halation Width (px)",       "default": 3.0,  "min": 0.75, "max": 12.0, "step": 0.25, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "ring_min_dwell",           "text": "Halation Min Dwell (us)",   "default": 20.0, "min": 0.0,  "max": 200.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "ring_threshold",      "text": "Halation Threshold (bright)", "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.02, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ray_gain",                 "text": "Starburst Gain",            "default": 0.005, "min": 0.0,  "max": 0.5,  "step": 0.001, "format": "%1.3f", "screen": "vector" },
+		{ "type": "float", "name": "ray_var",                  "text": "Starburst Uneven",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ray_count",                "text": "Starburst Rays",            "default": 6.0,  "min": 2.0,  "max": 12.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
+		{ "type": "float", "name": "ray_length",               "text": "Starburst Length (px)",     "default": 60.0, "min": 8.0,  "max": 300.0, "step": 2.0, "format": "%3.0f", "screen": "vector" },
+		{ "type": "float", "name": "ray_length_rand",         "text": "Starburst Length Random",   "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ray_count_rand",          "text": "Starburst Count Random",    "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "ray_width",                "text": "Starburst Width (px)",      "default": 0.8,  "min": 0.5,  "max": 6.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
+		{ "type": "float", "name": "ray_angle",                "text": "Starburst Angle (deg)",     "default": 15.0, "min": 0.0,  "max": 180.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 
 		// ---- Energy model (speed / dwell / frame load) ----
 		{ "type": "intenum", "name": "energy_model",     "text": "Energy Model (speed/dwell)", "default": 1,    "min": 0,    "max": 1,    "step": 1,    "format": "%s",    "screen": "vector", "strings": [ "Off", "On" ] },
@@ -105,6 +110,7 @@
 		{ "type": "float", "name": "energy_obj_max",     "text": "Energy Object Max",          "default": 3.0,  "min": 1.0,  "max": 8.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
 		{ "type": "float", "name": "energy_obj_star",    "text": "Energy Object Star Boost",   "default": 1.5,  "min": 1.0,  "max": 4.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop",           "text": "HV Droop (dim+defocus)",    "default": 0.0,  "min": 0.0, "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
+		{ "type": "float", "name": "hv_droop_onset",     "text": "HV Droop Overload Onset",  "default": 0.0,  "min": 0.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 		{ "type": "float", "name": "hv_droop_ref",       "text": "HV Droop Load Ref",         "default": 10.0, "min": 1.0, "max": 60.0, "step": 0.5,  "format": "%2.1f", "screen": "vector" },
 
 		// ---- Analytic glow ----
@@ -127,14 +133,6 @@
 
 		// ---- Artistic (non-physical) ----
 		{ "type": "float", "name": "bright_normal_cap", "text": "Normal Brightness Cap",     "default": 0.5, "min": 0.1,  "max": 1.0,  "step": 0.01, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ray_gain",                 "text": "Starburst Gain",            "default": 0.005, "min": 0.0,  "max": 0.5,  "step": 0.001, "format": "%1.3f", "screen": "vector" },
-		{ "type": "float", "name": "ray_var",                  "text": "Starburst Uneven",          "default": 0.6,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ray_count",                "text": "Starburst Rays",            "default": 6.0,  "min": 2.0,  "max": 12.0, "step": 1.0,  "format": "%2.0f", "screen": "vector" },
-		{ "type": "float", "name": "ray_length",               "text": "Starburst Length (px)",     "default": 60.0, "min": 8.0,  "max": 300.0, "step": 2.0, "format": "%3.0f", "screen": "vector" },
-		{ "type": "float", "name": "ray_length_rand",         "text": "Starburst Length Random",   "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ray_count_rand",          "text": "Starburst Count Random",    "default": 0.0,  "min": 0.0,  "max": 1.0,  "step": 0.05, "format": "%1.2f", "screen": "vector" },
-		{ "type": "float", "name": "ray_width",                "text": "Starburst Width (px)",      "default": 0.8,  "min": 0.5,  "max": 6.0,  "step": 0.1,  "format": "%1.1f", "screen": "vector" },
-		{ "type": "float", "name": "ray_angle",                "text": "Starburst Angle (deg)",     "default": 15.0, "min": 0.0,  "max": 180.0, "step": 1.0, "format": "%3.0f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter",       "text": "Energy Jitter (near saturation)", "default": 0.0,  "min": 0.0, "max": 0.005, "step": 0.00005, "format": "%1.5f", "screen": "vector" },
 		{ "type": "float", "name": "energy_jitter_base",  "text": "Energy Jitter Base (all vectors)",   "default": 0.0,  "min": 0.0, "max": 0.005, "step": 0.0001, "format": "%1.4f", "screen": "vector" },
 		{ "type": "float", "name": "beam_noise",         "text": "Beam Position Noise (px)",       "default": 0.0,  "min": 0.0, "max": 3.0,  "step": 0.05,  "format": "%1.2f", "screen": "vector" },

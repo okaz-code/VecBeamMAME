@@ -12,6 +12,90 @@ Select the appropriate chain from MAME's video options or with
 `-video bgfx -bgfx_screen_chains <chain-name>`.  BGFX slider values are saved
 per system in the MAME configuration files.
 
+## Balanced-chain calibration
+
+The balanced defaults include the current per-system calibration work rather
+than requiring a saved configuration file:
+
+- `vector-color-balanced` includes the *Star Wars* overload-driven HV droop
+  calibration.
+- `vector-vectrex-balanced` includes the Vectrex persistence, beam/point,
+  focus, halation, glow-buffer, starburst, ambient, and glow-tail calibration.
+- `vector-monochrome-balanced_1` includes the *Asteroids* point, focus,
+  halation-fill, starburst-length, and ambient calibration.
+
+A system configuration file can still override these defaults.  Delete the
+saved BGFX slider entries or reset the sliders in the UI to evaluate the chain
+defaults directly.
+
+## Overload-driven HV droop
+
+HV droop models EHT supply sag as global dimming and spot defocus.  It is not
+driven by the total number or energy of ordinary vectors.  The renderer sums
+only the energy above `Overload Threshold` for non-point line primitives:
+
+```text
+overload load =
+    sum(max(line energy - overload threshold, 0)
+        * line length / reference screen width)
+
+droop load =
+    clamp((peak-tracked overload load - HV Droop Overload Onset)
+          / HV Droop Load Ref, 0, 1)
+```
+
+`HV Droop (dim+defocus)`
+: Sets the maximum strength.  At a value of 1.0 and full load, the line deposit
+  is dimmed by up to 40% and the spot sigma gains about 2.5 pixels at the
+  1920-pixel reference width.
+
+`HV Droop Overload Onset`
+: Rejects isolated or low-level overload.  Loads at or below this value have
+  exactly no global dimming or defocus.
+
+`HV Droop Load Ref`
+: Sets how much additional overload above the onset is needed to reach full
+  droop.  Lower values make a mass-overload event reach the maximum sooner.
+
+Only a chain with `Overdrive (hot core)` enabled can generate this load.  Dwell
+points are excluded, so one hot bullet or stationary dot cannot dim the entire
+screen.  The peak tracker decays by 0.82 per source frame, giving a short supply
+recovery after a large event.
+
+The `vector-color-balanced` starting values are:
+
+```text
+HV Droop (dim+defocus)   0.50
+HV Droop Overload Onset  0.50
+HV Droop Load Ref        5.00
+```
+
+Raise the onset if ordinary gameplay still contains enough isolated overloaded
+lines to cause visible sag.  Lower the load reference if a large event such as
+the Death Star explosion does not reach the desired strength.
+
+## Glow, halation, and convergence scatter
+
+`Glow Narrow` and `Glow Wide` provide the ordinary near and broad line glow.
+The extended wide-glow reach now covers the broad local halo formerly produced
+by the separate Convergence Bloom feature, so the local Convergence Bloom and
+its six tuning controls have been removed.
+
+`Convergence Global Bloom` remains available in the balanced chains.  It
+detects a large connected overload region and adds a broad full-face scatter;
+compact local objects do not receive a separate convergence halo.  Its
+`Convergence Global Coverage` control sets the scatter footprint.
+
+Point-optics controls are grouped in physical order in the slider menu:
+
+1. Halation gain and ring controls
+2. Starburst gain, count, length, randomness, width, and angle
+3. Ordinary analytic glow controls
+
+Deflection Dynamics and its settle/damping controls have been removed from the
+chains.  Vector geometry is therefore rendered from the source trajectory
+without the optional renderer-side second-order deflection simulation.
+
 ## High-refresh presentation
 
 VecBeamMAME can present vector output at the monitor refresh rate without

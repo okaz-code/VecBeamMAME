@@ -301,6 +301,8 @@ public:
 		float glow_narrow = 0.0f;
 		float glow_threshold = 0.0f;
 		float hv_droop = 0.0f;
+		float hv_droop_onset = 0.0f;
+		float hv_droop_ref = 10.0f;
 		float intensity_overdrive = 0.0f;
 		float intensity_overdrive_curve = 2.0f;
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
@@ -565,11 +567,10 @@ private:
 	double m_vec_phosphor_budget = 1.0;
 	int64_t m_vec_phosphor_last_hpc = 0;
 
-	// HV supply droop: the frame's total beam current loads the EHT supply, so a bright/busy frame
-	// sags the high voltage - the whole picture dims and the spot defocuses, then recovers. The
-	// frame total comes from render_vector_stats::total_energy; m_hv_smoothed peak-tracks it with
-	// gentle decay (like the monitor glow) so it does not flicker against vsync; m_hv_load_norm is
-	// the 0..1 normalised load the renderer applies. 0 load / hv_droop 0 = no effect.
+	// HV supply droop: excess energy from line primitives above overload_threshold loads the EHT
+	// supply, so a mass-overload frame dims the whole picture and defocuses the spot, then recovers.
+	// m_hv_smoothed peak-tracks the per-frame excess; m_hv_load_norm is the 0..1 onset-gated load.
+	// Ordinary lines and isolated overload below hv_droop_onset have exactly no effect.
 	float m_hv_smoothed = 0.0f;
 	float m_hv_load_norm = 0.0f;
 
