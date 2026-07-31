@@ -35,6 +35,7 @@ uniform vec4 u_tube_face_scale;
 uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
+uniform vec4 u_vector_render_scale;
 uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_glow_inside;
 uniform vec4 u_bezel_long_reflection;
@@ -91,18 +92,19 @@ float tube_vignette(vec2 uv,float active)
 	float len=length(tube_quad_coord(uv,active)*aspect)*(1.41421356/length(aspect));float blur=amount*0.75+0.25,radius=1.0-amount*0.25;
 	return saturate(smoothstep(radius,radius-blur,len));
 }
+float bezel_glow_width_px(){return max(u_bezel_glow_width.x,1.0)*clamp(u_vector_render_scale.x,0.1,1.0);}
 float bezel_signed_distance(vec2 uv,float active)
 {
 	if(active<0.5)return -1.0;vec2 aspect=tube_aspect(),q=tube_quad_coord(uv,active)*aspect;
 	float tube_radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
-	float glow_radius=clamp(max(u_bezel_glow_width.x,1.0)*1.25/max(min(tube_quad_dims().x,tube_quad_dims().y),1.0),0.0,0.45);
+	float glow_radius=clamp(bezel_glow_width_px()*1.25/max(min(tube_quad_dims().x,tube_quad_dims().y),1.0),0.0,0.45);
 	return round_box(q,vec2_splat(0.5)*aspect,max(tube_radius,glow_radius));
 }
 float bezel_band(vec2 uv,float active)
 {
 	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;
 	vec2 dims=tube_quad_dims();float signed_px=bezel_signed_distance(uv,active)*min(dims.x,dims.y);
-	float width_px=max(u_bezel_glow_width.x,1.0),curve=max(u_bezel_glow_curve.x,0.25),inside_balance=clamp(u_bezel_glow_inside.x,0.0,1.0);
+	float width_px=bezel_glow_width_px(),curve=max(u_bezel_glow_curve.x,0.25),inside_balance=clamp(u_bezel_glow_inside.x,0.0,1.0);
 	float outside=exp(-pow(max(signed_px,0.0)/width_px,curve)),inside=inside_balance*exp(-pow(max(-signed_px,0.0)/width_px,curve));
 	return mix(inside,outside,step(0.0,signed_px));
 }
@@ -130,7 +132,7 @@ vec2 bezel_source_axis(vec2 source_uv)
 vec2 bezel_source_edge(vec2 source_uv,vec2 axis)
 {
 	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
-	vec2 reach=vec2_splat(max(u_bezel_glow_width.x,1.0))/max(u_target_dims.xy,vec2_splat(1.0));
+	vec2 reach=vec2_splat(bezel_glow_width_px())/max(u_target_dims.xy,vec2_splat(1.0));
 	vec2 tangent_min=min(content_min+reach,content_max),tangent_max=max(content_max-reach,content_min);
 	if(axis.x<0.5)return vec2(content_min.x,clamp(source_uv.y,tangent_min.y,tangent_max.y));
 	if(axis.x<1.5)return vec2(content_max.x,clamp(source_uv.y,tangent_min.y,tangent_max.y));
@@ -140,7 +142,7 @@ vec2 bezel_source_edge(vec2 source_uv,vec2 axis)
 vec2 bezel_source_step(vec2 axis)
 {
 	vec2 inward=axis.x<1.5?vec2(axis.y,0.0):vec2(0.0,axis.y);
-	return inward*max(u_bezel_glow_width.x,1.0)/max(u_target_dims.xy,vec2_splat(1.0));
+	return inward*bezel_glow_width_px()/max(u_target_dims.xy,vec2_splat(1.0));
 }
 vec3 apply_bezel_length_gain(vec2 uv,vec3 light)
 {
@@ -185,7 +187,7 @@ vec3 bezel_corner_light(vec2 source_uv)
 	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
 	float vertical_distance=min(abs(source_uv.x-content_min.x),abs(content_max.x-source_uv.x));
 	float horizontal_distance=min(abs(source_uv.y-content_min.y),abs(content_max.y-source_uv.y));
-	float corner_blend=max(u_bezel_glow_width.x,1.0)/max(min(u_target_dims.x,u_target_dims.y),1.0);
+	float corner_blend=bezel_glow_width_px()/max(min(u_target_dims.x,u_target_dims.y),1.0);
 	float distance_delta=vertical_distance-horizontal_distance;
 	if(distance_delta<=-corner_blend)return bezel_axis_light(source_uv,vertical_axis);
 	if(distance_delta>=corner_blend)return bezel_axis_light(source_uv,horizontal_axis);

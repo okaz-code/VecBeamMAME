@@ -42,6 +42,7 @@ uniform vec4 u_tube_face_scale;
 uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
+uniform vec4 u_vector_render_scale;
 uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_glow_inside;
 uniform vec4 u_monitor_bezel_reflection;
@@ -197,13 +198,18 @@ float tube_vignette(vec2 uv, float active)
 	return saturate(smoothstep(radius, radius - blur, len));
 }
 
+float bezel_glow_width_px()
+{
+	return max(u_bezel_glow_width.x, 1.0) * clamp(u_vector_render_scale.x, 0.1, 1.0);
+}
+
 float bezel_signed_distance(vec2 uv, float active)
 {
 	if (active < 0.5) return -1.0;
 	vec2 aspect = tube_aspect();
 	vec2 q = tube_quad_coord(uv, active) * aspect;
 	float tube_radius = clamp(u_tube_round_corner.x * 0.25, 0.0, 0.45);
-	float glow_radius = clamp(max(u_bezel_glow_width.x, 1.0) * 1.25 / max(min(tube_quad_dims().x, tube_quad_dims().y), 1.0), 0.0, 0.45);
+	float glow_radius = clamp(bezel_glow_width_px() * 1.25 / max(min(tube_quad_dims().x, tube_quad_dims().y), 1.0), 0.0, 0.45);
 	return round_box(q, vec2_splat(0.5) * aspect, max(tube_radius, glow_radius));
 }
 
@@ -215,7 +221,7 @@ float bezel_band(vec2 uv, float active)
 	if (line_gain <= 0.0 && monitor_gain <= 0.0) return 0.0;
 	vec2 dims = tube_quad_dims();
 	float signed_px = bezel_signed_distance(uv, active) * min(dims.x, dims.y);
-	float width_px = max(u_bezel_glow_width.x, 1.0);
+	float width_px = bezel_glow_width_px();
 	float curve = max(u_bezel_glow_curve.x, 0.25);
 	float inside_balance = clamp(u_bezel_glow_inside.x, 0.0, 1.0);
 	float outside = exp(-pow(max(signed_px, 0.0) / width_px, curve));
@@ -323,7 +329,7 @@ vec2 bezel_source_max()
 
 vec3 bezel_bloom_axis(vec2 edge_uv, vec2 inward)
 {
-	vec2 source_reach_uv = vec2_splat(max(u_bezel_glow_width.x, 1.0)) / max(u_target_dims.xy, vec2_splat(1.0));
+	vec2 source_reach_uv = vec2_splat(bezel_glow_width_px()) / max(u_target_dims.xy, vec2_splat(1.0));
 	vec2 content_min = bezel_source_min();
 	vec2 content_max = bezel_source_max();
 	vec2 tangent_min = min(content_min + source_reach_uv, content_max);
@@ -369,7 +375,7 @@ vec3 bezel_bloom_source(vec2 source_uv)
 	vec2 horizontal_edge = vec2(clamp(source_uv.x, content_min.x, content_max.x), top ? content_min.y : content_max.y);
 	float vertical_distance = min(abs(source_uv.x - content_min.x), abs(content_max.x - source_uv.x));
 	float horizontal_distance = min(abs(source_uv.y - content_min.y), abs(content_max.y - source_uv.y));
-	float corner_blend = max(u_bezel_glow_width.x, 1.0)
+	float corner_blend = bezel_glow_width_px()
 		/ max(min(u_target_dims.x, u_target_dims.y), 1.0);
 	float distance_delta = vertical_distance - horizontal_distance;
 	if (distance_delta <= -corner_blend)

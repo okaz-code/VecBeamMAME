@@ -302,6 +302,16 @@
       ]
     },
     {
+      "name": "u_vector_render_scale",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_bezel_glow_curve",
       "type": "vec4",
       "values": [
