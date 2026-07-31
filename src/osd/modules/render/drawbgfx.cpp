@@ -5729,8 +5729,14 @@ int renderer_bgfx::draw(int update)
 					m_conv_global_gain, m_conv_global_coverage };
 				const float conv_global_color[4] = { m_conv_global_color[0], m_conv_global_color[1],
 					m_conv_global_color[2], 0.0f };
+				// Bezel Glow Width is calibrated in final-output pixels, while analytic vector
+				// chains run their native targets at bgfx_render_scale.  Pass that scale to the
+				// final combine so its pixel-domain bezel band and source-search reach shrink with
+				// the internal target and remain the same size after the full-resolution present.
+				const float render_scale_vals[4] = { m_vec_render_scale, 0.0f, 0.0f, 0.0f };
 				for (const char *entry : { "add_mglow", "Glow Combine" })
 				{
+					m_chains->inject_entry_uniform(0, entry, "u_vector_render_scale", render_scale_vals, 4);
 					m_chains->inject_entry_uniform(0, entry, "u_convergence_global", conv_global_vals, 4);
 					m_chains->inject_entry_uniform(0, entry, "u_convergence_global_color", conv_global_color, 4);
 				}
