@@ -2008,6 +2008,8 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "glow_narrow", &renderer_bgfx::vec_slider_cache::glow_narrow, 0.0f },
 	{ "glow_threshold", &renderer_bgfx::vec_slider_cache::glow_threshold, 0.0f },
 	{ "hv_droop", &renderer_bgfx::vec_slider_cache::hv_droop, 0.0f },
+	{ "hv_droop_onset", &renderer_bgfx::vec_slider_cache::hv_droop_onset, 0.0f },
+	{ "hv_droop_ref", &renderer_bgfx::vec_slider_cache::hv_droop_ref, 10.0f },
 	{ "intensity_overdrive", &renderer_bgfx::vec_slider_cache::intensity_overdrive, 0.0f },
 	{ "intensity_overdrive_curve", &renderer_bgfx::vec_slider_cache::intensity_overdrive_curve, 2.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
@@ -4122,15 +4124,6 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
-			// HV supply droop load: peak-track this frame's total beam energy
-			// with gentle decay (so it does not flicker against vsync when a frame is stale),
-			// then normalise by hv_droop_ref to a 0..1 load that put_analytic_line turns into a global
-			// dim + defocus. Computed before the draw so this present's lines see the current load.
-			if (m_vec_frame_advanced)
-				m_hv_smoothed = std::max(vstats.total_energy, m_hv_smoothed * 0.82f);
-			const float hv_ref = std::max(0.01f, m_chains->slider_value(0, "hv_droop_ref", 10.0f));
-			m_hv_load_norm = std::clamp(m_hv_smoothed / hv_ref, 0.0f, 1.0f);
-
 			// Whole-stroke energy pre-pass (renderer-side counterparts of the Vectrex driver model's
 			// two list-order behaviours; only meaningful for MODEL-DERIVED energy, so both gate on
 			// energy_model, and both walk the FULL list including flicker-excluded vectors - exclusion
@@ -4209,6 +4202,45 @@ int renderer_bgfx::draw(int update)
 				}
 				flush_run();   // a stroke still open at the list end (no RAMP-off seen)
 			}
+
+			// HV supply droop is driven only by the aggregate EXCESS energy of overloaded LINE
+			// primitives. Ordinary lines contribute exactly zero; points are deliberately excluded so
+			// an isolated hot dwell/bullet cannot sag the whole screen. Use the same raw beam-energy
+			// threshold as put_analytic_line's overload path, and integrate excess along the normalized
+			// phosphor path. hv_droop_onset rejects small/isolated overload events; hv_droop_ref is the
+			// additional excess load needed to reach full droop after onset.
+			float hv_overload_energy = 0.0f;
+			if (m_line_analytic && m_vs.hv_droop > 0.0f && m_vs.intensity_overdrive > 0.0f)
+			{
+				const float e_ref = (m_vec_res_w > 1.0f) ? m_vec_res_w
+						: float(std::max(s_width[window_index], s_height[window_index]));
+				const float overload_threshold = m_vs.overload_threshold;
+				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
+				{
+					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags))
+						continue;
+					const float dx = p->bounds.x1 - p->bounds.x0;
+					const float dy = p->bounds.y1 - p->bounds.y0;
+					const float len = sqrtf(dx * dx + dy * dy);
+					if (len <= pt_thresh)
+						continue;
+					float stroke_speed = -1.0f;
+					auto sit = m_stroke_speed.find(p);
+					if (sit != m_stroke_speed.end())
+						stroke_speed = sit->second;
+					const float energy = (p->beam_energy >= 0.0f) ? p->beam_energy
+							: generic_beam_energy(p, len, false, e_ref, stroke_speed);
+					if (energy > overload_threshold)
+						hv_overload_energy += (energy - overload_threshold) * (len / e_ref);
+				}
+			}
+			// Peak-track with gentle decay so the effect recovers instead of flickering. Only advance
+			// temporal state on a new emulated frame; presentation-only repeats hold it unchanged.
+			if (m_vec_frame_advanced)
+				m_hv_smoothed = std::max(hv_overload_energy, m_hv_smoothed * 0.82f);
+			const float hv_excess = std::max(0.0f, m_hv_smoothed - std::max(0.0f, m_vs.hv_droop_onset));
+			m_hv_load_norm = std::clamp(hv_excess / std::max(0.01f, m_vs.hv_droop_ref), 0.0f, 1.0f);
+
 			vector_perf_energy_end = bx::getHPCounter();
 			if (deposit_vector_source)
 				m_vector_perf_energy_ms = double(vector_perf_energy_end - vector_perf_scan_end)

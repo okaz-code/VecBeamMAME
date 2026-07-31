@@ -58,9 +58,6 @@
 		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 
 		// ---- Deflection and energy model ----
-		{"type":"float","name":"deflection_dynamics","text":"Deflection Dynamics (AVG)","default":0.0,"min":0.0,"max":0.2,"step":0.005,"format":"%1.3f","screen":"vector"},
-		{"type":"float","name":"deflection_settle","text":"Deflection Settle (us)","default":5.0,"min":0.5,"max":30.0,"step":0.5,"format":"%2.1f","screen":"vector"},
-		{"type":"float","name":"deflection_damping","text":"Deflection Damping","default":0.5,"min":0.05,"max":1.5,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"]},
 		{"type":"float","name":"scan_variation","text":"Untimed Scan Variation (%)","default":0.0,"min":0.0,"max":100.0,"step":5.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"energy_infl","text":"Energy Influence","default":0.6,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
@@ -77,8 +74,9 @@
 		{"type":"float","name":"energy_obj_sharp","text":"Energy Object Sharpness","default":2.0,"min":0.1,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"energy_obj_max","text":"Energy Object Max","default":3.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"energy_obj_star","text":"Energy Object Star Boost","default":1.5,"min":1.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"hv_droop","text":"HV Droop (dim+defocus)","default":0.01,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"hv_droop_ref","text":"HV Droop Load Ref","default":10.0,"min":1.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector"},
+		{"type":"float","name":"hv_droop","text":"HV Droop (dim+defocus)","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"hv_droop_onset","text":"HV Droop Overload Onset","default":0.5,"min":0.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector"},
+		{"type":"float","name":"hv_droop_ref","text":"HV Droop Load Ref","default":5.0,"min":1.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector"},
 
 		// ---- Overdrive and beam saturation ----
 		{"type":"float","name":"overload_threshold","text":"Overload Threshold","default":1.05,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
@@ -100,12 +98,6 @@
 		{"type":"color","name":"overdrive_color","text":"Overdrive Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":0.3,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":24.0,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_gain","text":"Convergence Bloom Gain","default":0.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_threshold","text":"Convergence Bloom Threshold","default":8.0,"min":0.0,"max":64.0,"step":1.0,"format":"%2.0f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_min_support","text":"Convergence Bloom Min Support","default":110.0,"min":0.0,"max":512.0,"step":4.0,"format":"%3.0f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_knee","text":"Convergence Bloom Knee","default":8.0,"min":0.5,"max":32.0,"step":0.5,"format":"%2.1f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_source_radius","text":"Convergence Source Radius (0=Auto)","default":0.0,"min":0.0,"max":512.0,"step":4.0,"format":"%3.0f","screen":"vector"},
-		{"type":"float","name":"convergence_bloom_falloff","text":"Convergence Bloom Falloff (px)","default":96.0,"min":4.0,"max":256.0,"step":4.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"convergence_global_gain","text":"Convergence Global Bloom","default":0.015,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector"},
 		{"type":"float","name":"convergence_global_coverage","text":"Convergence Global Coverage","default":0.55,"min":0.1,"max":1.2,"step":0.025,"format":"%1.3f","screen":"vector"},
 
