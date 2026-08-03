@@ -4020,11 +4020,11 @@ int renderer_bgfx::draw(int update)
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero
 		// depths are a hard off switch: no bucket exclusion, dimming or phase accumulation may occur.
-		// Legacy chains without the separate depth sliders retain their flicker_rgb fallback.
+		// Monochrome/Vectrex omit the per-channel controls and use the unity defaults.
 		const float fl_rgb[3] = {
-			std::clamp(m_chains->slider_value(0, "flicker_red_depth",   m_chains->slider_value_indexed(0, "flicker_rgb", 0, 1.0f)), 0.0f, 1.0f),
-			std::clamp(m_chains->slider_value(0, "flicker_green_depth", m_chains->slider_value_indexed(0, "flicker_rgb", 1, 1.0f)), 0.0f, 1.0f),
-			std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  m_chains->slider_value_indexed(0, "flicker_rgb", 2, 1.0f)), 0.0f, 1.0f) };
+			std::clamp(m_chains->slider_value(0, "flicker_red_depth",   1.0f), 0.0f, 1.0f),
+			std::clamp(m_chains->slider_value(0, "flicker_green_depth", 1.0f), 0.0f, 1.0f),
+			std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  1.0f), 0.0f, 1.0f) };
 		const bool flicker_has_depth = fl_rgb[0] > 0.0005f || fl_rgb[1] > 0.0005f || fl_rgb[2] > 0.0005f;
 		// "Busy" is judged by the REAL DRAW-TIME SPAN this present's list took to sweep (last_t1 -
 		// first_t0, already tracked below for the bucket span anyway), not raw vector count: a
@@ -4079,8 +4079,7 @@ int renderer_bgfx::draw(int update)
 		// in its excluded bucket (classic behaviour); smaller = the channel is only dimmed by that
 		// fraction there, so it shimmers instead of blinking. All-1.0 keeps the cheap full-skip path
 		// (mono/Vectrex chains have no flicker_rgb slider and stay on it).
-		// Separate depth controls let blue retain a mathematically non-zero shimmer below the old
-		// colour slider's 0.01 step. Legacy chains still fall back to flicker_rgb components.
+		// Separate depth controls let blue retain a mathematically non-zero shimmer at a fine step.
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),

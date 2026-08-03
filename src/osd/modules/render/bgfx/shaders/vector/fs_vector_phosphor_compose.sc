@@ -11,7 +11,7 @@ $input v_color0, v_texcoord0
 //   - S is the same Hill sigmoid as fs_vector_phosphor_emit (S(0)=1, S(half)=0.5, 0 at total_ms).
 //   - np is the no-persist FBO (line caps / short-dwell junction dots: bright while drawn, no
 //     afterimage, never fed into the glow cascade). The old NoPersist Combine pass's bloom_scale
-//     0.3745 cancelled vector_bloom_apply's BLOOM_BRIGHTNESS_GAIN 2.67 for a net 0.99991 add;
+//     0.3745 cancelled the former bloom composite's 2.67 brightness gain for a net 0.99991 add;
 //     here the add is exactly 1.0 (that was the intent).
 //   - u_np_gain carries the cap_no_persist slider (1 = on, 0 = off). 0 reproduces the old pass's
 //     disablewhen skip exactly, and also guards against reading stale np content while the renderer
