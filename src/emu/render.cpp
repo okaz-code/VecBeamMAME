@@ -955,6 +955,7 @@ render_target::render_target(render_manager &manager, render_container *ui, T &&
 	, m_maxtexwidth(65536)
 	, m_maxtexheight(65536)
 	, m_transform_container(true)
+	, m_vector_overscan_clip(false)
 	, m_external_artwork(false)
 {
 	// determine the base layer configuration based on options
@@ -2563,9 +2564,33 @@ void render_target::add_container_primitives(render_primitive_list &list, const 
 				prim->flags |= curitem.flags();
 
 				// clip the primitive
-				if (!m_transform_container && PRIMFLAG_GET_VECTOR(curitem.flags()))
+				if (m_vector_overscan_clip && PRIMFLAG_GET_VECTOR(curitem.flags()))
 				{
-					clipped = render_clip_line(prim->bounds, root_cliprect);
+					// A vector CRT's electrical drawing area extends beyond the visible phosphor face.
+					// Keep enough of that overscan in the primitive list for the BGFX vector chain to
+					// apply its X/Y size adjustment before clipping to the simulated tube face.  The
+					// minimum supported Vector Image Scale is 0.75; one sixth of the face on each side
+					// is therefore the largest source margin that can be pulled into view:
+					// 0.5 / 0.75 - 0.5 = 1/6.  Do not intersect this expanded rectangle with m_bounds -
+					// a full-window vector screen needs negative/out-of-window source coordinates too.
+					// transform=false chains use the root screen rectangle; ordinary analytic chains
+					// already have layout/aspect transforms baked into cliprect.  Expanding the wrong
+					// rectangle was why wholly off-face strokes disappeared in the latter case.
+					render_bounds vector_cliprect = cliprect;
+					if (!m_transform_container)
+					{
+						vector_cliprect.x0 = root_xoffs;
+						vector_cliprect.y0 = root_yoffs;
+						vector_cliprect.x1 = root_xoffs + root_xform.xscale;
+						vector_cliprect.y1 = root_yoffs + root_xform.yscale;
+					}
+					const float margin_x = (vector_cliprect.x1 - vector_cliprect.x0) / 6.0f;
+					const float margin_y = (vector_cliprect.y1 - vector_cliprect.y0) / 6.0f;
+					vector_cliprect.x0 -= margin_x;
+					vector_cliprect.y0 -= margin_y;
+					vector_cliprect.x1 += margin_x;
+					vector_cliprect.y1 += margin_y;
+					clipped = render_clip_line(prim->bounds, vector_cliprect);
 				}
 				else
 				{

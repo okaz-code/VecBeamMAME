@@ -163,6 +163,7 @@ private:
 	int m_vector_present_prim_h = 0;
 	float m_vector_present_prim_aspect = 0.0f;
 	bool m_vector_present_prim_transform = false;
+	bool m_vector_present_prim_analytic = false;
 	double m_vector_perf_prim_ms = 0.0;
 
 	struct vector_perf_bucket
@@ -353,6 +354,7 @@ public:
 		float ring_radius = 24.0f;
 		float ring_threshold = 0.0f;
 		float ring_width = 3.0f;
+		float vector_image_scale = 1.0f; // board/monitor X-Y SIZE scale, applied before phosphor-face clipping
 		float vector_linearity_x = 1.0f;
 		float vector_linearity_y = 1.0f;
 		float width_curve = 1.0f;

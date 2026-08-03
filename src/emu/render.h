@@ -594,6 +594,7 @@ public:
 	void set_view(unsigned viewindex);
 	void set_max_texture_size(int maxwidth, int maxheight);
 	void set_transform_container(bool transform_container) { m_transform_container = transform_container; }
+	void set_vector_overscan_clip(bool vector_overscan_clip) { m_vector_overscan_clip = vector_overscan_clip; }
 	void set_keepaspect(bool keepaspect) { m_keepaspect = keepaspect; }
 	void set_scale_mode(int scale_mode) { m_scale_mode = scale_mode; }
 
@@ -713,7 +714,8 @@ private:
 	s32                     m_clear_extent_count;       // number of clear extents
 	s32                     m_clear_extents[MAX_CLEAR_EXTENTS]; // array of clear extents
 	bool                    m_transform_container;      // determines whether the screen container is transformed by the core renderer,
-														// otherwise the respective render API will handle the transformation (scale, offset)
+												// otherwise the respective render API will handle the transformation (scale, offset)
+	bool                    m_vector_overscan_clip;     // retain vector deflection outside the face for analytic pre-clip scaling
 	bool                    m_external_artwork;         // external artwork was loaded (driver file or override)
 };
 

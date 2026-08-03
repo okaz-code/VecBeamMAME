@@ -179,7 +179,7 @@
 		{"type":"float","name":"tube_smooth_border","text":"Tube Smooth Border","default":0.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"tube_vignetting","text":"Tube Vignetting","default":0.8,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"tube_face_scale","text":"Phosphor Face Scale","default":0.96,"min":0.8,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector"},
-		{"type":"float","name":"vector_image_scale","text":"Vector Image Scale","default":0.96,"min":0.75,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector"},
+		{"type":"float","name":"vector_image_scale","text":"Vector Image Scale","default":0.96,"min":0.75,"max":1.15,"step":0.005,"format":"%1.3f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.4,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_width","text":"Bezel Glow Width (px)","default":32.0,"min":2.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_curve","text":"Bezel Glow Curve","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},

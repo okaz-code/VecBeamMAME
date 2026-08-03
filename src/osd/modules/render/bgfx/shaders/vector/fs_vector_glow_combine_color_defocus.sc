@@ -87,8 +87,9 @@ float tube_active_amount()
 
 vec2 emission_uv(vec2 uv)
 {
-	float image_scale = clamp(u_vector_image_scale.x, 0.75, 1.0);
-	return (uv - vec2_splat(0.5)) / image_scale + vec2_splat(0.5);
+	// Vector Image Scale is applied to beam coordinates before rasterisation.  Sampling the completed
+	// emission texture here would clip overscan at its rectangular edge and scale the physical spot.
+	return uv;
 }
 
 vec2 tube_quad_dims()
@@ -209,8 +210,11 @@ float bezel_signed_distance(vec2 uv, float active)
 	vec2 aspect = tube_aspect();
 	vec2 q = tube_quad_coord(uv, active) * aspect;
 	float tube_radius = clamp(u_tube_round_corner.x * 0.25, 0.0, 0.45);
-	float glow_radius = clamp(bezel_glow_width_px() * 1.25 / max(min(tube_quad_dims().x, tube_quad_dims().y), 1.0), 0.0, 0.45);
-	return round_box(q, vec2_splat(0.5) * aspect, max(tube_radius, glow_radius));
+	// The bezel begins at the physical phosphor-face boundary, so its corner radius must be
+	// identical to tube_signed_distance().  Bezel Glow Width controls only the falloff distance;
+	// letting it enlarge the round-box radius classified valid corner phosphor as bezel and allowed
+	// reflected light to intrude into the face.
+	return round_box(q, vec2_splat(0.5) * aspect, tube_radius);
 }
 
 float bezel_band(vec2 uv, float active)

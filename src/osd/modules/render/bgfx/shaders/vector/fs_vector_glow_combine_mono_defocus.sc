@@ -55,7 +55,8 @@ float tube_active_amount()
 	float geometry=abs(u_tube_distortion.x)+abs(u_tube_cubic_distortion.x)+u_tube_distort_corner.x+u_tube_round_corner.x+u_tube_smooth_border.x;
 	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry+abs(1.0-u_tube_face_scale.x));
 }
-vec2 emission_uv(vec2 uv){float s=clamp(u_vector_image_scale.x,0.75,1.0);return (uv-vec2_splat(0.5))/s+vec2_splat(0.5);}
+// Vector Image Scale is applied to beam coordinates before rasterisation, preserving overscan and spot width.
+vec2 emission_uv(vec2 uv){return uv;}
 vec2 tube_quad_dims(){return max(u_quad_dims.xy,vec2_splat(1.0));}
 vec2 tube_view_scale(){return max(u_target_dims.xy,vec2_splat(1.0))/tube_quad_dims();}
 vec2 tube_face_coord(vec2 uv,float active){float s=mix(1.0,clamp(u_tube_face_scale.x,0.75,1.0),active);return (uv-vec2_splat(0.5))*tube_view_scale()/s;}
@@ -97,8 +98,8 @@ float bezel_signed_distance(vec2 uv,float active)
 {
 	if(active<0.5)return -1.0;vec2 aspect=tube_aspect(),q=tube_quad_coord(uv,active)*aspect;
 	float tube_radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
-	float glow_radius=clamp(bezel_glow_width_px()*1.25/max(min(tube_quad_dims().x,tube_quad_dims().y),1.0),0.0,0.45);
-	return round_box(q,vec2_splat(0.5)*aspect,max(tube_radius,glow_radius));
+	// Match tube_signed_distance exactly; glow width is falloff, not bezel geometry.
+	return round_box(q,vec2_splat(0.5)*aspect,tube_radius);
 }
 float bezel_band(vec2 uv,float active)
 {
