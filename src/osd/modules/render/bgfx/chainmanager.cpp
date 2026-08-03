@@ -46,6 +46,7 @@
 #include "osdfile.h"
 
 #include <algorithm>
+#include <array>
 #include <locale>
 
 
@@ -97,10 +98,26 @@ chain_manager::chain_manager(
 	init_texture_converters();
 }
 
-// Scan the machine's screen devices; if any is SCREEN_TYPE_VECTOR, treat this as a vector game.
+namespace
+{
+	template <std::size_t N>
+	bool matches_system_or_parent(game_driver const &system, std::array<std::string_view, N> const &names)
+	{
+		std::string_view const name(system.name);
+		std::string_view const parent(system.parent);
+		return std::find(names.begin(), names.end(), name) != names.end()
+			|| std::find(names.begin(), names.end(), parent) != names.end();
+	}
+}
+
+// Scan the machine's screen devices and classify known vector monitor families.  MAME has no
+// general colour/monochrome flag for vector screens, and sampling the first rendered frames is not
+// reliable (many colour games boot into a monochrome scene), so keep the small hardware-family
+// classification explicit.  Unknown future vector systems deliberately retain default-vector.
 void chain_manager::detect_vector_game()
 {
 	m_is_vector_game = false;
+	m_vector_monitor_type = vector_monitor_type::UNKNOWN;
 	screen_device_enumerator screens(m_machine.root_device());
 	for (screen_device& s : screens)
 	{
@@ -110,6 +127,84 @@ void chain_manager::detect_vector_game()
 			break;
 		}
 	}
+
+	if (!m_is_vector_game)
+		return;
+
+	game_driver const &system = m_machine.system();
+	static constexpr std::array vectrex_systems = { std::string_view("vectrex"), std::string_view("raaspec") };
+	static constexpr std::array color_systems = {
+		std::string_view("aztarac"), std::string_view("boxingb"), std::string_view("bwidow"),
+		std::string_view("cchasm"), std::string_view("elim2"), std::string_view("gravitar"),
+		std::string_view("mhavoc"), std::string_view("qb3"), std::string_view("quantum"),
+		std::string_view("spacduel"), std::string_view("spacfury"), std::string_view("startrek"),
+		std::string_view("starwars"), std::string_view("esb"), std::string_view("tacscan"),
+		std::string_view("tempest"), std::string_view("tomcat"), std::string_view("topgunnr"),
+		std::string_view("wotwc"), std::string_view("zektor")
+	};
+	static constexpr std::array monochrome_systems = {
+		std::string_view("armora"), std::string_view("astdelux"), std::string_view("asteroid"),
+		std::string_view("barrier"), std::string_view("bradley"), std::string_view("bzone"),
+		std::string_view("demon"), std::string_view("llander"), std::string_view("omegrace"),
+		std::string_view("redbaron"), std::string_view("ripoff"), std::string_view("solarq"),
+		std::string_view("spacewar"), std::string_view("speedfrk"), std::string_view("starcas"),
+		std::string_view("starhawk"), std::string_view("sundance"), std::string_view("tailg"),
+		std::string_view("tek4051"), std::string_view("warrior"), std::string_view("wotw")
+	};
+
+	if (matches_system_or_parent(system, vectrex_systems))
+		m_vector_monitor_type = vector_monitor_type::VECTREX;
+	else if (matches_system_or_parent(system, color_systems))
+		m_vector_monitor_type = vector_monitor_type::COLOR;
+	else if (matches_system_or_parent(system, monochrome_systems))
+		m_vector_monitor_type = vector_monitor_type::MONOCHROME;
+}
+
+std::string_view chain_manager::preferred_vector_chain() const
+{
+	switch (m_vector_monitor_type)
+	{
+	case vector_monitor_type::COLOR:      return "vector-color";
+	case vector_monitor_type::MONOCHROME: return "vector-monochrome";
+	case vector_monitor_type::VECTREX:    return "vector-vectrex";
+	default:                              return {};
+	}
+}
+
+std::string_view chain_manager::canonical_chain_name(std::string_view name)
+{
+	if (name == "vector-color-balanced")
+		return "vector-color";
+	if (name == "vector-monochrome-balanced_1" || name == "vector-monochrome-balanced_2")
+		return "vector-monochrome";
+	if (name == "vector-vectrex-balanced")
+		return "vector-vectrex";
+	return name;
+}
+
+int32_t chain_manager::find_chain_index(std::string_view name) const
+{
+	for (std::size_t i = 0; i < m_available_chains.size(); ++i)
+		if (m_available_chains[i].m_name == name)
+			return int32_t(i);
+	return -1;
+}
+
+int32_t chain_manager::find_vector_fallback_index(bool include_profile_chain) const
+{
+	if (include_profile_chain)
+	{
+		std::string_view const preferred = preferred_vector_chain();
+		if (!preferred.empty())
+		{
+			int32_t const preferred_index = find_chain_index(preferred);
+			if (preferred_index >= 0 && m_available_chains[preferred_index].m_is_vector)
+				return preferred_index;
+		}
+	}
+
+	int32_t const safe_index = find_chain_index("default-vector");
+	return safe_index >= 0 && m_available_chains[safe_index].m_is_vector ? safe_index : -1;
 }
 
 // Scan m_available_chains and build the list of absolute indices compatible with the current
@@ -184,41 +279,46 @@ void chain_manager::refresh_available_chains()
 				return coll.compare(xstr.data(), xstr.data() + xstr.size(), ystr.data(), ystr.data() + ystr.size()) < 0;
 			});
 
-	if (m_default_chain_index == -1)
+	m_default_chain_index = -1;
+	if (m_is_vector_game)
 	{
-		if (m_is_vector_game)
+		// Prefer the calibrated chain for the detected monitor family.  If it is absent, use the
+		// deliberately minimal default-vector chain.  Unknown vector hardware also starts there.
+		m_default_chain_index = find_vector_fallback_index(true);
+		if (m_default_chain_index == -1)
 		{
-			// A vector game cannot use the "default" raster chain. Prefer the dedicated minimal
-			// "default-vector" chain; otherwise fall back to the first available vector chain (and
-			// if none exists at all, stay -1 = CHAIN_NONE).
+			// Last-resort compatibility for incomplete third-party BGFX installations that have a
+			// vector chain but neither the calibrated chain nor default-vector.
 			for (size_t i = 0; i < m_available_chains.size(); i++)
 			{
-				if (m_available_chains[i].m_is_vector && m_available_chains[i].m_name == "default-vector")
+				if (m_available_chains[i].m_is_vector)
 				{
 					m_default_chain_index = int32_t(i);
 					break;
 				}
 			}
-			if (m_default_chain_index == -1)
-			{
-				for (size_t i = 0; i < m_available_chains.size(); i++)
-				{
-					if (m_available_chains[i].m_is_vector)
-					{
-						m_default_chain_index = int32_t(i);
-						break;
-					}
-				}
-			}
 		}
-		else
+
+		char const *profile = "unknown";
+		switch (m_vector_monitor_type)
 		{
-			for (size_t i = 0; i < m_available_chains.size(); i++)
+		case vector_monitor_type::COLOR:      profile = "color"; break;
+		case vector_monitor_type::MONOCHROME: profile = "monochrome"; break;
+		case vector_monitor_type::VECTREX:    profile = "Vectrex"; break;
+		default: break;
+		}
+		osd_printf_verbose("BGFX: vector monitor profile %s, default chain '%s'\n",
+			profile,
+			m_default_chain_index >= 0 ? m_available_chains[m_default_chain_index].m_name.c_str() : "none");
+	}
+	else
+	{
+		for (size_t i = 0; i < m_available_chains.size(); i++)
+		{
+			if (m_available_chains[i].m_name == "default")
 			{
-				if (m_available_chains[i].m_name == "default")
-				{
-					m_default_chain_index = int32_t(i);
-				}
+				m_default_chain_index = int32_t(i);
+				break;
 			}
 		}
 	}
@@ -392,10 +492,12 @@ void chain_manager::parse_chain_selections(std::string_view chain_str)
 
 	for (size_t index = 0; index < chain_names.size(); index++)
 	{
+		std::string_view const requested_name = chain_names[index];
+		std::string_view const resolved_name = canonical_chain_name(requested_name);
 		size_t chain_index = 0;
 		for (chain_index = 0; chain_index < m_available_chains.size(); chain_index++)
 		{
-			if (m_available_chains[chain_index].m_name == chain_names[index])
+			if (m_available_chains[chain_index].m_name == resolved_name)
 				break;
 		}
 
@@ -409,26 +511,22 @@ void chain_manager::parse_chain_selections(std::string_view chain_str)
 				// Informational only: the default selection ("default") is a raster chain, so vector
 				// games routinely fall back here. Keep it at verbose level to avoid console noise.
 				osd_printf_verbose("BGFX: chain '%s' is not compatible with %s game; using fallback\n",
-					std::string(chain_names[index]).c_str(),
+					std::string(requested_name).c_str(),
 					m_is_vector_game ? "vector" : "raster");
-				// Pick the first compatible chain (other than CHAIN_NONE); if none, stay CHAIN_NONE.
-				chain_index = CHAIN_NONE;
-				for (size_t i : m_compat_chain_indices)
-				{
-					if (i != CHAIN_NONE)
-					{
-						chain_index = i;
-						break;
-					}
-				}
+				chain_index = m_default_chain_index >= 0 ? size_t(m_default_chain_index) : CHAIN_NONE;
 			}
 			m_current_chain[index] = chain_index;
 			m_chain_names[index] = m_available_chains[chain_index].m_name;
 		}
 		else
 		{
-			m_current_chain[index] = CHAIN_NONE;
-			m_chain_names[index] = "";
+			// A stale or unavailable named chain follows the same monitor-specific fallback path.
+			// An explicit "none" is found above and is therefore never overridden here.
+			int32_t const fallback = m_default_chain_index;
+			m_current_chain[index] = fallback >= 0 ? fallback : int32_t(CHAIN_NONE);
+			m_chain_names[index] = fallback >= 0 ? m_available_chains[fallback].m_name : "";
+			osd_printf_warning("BGFX: chain '%s' is unavailable; using '%s'\n",
+				std::string(requested_name).c_str(), m_chain_names[index].empty() ? "none" : m_chain_names[index].c_str());
 		}
 	}
 }
@@ -479,6 +577,18 @@ void chain_manager::load_chains()
 			chain_desc& desc = m_available_chains[m_current_chain[chain]];
 			m_chain_names[chain] = desc.m_name;
 			m_screen_chains[chain] = load_chain(util::path_concat(desc.m_path, desc.m_name), uint32_t(chain)).release();
+			if (!m_screen_chains[chain] && m_is_vector_game && desc.m_name != "default-vector")
+			{
+				int32_t const safe_index = find_vector_fallback_index(false);
+				if (safe_index >= 0 && safe_index != m_current_chain[chain])
+				{
+					chain_desc &safe = m_available_chains[safe_index];
+					osd_printf_warning("BGFX: chain '%s' failed to load; using '%s'\n", desc.m_name.c_str(), safe.m_name.c_str());
+					m_current_chain[chain] = safe_index;
+					m_chain_names[chain] = safe.m_name;
+					m_screen_chains[chain] = load_chain(util::path_concat(safe.m_path, safe.m_name), uint32_t(chain)).release();
+				}
+			}
 		}
 	}
 
@@ -1195,10 +1305,11 @@ void chain_manager::load_config(util::xml::data_node const &windownode)
 				char const *const chainname = screennode->get_attribute_string("chain", nullptr);
 				if (chainname)
 				{
+					std::string_view const resolved_name = canonical_chain_name(chainname);
 					auto const found = std::find_if(
 							m_available_chains.begin(),
 							m_available_chains.end(),
-							[&chainname] (auto const &avail) { return avail.m_name == chainname; });
+							[resolved_name] (auto const &avail) { return avail.m_name == resolved_name; });
 					if (m_available_chains.end() != found)
 					{
 						auto const chainnum = found - m_available_chains.begin();
@@ -1215,6 +1326,14 @@ void chain_manager::load_config(util::xml::data_node const &windownode)
 							m_current_chain[index] = chainnum;
 							changed = true;
 						}
+					}
+					else if (std::string_view(chainname) != "none" && m_default_chain_index >= 0
+						&& m_current_chain[index] != m_default_chain_index)
+					{
+						osd_printf_warning("BGFX: config chain '%s' is unavailable; using '%s'\n",
+							chainname, m_available_chains[m_default_chain_index].m_name.c_str());
+						m_current_chain[index] = m_default_chain_index;
+						changed = true;
 					}
 				}
 			}
@@ -1235,7 +1354,8 @@ void chain_manager::load_config(util::xml::data_node const &windownode)
 		{
 			bgfx_chain *const chain = m_screen_chains[index];
 			char const *const chainname = screennode->get_attribute_string("chain", nullptr);
-			if (chain && chainname && (m_available_chains[m_current_chain[index]].m_name == chainname))
+			if (chain && chainname
+				&& (m_available_chains[m_current_chain[index]].m_name == canonical_chain_name(chainname)))
 			{
 				auto const &sliders = chain->sliders();
 
