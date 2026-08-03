@@ -191,8 +191,12 @@ private:
 
 	// Rebuild m_compat_chain_indices according to m_is_vector_game.
 	void rebuild_compat_chain_indices();
-	// Detect the game type from the machine (called once in the constructor)
+	// Detect the game and vector-monitor type from the machine (called once in the constructor).
 	void detect_vector_game();
+	int32_t find_chain_index(std::string_view name) const;
+	int32_t find_vector_fallback_index(bool include_profile_chain) const;
+	std::string_view preferred_vector_chain() const;
+	static std::string_view canonical_chain_name(std::string_view name);
 
 	void init_texture_converters();
 
@@ -238,6 +242,8 @@ private:
 	std::vector<uint8_t>        m_palette_temp;
 
 	static inline constexpr uint32_t CHAIN_NONE = 0;
+	enum class vector_monitor_type : uint8_t { UNKNOWN, COLOR, MONOCHROME, VECTREX };
+	vector_monitor_type m_vector_monitor_type = vector_monitor_type::UNKNOWN;
 
 	// Window/FBO dimensions from the last inject_vector_screen() call; used to recreate the
 	// dynamically-sized bloom mip targets only when the size changes.
