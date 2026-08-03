@@ -2109,6 +2109,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "ring_radius", &renderer_bgfx::vec_slider_cache::ring_radius, 24.0f },
 	{ "ring_threshold", &renderer_bgfx::vec_slider_cache::ring_threshold, 0.0f },
 	{ "ring_width", &renderer_bgfx::vec_slider_cache::ring_width, 3.0f },
+	{ "vector_image_scale", &renderer_bgfx::vec_slider_cache::vector_image_scale, 1.0f },
 	{ "vector_linearity_x", &renderer_bgfx::vec_slider_cache::vector_linearity_x, 1.0f },
 	{ "vector_linearity_y", &renderer_bgfx::vec_slider_cache::vector_linearity_y, 1.0f },
 	{ "width_curve", &renderer_bgfx::vec_slider_cache::width_curve, 1.0f },
@@ -2268,8 +2269,12 @@ static bool vector_primitive_is_point(render_primitive const &prim, float thresh
 
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
 {
-	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
-	float x1 = prim->bounds.x1, y1 = prim->bounds.y1;
+	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
+	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
+	// them.  Scaling the completed texture instead discarded overscan at the rectangular game viewport
+	// and also scaled beam/glow width, neither of which matches an analogue deflection-size control.
+	float x0 = prim->full_bounds.x0, y0 = prim->full_bounds.y0;
+	float x1 = prim->full_bounds.x1, y1 = prim->full_bounds.y1;
 
 	// Vector linearity calibration (board "Linear" / X-Y SIZE pots = per-axis integrator gain): draw
 	// each vector as the commanded delta x gain (X and Y independent), continuing from where the beam
@@ -2291,6 +2296,17 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		m_lin_drawn_ex = ex; m_lin_drawn_ey = ey;
 		m_lin_valid = true;
 		x0 = sx; y0 = sy; x1 = ex; y1 = ey;
+	}
+
+	const float image_scale = std::clamp(m_vs.vector_image_scale, 0.75f, 1.15f);
+	if (image_scale != 1.0f)
+	{
+		const float cx = (m_edge_box_min_x + m_edge_box_max_x) * 0.5f;
+		const float cy = (m_edge_box_min_y + m_edge_box_max_y) * 0.5f;
+		x0 = cx + (x0 - cx) * image_scale;
+		y0 = cy + (y0 - cy) * image_scale;
+		x1 = cx + (x1 - cx) * image_scale;
+		y1 = cy + (y1 - cy) * image_scale;
 	}
 
 	float dx = x1 - x0, dy = y1 - y0;
@@ -3341,10 +3357,20 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 {
-	float x0 = prim->bounds.x0;
-	float y0 = prim->bounds.y0;
-	float x1 = prim->bounds.x1;
-	float y1 = prim->bounds.y1;
+	float x0 = prim->full_bounds.x0;
+	float y0 = prim->full_bounds.y0;
+	float x1 = prim->full_bounds.x1;
+	float y1 = prim->full_bounds.y1;
+	const float image_scale = std::clamp(m_vs.vector_image_scale, 0.75f, 1.15f);
+	if (image_scale != 1.0f)
+	{
+		const float cx = (m_edge_box_min_x + m_edge_box_max_x) * 0.5f;
+		const float cy = (m_edge_box_min_y + m_edge_box_max_y) * 0.5f;
+		x0 = cx + (x0 - cx) * image_scale;
+		y0 = cy + (y0 - cy) * image_scale;
+		x1 = cx + (x1 - cx) * image_scale;
+		y1 = cy + (y1 - cy) * image_scale;
+	}
 
 	float dx = x1 - x0;
 	float dy = y1 - y0;
@@ -6643,12 +6669,14 @@ render_primitive_list *renderer_bgfx::get_primitives()
 	const int64_t vector_perf_prim_begin = bx::getHPCounter();
 	// determines whether the screen container is transformed by the chain's shaders
 	bool chain_transform = false;
+	bool analytic_vector = false;
 
 	// check the first chain
 	bgfx_chain* chain = this->m_chains->screen_chain(0);
 	if (chain != nullptr)
 	{
 		chain_transform = chain->transform();
+		analytic_vector = chain->vector_engine();
 	}
 
 	osd_dim wdim = window().get_size_pixels();
@@ -6658,7 +6686,8 @@ render_primitive_list *renderer_bgfx::get_primitives()
 		&& wdim.width() == m_vector_present_prim_w
 		&& wdim.height() == m_vector_present_prim_h
 		&& pixel_aspect == m_vector_present_prim_aspect
-		&& chain_transform == m_vector_present_prim_transform;
+		&& chain_transform == m_vector_present_prim_transform
+		&& analytic_vector == m_vector_present_prim_analytic;
 
 	// A presentation-only refresh has no intervening screen/UI container update. Reusing the
 	// already transformed list avoids rebuilding thousands of retained vector primitives at
@@ -6682,11 +6711,13 @@ render_primitive_list *renderer_bgfx::get_primitives()
 	}
 
 	window().target()->set_transform_container(!chain_transform);
+	window().target()->set_vector_overscan_clip(analytic_vector);
 	m_vector_present_primlist = &window().target()->get_primitives();
 	m_vector_present_prim_w = wdim.width();
 	m_vector_present_prim_h = wdim.height();
 	m_vector_present_prim_aspect = pixel_aspect;
 	m_vector_present_prim_transform = chain_transform;
+	m_vector_present_prim_analytic = analytic_vector;
 	m_vector_perf_prim_ms = double(bx::getHPCounter() - vector_perf_prim_begin)
 		* 1000.0 / double(bx::getHPFrequency());
 	return m_vector_present_primlist;
