@@ -147,6 +147,17 @@ public:
 		m_hdr_display_peak_absolute = absolute;
 	}
 	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
+	// Update hardware-derived defaults after the host window crosses to another monitor. This is
+	// intentionally separate from the initial setter because the first application occurs as part of
+	// load_chains(), while a live display change must update the already-loaded sliders immediately.
+	void refresh_hdr_display(float nits, bool absolute, float paper_white)
+	{
+		set_hdr_display_peak(nits, absolute);
+		set_hdr_paper_white(paper_white);
+		m_hdr_live_refresh = true;
+		apply_hdr_auto();
+		m_hdr_live_refresh = false;
+	}
 
 private:
 	class chain_desc
@@ -257,6 +268,9 @@ private:
 	float                           m_hdr_display_peak = 0.0f;
 	float                           m_hdr_paper_white = 200.0f;
 	bool                            m_hdr_display_peak_absolute = true;
+	float                           m_hdr_last_auto_beam = 0.0f;
+	float                           m_hdr_last_auto_rolloff = 0.0f;
+	bool                            m_hdr_live_refresh = false;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;

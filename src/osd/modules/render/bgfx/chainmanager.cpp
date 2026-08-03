@@ -503,6 +503,8 @@ void chain_manager::apply_hdr_auto()
 	const float desired_beam = std::min(1.65f * paper_white, 0.85f * peak);
 	const float beam = std::clamp(std::round(desired_beam / 10.0f) * 10.0f, 80.0f, 2000.0f);
 	const float rmax = std::clamp(peak / beam, 1.1f, 8.0f);
+	const float previous_beam = m_hdr_last_auto_beam;
+	const float previous_rmax = m_hdr_last_auto_rolloff;
 
 	bool applied = false;
 	for (size_t screen = 0; screen < m_screen_chains.size(); screen++)
@@ -516,25 +518,35 @@ void chain_manager::apply_hdr_auto()
 		{
 			if (slider->name() == beam_name)
 			{
-				slider->import(beam);
-				applied = true;
+				// A display move updates hardware-derived defaults, but must not replace a value restored
+				// from cfg or edited live. Values still equal to the preceding auto result remain automatic.
+				if (!m_hdr_live_refresh || previous_beam <= 0.0f || std::abs(slider->value() - previous_beam) < 0.01f)
+				{
+					slider->import(beam);
+					applied = true;
+				}
 			}
 			else if (slider->name() == rmax_name)
 			{
-				slider->import(rmax);
-				applied = true;
+				if (!m_hdr_live_refresh || previous_rmax <= 0.0f || std::abs(slider->value() - previous_rmax) < 0.001f)
+				{
+					slider->import(rmax);
+					applied = true;
+				}
 			}
 		}
 	}
+	m_hdr_last_auto_beam = beam;
+	m_hdr_last_auto_rolloff = rmax;
 
 	if (applied)
 	{
 		if (m_hdr_display_peak_absolute)
-			osd_printf_verbose(
+			osd_printf_info(
 					"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
 					peak, paper_white, beam, rmax);
 		else
-			osd_printf_verbose(
+			osd_printf_info(
 					"BGFX: EDR relative auto-config: headroom=%.2fx, beam=%.2fx reference white, rolloff max=%.2f\n",
 					peak / paper_white, beam / paper_white, rmax);
 	}

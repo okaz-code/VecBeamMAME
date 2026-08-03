@@ -105,6 +105,9 @@ public:
 	float edr_reference_white_nits() const { return m_edr_reference_white_nits; }
 	float edr_headroom() const { return m_edr_headroom; }
 	bool hdr_display_peak_is_absolute() const { return m_hdr_display_peak_absolute; }
+	// Re-evaluate the monitor containing a native window. The platform lookup itself is cheap and is
+	// performed while drawing; the HDR calibration is only rebuilt when the owning monitor changes.
+	virtual bool refresh_hdr_display_peak(void *nwh) = 0;
 
 	template <typename T>
 	util::notifier_subscription subscribe_load(void (T::*func)(util::xml::data_node const &), T *obj)
@@ -147,6 +150,7 @@ protected:
 	float m_edr_reference_white_nits = 200.0f;
 	float m_edr_headroom = 0.0f;
 	bool m_hdr_display_peak_absolute = false;
+	uintptr_t m_hdr_display_id = 0;
 
 private:
 	friend class parent_module_holder;
@@ -226,6 +230,7 @@ private:
 
 	bool init_bgfx_library(osd_window &window);
 	void resolve_hdr_display_peak(void *nwh);
+	virtual bool refresh_hdr_display_peak(void *nwh) override;
 
 	static bool set_platform_data(bgfx::PlatformData &platform_data, osd_window const &window);
 
@@ -525,6 +530,13 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 
+static uintptr_t detect_hdr_display_id(void *nwh)
+{
+	return nwh != nullptr
+		? reinterpret_cast<uintptr_t>(MonitorFromWindow(reinterpret_cast<HWND>(nwh), MONITOR_DEFAULTTONEAREST))
+		: 0;
+}
+
 // Return whether Windows Advanced Color/HDR is enabled for the monitor containing this window.
 // This is deliberately queried before bgfx creates its first swapchain so Auto HDR never observes
 // a transient SDR presentation path when native HDR10 was requested.
@@ -708,22 +720,33 @@ static float detect_hdr_display_peak_nits(void *nwh)
 
 #elif defined(__APPLE__)
 
-// Return the maximum presentation rate of the NSScreen containing this window.
-// This is the appropriate scheduling target for a ProMotion display: macOS may
-// vary the instantaneous refresh, while maximumFramesPerSecond reports the
-// display's current maximum (normally 60 or 120 Hz).
-static float detect_macos_refresh_hz(void *nwh)
+static id macos_screen_for_window(void *nwh)
 {
 	using msg_id_fn = id (*)(id, SEL);
-	using msg_int_fn = intptr_t (*)(id, SEL);
-	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
-
 	id screen = nullptr;
 	if (nwh != nullptr)
 		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), sel_registerName("screen"));
 	if (screen == nullptr)
 		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(
 				reinterpret_cast<id>(objc_getClass("NSScreen")), sel_registerName("mainScreen"));
+	return screen;
+}
+
+static uintptr_t detect_hdr_display_id(void *nwh)
+{
+	return reinterpret_cast<uintptr_t>(macos_screen_for_window(nwh));
+}
+
+// Return the maximum presentation rate of the NSScreen containing this window.
+// This is the appropriate scheduling target for a ProMotion display: macOS may
+// vary the instantaneous refresh, while maximumFramesPerSecond reports the
+// display's current maximum (normally 60 or 120 Hz).
+static float detect_macos_refresh_hz(void *nwh)
+{
+	using msg_int_fn = intptr_t (*)(id, SEL);
+	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
+
+	id screen = macos_screen_for_window(nwh);
 	if (screen == nullptr)
 		return 0.0f;
 
@@ -740,16 +763,10 @@ static float detect_macos_refresh_hz(void *nwh)
 // .mm needs to be added to the build. nwh is the NSWindow under SDL/Metal. Returns 0 on failure.
 static float detect_edr_headroom(void *nwh)
 {
-	using msg_id_fn = id (*)(id, SEL);
 	using msg_dbl_fn = double (*)(id, SEL);
 	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
 
-	id screen = nullptr;
-	if (nwh != nullptr)
-		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), sel_registerName("screen"));
-	if (screen == nullptr)
-		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(
-				reinterpret_cast<id>(objc_getClass("NSScreen")), sel_registerName("mainScreen"));
+	id screen = macos_screen_for_window(nwh);
 	if (screen == nullptr)
 		return 0.0f;
 
@@ -778,10 +795,18 @@ static float detect_edr_headroom(void *nwh)
 	return current;
 }
 
+#else
+
+static uintptr_t detect_hdr_display_id(void *nwh)
+{
+	return reinterpret_cast<uintptr_t>(nwh);
+}
+
 #endif
 
 void video_bgfx::resolve_hdr_display_peak(void *nwh)
 {
+	m_hdr_display_id = detect_hdr_display_id(nwh);
 	m_hdr_display_peak_nits = 0.0f;
 	m_hdr_calibration_peak_nits = 0.0f;
 	m_sdr_white_nits = 0.0f;
@@ -874,16 +899,29 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	{
 #if defined(__APPLE__)
 		if (s_bgfx_edr_active && peak_opt == OSDOPTVAL_AUTO)
-			osd_printf_verbose(
+			osd_printf_info(
 					"BGFX: macOS EDR auto calibration scale %.0f nominal nits; absolute display peak is unknown\n",
 					peak);
 		else
 #endif
-			osd_printf_verbose("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
+			osd_printf_info("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
 					(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
 	}
+	else
+		osd_printf_info("BGFX: HDR display peak is unavailable; chain HDR defaults will be used\n");
 	m_hdr_calibration_peak_nits = peak;
 	m_hdr_display_peak_nits = m_hdr_display_peak_absolute ? peak : 0.0f;
+}
+
+bool video_bgfx::refresh_hdr_display_peak(void *nwh)
+{
+	const uintptr_t display_id = detect_hdr_display_id(nwh);
+	if (display_id == 0 || display_id == m_hdr_display_id)
+		return false;
+
+	osd_printf_info("BGFX: window moved to another display; refreshing HDR calibration\n");
+	resolve_hdr_display_peak(nwh);
+	return true;
 }
 
 
@@ -1122,6 +1160,20 @@ static std::pair<void *, bool> sdlNativeWindowHandle(SDL_Window *window)
 }
 #endif
 #endif // OSD_SDL
+
+
+void *renderer_bgfx::native_window_handle() const
+{
+#if defined(OSD_WINDOWS)
+	return dynamic_cast<win_window_info const &>(window()).platform_window();
+#elif defined(OSD_MAC)
+	return GetOSWindow(dynamic_cast<mac_window_info const &>(window()).platform_window());
+#elif defined(OSD_SDL)
+	return sdlNativeWindowHandle(dynamic_cast<sdl_window_info const &>(window()).platform_window()).first;
+#else
+	return nullptr;
+#endif
+}
 
 
 
@@ -2201,6 +2253,19 @@ void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) co
 	oy = amt * nz(0xb5e3u);
 }
 
+// Point/short-vector classification must use the primitive before render-core clipping.  Using the
+// clipped bounds turns the sub-pixel remainder of a line crossing a screen edge into a dwell point,
+// incorrectly applying Point Width/Brightness/Z-rise (and potentially point optics) at the border.
+// full_bounds is captured after layout/orientation transforms but before render_clip_line(), so its
+// units match line_point_threshold while preserving the source segment's actual length.
+static bool vector_primitive_is_point(render_primitive const &prim, float threshold)
+{
+	const float dx = prim.full_bounds.x1 - prim.full_bounds.x0;
+	const float dy = prim.full_bounds.y1 - prim.full_bounds.y0;
+	return dx * dx + dy * dy <= threshold * threshold;
+}
+
+
 void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
 {
 	float x0 = prim->bounds.x0, y0 = prim->bounds.y0;
@@ -2240,12 +2305,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float bezel_long_mix = bezel_t * bezel_t * (3.0f - 2.0f * bezel_t);
 
 	const float point_threshold = m_vs.line_point_threshold;
-	const bool as_point = (seg_len <= point_threshold);
+	const bool as_point = vector_primitive_is_point(*prim, point_threshold);
 	// Halation and starburst describe a deliberately parked, isolated beam.  Do not
 	// generate them for merely short segments, or for zero-length Z pauses connected
 	// to visible lines (vector_device marks those with cap_flags bit 2).  The ordinary
 	// point core, Z rise-time response, glow and overload handling remain unchanged.
-	const bool point_optics = (seg_len <= 1.0e-4f)
+	const bool point_optics = vector_primitive_is_point(*prim, 1.0e-4f)
 		&& !(prim->cap_flags & VECTOR_CAP_POINT_OPTICS_SUPPRESS);
 
 	// DAC / integrator position noise: jitter each endpoint by a time-coherent, position-keyed offset
@@ -3286,9 +3351,9 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 	const float seg_len = sqrtf(dx * dx + dy * dy);
 
 	const float point_threshold = m_vs.line_point_threshold;
-	// Point-treatment test: short segments (add_point gives x0==x1,y0==y1 -> seg_len 0) are drawn as a
-	// single circle so the two half-circle caps do not overlap into a double-bright distorted blob.
-	const bool as_point = (seg_len <= point_threshold);
+	// Point-treatment test: source-short segments (add_point gives identical full-bounds endpoints)
+	// are drawn as one circle so two half-circle caps do not overlap into a distorted bright blob.
+	const bool as_point = vector_primitive_is_point(*prim, point_threshold);
 
 	// Unified per-vector transfers (see put_analytic_line for the full rationale). drive = beam_energy
 	// when the device supplies it, else the display intensity. Brightness and width are two independent
@@ -3611,6 +3676,18 @@ int renderer_bgfx::draw(int update)
 	s_width[window_index] = wdim.width();
 	s_height[window_index] = wdim.height();
 
+	// MonitorFromWindow/NSScreen follow the native window as it moves (including monitor changes
+	// during a resize). Only the primary window owns the HDR composite, and the platform calibration
+	// is rebuilt only when its owning display actually changes.
+	if (window_index == 0 && m_module().refresh_hdr_display_peak(native_window_handle()))
+	{
+		m_chains->refresh_hdr_display(
+				m_module().hdr_calibration_peak_nits(),
+				m_module().hdr_display_peak_is_absolute(),
+				m_module().paper_white_nits());
+		m_sliders_dirty = true;
+	}
+
 	// Set view 0 default viewport.
 	if (window_index == 0)
 	{
@@ -3887,8 +3964,8 @@ int renderer_bgfx::draw(int update)
 			// all vector lines (decides the FBO path); cached for source-free re-presents
 		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
-		// Point-classified count, using the SAME as_point test put_analytic_line uses (seg_len <=
-		// point_threshold). Starburst rays (and only rays - see the glow buffer sizing below) are
+		// Point-classified count, using the SAME unclipped-length test put_analytic_line uses.
+		// Starburst rays (and only rays - see the glow buffer sizing below) are
 		// drawn for dwell POINTS only, so their (large) per-primitive vertex cost must be budgeted by
 		// point_count, not visible_count - reserving it for every LINE too (most of a busy scene, e.g.
 		// dense BIOS/CCPU text) blew the transient vertex buffer and starved the whole glow buffer.
@@ -4027,12 +4104,9 @@ int renderer_bgfx::draw(int update)
 					if (!flicker_excluded)
 					{
 						visible_count++;
-						// Squared-distance point/dot classification (no sqrt): pt_thresh is a threshold
-						// compare, so comparing squares is equivalent and cheaper - same test as the write
-						// loop's r_is_point below (must stay IDENTICAL, it decides ray-buffer sizing here vs
-						// ray routing there).
-						const float sdx = scan->bounds.x1 - scan->bounds.x0, sdy = scan->bounds.y1 - scan->bounds.y0;
-						if (sdx * sdx + sdy * sdy <= pt_thresh * pt_thresh)
+						// Same unclipped point test as the write loop below. These must stay identical
+						// because they control ray-buffer reservation and routing respectively.
+						if (vector_primitive_is_point(*scan, pt_thresh))
 							point_count++;
 					}
 				}
@@ -5131,11 +5205,9 @@ int renderer_bgfx::draw(int update)
 									AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
 									AnalyticLineVertex *optr = optical_alloc ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
 									AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
-									// Rays are point-only (see the m_ray_vpl comment); classify with the SAME
-									// seg_len <= point_threshold test used for the point_count pre-scan and
-									// put_analytic_line's internal as_point, so the reservation matches usage.
-									const float rdx = vprim->bounds.x1 - vprim->bounds.x0, rdy = vprim->bounds.y1 - vprim->bounds.y0;
-									const bool r_is_point = (rdx * rdx + rdy * rdy) <= (pt_thresh * pt_thresh);
+									// Rays are point-only (see the m_ray_vpl comment); use the same unclipped
+									// classification as the pre-scan and put_analytic_line so reservation matches usage.
+									const bool r_is_point = vector_primitive_is_point(*vprim, pt_thresh);
 									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
 									// Whole-stroke energy pre-pass results (see above): aggregate stroke
 									// speed and same-spot dwell scale, if this vector received either.

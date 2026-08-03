@@ -228,14 +228,20 @@ public:
 		const bool record = record_path && record_path[0];
 		const bool playback = playback_path && playback_path[0];
 		if (record && playback)
-			fatalerror("-vector_record and -vector_playback are mutually exclusive\n");
+		{
+			osd_printf_error("MVEC: -vector_record and -vector_playback are mutually exclusive; both are disabled\n");
+			return;
+		}
 		if (!record && !playback)
 			return;
 
 		{
 			std::lock_guard<std::mutex> lock(s_mvec_claim_mutex);
 			if (s_mvec_claimed)
-				fatalerror("MVEC currently supports one vector device per machine\n");
+			{
+				osd_printf_warning("MVEC: only one vector device per machine is supported; ignoring device '%s'\n", m_owner.tag());
+				return;
+			}
 			s_mvec_claimed = true;
 			m_claimed = true;
 		}
@@ -246,8 +252,24 @@ public:
 			m_recorded_frame_period = m_owner.screen().frame_period().attoseconds();
 			m_output.open(record_path, std::ios::binary | std::ios::trunc);
 			if (!m_output)
-				fatalerror("Unable to open MVEC record file '%s'\n", record_path);
-			write_header();
+			{
+				osd_printf_error("MVEC: unable to create record file '%s'; recording is disabled\n", record_path);
+				m_mode = mode::NONE;
+				release_claim();
+				return;
+			}
+			try
+			{
+				write_header();
+			}
+			catch (emu_fatalerror const &err)
+			{
+				osd_printf_error("MVEC: unable to initialise record file '%s': %s; recording is disabled\n", record_path, err.what());
+				m_output.close();
+				m_mode = mode::NONE;
+				release_claim();
+				return;
+			}
 			m_writer = std::thread(&stream_state::writer_loop, this);
 			osd_printf_info("MVEC: recording vector stream to %s\n", record_path);
 		}
@@ -256,8 +278,24 @@ public:
 			m_mode = mode::PLAYBACK;
 			m_input.open(playback_path, std::ios::binary);
 			if (!m_input)
-				fatalerror("Unable to open MVEC playback file '%s'\n", playback_path);
-			read_header();
+			{
+				osd_printf_error("MVEC: playback file '%s' was not found or could not be opened; playback is disabled\n", playback_path);
+				m_mode = mode::NONE;
+				release_claim();
+				return;
+			}
+			try
+			{
+				read_header();
+			}
+			catch (emu_fatalerror const &err)
+			{
+				osd_printf_error("MVEC: unable to load playback file '%s': %s; playback is disabled\n", playback_path, err.what());
+				m_input.close();
+				m_mode = mode::NONE;
+				release_claim();
+				return;
+			}
 			// MVEC contains final vector primitives, not an emulated audio timeline. Keep the game
 			// machine running to feed the renderer/UI, but never expose its unrelated frame-zero audio
 			// after a seek or while the vector stream is paused.
@@ -271,11 +309,7 @@ public:
 	~stream_state()
 	{
 		finish();
-		if (m_claimed)
-		{
-			std::lock_guard<std::mutex> lock(s_mvec_claim_mutex);
-			s_mvec_claimed = false;
-		}
+		release_claim();
 	}
 
 	mode current_mode() const { return m_mode; }
@@ -418,6 +452,16 @@ public:
 	}
 
 private:
+	void release_claim()
+	{
+		if (m_claimed)
+		{
+			std::lock_guard<std::mutex> lock(s_mvec_claim_mutex);
+			s_mvec_claimed = false;
+			m_claimed = false;
+		}
+	}
+
 	static constexpr u64 INVALID_POSITION = std::numeric_limits<u64>::max();
 	struct frame_index_entry
 	{
