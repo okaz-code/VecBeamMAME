@@ -38,8 +38,8 @@
 		{"type":"float","name":"width_curve","text":"Width Curve","default":1.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"width_sigmoid","text":"Width Sigmoid","default":0.0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"width_sigmoid_center","text":"Width Sigmoid Center","default":0.5,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.0,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":3.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector"},
+		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":2.0,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":2.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"core_flat","text":"Line Core Flatness","default":0.5,"min":0.0,"max":0.98,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"line_point_threshold","text":"Line/Point Threshold (px)","default":2.0,"min":0.0,"max":8.0,"step":0.5,"format":"%1.1f","screen":"vector"},
 		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":1.0,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
@@ -166,7 +166,7 @@
 		{"type":"float","name":"bezel_glow_width","text":"Bezel Glow Width (px)","default":32.0,"min":2.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_curve","text":"Bezel Glow Curve","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"bezel_glow_inside","text":"Bezel Glow Inside Balance","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.52,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.82,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"glow_black_toe","text":"Glow Black Toe","default":0.002,"min":0.0,"max":0.05,"step":0.001,"format":"%1.3f","screen":"vector"},
 
 		// ---- Smoked glass (100% transmission is an exact bypass) ----
