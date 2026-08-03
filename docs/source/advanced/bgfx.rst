@@ -201,18 +201,21 @@ bgfx_shadow_mask
 VecBeamMAME analytic vector chains
 ----------------------------------
 
-VecBeamMAME provides four recommended ``balanced`` BGFX chains for vector
-screens:
+VecBeamMAME provides three calibrated standard BGFX chains for vector screens:
 
-* ``vector-color-balanced``
-* ``vector-monochrome-balanced_1``
-* ``vector-monochrome-balanced_2``
-* ``vector-vectrex-balanced``
+* ``vector-color``
+* ``vector-monochrome``
+* ``vector-vectrex``
 
 Select the chain in the video options menu, or specify it with
 ``-video bgfx -bgfx_screen_chains chain-name``.  The chain defaults include the
 current *Star Wars*, *Asteroids* and Vectrex calibration work.  Per-system CFG
 slider values continue to override the chain defaults.
+
+VecBeamMAME automatically selects the matching standard chain for known colour,
+monochrome and Vectrex systems.  If it is unavailable or cannot be loaded, the
+minimal ``default-vector`` chain is used as a safety fallback.  Existing CFG
+files using the former ``*-balanced`` names are migrated while loading.
 
 Overload-driven HV droop
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -257,7 +260,7 @@ extended wide-glow reach replaces the separate local Convergence Bloom effect,
 so the local bloom and its tuning controls are not exposed by the vector
 chains.
 
-The balanced chains retain ``Convergence Global Bloom`` and
+The standard chains retain ``Convergence Global Bloom`` and
 ``Convergence Global Coverage``.  This path responds only to a large connected
 overload region and produces a broad full-face scatter, without adding a local
 convergence halo to compact objects.
