@@ -1,27 +1,33 @@
-# VecBeamMAME balanced vector chains
+# VecBeamMAME vector chains
 
-The `balanced` chains are the recommended VecBeamMAME vector display
-configurations:
+The calibrated chains are the standard VecBeamMAME vector display configurations:
 
-- `vector-color-balanced`
-- `vector-monochrome-balanced_1`
-- `vector-monochrome-balanced_2`
-- `vector-vectrex-balanced`
+- `vector-color`
+- `vector-monochrome`
+- `vector-vectrex`
+- `default-vector` (minimal safety fallback)
 
 Select the appropriate chain from MAME's video options or with
 `-video bgfx -bgfx_screen_chains <chain-name>`.  BGFX slider values are saved
 per system in the MAME configuration files.
 
-## Balanced-chain calibration
+Colour, monochrome and Vectrex systems select their corresponding standard chain
+automatically. If that chain is unavailable or fails to load, VecBeamMAME falls
+back to `default-vector`. Unknown vector hardware also uses `default-vector`.
 
-The balanced defaults include the current per-system calibration work rather
+The former `*-balanced` names are accepted when loading existing configuration
+files and are migrated to the standard names.
+
+## Standard-chain calibration
+
+The standard defaults include the current per-system calibration work rather
 than requiring a saved configuration file:
 
-- `vector-color-balanced` includes the *Star Wars* overload-driven HV droop
+- `vector-color` includes the *Star Wars* overload-driven HV droop
   calibration.
-- `vector-vectrex-balanced` includes the Vectrex persistence, beam/point,
+- `vector-vectrex` includes the Vectrex persistence, beam/point,
   focus, halation, glow-buffer, starburst, ambient, and glow-tail calibration.
-- `vector-monochrome-balanced_1` includes the *Asteroids* point, focus,
+- `vector-monochrome` includes the *Asteroids* point, focus,
   halation-fill, starburst-length, and ambient calibration.
 
 A system configuration file can still override these defaults.  Delete the
@@ -62,7 +68,7 @@ points are excluded, so one hot bullet or stationary dot cannot dim the entire
 screen.  The peak tracker decays by 0.82 per source frame, giving a short supply
 recovery after a large event.
 
-The `vector-color-balanced` starting values are:
+The `vector-color` starting values are:
 
 ```text
 HV Droop (dim+defocus)   0.50
@@ -81,7 +87,7 @@ The extended wide-glow reach now covers the broad local halo formerly produced
 by the separate Convergence Bloom feature, so the local Convergence Bloom and
 its six tuning controls have been removed.
 
-`Convergence Global Bloom` remains available in the balanced chains.  It
+`Convergence Global Bloom` remains available in the standard chains.  It
 detects a large connected overload region and adds a broad full-face scatter;
 compact local objects do not receive a separate convergence halo.  Its
 `Convergence Global Coverage` control sets the scatter footprint.
