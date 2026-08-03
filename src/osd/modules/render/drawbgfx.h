@@ -93,6 +93,7 @@ private:
 	void update_recording();
 
 	bool update_dimensions();
+	void *native_window_handle() const;
 
 	void setup_ortho_view();
 
