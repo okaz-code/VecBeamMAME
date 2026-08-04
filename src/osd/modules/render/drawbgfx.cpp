@@ -4235,7 +4235,7 @@ int renderer_bgfx::draw(int update)
 
 
 		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
-			// all vector lines (decides the FBO path); cached for source-free re-presents
+			// all vector lines; cached for source-free re-presents (VECTORBUF owns the FBO path)
 		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
 		// Point-classified count, using the SAME unclipped-length test put_analytic_line uses.
@@ -4430,12 +4430,20 @@ int renderer_bgfx::draw(int update)
 			visible_count = 0;
 			point_count = 0;
 		}
+		// A VECTORBUF quad represents the vector screen even when the device deliberately emitted no
+		// lit vectors this frame (for example, a Vectrex game giving the CPU entirely to music).  Do
+		// not use vector_count as the ownership test: an empty but fresh screen frame still has to clear
+		// the excitation FBO, advance the temporal chain, and suppress the ordinary opaque-black screen
+		// quad.  Presentation-only repeats use the dimensions cached by the preceding source frame.
+		const bool vector_screen_present = deposit_vector_source
+			? have_screen_rect
+			: (m_vec_cached_content_w != 0 && m_vec_cached_content_h != 0);
 		vector_perf_scan_end = bx::getHPCounter();
 		if (deposit_vector_source)
 			m_vector_perf_scan_ms = double(vector_perf_scan_end - vector_perf_source_begin)
 				* 1000.0 / double(bx::getHPFrequency());
 
-		if (vector_count > 0)
+		if (vector_screen_present)
 		{
 			// Emulated time for this present, cached for the per-vector Energy Jitter time axis
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
@@ -5520,10 +5528,9 @@ int renderer_bgfx::draw(int update)
 				m_vector_perf_geometry_ms = double(vector_perf_geometry_end - vector_perf_analysis_end)
 					* 1000.0 / double(bx::getHPFrequency());
 
-			// The FBO view runs (cleared) whenever vector primitives exist: a frame whose lines
-			// were all drawn in another time window must present as a dark frame - the chain's
-			// phosphor decay shows through - rather than keep stale FBO content or fall back to
-			// the unfiltered GUI path.
+			// The FBO view runs (cleared) whenever a vector screen exists, including a deliberately
+			// empty source frame.  This feeds black excitation into the temporal chain so phosphor
+			// decay continues, while ambient artwork/overlay reflection remains independently visible.
 
 			// allocate a view for FBO drawing
 			const uint16_t fbo_view = uint16_t(s_current_view);
@@ -5710,7 +5717,12 @@ int renderer_bgfx::draw(int update)
 			// ghost). If BOTH allocs failed (transient-buffer pressure on a busy frame) we skip entirely
 			// and LEAVE the FBO, because clearing it to black while unable to redraw the real glow would
 			// make the glow vanish until the scene lightens.
-			if ((glow_alloc || (!m_optical_separate && ray_alloc) || conv_alloc || edge_alloc) && bgfx::isValid(m_vec_glow_fb))
+			// A new empty source owns the auxiliary buffers just as surely as a source with allocated
+			// geometry.  Clear them explicitly or the preceding frame's post-phosphor glow is added back
+			// forever even though the core excitation FBO and phosphor pool are correctly fading to black.
+			const bool empty_vector_source = deposit_vector_source && visible_count == 0;
+			if ((empty_vector_source || glow_alloc || (!m_optical_separate && ray_alloc) || conv_alloc || edge_alloc)
+				&& bgfx::isValid(m_vec_glow_fb))
 			{
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
@@ -5832,7 +5844,7 @@ int renderer_bgfx::draw(int update)
 			// made short-dwell stars/dots exist for just the first host present of a 41/60 Hz source frame,
 			// producing a regular blink unrelated to the flicker model. An allocation failure likewise
 			// leaves the last complete source image intact rather than blacking the dots out.
-			if (np_alloc && bgfx::isValid(m_vec_np_fb))
+			if ((np_alloc || empty_vector_source) && bgfx::isValid(m_vec_np_fb))
 			{
 				const uint16_t np_view = uint16_t(s_current_view);
 				s_current_view++;
