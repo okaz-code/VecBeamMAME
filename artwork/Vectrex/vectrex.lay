@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<mamelayout version="2">
+
+    <!-- 裏面白印刷マスク -->
+    <element name="overlay_white_print">
+        <image file="mine_back.png">
+            <bounds x="0" y="0" width="1" height="1"/>
+            <color red="1" green="1" blue="1" alpha="1"/>
+        </image>
+    </element>
+
+    <!-- 透明樹脂板の着色 -->
+    <element name="overlay_resin_color">
+        <rect>
+            <bounds x="0" y="0" width="1" height="1"/>
+
+            <!-- 純粋な青。MAMEの色指定範囲は0～1 -->
+            <color red="0.03"
+                   green="0.55"
+                   blue="1.00"
+                   alpha="0.25"/>
+        </rect>
+    </element>
+
+    <!-- 表面カラー印刷。通常のベゼルと同じ描画 -->
+    <element name="overlay_front_print">
+        <image file="mine_front.png">
+            <bounds x="0" y="0" width="1" height="1"/>
+            <color red="1" green="1" blue="1" alpha="1"/>
+        </image>
+    </element>
+
+    <!-- CRT開口の外側に見える通常ベゼル。光学印刷層とは分離する -->
+    <element name="overlay_bezel">
+        <image file="mine_bezel.png">
+            <bounds x="0" y="0" width="1" height="1"/>
+            <color red="1" green="1" blue="1" alpha="1"/>
+        </image>
+    </element>
+
+    <view name="Vectrex Two-sided Overlay">
+
+        <!--
+            View全体は実物オーバーレイの1613:2060を基準にする。
+            Vectrex画面は3:4を維持したまま、オーバーレイ高の96%に縮小して中央配置する。
+            スクリーン外になるのは外周ベゼル相当の細い領域だけにする。
+
+              screen height = 2060 * 0.96 = 1977.6
+              screen width  = 1977.6 * 3/4 = 1483.2
+              screen x      = (1613 - 1483.2) / 2 = 64.9
+              screen y      = (2060 - 1977.6) / 2 = 41.2
+        -->
+        <screen index="0">
+            <bounds x="64.9" y="41.2" width="1483.2" height="1977.6"/>
+        </screen>
+
+        <!-- 裏面白印刷 -->
+        <element ref="overlay_white_print"
+                 optical-role="vectrex-white"
+                 blend="alpha">
+            <bounds x="0" y="0" width="1613" height="2060"/>
+        </element>
+
+        <!-- 樹脂板の青着色。現在は通常Alphaアートワークとして処理 -->
+        <element ref="overlay_resin_color"
+                 optical-role="vectrex-color"
+                 blend="alpha">
+            <bounds x="0" y="0" width="1613" height="2060"/>
+        </element>
+
+        <!-- 通常ベゼルもオーバーレイ外形内に置く -->
+        <element ref="overlay_bezel"
+                 blend="alpha">
+            <bounds x="0" y="0" width="1613" height="2060"/>
+        </element>
+
+        <!-- 表面カラー印刷。光源がなくてもベゼル同様に見える -->
+        <element ref="overlay_front_print"
+                 blend="alpha">
+            <bounds x="0" y="0" width="1613" height="2060"/>
+        </element>
+
+    </view>
+
+</mamelayout>

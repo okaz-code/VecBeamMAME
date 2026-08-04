@@ -1,0 +1,20 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Compose CRT light with resin diffusion, rear white ink and front colour transmission in linear nits.
+{
+	"blend": { "equation": "add", "srcColor": "1", "dstColor": "0", "srcAlpha": "1", "dstAlpha": "0" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vectrex_overlay_composite",
+	"uniforms": [
+		{ "name": "s_screen",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "s_diffused",         "type": "int",  "values": [ 1.0 ] },
+		{ "name": "s_white",            "type": "int",  "values": [ 2.0 ] },
+		{ "name": "s_color",            "type": "int",  "values": [ 3.0 ] },
+		{ "name": "u_overlay_params0",  "type": "vec4", "values": [ 1000.0, 0.65, 0.18, 0.5 ] },
+		{ "name": "u_overlay_params1",  "type": "vec4", "values": [ 0.15, 200.0, 4.0, 0.6 ] },
+		{ "name": "u_overlay_params2",  "type": "vec4", "values": [ 0.01, 0.8, 0.08, 0.55 ] }
+	]
+}

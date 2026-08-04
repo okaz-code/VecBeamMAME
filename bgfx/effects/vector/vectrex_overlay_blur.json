@@ -1,0 +1,15 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// One direction of the separable white-ink diffusion blur.
+{
+	"blend": { "equation": "add", "srcColor": "1", "dstColor": "0", "srcAlpha": "1", "dstAlpha": "0" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vectrex_overlay_blur",
+	"uniforms": [
+		{ "name": "s_tex",          "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_overlay_blur", "type": "vec4", "values": [ 0.001, 0.0, 1.25, 0.0 ] }
+	]
+}

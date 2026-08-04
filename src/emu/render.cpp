@@ -2769,6 +2769,7 @@ void render_target::add_element_primitives(render_primitive_list &list, const ob
 				PRIMFLAG_TEXORIENT(xform.orientation) |
 				PRIMFLAG_TEXFORMAT(texture->format()) |
 				PRIMFLAG_BLENDMODE(blendmode) |
+				PRIMFLAG_OPTICAL_ROLE(u32(item.optical_role())) |
 				PRIMFLAG_TEXWRAP((item.scroll_wrap_x() || item.scroll_wrap_y()) ? 1 : 0);
 
 		// compute the bounds

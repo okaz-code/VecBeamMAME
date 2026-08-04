@@ -26,7 +26,9 @@ than requiring a saved configuration file:
 - `vector-color` includes the *Star Wars* overload-driven HV droop
   calibration.
 - `vector-vectrex` includes the Vectrex persistence, beam/point,
-  focus, halation, glow-buffer, starburst, ambient, and glow-tail calibration.
+  focus, halation, glow-buffer, starburst, ambient, glow-tail, and two-sided
+  printed-overlay calibration. Its overload geometric-width controls are
+  independent from overload bloom by default.
 - `vector-monochrome` includes the *Asteroids* point, focus,
   halation-fill, starburst-length, and ambient calibration.
 

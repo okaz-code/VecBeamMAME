@@ -1246,6 +1246,20 @@ int get_blend_mode(emu::render::detail::view_environment &env, util::xml::data_n
 		return BLENDMODE_ALPHA;
 }
 
+layout_optical_role get_optical_role(emu::render::detail::view_environment &env, util::xml::data_node const &itemnode)
+{
+	std::string const role(env.get_attribute_string(itemnode, "optical-role"));
+	if (role.empty())
+		return layout_optical_role::NONE;
+	if (strcmp(itemnode.get_name(), "element"))
+		throw layout_syntax_error("optical-role is only valid on element view items");
+	if (role == "vectrex-white")
+		return layout_optical_role::VECTREX_WHITE;
+	if (role == "vectrex-color")
+		return layout_optical_role::VECTREX_COLOR;
+	throw layout_syntax_error(util::string_format("unknown optical role %s", role));
+}
+
 } // anonymous namespace
 
 
@@ -4663,6 +4677,7 @@ layout_view_item::layout_view_item(
 	, m_orientation(orientation_add(env.parse_orientation(itemnode.get_child("orientation")), orientation))
 	, m_color(make_color(env, itemnode, color))
 	, m_blend_mode(get_blend_mode(env, itemnode))
+	, m_optical_role(get_optical_role(env, itemnode))
 	, m_visibility_mask(env.visibility_mask())
 	, m_id(env.get_attribute_string(itemnode, "id"))
 	, m_input_tag(make_input_tag(env, itemnode))
