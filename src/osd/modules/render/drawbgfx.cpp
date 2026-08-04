@@ -1389,6 +1389,9 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_ALPHA]        = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_blend");
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
+		m_vectrex_overlay_mask_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_mask");
+		m_vectrex_overlay_blur_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_blur");
+		m_vectrex_overlay_composite_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_composite");
 
 		// Vector frame statistics (frame counter, list staleness, total / off-screen beam energy)
 		// arrive through the render layer (render_vector_stats, published by the vector device
@@ -2089,6 +2092,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overload_ramp", &renderer_bgfx::vec_slider_cache::overload_ramp, 0.0f },
 	{ "overload_threshold", &renderer_bgfx::vec_slider_cache::overload_threshold, 1.0f },
 	{ "overload_width_add", &renderer_bgfx::vec_slider_cache::overload_width_add, -1.0f },
+	{ "overload_width_bloom_link", &renderer_bgfx::vec_slider_cache::overload_width_bloom_link, 1.0f },
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
 	{ "overload_width_steepness", &renderer_bgfx::vec_slider_cache::overload_width_steepness, 10.0f },
 	{ "phosphor_overdrive", &renderer_bgfx::vec_slider_cache::phosphor_overdrive, 0.0f },
@@ -2264,6 +2268,246 @@ static bool vector_primitive_is_point(render_primitive const &prim, float thresh
 	const float dx = prim.full_bounds.x1 - prim.full_bounds.x0;
 	const float dy = prim.full_bounds.y1 - prim.full_bounds.y0;
 	return dx * dx + dy * dy <= threshold * threshold;
+}
+
+// Render one optical-role layout element into an off-screen ink mask.  The complete layout
+// element has already been rasterised by layout_element::state_texture(), so rect/disk/text/image
+// components all follow this same path without Vectrex-specific component handling.
+void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index)
+{
+	if (prim == nullptr || prim->type != render_primitive::QUAD || prim->texture.base == nullptr
+		|| m_vectrex_overlay_mask_effect == nullptr
+		|| bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
+		return;
+
+	bgfx::TransientVertexBuffer buffer;
+	bgfx::allocTransientVertexBuffer(&buffer, 6, ScreenVertex::ms_decl);
+	auto *const vertices = reinterpret_cast<ScreenVertex *>(buffer.data);
+	uint32_t const rgba = u32Color(prim->color.r * 255, prim->color.g * 255,
+		prim->color.b * 255, prim->color.a * 255);
+	float const x[4] = { prim->bounds.x0, prim->bounds.x1, prim->bounds.x0, prim->bounds.x1 };
+	float const y[4] = { prim->bounds.y0, prim->bounds.y0, prim->bounds.y1, prim->bounds.y1 };
+	float const u[4] = { prim->texcoords.tl.u, prim->texcoords.tr.u, prim->texcoords.bl.u, prim->texcoords.br.u };
+	float const v[4] = { prim->texcoords.tl.v, prim->texcoords.tr.v, prim->texcoords.bl.v, prim->texcoords.br.v };
+	vertex(&vertices[0], x[0], y[0], 0, rgba, u[0], v[0]);
+	vertex(&vertices[1], x[1], y[1], 0, rgba, u[1], v[1]);
+	vertex(&vertices[2], x[3], y[3], 0, rgba, u[3], v[3]);
+	vertex(&vertices[3], x[3], y[3], 0, rgba, u[3], v[3]);
+	vertex(&vertices[4], x[2], y[2], 0, rgba, u[2], v[2]);
+	vertex(&vertices[5], x[0], y[0], 0, rgba, u[0], v[0]);
+
+	uint32_t texture_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+	if (!PRIMFLAG_GET_ANTIALIAS(prim->flags))
+		texture_flags |= BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
+	bgfx::TextureHandle const texture = m_textures->create_or_update_mame_texture(
+		prim->flags & PRIMFLAG_TEXFORMAT_MASK, uint16_t(prim->texture.width), prim->texture.width_margin,
+		uint16_t(prim->texture.height), prim->texture.rowpixels, prim->texture.palette,
+		prim->texture.base, prim->texture.seqid, texture_flags, prim->texture.unique_id, prim->texture.old_id);
+	bgfx::TextureHandle const source = bgfx::isValid(texture) ? texture : m_chains->textures().dummy_handle();
+	bgfx_uniform *const sampler = m_vectrex_overlay_mask_effect->uniform("s_tex");
+	if (sampler == nullptr)
+		return;
+	bgfx::setVertexBuffer(0, &buffer);
+	bgfx::setTexture(0, sampler->handle(), source, texture_flags);
+	if (bgfx_uniform *const inv = m_vectrex_overlay_mask_effect->uniform("u_inv_view_dims"))
+	{
+		float values[4] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]), 0.0f, 0.0f };
+		inv->set(values, sizeof(values));
+		inv->upload();
+	}
+	m_vectrex_overlay_mask_effect->submit(view);
+}
+
+bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index)
+{
+	m_vectrex_overlay_active = false;
+	if (window_index != 0 || strcmp(window().machine().system().name, "vectrex")
+		|| screen_hdr == nullptr || m_hdr_work == nullptr
+		|| !bgfx::isValid(screen_hdr->texture())
+		|| m_vectrex_overlay_mask_effect == nullptr
+		|| m_vectrex_overlay_blur_effect == nullptr
+		|| m_vectrex_overlay_composite_effect == nullptr)
+		return false;
+
+	bool have_white = false;
+	bool have_color = false;
+	uint32_t role_quads = 0;
+	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
+	{
+		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
+		have_white = have_white || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE;
+		have_color = have_color || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR;
+		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
+		{
+			// Do not activate the special path unless every marked item can be represented in its
+			// mask.  The ordinary artwork fallback must remain available as an all-or-nothing path.
+			if (prim->type != render_primitive::QUAD || prim->texture.base == nullptr)
+				return false;
+			++role_quads;
+		}
+	}
+	if (!have_white && !have_color)
+		return false;
+	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 4.0f));
+	uint32_t const blur_iterations = radius >= 12.0f ? 3U : (radius >= 7.0f ? 2U : 1U);
+	uint32_t const required_vertices = (role_quads + blur_iterations * 2U + 1U) * 6U;
+	// ink masks + repeated blur H/V pairs + composite
+	if (bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl) != required_vertices)
+		return false;
+
+	uint16_t const width = m_hdr_work->width();
+	uint16_t const height = m_hdr_work->height();
+	// Large tap spacing makes a sparse 9-tap kernel visible as a grid.  Downsample first so the
+	// same physical radius uses a dense 2-3 pixel kernel, then rely on linear upsampling during
+	// the composite.  Small radii stay full-resolution to preserve local detail.
+	uint16_t const blur_scale = radius >= 7.0f ? 4U : (radius >= 3.5f ? 2U : 1U);
+	uint16_t const blur_width = std::max<uint16_t>(1, (width + blur_scale - 1U) / blur_scale);
+	uint16_t const blur_height = std::max<uint16_t>(1, (height + blur_scale - 1U) / blur_scale);
+	auto wrong_size = [width, height](bgfx_target *target)
+	{
+		return target == nullptr || target->width() != width || target->height() != height;
+	};
+	if (wrong_size(m_vectrex_overlay_white))
+		m_vectrex_overlay_white = m_targets->create_target("vectrex_overlay_white", bgfx::TextureFormat::BGRA8,
+			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	if (wrong_size(m_vectrex_overlay_color))
+		m_vectrex_overlay_color = m_targets->create_target("vectrex_overlay_color", bgfx::TextureFormat::BGRA8,
+			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	auto wrong_blur_size = [blur_width, blur_height](bgfx_target *target)
+	{
+		return target == nullptr || target->width() != blur_width || target->height() != blur_height;
+	};
+	if (wrong_blur_size(m_vectrex_overlay_blur[0]))
+		m_vectrex_overlay_blur[0] = m_targets->create_target("vectrex_overlay_blur0", bgfx::TextureFormat::RG11B10F,
+			blur_width, blur_height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	if (wrong_blur_size(m_vectrex_overlay_blur[1]))
+		m_vectrex_overlay_blur[1] = m_targets->create_target("vectrex_overlay_blur1", bgfx::TextureFormat::RG11B10F,
+			blur_width, blur_height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	auto usable = [](bgfx_target *target)
+	{
+		return target && bgfx::isValid(target->target()) && bgfx::isValid(target->texture());
+	};
+	if (!usable(m_vectrex_overlay_white) || !usable(m_vectrex_overlay_color)
+		|| !usable(m_vectrex_overlay_blur[0]) || !usable(m_vectrex_overlay_blur[1]))
+		return false;
+
+	float projection[16];
+	float const logical_width = float(s_width[window_index]);
+	float const logical_height = float(s_height[window_index]);
+	bx::mtxOrtho(projection, 0.0f, logical_width, logical_height, 0.0f, 0.0f, 100.0f, 0.0f,
+		bgfx::getCaps()->homogeneousDepth);
+	uint16_t const white_view = uint16_t(s_current_view++);
+	uint16_t const color_view = uint16_t(s_current_view++);
+	auto setup_mask_view = [projection, width, height](uint16_t view, bgfx_target *target)
+	{
+		bgfx::setViewFrameBuffer(view, target->target());
+		bgfx::setViewRect(view, 0, 0, width, height);
+		bgfx::setViewClear(view, BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
+		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+		bgfx::setViewTransform(view, nullptr, projection);
+		bgfx::touch(view);
+	};
+	setup_mask_view(white_view, m_vectrex_overlay_white);
+	setup_mask_view(color_view, m_vectrex_overlay_color);
+	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
+	{
+		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
+		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE)
+			render_vectrex_overlay_quad(prim, white_view, window_index);
+		else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
+			render_vectrex_overlay_quad(prim, color_view, window_index);
+	}
+
+	// A separable blur produces the weak diffusion component.  Radius zero is an identity pass.
+	auto submit_fullscreen = [this, logical_width, logical_height](uint16_t view, bgfx_effect *effect)
+	{
+		if (bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
+			return false;
+		bgfx::TransientVertexBuffer buffer;
+		bgfx::allocTransientVertexBuffer(&buffer, 6, ScreenVertex::ms_decl);
+		auto *v = reinterpret_cast<ScreenVertex *>(buffer.data);
+		vertex(&v[0], 0,0,0,0xffffffff,0,0); vertex(&v[1], logical_width,0,0,0xffffffff,1,0); vertex(&v[2], logical_width,logical_height,0,0xffffffff,1,1);
+		vertex(&v[3], 0,0,0,0xffffffff,0,0); vertex(&v[4], logical_width,logical_height,0,0xffffffff,1,1); vertex(&v[5], 0,logical_height,0,0xffffffff,0,1);
+		bgfx::setVertexBuffer(0, &buffer);
+		effect->submit(view);
+		return true;
+	};
+
+	bgfx::TextureHandle blur_source = screen_hdr->texture();
+	uint32_t const blur_passes = blur_iterations * 2U;
+	float const pass_radius = radius / (float(blur_scale) * std::sqrt(float(blur_iterations)));
+	for (uint32_t pass = 0; pass < blur_passes; ++pass)
+	{
+		uint32_t const direction = pass & 1U;
+		uint16_t const view = uint16_t(s_current_view++);
+		bgfx::setViewFrameBuffer(view, m_vectrex_overlay_blur[direction]->target());
+		bgfx::setViewRect(view, 0, 0, blur_width, blur_height);
+		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+		bgfx::setViewTransform(view, nullptr, projection);
+		bgfx_uniform *const sampler = m_vectrex_overlay_blur_effect->uniform("s_tex");
+		bgfx_uniform *const params = m_vectrex_overlay_blur_effect->uniform("u_overlay_blur");
+		if (!sampler || !params)
+			return false;
+		float values[4] = {
+			direction ? 0.0f : (1.0f / blur_width),
+			direction ? (1.0f / blur_height) : 0.0f,
+			pass_radius, 0.0f };
+		params->set(values, sizeof(values)); params->upload();
+		bgfx::setTexture(0, sampler->handle(), blur_source,
+			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
+		if (!submit_fullscreen(view, m_vectrex_overlay_blur_effect))
+			return false;
+		blur_source = m_vectrex_overlay_blur[direction]->texture();
+	}
+
+	uint16_t const composite_view = uint16_t(s_current_view++);
+	bgfx::setViewFrameBuffer(composite_view, m_hdr_work->target());
+	bgfx::setViewRect(composite_view, 0, 0, width, height);
+	bgfx::setViewClear(composite_view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+	bgfx::setViewMode(composite_view, bgfx::ViewMode::Sequential);
+	bgfx::setViewTransform(composite_view, nullptr, projection);
+	auto bind = [this](uint8_t stage, char const *name, bgfx::TextureHandle texture)
+	{
+		bgfx_uniform *const sampler = m_vectrex_overlay_composite_effect->uniform(name);
+		if (!sampler) return false;
+		bgfx::setTexture(stage, sampler->handle(), texture,
+			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
+		return true;
+	};
+	if (!bind(0, "s_screen", screen_hdr->texture())
+		|| !bind(1, "s_diffused", m_vectrex_overlay_blur[1]->texture())
+		|| !bind(2, "s_white", m_vectrex_overlay_white->texture())
+		|| !bind(3, "s_color", m_vectrex_overlay_color->texture()))
+		return false;
+	bgfx_uniform *const params0 = m_vectrex_overlay_composite_effect->uniform("u_overlay_params0");
+	bgfx_uniform *const params1 = m_vectrex_overlay_composite_effect->uniform("u_overlay_params1");
+	bgfx_uniform *const params2 = m_vectrex_overlay_composite_effect->uniform("u_overlay_params2");
+	if (!params0 || !params1 || !params2)
+		return false;
+	float values0[4] = {
+		seed_peak,
+		std::clamp(m_chains->slider_value(0, "overlay_white_transmission", 0.65f), 0.0f, 1.0f),
+		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.18f)),
+		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.50f), 0.0f, 1.0f) };
+	float values1[4] = {
+		std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f)),
+		paper_white,
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 4.0f)),
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 0.60f)) };
+	float values2[4] = {
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_dark_level", 0.01f)),
+		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_bleach", 0.80f), 0.0f, 1.0f),
+		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_knee", 0.08f), 0.0f, 0.99f),
+		std::max(0.05f, m_chains->slider_value(0, "overlay_color_highlight_curve", 0.55f)) };
+	params0->set(values0, sizeof(values0)); params0->upload();
+	params1->set(values1, sizeof(values1)); params1->upload();
+	params2->set(values2, sizeof(values2)); params2->upload();
+	if (!submit_fullscreen(composite_view, m_vectrex_overlay_composite_effect))
+		return false;
+
+	m_vectrex_overlay_active = true;
+	return true;
 }
 
 
@@ -2497,10 +2741,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	}
 	const float bw_min = m_vs.beam_width_min;
 	const float bw_max = m_vs.beam_width_max;
-	// Width transfer. Chains with overload_width_add >= 0 use the three-region model: a slow normal
+	// Width transfer. Chains with overload_width_add > 0 use the three-region model: a slow normal
 	// power curve up to brightness saturation, followed by a normalized logistic lift after the common
-	// overload threshold. Chains without the new slider retain the former width transfer unchanged.
-	const bool sigmoid_width = (m_vs.overload_width_add >= 0.0f);
+	// overload threshold.  Zero disables the added geometry, while chains without the slider retain
+	// the former width transfer unchanged.
+	const bool sigmoid_width = (m_vs.overload_width_add > 0.0f);
 	float overload_width_amount = 0.0f;
 	float normal_beam_units;
 	float beam_units;
@@ -2723,15 +2968,17 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		uint32_t(std::min(prim->color.b / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(1.0f, oglow_mag) * 255.0f + 0.5f));
 
-	// Core, caps, flare and glow share one width. Overload Bloom uses the same normalized sigmoid
-	// amount as the geometric lift, so both remain quiet initially and rise together later.
+	// Core, caps, flare and glow share one width.  A chain may keep Overload Bloom on the raw
+	// overload-energy transfer, independent of the optional geometric-width sigmoid.  The link
+	// defaults on for existing chains; Vectrex exposes it off by default so Width Add can be tuned
+	// without silently reshaping the optical spread.
 	float sigma = (width / 3.2f) * (1.0f + ovld);
 	const float overload_bloom = m_vs.overload_bloom;
 	if (overload_bloom > 0.0f)
 	{
-		const float over_e = sigmoid_width
-			? overload_width_amount
-			: std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+		const float raw_over_e = std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+		const bool link_width_bloom = sigmoid_width && m_vs.overload_width_bloom_link > 0.5f;
+		const float over_e = link_width_bloom ? overload_width_amount : raw_over_e;
 		if (over_e > 0.0f)
 			sigma += overload_bloom * vec_res_scale() * over_e * 4.0f;
 	}
@@ -3175,9 +3422,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		{
 			// The cap is the finite blanking/Z transition of the ordinary moving spot. Derive it
 			// before overload-width lift, overload bloom, edge defocus and HV droop.
-			const float cap_over = sigmoid_width
-				? overload_width_amount
-				: std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+			const float raw_cap_over = std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+			const bool link_width_caps = sigmoid_width && m_vs.overload_width_bloom_link > 0.5f;
+			const float cap_over = link_width_caps ? overload_width_amount : raw_cap_over;
 			const float cap_smooth = cap_over * cap_over * (3.0f - 2.0f * cap_over);
 			const float cap_scale = 0.5f * cap_bright * (1.0f - cap_smooth);
 			// line_cap_width fattens the endpoint dot a touch beyond the bare beam spot (1.0 = exactly
@@ -3697,6 +3944,7 @@ int renderer_bgfx::draw(int update)
 		m_ortho_view->set_index(UINT_MAX);
 	// HDR composite: reset the per-frame work-target view.
 	m_hdr_work_view = UINT_MAX;
+	m_vectrex_overlay_active = false;
 
 	osd_dim wdim = window().get_size_pixels();
 	s_width[window_index] = wdim.width();
@@ -5959,9 +6207,13 @@ int renderer_bgfx::draw(int update)
 			const bool hdr_present = s_bgfx_hdr_active || s_bgfx_edr_active;
 			const float sdr_beam_level = std::clamp(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.0f, 1.0f);
 			const float seed_peak = hdr_present ? beam_peak : paper_white * sdr_beam_level;
+			prepare_vectrex_overlay(screen_hdr, seed_peak, paper_white, window_index);
 
 			// Seed pass: hdr_work = screen_hdr * seed_peak (linear nits). A dedicated view before
-			// the artwork view; overwrites the whole target so no clear is needed.
+			// the artwork view; overwrites the whole target so no clear is needed.  The Vectrex
+			// optical composite replaces this pass when both marked masks were prepared successfully.
+			if (!m_vectrex_overlay_active)
+			{
 			const uint16_t seed_view = uint16_t(s_current_view++);
 			bgfx::setViewFrameBuffer(seed_view, m_hdr_work->target());
 			bgfx::setViewRect(seed_view, 0, 0, m_hdr_work->width(), m_hdr_work->height());
@@ -5995,6 +6247,7 @@ int renderer_bgfx::draw(int update)
 						BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
 				bgfx::setVertexBuffer(0, &vb);
 				m_hdr_screen_effect->submit(seed_view);
+			}
 			}
 
 			// EDR-only SDR-content level: under macOS EDR the UI/artwork white is anchored to 1.0 =
@@ -6748,6 +7001,11 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				break;
 
 			case render_primitive::QUAD:
+				// Optical-role elements were consumed by prepare_vectrex_overlay.  When that path is
+				// unavailable m_vectrex_overlay_active remains false and they render as normal artwork.
+				if (m_vectrex_overlay_active
+					&& PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) != PRIMFLAG_OPTICAL_ROLE_NONE)
+					break;
 				// Skip the VECTORBUF background quad (the black background drawn by vector.cpp):
 				// it would overwrite the vec blit, which has already filled the backbuffer.
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTORBUF((*prim)->flags))
@@ -6955,6 +7213,10 @@ void renderer_bgfx::allocate_buffer(render_primitive *prim, uint32_t blend, bgfx
 				break;
 
 			case render_primitive::QUAD:
+				// Symmetric with buffer_primitives' optical-role skip.
+				if (m_vectrex_overlay_active
+					&& PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) != PRIMFLAG_OPTICAL_ROLE_NONE)
+					break;
 				// Symmetric with the skip in buffer_primitives
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTORBUF(prim->flags))
 					break;

@@ -1,0 +1,15 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Rasterise a layout element into a premultiplied ink-mask target.
+{
+	"blend": { "equation": "add", "srcColor": "srcalpha", "dstColor": "1-srcalpha", "srcAlpha": "1", "dstAlpha": "1-srcalpha" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vectrex_overlay_mask",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

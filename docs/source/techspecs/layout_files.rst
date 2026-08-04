@@ -784,6 +784,53 @@ multiplication), and ``add`` (additive blending).  The default for screens is to
 allow the driver to specify blending per layer; the default blending mode for
 layout elements is alpha blending.
 
+Layout element references may also have an ``optical-role`` attribute for the
+two printed surfaces of a Vectrex transparent overlay.  ``vectrex-white`` marks
+the rear white-ink mask, while ``vectrex-color`` marks the front colour-ink
+layer.  The role applies to the complete referenced layout element, so all
+ordinary element components, including ``rect``, ``disk``, ``text`` and
+``image``, may be used to construct either print layer.  For example::
+
+    <element ref="overlay_white" optical-role="vectrex-white" blend="alpha">
+        <bounds x="0" y="0" width="1" height="1" />
+    </element>
+    <element ref="overlay_color" optical-role="vectrex-color" blend="alpha">
+        <bounds x="0" y="0" width="1" height="1" />
+    </element>
+
+With the Vectrex BGFX optical path, the white mask controls CRT transmission,
+resin diffusion, screen-driven white-ink glow and ambient reflection.  The
+coloured-resin layer filters the CRT and white-ink glow using its RGB colour.
+Its unlit appearance, optical density and highlight colour release are
+independently adjustable; dense vector light can therefore bleach toward white
+without making unlit resin bright.  CRT light scattered laterally at the rear
+of the coloured resin also produces a faint halo around vectors.  Surface
+colour-print images that must remain visible without CRT illumination should be
+separate ordinary alpha-blended elements without an optical role.  Other
+machines and renderers ignore the optical role and draw both optical elements
+with their normal ``blend`` modes.
+Supplying explicit ``blend`` attributes as above therefore provides a portable
+fallback.
+
+The layout coordinate envelope should normally follow the physical overlay,
+not the emulated screen.  This allows the screen to be inset while bezel and
+printed regions remain inside the overlay.  For example, a 1613 by 2060
+overlay with a centred 3:4 screen occupying 96 percent of its height uses::
+
+    <screen index="0">
+        <bounds x="64.9" y="41.2" width="1483.2" height="1977.6" />
+    </screen>
+    <element ref="overlay_white" optical-role="vectrex-white" blend="alpha">
+        <bounds x="0" y="0" width="1613" height="2060" />
+    </element>
+    <element ref="overlay_color" optical-role="vectrex-color" blend="alpha">
+        <bounds x="0" y="0" width="1613" height="2060" />
+    </element>
+
+Ordinary bezel and surface-print elements can use the same full-overlay bounds.
+The screen must still cover every region that is intended to receive CRT light;
+areas outside its bounds receive only the configured ambient reflection.
+
 Screens (``screen`` elements), layout elements (``element`` elements) and groups
 (``group`` elements) may be positioned and sized using a ``bounds`` child
 element (see :ref:`layfile-concepts-coordinates` for details).  In the absence

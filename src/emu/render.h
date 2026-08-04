@@ -113,6 +113,14 @@ constexpr u32 PRIMFLAG_TYPE_QUAD = 1 << PRIMFLAG_TYPE_SHIFT;
 constexpr int PRIMFLAG_PACKABLE_SHIFT = 21;
 constexpr u32 PRIMFLAG_PACKABLE = 1 << PRIMFLAG_PACKABLE_SHIFT;
 
+// Optional optical interpretation for artwork quads.  Stock renderers ignore
+// these bits and use the ordinary blend mode as a fallback.
+constexpr int PRIMFLAG_OPTICAL_ROLE_SHIFT = 22;
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_MASK = 3 << PRIMFLAG_OPTICAL_ROLE_SHIFT;
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_NONE = 0;
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE = 1;
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR = 2;
+
 //**************************************************************************
 //  MACROS
 //**************************************************************************
@@ -143,6 +151,9 @@ constexpr u32 PRIMFLAG_GET_VECTOR(u32 x)    { return (x & PRIMFLAG_VECTOR_MASK) 
 
 constexpr u32 PRIMFLAG_VECTORBUF(u32 x)     { return x << PRIMFLAG_VECTORBUF_SHIFT; }
 constexpr u32 PRIMFLAG_GET_VECTORBUF(u32 x) { return (x & PRIMFLAG_VECTORBUF_MASK) >> PRIMFLAG_VECTORBUF_SHIFT; }
+
+constexpr u32 PRIMFLAG_OPTICAL_ROLE(u32 x)     { return x << PRIMFLAG_OPTICAL_ROLE_SHIFT; }
+constexpr u32 PRIMFLAG_GET_OPTICAL_ROLE(u32 x) { return (x & PRIMFLAG_OPTICAL_ROLE_MASK) >> PRIMFLAG_OPTICAL_ROLE_SHIFT; }
 
 // Per-vector metadata carried separately from the generic primitive flags.
 constexpr u8 VECTOR_CAP_START                 = 0x01U;

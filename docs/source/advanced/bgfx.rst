@@ -217,6 +217,33 @@ monochrome and Vectrex systems.  If it is unavailable or cannot be loaded, the
 minimal ``default-vector`` chain is used as a safety fallback.  Existing CFG
 files using the former ``*-balanced`` names are migrated while loading.
 
+Vectrex two-sided overlay optics
+--------------------------------
+
+The ``vector-vectrex`` chain can composite the rear white print and front
+coloured resin of a physical Vectrex overlay separately.  Layout element
+references tagged ``optical-role="vectrex-white"`` provide the white-ink mask;
+references tagged ``optical-role="vectrex-color"`` provide the coloured-resin
+RGB and density mask.  Untagged surface printing and bezel elements remain
+ordinary MAME artwork and are composed after the optical layers.  See
+:ref:`layfile-parts-views` for the layout syntax and fallback behaviour.
+
+``Overlay Resin Diffusion Strength`` and ``Overlay Resin Diffusion Radius``
+control weak lateral light transport behind the print.  Large radii use a
+downsampled multi-pass filter to avoid a visible sampling grid.  White
+transmission and ambient reflection, coloured-resin optical density, unlit
+resin level, and highlight colour release have independent controls.  The
+operation takes place in the linear HDR composite before HDR/SDR presentation.
+
+Overload beam geometry is also independent from optical bloom in this chain.
+``Overload Width Add (px)`` enables the additional geometric width, while
+``Overload Width Steepness`` and ``Overload Width Center`` shape its normalized
+logistic response.  A zero width addition preserves the legacy Vectrex width
+transfer.  ``Overload Width/Bloom Link`` defaults to ``Independent`` for
+Vectrex, allowing ``Overload Bloom`` to be reduced without changing geometric
+beam width.  Existing chains that do not provide the link control retain their
+previous linked behaviour.
+
 Overload-driven HV droop
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

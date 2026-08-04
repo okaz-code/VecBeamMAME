@@ -250,6 +250,17 @@ private:
 };
 
 
+/// Optical interpretation requested for an artwork item.  This is deliberately
+/// independent of the blend mode so renderers without the specialised path can
+/// continue to draw the item using its normal blend.
+enum class layout_optical_role : u8
+{
+	NONE = 0,
+	VECTREX_WHITE,
+	VECTREX_COLOR
+};
+
+
 /// \brief A single item in a view
 ///
 /// Each view has a list of item structures describing the visual
@@ -293,6 +304,7 @@ public:
 	float scroll_pos_x() const { return m_get_scroll_pos_x(); }
 	float scroll_pos_y() const { return m_get_scroll_pos_y(); }
 	int blend_mode() const { return m_blend_mode; }
+	layout_optical_role optical_role() const { return m_optical_role; }
 	u32 visibility_mask() const { return m_visibility_mask; }
 	int orientation() const { return m_orientation; }
 	render_container *screen_container() const { return m_screen ? &m_screen->container() : nullptr; }
@@ -404,6 +416,7 @@ private:
 	bounds_vector           m_bounds;               // bounds of the item
 	color_vector const      m_color;                // color of the item
 	int                     m_blend_mode;           // blending mode to use when drawing
+	layout_optical_role const m_optical_role;       // optional renderer-specific optical interpretation
 	u32                     m_visibility_mask;      // combined mask of parent visibility groups
 
 	// cold items

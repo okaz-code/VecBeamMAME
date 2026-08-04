@@ -101,6 +101,8 @@ private:
 	buffer_status buffer_primitives(bool atlas_valid, render_primitive** prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
 
 	void render_textured_quad(render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int window_index);
+	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
+	bool prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index);
 	void render_post_screen_quad(int view, render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
 
 	void put_packed_quad(render_primitive *prim, uint32_t hash, ScreenVertex* vertex);
@@ -334,6 +336,7 @@ public:
 		float overload_ramp = 0.0f;
 		float overload_threshold = 1.0f;
 		float overload_width_add = -1.0f;
+		float overload_width_bloom_link = 1.0f;
 		float overload_width_center = 0.65f;
 		float overload_width_steepness = 10.0f;
 		float phosphor_overdrive = 0.0f;
@@ -465,6 +468,16 @@ private:
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
 	bgfx_effect *m_hdr_upscale_effect = nullptr;  // encoded composite -> physical output blit
+	// Vectrex two-sided transparent overlay. Rear white ink and coloured resin/transmission are
+	// rendered to optical masks and composed with screen_hdr.  Surface print images remain ordinary
+	// bezel/artwork elements; the coloured-resin role itself is consumed by this optical path.
+	bool m_vectrex_overlay_active = false;
+	bgfx_target *m_vectrex_overlay_white = nullptr;
+	bgfx_target *m_vectrex_overlay_color = nullptr;
+	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };
+	bgfx_effect *m_vectrex_overlay_mask_effect = nullptr;
+	bgfx_effect *m_vectrex_overlay_blur_effect = nullptr;
+	bgfx_effect *m_vectrex_overlay_composite_effect = nullptr;
 	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
 	// interval; the CPU applies the exact present roll-off to report requested/post-rolloff nits.
 	bgfx::TextureHandle m_hdr_diag_texture = BGFX_INVALID_HANDLE;
