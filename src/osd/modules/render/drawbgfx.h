@@ -101,6 +101,7 @@ private:
 	buffer_status buffer_primitives(bool atlas_valid, render_primitive** prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
 
 	void render_textured_quad(render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int window_index);
+	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
 	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
 	bool prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index);
 	void render_post_screen_quad(int view, render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
@@ -340,6 +341,7 @@ public:
 		float overload_width_center = 0.65f;
 		float overload_width_steepness = 10.0f;
 		float phosphor_overdrive = 0.0f;
+		float isolated_dot_min_size = 0.0f;
 		float point_width_scale = 1.0f;
 		float point_brightness_scale = 1.0f;
 		float ray_angle = 15.0f;
@@ -468,6 +470,8 @@ private:
 	bgfx_effect *m_hdr_screen_effect = nullptr;   // seeds the work target from screen_hdr
 	bgfx_effect *m_hdr_present_effect = nullptr;  // encodes the work target to the backbuffer
 	bgfx_effect *m_hdr_upscale_effect = nullptr;  // encoded composite -> physical output blit
+	float m_hdr_ui_nits_scale = 200.0f;     // UI stays at paper white
+	float m_hdr_art_nits_scale = 200.0f;    // ordinary artwork follows Room Ambient
 	// Vectrex two-sided transparent overlay. Rear white ink and coloured resin/transmission are
 	// rendered to optical masks and composed with screen_hdr.  Surface print images remain ordinary
 	// bezel/artwork elements; the coloured-resin role itself is consumed by this optical path.

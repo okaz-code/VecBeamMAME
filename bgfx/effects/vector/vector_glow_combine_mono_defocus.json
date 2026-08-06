@@ -122,6 +122,16 @@
       ]
     },
     {
+      "name": "u_phosphor_color",
+      "type": "vec4",
+      "values": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_ambient_color",
       "type": "vec4",
       "values": [
@@ -136,6 +146,16 @@
       "type": "vec4",
       "values": [
         0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_room_ambient",
+      "type": "vec4",
+      "values": [
+        1.0,
         0.0,
         0.0,
         0.0
