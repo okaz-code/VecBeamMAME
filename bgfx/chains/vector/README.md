@@ -28,13 +28,19 @@ than requiring a saved configuration file:
 - `vector-vectrex` includes the Vectrex persistence, beam/point,
   focus, halation, glow-buffer, starburst, ambient, glow-tail, and two-sided
   printed-overlay calibration. Its overload geometric-width controls are
-  independent from overload bloom by default.
+  independent from overload bloom by default. It also provides an isolated
+  dwell-dot minimum size, phosphor-coloured post-glow, and a common room-light
+  control for the CRT face, overlay and ordinary bezel artwork (excluding UI).
 - `vector-monochrome` includes the *Asteroids* point, focus,
   halation-fill, starburst-length, and ambient calibration.
 
 A system configuration file can still override these defaults.  Delete the
 saved BGFX slider entries or reset the sliders in the UI to evaluate the chain
 defaults directly.
+
+The Vectrex defaults mirror the current reference `vectrex.cfg` calibration,
+including phosphor RGB `[0.50, 0.70, 1.00]`, a `3.0 px` isolated dwell-dot
+minimum, `0.50` room ambient, and the calibrated two-sided overlay response.
 
 ## Overload-driven HV droop
 

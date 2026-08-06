@@ -18,10 +18,12 @@ uniform vec4 u_vec_pincushion_x_cubic;
 uniform vec4 u_vec_pincushion_y_quad;
 uniform vec4 u_vec_pincushion_y_cubic;
 uniform vec4 u_glow_enable;
+uniform vec4 u_phosphor_color;
 uniform vec4 u_target_dims;
 uniform vec4 u_quad_dims;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
+uniform vec4 u_room_ambient;
 uniform vec4 u_ambient_output_scale;
 uniform vec4 u_convergence_global;
 uniform vec4 u_convergence_global_color;
@@ -228,16 +230,18 @@ void main()
 	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0);vec2 base_uv=vector_pincushion_uv(emit_uv);
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
 	float face=tube_face_factor(v_texcoord0,tube_active),vignette=tube_vignette(v_texcoord0,tube_active);
-	vec3 ambient=u_ambient_level.x*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
+	vec3 phosphor_tint=max(u_phosphor_color.rgb,vec3_splat(0.0));
+	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=texture2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
 	vec2 global_delta=(v_texcoord0-u_convergence_global.xy)*u_target_dims.xy;float global_sigma=max(u_convergence_global.w*0.5*length(u_target_dims.xy),1.0);
 	float global_weight=u_convergence_global.z*exp(-0.5*dot(global_delta,global_delta)/(global_sigma*global_sigma));
-	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*global_weight*face;
+	glow*=phosphor_tint;optical*=phosphor_tint;
+	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*phosphor_tint*global_weight*face;
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
-	if(band>0.0)bezel=bezel_corner_light(emit_uv)*(band*max(u_bezel_glow_strength.x,0.0));
+	if(band>0.0)bezel=bezel_corner_light(emit_uv)*phosphor_tint*(band*max(u_bezel_glow_strength.x,0.0));
 	vec3 composite=(base+glow+optical)*face+ambient+global_out+bezel;
 	float glass_activity=max(u_glass_forward_scatter.x,u_glass_surface_illumination.x);vec3 glass_light=vec3_splat(0.0);
-	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0));
+	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0))*phosphor_tint;
 	gl_FragColor=vec4(apply_glass_optics(composite,glass_light),1.0)*v_color0;
 }

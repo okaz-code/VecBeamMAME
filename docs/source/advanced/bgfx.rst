@@ -235,6 +235,28 @@ transmission and ambient reflection, coloured-resin optical density, unlit
 resin level, and highlight colour release have independent controls.  The
 operation takes place in the linear HDR composite before HDR/SDR presentation.
 
+``Room Ambient (Overlay/Bezel)`` is a common illumination multiplier for the
+overlay's reflected white component, ordinary layout artwork/bezel luminance,
+and CRT-face ambient.  It deliberately does not dim the MAME UI.  The material
+controls such as ``Overlay Ambient Light`` and ``Ambient Level`` remain local
+response controls and are multiplied by the common room value.
+
+``Phosphor Color`` colours not only the persistent beam core but also its
+post-phosphor glow, halation, glass scatter, convergence bloom and bezel
+reflection.  This prevents a cyan Vectrex phosphor from acquiring a white halo
+at high intensity.  ``Isolated Dwell Dot Minimum (px)`` supplies an independent
+size floor for free-standing zero-length dwell spots (for example the smallest
+*Mine Storm* mines); connected line-end and junction dots are excluded.  A
+value of zero disables the size floor.
+
+The standard Vectrex defaults are calibrated from the reference
+``vectrex.cfg``: cyan-white phosphor RGB is ``0.50, 0.70, 1.00``, the isolated
+dwell-dot minimum is ``3.0 px``, and room ambient is ``0.50``.  The calibrated
+overlay uses diffusion ``0.70``, white reflectance ``0.50``, colour density
+``7.2``, rear-resin scatter ``1.55``, dark level ``0.03``, ambient light
+``0.50``, and no highlight colour release.  Saved per-system slider values
+still take precedence over these chain defaults.
+
 Overload beam geometry is also independent from optical bloom in this chain.
 ``Overload Width Add (px)`` enables the additional geometric width, while
 ``Overload Width Steepness`` and ``Overload Width Center`` shape its normalized

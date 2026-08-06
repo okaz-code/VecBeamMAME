@@ -1676,7 +1676,9 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 	// HDR: artwork (non-screen) quads draw into the linear work target with the HDR gui effects
 	// (linearize + nits scale + native blend), so MAME's blend modes compose physically.
 	bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
-	bgfx_effect* effect = effects[PRIMFLAG_GET_BLENDMODE(prim->flags)];
+	const uint32_t blend = PRIMFLAG_GET_BLENDMODE(prim->flags);
+	bgfx_effect* effect = effects[blend];
+	set_hdr_gui_scale(effect, blend, prim);
 
 	bgfx::setVertexBuffer(0,buffer);
 	// Fallback if the source texture is invalid (e.g. atlas not ready on the first frame): leaving the
@@ -1698,6 +1700,28 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 	if (is_screen)
 	{
 		bgfx::destroy(texture);
+	}
+}
+
+void renderer_bgfx::set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim)
+{
+	if (!m_vec_hdr_chain || effect == nullptr)
+		return;
+
+	// Layout artwork and the MAME UI share the same final primitive list, but room light must not
+	// dim menu/text readability.  UI primitives carry the target's UI container; layout artwork
+	// either has no container or belongs to a screen container.
+	const bool is_ui = prim != nullptr && window().target() != nullptr
+		&& prim->container == window().target()->ui_container();
+	const float scale = (blend == BLENDMODE_RGB_MULTIPLY)
+		? 1.0f
+		: (is_ui ? m_hdr_ui_nits_scale : m_hdr_art_nits_scale);
+	bgfx_uniform *const uniform = effect->uniform("u_hdr_gui");
+	if (uniform)
+	{
+		float values[4] = { scale, 0.0f, 0.0f, 0.0f };
+		uniform->set(values, sizeof(values));
+		uniform->upload();
 	}
 }
 
@@ -2096,6 +2120,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
 	{ "overload_width_steepness", &renderer_bgfx::vec_slider_cache::overload_width_steepness, 10.0f },
 	{ "phosphor_overdrive", &renderer_bgfx::vec_slider_cache::phosphor_overdrive, 0.0f },
+	{ "isolated_dot_min_size", &renderer_bgfx::vec_slider_cache::isolated_dot_min_size, 0.0f },
 	{ "point_width_scale", &renderer_bgfx::vec_slider_cache::point_width_scale, 1.0f },
 	{ "point_brightness_scale", &renderer_bgfx::vec_slider_cache::point_brightness_scale, 1.0f },
 	{ "ray_angle", &renderer_bgfx::vec_slider_cache::ray_angle, 15.0f },
@@ -2491,7 +2516,8 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.18f)),
 		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.50f), 0.0f, 1.0f) };
 	float values1[4] = {
-		std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f)),
+		std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f))
+			* std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f)),
 		paper_white,
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 4.0f)),
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 0.60f)) };
@@ -2785,6 +2811,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		beam_units *= m_vs.point_width_scale;
 		normal_beam_units *= m_vs.point_width_scale;
+	}
+	// Exact, isolated dwell points (for example Mine Storm's smallest mines) need a size floor
+	// independent of line-end/junction dots. vector.cpp marks connected zero-length events with
+	// POINT_OPTICS_SUPPRESS, so point_optics selects only a free-standing physical dwell spot.
+	if (point_optics && m_vs.isolated_dot_min_size > 0.0f)
+	{
+		beam_units = std::max(beam_units, m_vs.isolated_dot_min_size);
+		normal_beam_units = std::max(normal_beam_units, m_vs.isolated_dot_min_size);
 	}
 	float width = beam_units * vec_res_scale();
 	const float normal_width = std::max(0.5f, normal_beam_units * vec_res_scale());
@@ -6271,12 +6305,15 @@ int renderer_bgfx::draw(int update)
 			// brightness. Windows/SDR keep the factor at 1.0 (no change). Multiply blend stays a unit
 			// ratio.
 			const float edr_ui = s_bgfx_edr_active ? m_chains->slider_value(0, "edr_sdr_level", 1.0f) : 1.0f;
+			const float room_ambient = std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
+			m_hdr_ui_nits_scale = paper_white * edr_ui;
+			m_hdr_art_nits_scale = m_hdr_ui_nits_scale * room_ambient;
 			// Set the per-frame nits scale on the HDR gui effects (multiply stays a unit ratio).
 			for (int b = 0; b < 4; b++)
 			{
 				if (m_hdr_gui_effect[b] == nullptr) continue;
 				bgfx_uniform *u = m_hdr_gui_effect[b]->uniform("u_hdr_gui");
-				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : (paper_white * edr_ui), 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
+				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : m_hdr_ui_nits_scale, 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
 			}
 		}
 		setup_ortho_view();
@@ -6287,6 +6324,7 @@ int renderer_bgfx::draw(int update)
 	while (prim != nullptr)
 	{
 		uint32_t blend = PRIMFLAG_GET_BLENDMODE(prim->flags);
+		render_primitive *const batch_first = prim;
 
 		// allocate_buffer does not initialize the buffer when vertices==0. This happens on frames
 		// where every prim is skipped (VECTOR LINE + VECTORBUF QUAD), and the later
@@ -6324,6 +6362,7 @@ int renderer_bgfx::draw(int update)
 			// with a garbage handle.
 			// HDR: packed UI quads/lines also go through the HDR gui effects into the work target.
 			bgfx_effect *gui = m_vec_hdr_chain ? m_hdr_gui_effect[blend] : m_gui_effect[blend];
+			set_hdr_gui_scale(gui, blend, batch_first);
 			bgfx::setVertexBuffer(0, &buffer);
 			bgfx::setTexture(0, gui->uniform("s_tex")->handle(), m_texture_cache->texture());
 
@@ -7073,7 +7112,10 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				break;
 		}
 
-		if ((*prim)->next() != nullptr && PRIMFLAG_GET_BLENDMODE((*prim)->next()->flags) != blend)
+		if ((*prim)->next() != nullptr && (PRIMFLAG_GET_BLENDMODE((*prim)->next()->flags) != blend
+			|| (m_vec_hdr_chain && window().target() != nullptr
+				&& (((*prim)->container == window().target()->ui_container())
+					!= ((*prim)->next()->container == window().target()->ui_container())))))
 		{
 			break;
 		}
@@ -7257,9 +7299,13 @@ void renderer_bgfx::allocate_buffer(render_primitive *prim, uint32_t blend, bgfx
 				break;
 		}
 
+		const bool current_is_ui = m_vec_hdr_chain && window().target() != nullptr
+			&& prim->container == window().target()->ui_container();
 		prim = prim->next();
 
-		if (prim != nullptr && PRIMFLAG_GET_BLENDMODE(prim->flags) != blend)
+		if (prim != nullptr && (PRIMFLAG_GET_BLENDMODE(prim->flags) != blend
+			|| (m_vec_hdr_chain && window().target() != nullptr
+				&& ((prim->container == window().target()->ui_container()) != current_is_ui))))
 		{
 			mode_switched = true;
 		}
