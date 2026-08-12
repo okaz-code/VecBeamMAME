@@ -96,6 +96,8 @@
 #define OSDOPTION_BGFX_HDR              "bgfx_hdr"
 #define OSDOPTION_BGFX_HDR_PAPER_WHITE  "bgfx_hdr_paper_white"
 #define OSDOPTION_BGFX_HDR_DISPLAY_PEAK "bgfx_hdr_display_peak"
+#define OSDOPTION_BGFX_MACOS_FORCE_COMPOSITED "bgfx_macos_force_composited"
+#define OSDOPTION_BGFX_MACOS_EDR_DIAGNOSTICS "bgfx_macos_edr_diagnostics"
 #define OSDOPTION_BGFX_SHADOW_MASK      "bgfx_shadow_mask"
 #define OSDOPTION_BGFX_LUT              "bgfx_lut"
 #define OSDOPTION_BGFX_AVI_NAME         "bgfx_avi_name"
@@ -181,6 +183,8 @@ public:
 	bool bgfx_hdr() const { return int_value(OSDOPTION_BGFX_HDR) != 0; }
 	int bgfx_hdr_paper_white() const { return int_value(OSDOPTION_BGFX_HDR_PAPER_WHITE); }
 	const char *bgfx_hdr_display_peak() const { return value(OSDOPTION_BGFX_HDR_DISPLAY_PEAK); }
+	bool bgfx_macos_force_composited() const { return bool_value(OSDOPTION_BGFX_MACOS_FORCE_COMPOSITED); }
+	bool bgfx_macos_edr_diagnostics() const { return bool_value(OSDOPTION_BGFX_MACOS_EDR_DIAGNOSTICS); }
 	const char *bgfx_shadow_mask() const { return value(OSDOPTION_BGFX_SHADOW_MASK); }
 	const char *bgfx_lut() const { return value(OSDOPTION_BGFX_LUT); }
 	const char *bgfx_avi_name() const { return value(OSDOPTION_BGFX_AVI_NAME); }

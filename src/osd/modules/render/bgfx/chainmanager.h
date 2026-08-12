@@ -137,22 +137,22 @@ public:
 	// Clear temporal FBO history without destroying the active chain.
 	void request_temporal_reset();
 
-	// HDR auto-config calibration peak. This is an absolute display peak where the platform exposes
-	// one, or a nominal paper-white scale for relative macOS EDR auto. When set, load_chains()
-	// derives beam_peak_nits / hdr_rolloff_max slider values from it (see apply_hdr_auto). Set once
-	// by the renderer right after construction, before the first load_chains().
-	void set_hdr_display_peak(float nits, bool absolute = true)
+	// HDR auto-config calibration. Absolute-peak platforms derive both values from nits. Relative
+	// macOS EDR auto uses a stable artistic beam and leaves the hardware ceiling to a dynamic present
+	// uniform instead of freezing a transient headroom ratio into the sliders.
+	void set_hdr_display_peak(float nits, bool absolute = true, bool edr_relative_auto = false)
 	{
 		m_hdr_display_peak = nits;
 		m_hdr_display_peak_absolute = absolute;
+		m_edr_relative_auto = edr_relative_auto;
 	}
 	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
 	// Update hardware-derived defaults after the host window crosses to another monitor. This is
 	// intentionally separate from the initial setter because the first application occurs as part of
 	// load_chains(), while a live display change must update the already-loaded sliders immediately.
-	void refresh_hdr_display(float nits, bool absolute, float paper_white)
+	void refresh_hdr_display(float nits, bool absolute, bool edr_relative_auto, float paper_white)
 	{
-		set_hdr_display_peak(nits, absolute);
+		set_hdr_display_peak(nits, absolute, edr_relative_auto);
 		set_hdr_paper_white(paper_white);
 		m_hdr_live_refresh = true;
 		apply_hdr_auto();
@@ -270,10 +270,11 @@ private:
 	std::vector<std::vector<float>> m_reload_saved_settings;
 	bool                            m_temporal_reset_pending = false;
 
-	// HDR auto-config calibration peak; absolute nits when known, nominal paper-white units for EDR auto.
+	// HDR auto-config calibration peak; absolute nits when known. Relative EDR auto is ratio-based.
 	float                           m_hdr_display_peak = 0.0f;
 	float                           m_hdr_paper_white = 200.0f;
 	bool                            m_hdr_display_peak_absolute = true;
+	bool                            m_edr_relative_auto = false;
 	float                           m_hdr_last_auto_beam = 0.0f;
 	float                           m_hdr_last_auto_rolloff = 0.0f;
 	bool                            m_hdr_live_refresh = false;

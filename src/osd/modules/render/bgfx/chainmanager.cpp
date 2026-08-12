@@ -600,7 +600,7 @@ void chain_manager::load_chains()
 
 void chain_manager::apply_hdr_auto()
 {
-	if (m_hdr_display_peak <= 0.0f || !m_options.bgfx_hdr())
+	if ((!m_edr_relative_auto && m_hdr_display_peak <= 0.0f) || !m_options.bgfx_hdr())
 		return;
 
 	// Keep normal vector luminance stable relative to SDR reference white across displays. Tying it
@@ -608,11 +608,13 @@ void chain_manager::apply_hdr_auto()
 	// ~880 nits on a 1600-nit XDR panel. The established chain calibration is 330/200 = 1.65 times
 	// paper white; retain that ratio and use 85% of panel peak only as a safety ceiling. Additive
 	// crossings/overload then use hdr_rolloff_max to approach the actual display peak.
-	const float peak = m_hdr_display_peak;
 	const float paper_white = std::max(1.0f, m_hdr_paper_white);
-	const float desired_beam = std::min(1.65f * paper_white, 0.85f * peak);
+	const float peak = m_hdr_display_peak;
+	const float desired_beam = m_edr_relative_auto
+		? 1.65f * paper_white
+		: std::min(1.65f * paper_white, 0.85f * peak);
 	const float beam = std::clamp(std::round(desired_beam / 10.0f) * 10.0f, 80.0f, 2000.0f);
-	const float rmax = std::clamp(peak / beam, 1.1f, 8.0f);
+	const float rmax = m_edr_relative_auto ? 0.0f : std::clamp(peak / beam, 1.1f, 8.0f);
 	const float previous_beam = m_hdr_last_auto_beam;
 	const float previous_rmax = m_hdr_last_auto_rolloff;
 
@@ -638,6 +640,10 @@ void chain_manager::apply_hdr_auto()
 			}
 			else if (slider->name() == rmax_name)
 			{
+				// Relative EDR auto must not rewrite the artistic/user ceiling. Current hardware
+				// headroom independently constrains that value in the present shader.
+				if (m_edr_relative_auto)
+					continue;
 				if (!m_hdr_live_refresh || previous_rmax <= 0.0f || std::abs(slider->value() - previous_rmax) < 0.001f)
 				{
 					slider->import(rmax);
@@ -651,14 +657,16 @@ void chain_manager::apply_hdr_auto()
 
 	if (applied)
 	{
-		if (m_hdr_display_peak_absolute)
+		if (m_edr_relative_auto)
+			osd_printf_info(
+					"BGFX: EDR relative auto-config: beam=%.2fx reference white; dynamic display ceiling enabled\n",
+					beam / paper_white);
+		else if (m_hdr_display_peak_absolute)
 			osd_printf_info(
 					"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
 					peak, paper_white, beam, rmax);
 		else
-			osd_printf_info(
-					"BGFX: EDR relative auto-config: headroom=%.2fx, beam=%.2fx reference white, rolloff max=%.2f\n",
-					peak / paper_white, beam / paper_white, rmax);
+			osd_printf_info("BGFX: HDR relative calibration unavailable\n");
 	}
 }
 

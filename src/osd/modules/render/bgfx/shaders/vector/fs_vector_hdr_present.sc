@@ -14,7 +14,7 @@ SAMPLER2D(s_tex, 0);
 
 uniform vec4 u_hdr_params;
 uniform vec4 u_phosphor_gamut;   // (blend 0..1, 0, 0, 0) 0 = Rec.709 primaries, 1 = P22 phosphor primaries
-uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, 0, 0) hue-preserving highlight roll-off; max<=knee disables
+uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, saturation protect, current EDR headroom)
 uniform vec4 u_sdr_rolloff;      // (knee, ceiling, shadow_curve, 0) SDR-only, paper_white units; see SDR branch below
 
 void main()
@@ -38,6 +38,15 @@ void main()
 		float m0   = max(L.r, max(L.g, L.b));   // original peak (overload indicator - additive overlap nits)
 		float knee = u_hdr_rolloff.x * peak;
 		float ceil = u_hdr_rolloff.y * peak;
+		// CAMetalLayer does not tone-map values above current EDR headroom; they clip. Keep the user's
+		// artistic ceiling, but dynamically lower it to the hardware ceiling. If available headroom
+		// falls below the normal beam knee, move the knee down as well to retain a soft shoulder.
+		if (edr && u_hdr_rolloff.w > 0.0)
+		{
+			float display_ceil = u_hdr_rolloff.w * output_reference_white;
+			ceil = min(ceil, display_ceil);
+			knee = min(knee, ceil * 0.85);
+		}
 		if (ceil > knee && m0 > knee)
 		{
 			// Saturated-colour protection (u_hdr_rolloff.z, 0 = off): a display renders WHITE at peak

@@ -9,6 +9,7 @@
 #include "drawbgfx.h"
 
 #include <chrono>
+#include <cmath>
 
 // render/bgfx
 #include "bgfx/effect.h"
@@ -105,9 +106,13 @@ public:
 	float edr_reference_white_nits() const { return m_edr_reference_white_nits; }
 	float edr_headroom() const { return m_edr_headroom; }
 	bool hdr_display_peak_is_absolute() const { return m_hdr_display_peak_absolute; }
+	bool edr_relative_auto() const { return m_edr_relative_auto; }
 	// Re-evaluate the monitor containing a native window. The platform lookup itself is cheap and is
 	// performed while drawing; the HDR calibration is only rebuilt when the owning monitor changes.
 	virtual bool refresh_hdr_display_peak(void *nwh) = 0;
+	// macOS EDR headroom is dynamic. Sample it once per primary-window frame after the Metal layer
+	// has requested EDR; implementations on other platforms leave this as a no-op.
+	virtual void update_edr_headroom(void *nwh) = 0;
 
 	template <typename T>
 	util::notifier_subscription subscribe_load(void (T::*func)(util::xml::data_node const &), T *obj)
@@ -149,8 +154,18 @@ protected:
 	float m_effective_paper_white_nits = 200.0f;
 	float m_edr_reference_white_nits = 200.0f;
 	float m_edr_headroom = 0.0f;
+	float m_edr_raw_headroom = 0.0f;
+	float m_edr_potential_headroom = 0.0f;
+	float m_edr_logged_headroom = 0.0f;
+	int64_t m_edr_headroom_update_ticks = 0;
+	int64_t m_macos_edr_diagnostic_ticks = 0;
 	bool m_hdr_display_peak_absolute = false;
+	bool m_edr_relative_auto = false;
+	bool m_edr_current_resolved = false;
+	bool m_macos_edr_force_applied = false;
 	uintptr_t m_hdr_display_id = 0;
+	uintptr_t m_macos_edr_layer_id = 0;
+	uintptr_t m_macos_edr_display_id = 0;
 
 private:
 	friend class parent_module_holder;
@@ -231,6 +246,7 @@ private:
 	bool init_bgfx_library(osd_window &window);
 	void resolve_hdr_display_peak(void *nwh);
 	virtual bool refresh_hdr_display_peak(void *nwh) override;
+	virtual void update_edr_headroom(void *nwh) override;
 
 	static bool set_platform_data(bgfx::PlatformData &platform_data, osd_window const &window);
 
@@ -374,8 +390,10 @@ void video_bgfx::save_config(config_type cfg_type, util::xml::data_node *parentn
 
 
 #if defined(__APPLE__)
-static float detect_edr_headroom(void *nwh);
+static float detect_edr_current_headroom(void *nwh);
+static float detect_edr_potential_headroom(void *nwh);
 static float detect_macos_refresh_hz(void *nwh);
+static id macos_metal_layer_for_window(void *nwh);
 #endif
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 static bool detect_windows_hdr_active(void *nwh);
@@ -467,15 +485,22 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	if (hdr_requested && !s_bgfx_hdr_active)
 		osd_printf_warning("BGFX: HDR/EDR requested but unavailable; using the SDR swapchain\n");
 
-	// macOS uses an extended-linear Metal layer rather than HDR10/PQ. The Metal capability means the
-	// API exists; current headroom must also exceed 1.0 or this particular screen is effectively SDR.
+	// macOS uses an extended-linear Metal layer rather than HDR10/PQ. Potential headroom is the
+	// capability/bootstrap test only: current headroom remains 1.0 until an onscreen layer requests
+	// EDR, so using it here would create a circular test. The dynamic current value is sampled later.
 	s_bgfx_edr_active = s_bgfx_hdr_active && (bgfx::getRendererType() == bgfx::RendererType::Metal);
 #if defined(__APPLE__)
-	if (s_bgfx_edr_active && detect_edr_headroom(init.platformData.nwh) <= 1.0f)
+	if (s_bgfx_edr_active)
 	{
-		osd_printf_warning("BGFX: Metal EDR has no current display headroom; using SDR output\n");
-		s_bgfx_edr_active = false;
-		s_bgfx_hdr_active = false;
+		m_edr_potential_headroom = detect_edr_potential_headroom(init.platformData.nwh);
+		if (m_edr_potential_headroom <= 1.0f)
+		{
+			osd_printf_warning("BGFX: Metal display has no potential EDR headroom; using SDR output\n");
+			s_bgfx_edr_active = false;
+			s_bgfx_hdr_active = false;
+		}
+		else
+			osd_printf_info("BGFX: macOS EDR capability: potential headroom %.2fx\n", m_edr_potential_headroom);
 	}
 #endif
 
@@ -720,16 +745,44 @@ static float detect_hdr_display_peak_nits(void *nwh)
 
 #elif defined(__APPLE__)
 
-static id macos_screen_for_window(void *nwh)
+static id macos_screen_for_window(void *nwh, bool allow_main_screen = true)
 {
 	using msg_id_fn = id (*)(id, SEL);
+	static const SEL screen_sel = sel_registerName("screen");
+	static const SEL main_screen_sel = sel_registerName("mainScreen");
 	id screen = nullptr;
 	if (nwh != nullptr)
-		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), sel_registerName("screen"));
-	if (screen == nullptr)
+		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(reinterpret_cast<id>(nwh), screen_sel);
+	if (screen == nullptr && allow_main_screen)
 		screen = reinterpret_cast<msg_id_fn>(objc_msgSend)(
-				reinterpret_cast<id>(objc_getClass("NSScreen")), sel_registerName("mainScreen"));
+				reinterpret_cast<id>(objc_getClass("NSScreen")), main_screen_sel);
 	return screen;
+}
+
+// Resolve the CAMetalLayer installed by bgfx from an NSWindow, NSView, or layer native handle.
+// Runtime messaging keeps drawbgfx.cpp as C++ and avoids adding an Objective-C++ build unit.
+static id macos_metal_layer_for_window(void *nwh)
+{
+	using msg_id_fn = id (*)(id, SEL);
+	using msg_kind_fn = BOOL (*)(id, SEL, Class);
+
+	if (nwh == nullptr)
+		return nullptr;
+	id object = reinterpret_cast<id>(nwh);
+	Class metal_class = reinterpret_cast<Class>(objc_getClass("CAMetalLayer"));
+	Class window_class = reinterpret_cast<Class>(objc_getClass("NSWindow"));
+	Class view_class = reinterpret_cast<Class>(objc_getClass("NSView"));
+	const SEL kind_sel = sel_registerName("isKindOfClass:");
+	if (metal_class && reinterpret_cast<msg_kind_fn>(objc_msgSend)(object, kind_sel, metal_class))
+		return object;
+	if (window_class && reinterpret_cast<msg_kind_fn>(objc_msgSend)(object, kind_sel, window_class))
+		object = reinterpret_cast<msg_id_fn>(objc_msgSend)(object, sel_registerName("contentView"));
+	if (object == nullptr || !view_class || !reinterpret_cast<msg_kind_fn>(objc_msgSend)(object, kind_sel, view_class))
+		return nullptr;
+	id layer = reinterpret_cast<msg_id_fn>(objc_msgSend)(object, sel_registerName("layer"));
+	return (layer && metal_class && reinterpret_cast<msg_kind_fn>(objc_msgSend)(layer, kind_sel, metal_class))
+		? layer
+		: nullptr;
 }
 
 static uintptr_t detect_hdr_display_id(void *nwh)
@@ -759,9 +812,31 @@ static float detect_macos_refresh_hz(void *nwh)
 	return (refresh > 1 && refresh <= 1000) ? float(refresh) : 0.0f;
 }
 
-// EDR headroom (multiples of SDR reference white) of the window's screen, via the ObjC runtime so no
-// .mm needs to be added to the build. nwh is the NSWindow under SDL/Metal. Returns 0 on failure.
-static float detect_edr_headroom(void *nwh)
+// Current EDR headroom (multiples of SDR reference white) of the window's actual screen. Do not
+// fall back to mainScreen here: NSWindow.screen can be nil during startup, and calibrating against a
+// different display is worse than waiting for the next frame. Returns 0 on failure.
+static float detect_edr_current_headroom(void *nwh)
+{
+	using msg_dbl_fn = double (*)(id, SEL);
+	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
+
+	id screen = macos_screen_for_window(nwh, false);
+	if (screen == nullptr)
+		return 0.0f;
+
+	static const SEL current_sel = sel_registerName("maximumExtendedDynamicRangeColorComponentValue");
+	static const SEL responds_sel = sel_registerName("respondsToSelector:");
+	static int supported = -1;
+	if (supported < 0)
+		supported = reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, responds_sel, current_sel) ? 1 : 0;
+	if (supported)
+		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, current_sel));
+	return 0.0f;
+}
+
+// Static potential EDR headroom is a capability/bootstrap value only. It may exceed the currently
+// renderable range and must never become the present-time clipping or calibration ceiling.
+static float detect_edr_potential_headroom(void *nwh)
 {
 	using msg_dbl_fn = double (*)(id, SEL);
 	using msg_resp_fn = BOOL (*)(id, SEL, SEL);
@@ -770,29 +845,10 @@ static float detect_edr_headroom(void *nwh)
 	if (screen == nullptr)
 		return 0.0f;
 
-	// Prefer currently available headroom because it reflects brightness, display mode and thermal/
-	// power limits.  Before the CAMetalLayer requests EDR, however, some macOS versions report 1.0
-	// here even on an XDR display.  In that bootstrap state consult the potential value as capability;
-	// otherwise the SDR decision prevents the EDR layer from ever being enabled (a circular test).
-	const SEL current_sel = sel_registerName("maximumExtendedDynamicRangeColorComponentValue");
-	float current = 0.0f;
-	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), current_sel))
-		current = float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, current_sel));
-	if (current > 1.0f)
-		return current;
-
 	const SEL potential_sel = sel_registerName("maximumPotentialExtendedDynamicRangeColorComponentValue");
 	if (reinterpret_cast<msg_resp_fn>(objc_msgSend)(screen, sel_registerName("respondsToSelector:"), potential_sel))
-	{
-		const float potential = float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, potential_sel));
-		if (potential > current)
-		{
-			osd_printf_verbose("BGFX: macOS EDR current headroom %.2f; using potential headroom %.2f for bootstrap\n",
-				current, potential);
-			return potential;
-		}
-	}
-	return current;
+		return float(reinterpret_cast<msg_dbl_fn>(objc_msgSend)(screen, potential_sel));
+	return 0.0f;
 }
 
 #else
@@ -813,7 +869,20 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_effective_paper_white_nits = float(std::max(1, m_options->bgfx_hdr_paper_white()));
 	m_edr_reference_white_nits = m_effective_paper_white_nits;
 	m_edr_headroom = 0.0f;
+	m_edr_raw_headroom = 0.0f;
+	m_edr_logged_headroom = 0.0f;
+	m_edr_headroom_update_ticks = 0;
+	m_macos_edr_diagnostic_ticks = 0;
 	m_hdr_display_peak_absolute = false;
+	m_edr_relative_auto = false;
+	m_edr_current_resolved = false;
+	m_macos_edr_force_applied = false;
+	m_macos_edr_layer_id = 0;
+	m_macos_edr_display_id = 0;
+#if defined(__APPLE__)
+	if (s_bgfx_edr_active)
+		m_edr_potential_headroom = detect_edr_potential_headroom(nwh);
+#endif
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 	m_sdr_white_nits = detect_sdr_white_nits(nwh);
 	if (m_sdr_white_nits > 0.0f)
@@ -850,17 +919,12 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 		if (peak <= 0.0f)
 			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: DXGI query failed; keeping chain HDR defaults\n");
 #elif defined(__APPLE__)
-		// NSScreen exposes a ratio, not absolute luminance. Keep auto calibration in the same nominal
-		// paper-white units, but do not present the product as a measured physical display peak.
-		const float headroom = detect_edr_headroom(nwh);
-		if (headroom > 1.0f)
-		{
-			osd_printf_verbose("BGFX: macOS current EDR headroom resolved to %.2fx SDR white\n", headroom);
-			m_edr_headroom = headroom;
-			peak = headroom * m_effective_paper_white_nits;
-		}
-		else
-			osd_printf_warning("BGFX: bgfx_hdr_display_peak auto: EDR headroom query failed; keeping chain HDR defaults\n");
+		// Auto EDR is ratio-based: potential headroom was used only to enable the Metal layer, while
+		// current headroom is sampled after EDR is onscreen and passed to the present shader. Do not
+		// freeze either value into a fictitious nominal-nits display peak or persisted slider value.
+		m_edr_relative_auto = s_bgfx_edr_active;
+		if (m_edr_relative_auto)
+			osd_printf_info("BGFX: macOS EDR layer enabled; waiting for current headroom\n");
 #else
 		osd_printf_warning("BGFX: bgfx_hdr_display_peak auto is not supported on this platform; keeping chain HDR defaults\n");
 #endif
@@ -876,18 +940,19 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 #if defined(__APPLE__)
 	if (s_bgfx_edr_active && peak > 0.0f && peak_opt != OSDOPTVAL_AUTO)
 	{
-		const float headroom = detect_edr_headroom(nwh);
+		m_hdr_display_peak_absolute = true;
+		const float headroom = detect_edr_current_headroom(nwh);
 		if (headroom > 1.0f)
 		{
+			m_edr_raw_headroom = headroom;
 			m_edr_headroom = headroom;
 			m_edr_reference_white_nits = peak / headroom;
-			m_hdr_display_peak_absolute = true;
 			osd_printf_verbose(
 					"BGFX: macOS EDR absolute calibration: peak=%.0f nits, headroom=%.2fx, reference white=%.1f nits\n",
 					peak, headroom, m_edr_reference_white_nits);
 		}
 		else
-			osd_printf_warning("BGFX: macOS EDR headroom unavailable; using nominal paper-white scaling\n");
+			osd_printf_info("BGFX: macOS EDR layer enabled; waiting for current headroom\n");
 	}
 #else
 	m_hdr_display_peak_absolute = peak > 0.0f;
@@ -897,17 +962,10 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 		osd_printf_warning("BGFX: bgfx_hdr_display_peak %.0f nits is very low for an HDR display\n", peak);
 	if (peak > 0.0f)
 	{
-#if defined(__APPLE__)
-		if (s_bgfx_edr_active && peak_opt == OSDOPTVAL_AUTO)
-			osd_printf_info(
-					"BGFX: macOS EDR auto calibration scale %.0f nominal nits; absolute display peak is unknown\n",
-					peak);
-		else
-#endif
-			osd_printf_info("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
-					(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
+		osd_printf_info("BGFX: HDR display peak resolved to %.0f nits (%s)\n", peak,
+				(peak_opt == OSDOPTVAL_AUTO) ? "auto-detected" : "from option");
 	}
-	else
+	else if (!m_edr_relative_auto)
 		osd_printf_info("BGFX: HDR display peak is unavailable; chain HDR defaults will be used\n");
 	m_hdr_calibration_peak_nits = peak;
 	m_hdr_display_peak_nits = m_hdr_display_peak_absolute ? peak : 0.0f;
@@ -922,6 +980,117 @@ bool video_bgfx::refresh_hdr_display_peak(void *nwh)
 	osd_printf_info("BGFX: window moved to another display; refreshing HDR calibration\n");
 	resolve_hdr_display_peak(nwh);
 	return true;
+}
+
+void video_bgfx::update_edr_headroom(void *nwh)
+{
+#if defined(__APPLE__)
+	if (!s_bgfx_edr_active)
+		return;
+
+	const bool force_composited = m_options->bgfx_macos_force_composited();
+	const bool diagnostics = m_options->bgfx_macos_edr_diagnostics();
+	id layer = nullptr;
+	if (force_composited || diagnostics)
+		layer = macos_metal_layer_for_window(nwh);
+	const uintptr_t layer_id = reinterpret_cast<uintptr_t>(layer);
+	const uintptr_t display_id = detect_hdr_display_id(nwh);
+	if (layer_id != m_macos_edr_layer_id || (display_id && display_id != m_macos_edr_display_id))
+	{
+		m_macos_edr_layer_id = layer_id;
+		m_macos_edr_display_id = display_id;
+		m_macos_edr_force_applied = false;
+		m_macos_edr_diagnostic_ticks = 0;
+	}
+
+	if (layer)
+	{
+		using msg_bool_fn = BOOL (*)(id, SEL);
+		using msg_id_fn = id (*)(id, SEL);
+		using msg_set_bool_fn = void (*)(id, SEL, BOOL);
+		using msg_uint_fn = uintptr_t (*)(id, SEL);
+		using msg_double_fn = double (*)(id, SEL);
+		using msg_responds_fn = BOOL (*)(id, SEL, SEL);
+		const SEL responds_sel = sel_registerName("respondsToSelector:");
+
+		if (force_composited && !m_macos_edr_force_applied)
+		{
+			// A non-opaque layer disqualifies the usual opaque direct-to-display fast path. Do not set
+			// presentsWithTransaction: bgfx presents asynchronously and would stall waiting for CA commits.
+			// Metal HUD remains the authority for whether this macOS version chose Composited.
+			reinterpret_cast<msg_set_bool_fn>(objc_msgSend)(layer, sel_registerName("setOpaque:"), NO);
+			m_macos_edr_force_applied = true;
+			osd_printf_info("BGFX: macOS EDR diagnostic requested Composited presentation (non-opaque layer)\n");
+		}
+
+		const int64_t diagnostic_now = bx::getHPCounter();
+		if (diagnostics && (!m_macos_edr_diagnostic_ticks
+				|| diagnostic_now - m_macos_edr_diagnostic_ticks >= int64_t(bx::getHPFrequency())))
+		{
+			m_macos_edr_diagnostic_ticks = diagnostic_now;
+			const SEL metadata_sel = sel_registerName("edrMetadata");
+			id metadata = reinterpret_cast<msg_responds_fn>(objc_msgSend)(layer, responds_sel, metadata_sel)
+				? reinterpret_cast<msg_id_fn>(objc_msgSend)(layer, metadata_sel)
+				: nullptr;
+			osd_printf_info(
+					"BGFX: macOS EDR layer=%p screen=%p pixelFormat=%llu wantsEDR=%d opaque=%d transaction=%d colorspace=%p metadata=%p scale=%.2f rawHeadroom=%.3fx\n",
+					layer, reinterpret_cast<void *>(display_id),
+					(unsigned long long)reinterpret_cast<msg_uint_fn>(objc_msgSend)(layer, sel_registerName("pixelFormat")),
+					int(reinterpret_cast<msg_bool_fn>(objc_msgSend)(layer, sel_registerName("wantsExtendedDynamicRangeContent"))),
+					int(reinterpret_cast<msg_bool_fn>(objc_msgSend)(layer, sel_registerName("isOpaque"))),
+					int(reinterpret_cast<msg_bool_fn>(objc_msgSend)(layer, sel_registerName("presentsWithTransaction"))),
+					reinterpret_cast<msg_id_fn>(objc_msgSend)(layer, sel_registerName("colorspace")), metadata,
+					reinterpret_cast<msg_double_fn>(objc_msgSend)(layer, sel_registerName("contentsScale")),
+					m_edr_raw_headroom);
+		}
+	}
+
+	const float detected = detect_edr_current_headroom(nwh);
+	if (detected <= 0.0f)
+		return;
+
+	const int64_t now = bx::getHPCounter();
+	const double dt = m_edr_headroom_update_ticks
+		? double(now - m_edr_headroom_update_ticks) / double(bx::getHPFrequency())
+		: 0.0;
+	m_edr_headroom_update_ticks = now;
+	m_edr_raw_headroom = detected;
+	// A value of 1.0 before the first EDR frame is the documented bootstrap state, not a calibrated
+	// hardware ceiling. Wait without importing it; the compositor safely clips those startup frames.
+	if (!m_edr_current_resolved)
+	{
+		if (detected <= 1.0f)
+			return;
+		m_edr_current_resolved = true;
+		m_edr_headroom = detected;
+		m_edr_logged_headroom = detected;
+		osd_printf_info("BGFX: macOS EDR current headroom resolved to %.2fx SDR white\n", detected);
+	}
+	else if (std::abs(detected - m_edr_logged_headroom) >= std::max(0.10f, m_edr_logged_headroom * 0.05f))
+	{
+		osd_printf_verbose("BGFX: macOS EDR available headroom changed %.2fx -> %.2fx\n",
+			m_edr_logged_headroom, detected);
+		m_edr_logged_headroom = detected;
+	}
+
+	// A falling ceiling must take effect immediately to prevent clipping. Rising headroom is exposed
+	// over one second so ambient-light/brightness changes do not pump vector crossings and bloom.
+	if (m_edr_headroom <= 0.0f || detected < m_edr_headroom)
+		m_edr_headroom = detected;
+	else if (detected > m_edr_headroom * 1.01f && dt > 0.0)
+	{
+		const float alpha = 1.0f - std::exp(-float(std::min(dt, 0.25)));
+		m_edr_headroom += (detected - m_edr_headroom) * alpha;
+	}
+
+	// Numeric macOS calibration is absolute. Reconstruct the physical reference-white scale from the
+	// filtered current ratio; relative auto deliberately keeps the configured paper-white scale.
+	if (!m_edr_relative_auto && m_hdr_display_peak_nits > 0.0f && m_edr_headroom > 0.0f)
+		m_edr_reference_white_nits = m_hdr_display_peak_nits / m_edr_headroom;
+
+#else
+	(void)nwh;
+#endif
 }
 
 
@@ -1341,7 +1510,8 @@ int renderer_bgfx::create()
 	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win).
 	m_chains->set_hdr_display_peak(
 			m_module().hdr_calibration_peak_nits(),
-			m_module().hdr_display_peak_is_absolute());
+			m_module().hdr_display_peak_is_absolute(),
+			m_module().edr_relative_auto());
 	m_chains->set_hdr_paper_white(m_module().paper_white_nits());
 	m_sliders_dirty = true;
 
@@ -3992,9 +4162,12 @@ int renderer_bgfx::draw(int update)
 		m_chains->refresh_hdr_display(
 				m_module().hdr_calibration_peak_nits(),
 				m_module().hdr_display_peak_is_absolute(),
+				m_module().edr_relative_auto(),
 				m_module().paper_white_nits());
 		m_sliders_dirty = true;
 	}
+	if (window_index == 0)
+		m_module().update_edr_headroom(native_window_handle());
 
 	// Set view 0 default viewport.
 	if (window_index == 0)
@@ -6456,15 +6629,17 @@ int renderer_bgfx::draw(int update)
 			// Hue-preserving highlight roll-off (knee / max as multiples of beam_peak). Caps over-bright
 			// additive crossings while keeping chromaticity, so a blue line crossing stays blue instead of
 			// the panel desaturating it to purple. max <= knee disables. Defaults leave a single full line
-			// untouched (knee 1.0) and only roll the brighter overlaps. (.zw unused: overload whitening is
-			// done per-vector in put_analytic_line, tied to beam_energy, not from total pixel nits here.)
+			// untouched (knee 1.0) and only roll the brighter overlaps. z controls saturated-colour
+			// protection; w carries the current macOS EDR headroom. Overload whitening is done per-vector
+			// in put_analytic_line, tied to beam_energy, not from total pixel nits here.
 			bgfx_uniform *ro = m_hdr_present_effect->uniform("u_hdr_rolloff");
 			if (ro)
 			{
 				float rov[4] = {
 					m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f),
 					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
-					m_chains->slider_value(0, "hdr_sat_protect", 0.0f), 0.0f };
+					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
+					s_bgfx_edr_active ? m_module().edr_headroom() : 0.0f };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
 			}
@@ -6685,12 +6860,23 @@ void renderer_bgfx::process_hdr_diagnostics()
 	m_hdr_diag_pending = false;
 
 	const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
-	const float rolloff_knee = m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f) * beam_peak;
-	const float rolloff_ceil = m_chains->slider_value(0, "hdr_rolloff_max", 1.3f) * beam_peak;
+	float rolloff_knee = m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f) * beam_peak;
+	float rolloff_ceil = m_chains->slider_value(0, "hdr_rolloff_max", 1.3f) * beam_peak;
 	const float sat_protect = m_chains->slider_value(0, "hdr_sat_protect", 0.0f);
+	const float edr_reference = m_module().edr_reference_white_nits();
+	const float headroom = s_bgfx_edr_active
+		? m_module().edr_headroom()
+		: 0.0f;
+	if (s_bgfx_edr_active && headroom > 0.0f)
+	{
+		rolloff_ceil = std::min(rolloff_ceil, headroom * edr_reference);
+		rolloff_knee = std::min(rolloff_knee, rolloff_ceil * 0.85f);
+	}
 	float display_peak = m_module().hdr_display_peak_is_absolute()
 		? m_module().hdr_display_peak_nits()
 		: m_module().hdr_calibration_peak_nits();
+	if (s_bgfx_edr_active && !m_module().hdr_display_peak_is_absolute() && headroom > 0.0f)
+		display_peak = headroom * edr_reference;
 	if (display_peak <= 0.0f)
 		display_peak = rolloff_ceil;
 	const float hot_threshold = 0.8f * display_peak;
@@ -6744,9 +6930,8 @@ void renderer_bgfx::process_hdr_diagnostics()
 	while (!top.empty()) { top_sum += top.top(); top.pop(); }
 	const double pixel_count = double(std::max<size_t>(1, m_hdr_diag_pixels.size()));
 	const float usage = display_peak > 0.0f ? 100.0f * post_peak / display_peak : 0.0f;
-	const float edr_reference = m_module().edr_reference_white_nits();
-	const float headroom = s_bgfx_edr_active
-		? m_module().edr_headroom()
+	const float diagnostic_headroom = s_bgfx_edr_active
+		? headroom
 		: (m_module().paper_white_nits() > 0.0f
 			? display_peak / m_module().paper_white_nits() : 0.0f);
 	const char *mode = s_bgfx_edr_active ? "macOS EDR" : (s_bgfx_hdr_active ? "HDR10" : "SDR fallback");
@@ -6758,7 +6943,7 @@ void renderer_bgfx::process_hdr_diagnostics()
 			"Beam peak: %.2fx  Pre-rolloff max: %.2fx\n"
 			"Post-rolloff max: %.2fx (%.1f%% headroom)  Top %u avg: %.2fx\n"
 			"Pixels >=80%% headroom: %llu  Frame avg: %.3fx",
-			headroom, beam_peak * inv_reference, pre_peak * inv_reference,
+			diagnostic_headroom, beam_peak * inv_reference, pre_peak * inv_reference,
 			post_peak * inv_reference, usage, unsigned(top_count),
 			(top_count ? float(top_sum / double(top_count)) : 0.0f) * inv_reference,
 			(unsigned long long)hot_pixels, float(post_sum / pixel_count) * inv_reference));
@@ -6770,7 +6955,7 @@ void renderer_bgfx::process_hdr_diagnostics()
 			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
 			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
 			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
-			display_peak, edr_reference, headroom, beam_peak, pre_peak, post_peak, usage,
+			display_peak, edr_reference, diagnostic_headroom, beam_peak, pre_peak, post_peak, usage,
 			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
 			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
 	}
@@ -6781,7 +6966,7 @@ void renderer_bgfx::process_hdr_diagnostics()
 			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
 			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
 			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
-			mode, display_peak, headroom, beam_peak, pre_peak, post_peak, usage,
+			mode, display_peak, diagnostic_headroom, beam_peak, pre_peak, post_peak, usage,
 			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
 			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
 	}
