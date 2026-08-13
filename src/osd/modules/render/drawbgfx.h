@@ -318,11 +318,14 @@ public:
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
 		float line_cap_junction_suppress = 0.0f; // attenuate a cap terminating on another line's interior
-		float line_cap_max_size = 0.0f;    // max cap sigma at 1920-ref; 0 = unlimited (legacy)
 		float line_cap_mode = 0.0f;        // 0 legacy, 1 blank transitions, 2 RAMP flags, 3 off
 		float line_cap_min_size = 0.0f;
 		float line_cap_size = 2.0f;         // = LINE_CAP_SIZE_PX
 		float line_cap_width = 1.5f;
+		float line_cap_overload_add = 0.0f; // overload-only full-width addition at the endpoint
+		float line_cap_overload_curve = 4.0f; // >1 delays endpoint growth until near max overload
+		float line_cap_transition = 8.0f;   // endpoint-width taper length at 1920-ref
+		float line_cap_curve = 1.5f;        // endpoint-width taper power
 		float line_point_threshold = 2.0f;  // = LINE_POINT_THRESHOLD
 		float linear_color = 0.0f;
 		float overdrive_core = 0.0f;
@@ -397,19 +400,19 @@ private:
 	bgfx::FrameBufferHandle m_vec_optical_fb = BGFX_INVALID_HANDLE;
 	uint16_t m_vec_glow_fb_w = 0;
 	uint16_t m_vec_glow_fb_h = 0;
-	// No-persist FBO: line end caps and short-dwell junction dots are drawn here (bypassing the
-	// phosphor pool) so a chain pass can add them back AFTER the pool - bright while drawn, no
-	// afterimage - without ever feeding them into the narrow/wide glow cascade (which m_vec_glow_fb
-	// shares). Same size/format as m_vec_glow_fb; colour-only. Exposed to the chain as "npglow".
+	// No-persist FBO: short-dwell junction dots are drawn here (bypassing the phosphor pool) so a
+	// chain pass can add them back AFTER the pool - bright while drawn, no afterimage - without ever
+	// feeding them into the narrow/wide glow cascade (which m_vec_glow_fb shares). Same size/format as
+	// m_vec_glow_fb; colour-only. Exposed to the chain as "npglow".
 	bgfx::FrameBufferHandle m_vec_np_fb = BGFX_INVALID_HANDLE;
 
 	// Analytic-AA vector line effect (fs_vector_line). Draws vector LINEs into m_vec_fb.
 	// The subsequent post-processing is handled by the chain (JSON).
 	bgfx_effect* m_line_effect = nullptr;
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
-	// 18 verts/line on AnalyticLineVertex: body quad + two gaussian end-cap dots).
+	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -438,7 +441,7 @@ private:
 	int m_glow_off_flare = -1;   // overdrive white flare (intensity_overdrive)
 	int m_glow_off_oglow = -1;   // overload-only bloom halo (overload_glow_gain)
 	static constexpr int GLOW_RAY_SEGS = 3;   // taper sub-quads per starburst ray (bright thin base -> wide faint tip)
-	bool m_caps_glow = false;    // cap_no_persist: line caps drawn into the separate no-persist FBO (bypass the phosphor pool)
+	bool m_caps_glow = false;    // cap_no_persist: short-dwell junction dots bypass the phosphor pool
 	int m_glow_rays_n    = 0;    // number of rays packed per line (ray_count)
 	int m_glow_vpl = 0;          // ordinary glow components only
 	int m_optical_vpl = 0;       // halation rim/fill components only

@@ -1,4 +1,4 @@
-$input v_color0, v_texcoord1, v_texcoord0, v_texcoord2
+$input v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -104,10 +104,36 @@ void main()
 		// for long lines (no change) and restores the full dwell-dot peak as len -> 0.
 		float lpk = erf_approx((a - b) * 0.5 * inv_s_sqrt2);
 		axial /= max(mix(1.0, lpk, u_line_params.z), 1e-3);
-		// Flat core: carve a SOLID band of half-width v_texcoord0.y out of the cross-section - the
-		// gaussian applies to the distance OUTSIDE the band (dc), so a width-lifted line is a bright
-		// band with thin gaussian edges instead of one wide blur. 0 = plain gaussian (dc == |d|).
-		float dc = max(abs(d) - max(v_texcoord0.y, 0.0), 0.0);
+		// Flat core: carve a SOLID band out of the cross-section. Endpoint thickness is evaluated
+		// inside the true [p0,p1] stroke instead of drawing additive dots over its ends. The start/end
+		// profiles taper to the ordinary body width over the requested distance; max (not sum) prevents
+		// short strokes whose profiles overlap from becoming twice as wide in the middle.
+		float start_round = (v_texcoord3.x < 0.0) ? 1.0 : 0.0;
+		float finish_round = (v_texcoord3.y < 0.0) ? 1.0 : 0.0;
+		float start_amount = (v_texcoord3.x < 0.0) ? (-v_texcoord3.x - 1.0) : v_texcoord3.x;
+		float finish_amount = (v_texcoord3.y < 0.0) ? (-v_texcoord3.y - 1.0) : v_texcoord3.y;
+		float body_core = max(v_texcoord0.y, 0.0);
+		float end_core = max(v_texcoord3.z, 0.0);
+		float transition = max(v_texcoord3.w, 1e-4);
+		float end_curve = max(u_line_params.x, 0.1);
+		float start_profile = start_amount * pow(clamp(1.0 - max(a, 0.0) / transition, 0.0, 1.0), end_curve);
+		float finish_profile = finish_amount * pow(clamp(1.0 - max(-b, 0.0) / transition, 0.0, 1.0), end_curve);
+		float end_profile = clamp(max(start_profile, finish_profile), 0.0, 1.0);
+		float local_core = mix(body_core, end_core, end_profile);
+		float start_radius = mix(body_core, end_core, clamp(start_amount, 0.0, 1.0));
+		float finish_radius = mix(body_core, end_core, clamp(finish_amount, 0.0, 1.0));
+		// Round only the enabled stroke termini, inward from the exact p0/p1 coordinates. This is the
+		// SDF of a variable-width body whose end is a semicircle: no extra cap primitive, brightness,
+		// or centreline extension is introduced. With Line End Width = 1 the ordinary line still has
+		// rounded corners; the width controls only how large that rounded terminal becomes.
+		float core_sd = abs(d) - local_core;
+		float start_round_zone = start_round * step(1e-4, start_radius) * (1.0 - step(start_radius, a));
+		float finish_round_zone = finish_round * step(1e-4, finish_radius) * (1.0 - step(finish_radius, -b));
+		if (start_round_zone > 0.0)
+			core_sd = length(vec2(a - start_radius, d)) - start_radius;
+		if (finish_round_zone > 0.0)
+			core_sd = length(vec2(b + finish_radius, d)) - finish_radius;
+		float dc = max(core_sd, 0.0);
 		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
 		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on
 		// a pixel centre (crisp, fat) while diagonals fell between pixels (thin). The footprint width
@@ -128,10 +154,12 @@ void main()
 		{
 			perp = exp(-dc * dc * inv_2s2);
 		}
-		// Edge sharpness: reshape the perpendicular cross-section toward a flat-topped band (the axial
-		// end roll-off is left alone so stroke ends stay round). p=1 -> unchanged.
+		// Edge sharpness: reshape the perpendicular cross-section toward a flat-topped band. In a
+		// rounded terminus the circular SDF is the complete beam shape, so do not multiply it by the
+		// swept-line axial roll-off again; that second fade made the semicircle look pinched/pointed.
 		perp = sharpen(perp, u_line_params.y);
-		fade = perp * axial;
+		float round_zone = clamp(max(start_round_zone, finish_round_zone), 0.0, 1.0);
+		fade = perp * mix(axial, 1.0, round_zone);
 	}
 
 	// Float intensity multiplier. Core/overload geometry carries z >= 0 (x1 and above); very faint
