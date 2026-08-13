@@ -2924,11 +2924,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_vs.bright_sigmoid_center);
 		const float wsig = m_vs.width_sigmoid;
 		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_vs.width_sigmoid_center);
-		// Normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
-		// object-lifted bullet/explosion). Brightness is clamped to bright_normal_cap for normal beams and
+		// SDR-only normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
+		// object-lifted bullet/explosion). HDR/EDR uses beam_peak_nits as the normal-beam calibration, so
+		// applying this additional cap there would make the configured peak ambiguous. Brightness is
+		// clamped to bright_normal_cap for normal SDR beams and
 		// the cap ramps back to 1.0 as n goes 1->2, so ordinary objects sit dimmer while lifted ones reach
 		// full white. 1.0 = off (no cap).
-		const float bcap = m_vs.bright_normal_cap;
+		const float bcap = (s_bgfx_hdr_active || s_bgfx_edr_active) ? 1.0f : m_vs.bright_normal_cap;
 		if (bcap < 1.0f)
 		{
 			const float uncap = std::clamp(n - 1.0f, 0.0f, 1.0f);   // 0 = normal (n<=1), 1 = lifted (n>=2)
@@ -3936,11 +3938,13 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		if (bsig != 0.0f) display_a = vec_scurve(display_a, bsig, m_vs.bright_sigmoid_center);
 		const float wsig = m_vs.width_sigmoid;
 		if (wsig != 0.0f && wf > 0.0f && wf < 1.0f) wf = vec_scurve(wf, wsig, m_vs.width_sigmoid_center);
-		// Normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
-		// object-lifted bullet/explosion). Brightness is clamped to bright_normal_cap for normal beams and
+		// SDR-only normal-brightness cap, released when the beam is "lifted" (driven past the ref, n>1 = an
+		// object-lifted bullet/explosion). HDR/EDR uses beam_peak_nits as the normal-beam calibration, so
+		// applying this additional cap there would make the configured peak ambiguous. Brightness is
+		// clamped to bright_normal_cap for normal SDR beams and
 		// the cap ramps back to 1.0 as n goes 1->2, so ordinary objects sit dimmer while lifted ones reach
 		// full white. 1.0 = off (no cap).
-		const float bcap = m_vs.bright_normal_cap;
+		const float bcap = (s_bgfx_hdr_active || s_bgfx_edr_active) ? 1.0f : m_vs.bright_normal_cap;
 		if (bcap < 1.0f)
 		{
 			const float uncap = std::clamp(n - 1.0f, 0.0f, 1.0f);   // 0 = normal (n<=1), 1 = lifted (n>=2)
@@ -6317,6 +6321,22 @@ int renderer_bgfx::draw(int update)
 				const float ambient_scale_vals[4] = { ambient_output_scale, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_ambient_output_scale", ambient_scale_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_ambient_output_scale", ambient_scale_vals, 4);
+
+				// The normalized chain contains both the beam core and its optical glow. The later HDR seed
+				// multiplies that whole image by beam_peak_nits; without compensation, raising the requested
+				// core luminance also raises low-level glow tails and makes their visible radius grow. Keep the
+				// beam-derived glow near its 240-nit chain calibration while leaving core luminance and Energy
+				// Beam geometry untouched. Stability 0 reproduces the old coupled exposure; 1 keeps glow nits
+				// constant. SDR has its own exposure controls and deliberately bypasses this HDR-only factor.
+				constexpr float HDR_GLOW_REFERENCE_NITS = 240.0f;
+				const float beam_peak = std::max(1.0f, m_chains->slider_value(0, "beam_peak_nits", HDR_GLOW_REFERENCE_NITS));
+				const float glow_stability = std::clamp(m_chains->slider_value(0, "hdr_glow_stability", 1.0f), 0.0f, 1.0f);
+				const float glow_compensation = hdr_present
+					? std::pow(HDR_GLOW_REFERENCE_NITS / beam_peak, glow_stability)
+					: 1.0f;
+				const float glow_compensation_vals[4] = { glow_compensation, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "add_mglow",   "u_hdr_glow_compensation", glow_compensation_vals, 4);
+				m_chains->inject_entry_uniform(0, "Glow Combine", "u_hdr_glow_compensation", glow_compensation_vals, 4);
 
 				// Colour phosphor-decay pool. The "Phosphor" update pass and the "Phosphor Apply"
 				// compose pass share u_phos = (dt_ms, half_ms, curve, total_ms): the pool holds

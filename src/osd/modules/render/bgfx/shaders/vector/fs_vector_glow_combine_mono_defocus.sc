@@ -25,6 +25,7 @@ uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_room_ambient;
 uniform vec4 u_ambient_output_scale;
+uniform vec4 u_hdr_glow_compensation;
 uniform vec4 u_convergence_global;
 uniform vec4 u_convergence_global_color;
 uniform vec4 u_tube_distortion;
@@ -240,8 +241,10 @@ void main()
 	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*phosphor_tint*global_weight*face;
 	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
 	if(band>0.0)bezel=bezel_corner_light(emit_uv)*phosphor_tint*(band*max(u_bezel_glow_strength.x,0.0));
-	vec3 composite=(base+glow+optical)*face+ambient+global_out+bezel;
+	// Apply after shape_glow so changing HDR Beam Peak does not reveal more of the nonlinear tail.
+	float glow_compensation=max(u_hdr_glow_compensation.x,0.0);
+	vec3 composite=(base+(glow+optical)*glow_compensation)*face+ambient+(global_out+bezel)*glow_compensation;
 	float glass_activity=max(u_glass_forward_scatter.x,u_glass_surface_illumination.x);vec3 glass_light=vec3_splat(0.0);
-	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0))*phosphor_tint;
+	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0))*phosphor_tint*glow_compensation;
 	gl_FragColor=vec4(apply_glass_optics(composite,glass_light),1.0)*v_color0;
 }

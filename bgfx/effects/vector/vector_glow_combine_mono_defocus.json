@@ -172,6 +172,16 @@
       ]
     },
     {
+      "name": "u_hdr_glow_compensation",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_convergence_global",
       "type": "vec4",
       "values": [
