@@ -2267,11 +2267,14 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
 	{ "line_cap_junction_suppress", &renderer_bgfx::vec_slider_cache::line_cap_junction_suppress, 0.0f },
-	{ "line_cap_max_size", &renderer_bgfx::vec_slider_cache::line_cap_max_size, 0.0f },
 	{ "line_cap_mode", &renderer_bgfx::vec_slider_cache::line_cap_mode, 0.0f },
 	{ "line_cap_min_size", &renderer_bgfx::vec_slider_cache::line_cap_min_size, 0.0f },
 	{ "line_cap_size", &renderer_bgfx::vec_slider_cache::line_cap_size, 2.0f },
 	{ "line_cap_width", &renderer_bgfx::vec_slider_cache::line_cap_width, 1.5f },
+	{ "line_cap_overload_add", &renderer_bgfx::vec_slider_cache::line_cap_overload_add, 0.0f },
+	{ "line_cap_overload_curve", &renderer_bgfx::vec_slider_cache::line_cap_overload_curve, 4.0f },
+	{ "line_cap_transition", &renderer_bgfx::vec_slider_cache::line_cap_transition, 8.0f },
+	{ "line_cap_curve", &renderer_bgfx::vec_slider_cache::line_cap_curve, 1.5f },
 	{ "line_point_threshold", &renderer_bgfx::vec_slider_cache::line_point_threshold, 2.0f },
 	{ "linear_color", &renderer_bgfx::vec_slider_cache::linear_color, 0.0f },
 	{ "overdrive_core", &renderer_bgfx::vec_slider_cache::overdrive_core, 0.0f },
@@ -2707,7 +2710,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 }
 
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -2943,7 +2946,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// power curve up to brightness saturation, followed by a normalized logistic lift after the common
 	// overload threshold.  Zero disables the added geometry, while chains without the slider retain
 	// the former width transfer unchanged.
-	const bool sigmoid_width = (m_vs.overload_width_add > 0.0f);
+	// A declared Overload Width Add slider selects the modern width transfer even at exactly zero.
+	// Previously zero fell through to the legacy beam_width_overmax path, so "0" could still widen
+	// overloaded lines and also changed the response curve discontinuously.
+	const bool sigmoid_width = (m_vs.overload_width_add >= 0.0f);
 	float overload_width_amount = 0.0f;
 	float normal_beam_units;
 	float beam_units;
@@ -3178,7 +3184,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// overload-energy transfer, independent of the optional geometric-width sigmoid.  The link
 	// defaults on for existing chains; Vectrex exposes it off by default so Width Add can be tuned
 	// without silently reshaping the optical spread.
-	float sigma = (width / 3.2f) * (1.0f + ovld);
+	// Focus is derived from the ordinary beam width. Overload Width Add expands only the solid core;
+	// it must not enlarge the gaussian skirt and make a thicker line simultaneously blurrier.
+	float sigma = (normal_width / 3.2f) * (1.0f + ovld);
 	const float overload_bloom = m_vs.overload_bloom;
 	if (overload_bloom > 0.0f)
 	{
@@ -3224,10 +3232,14 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Points and lines share the same flat-core fraction (the separate dot_flat override was retired;
 	// it had defaulted to the same value as core_flat, so this is behaviour-preserving).
 	const float flat_f = core_flat;
-	float wcore = 0.0f;
+	// Preserve the normal flat-core calibration, then add all overload-only geometry as a solid band.
+	// This makes Overload Width Add a literal full-width addition (half on each side) even when
+	// core_flat is zero; Overload Bloom remains the independent control for optical defocus.
+	const float overload_width_px = std::max(0.0f, width - normal_width);
+	float wcore = 0.5f * overload_width_px;
 	if (flat_f > 0.0f)
 	{
-		wcore = flat_f * 0.5f * width;
+		wcore += flat_f * 0.5f * normal_width;
 		// Edge skirt sigma from the remaining (1 - F) share of the gaussian.
 		sigma = std::max(sig_floor, sigma * (1.0f - flat_f));
 	}
@@ -3243,7 +3255,24 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// keeps the dramatic wide halo for genuinely hot vectors while making barely-overloaded ones cheap.
 	const float oglow_ramp = std::min(1.0f, oglow_mag);
 	const float oglow_sig = sigma + std::max(0.0f, m_vs.overload_glow_width * vec_res_scale()) * oglow_ramp;
-	const float pad = wcore + 3.5f * sigma + 0.5f;
+	// Endpoint thickness is part of the stroke itself, not an additive dot. At a fully active end,
+	// line_cap_width scales the body's apparent width; the shader tapers that core back to wcore over
+	// line_cap_transition while retaining the same colour and peak brightness as the body.
+	const float end_width_scale = std::max(0.1f, m_vs.line_cap_width);
+	const float raw_end_overload = std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
+	const float end_overload_input = sigmoid_width ? overload_width_amount : raw_end_overload;
+	const float end_overload = powf(end_overload_input,
+		std::max(0.1f, m_vs.line_cap_overload_curve));
+	const float end_overload_core = 0.5f * std::max(0.0f, m_vs.line_cap_overload_add)
+		* vec_res_scale() * end_overload;
+	const float end_core = std::max(0.0f,
+		wcore + 0.5f * width * (end_width_scale - 1.0f) + end_overload_core);
+	const float end_transition = std::max(0.0f, m_vs.line_cap_transition) * vec_res_scale();
+	const float end_start = std::clamp(start_cap, 0.0f, 1.0f);
+	const float end_finish = std::clamp(end_cap, 0.0f, 1.0f);
+	const float rounded_start = std::clamp(round_start, 0.0f, 1.0f);
+	const float rounded_finish = std::clamp(round_end, 0.0f, 1.0f);
+	const float pad = std::max(wcore, end_core) + 3.5f * sigma + 0.5f;
 
 	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
 	else { dx = 1.0f; dy = 0.0f; }
@@ -3254,6 +3283,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_rgba = rgba;
 		vertex[i].m_u = wcore; vertex[i].m_v = 0.0f;
 		vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = sg;
+		// Negative encoding carries an independent round-terminus flag without another vertex
+		// attribute: -(1 + width-profile amount) = rounded, 0..1 = not rounded.
+		vertex[i].m_end_start = rounded_start > 0.5f ? -(1.0f + end_start) : end_start;
+		vertex[i].m_end_finish = rounded_finish > 0.5f ? -(1.0f + end_finish) : end_finish;
+		vertex[i].m_end_core = end_core; vertex[i].m_end_transition = end_transition;
 	};
 
 	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
@@ -3267,6 +3301,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_rgba = drgba;
 			tgt[i].m_u = wc; tgt[i].m_v = 0.0f;
 			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
+			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
+			tgt[i].m_end_core = wc; tgt[i].m_end_transition = 0.0f;
 		};
 		dv(base + 0, cx - p, cy - p, -p, -p);
 		dv(base + 1, cx + p, cy - p,  p, -p);
@@ -3282,6 +3318,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[base + i].m_rgba = 0;
 			tgt[base + i].m_u = 0.0f; tgt[base + i].m_v = 0.0f;
 			tgt[base + i].m_a = 0.0f; tgt[base + i].m_b = 0.0f; tgt[base + i].m_d = 0.0f; tgt[base + i].m_sigma = -1.0f;
+			tgt[base + i].m_end_start = 0.0f; tgt[base + i].m_end_finish = 0.0f;
+			tgt[base + i].m_end_core = 0.0f; tgt[base + i].m_end_transition = 0.0f;
 		}
 	};
 
@@ -3296,6 +3334,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_rgba = rrgba;
 			tgt[i].m_u = 0.0f; tgt[i].m_v = 0.0f;
 			tgt[i].m_a = a; tgt[i].m_b = radius; tgt[i].m_d = d; tgt[i].m_sigma = sg;
+			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
+			tgt[i].m_end_core = 0.0f; tgt[i].m_end_transition = 0.0f;
 		};
 		rv(base + 0, cx - p, cy - p, -p, -p);
 		rv(base + 1, cx + p, cy - p,  p, -p);
@@ -3368,8 +3408,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 		for (int g = 1; g * 6 < int(m_vec_vpl); g++)
 			set_degenerate(vertex, g * 6);
-		// point path uses no cap slots in the no-persist buffer
-		if (np_vertex) { set_degenerate(np_vertex, 6); set_degenerate(np_vertex, 12); }
 
 		// GLOW buffer (composited AFTER the shadow mask, so this scattered light is not mask-patterned):
 		// the wide analytic glow dot + the halation ring + the inner fill.
@@ -3582,6 +3620,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 							ray_vertex[i].m_rgba = srgba;
 							ray_vertex[i].m_u = 0.0f; ray_vertex[i].m_v = 0.0f;
 							ray_vertex[i].m_a = a; ray_vertex[i].m_b = a - slen; ray_vertex[i].m_d = d; ray_vertex[i].m_sigma = ssig;
+							ray_vertex[i].m_end_start = 0.0f; ray_vertex[i].m_end_finish = 0.0f;
+							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = 0.0f;
 						};
 						rvv(rbase + 0, sx0 + rnx * rpad, sy0 + rny * rpad, a0,  rpad);
 						rvv(rbase + 1, sx1 + rnx * rpad, sy1 + rny * rpad, a1,  rpad);
@@ -3596,85 +3636,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		return;
 	}
 
-	// End caps: gaussian dots driven by the same line_cap sliders as the classic path
-	// (size/min/intensity-curve/brightness). The erf already gives the physical 50% end
-	// roll-off; these add the visible bright endpoint on top, until the dwell-time model
-	// (vertex_dwell) replaces them. In deflection mode the body uses DEFL_NOUT quads, so the
-	// caps move to the slots right after it.
-	// cap_no_persist: caps live in the separate NO-PERSIST FBO (post-pool, no afterimage) instead
-	// of the core. That buffer's layout is fixed: slot [0] = no-persist dot (point path only, unused
-	// here), [6] = cap0, [12] = cap1. When off, caps stay in the core buffer at their usual offsets.
-	const bool caps_to_np = m_caps_glow && np_vertex != nullptr;
-	const int cap0 = caps_to_np ? 6 : (m_defl_on ? DEFL_NOUT * 6 : 6);
-	const int cap1 = caps_to_np ? 12 : (cap0 + 6);
-	AnalyticLineVertex *const cap_tgt = caps_to_np ? np_vertex : vertex;
-	// line path never uses the no-persist dot slot [0]; blank it so a stale value is not drawn
+	// Endpoint thickness is evaluated inside the line shader from the profile carried by the body
+	// vertices, so changing it never extends the centreline or adds brightness. A line never uses the
+	// short-dwell no-persist slot; blank it so stale point data cannot be drawn.
 	if (np_vertex != nullptr) set_degenerate(np_vertex, 0);
-	// Skip caps only when cap_no_persist is on but the np buffer could not be allocated this frame:
-	// the core buffer has no cap slots then (verts_per_line dropped by 12), so writing would overrun.
-	const bool cap_slots_ok = !(m_caps_glow && np_vertex == nullptr);
-	if (cap_tgt != nullptr && cap0 >= 0 && cap_slots_ok)
-	{
-		// End caps: a beam-spot dot at each true endpoint. Its size is intrinsic - the same gaussian
-		// sigma as the line cross-section (the dwelling beam spot), so it tracks the unified width
-		// transfer automatically (a dim / thin line gets a small cap) and needs no separate size
-		// sliders. line_cap_brightness sets the overall strength; vertex_dwell's per-endpoint factor
-		// (start_cap / end_cap from the neighbour-aware pre-pass) modulates it - 1.0 at stroke termini
-		// and sharp corners where the beam dwells, toward 0 at straight joints. The erf already gives
-		// the physical 50% end roll-off; the cap adds the bright endpoint on top, scaled to ~0.5x so the
-		// endpoint peak (0.5 erf + 0.5 cap) lands near the line intensity at full strength.
-		const float cap_bright = std::max(0.0f, m_vs.line_cap_brightness);
-		if (cap_bright > 0.0f)
-		{
-			// The cap is the finite blanking/Z transition of the ordinary moving spot. Derive it
-			// before overload-width lift, overload bloom, edge defocus and HV droop.
-			const float raw_cap_over = std::clamp((n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f), 0.0f, 1.0f);
-			const bool link_width_caps = sigmoid_width && m_vs.overload_width_bloom_link > 0.5f;
-			const float cap_over = link_width_caps ? overload_width_amount : raw_cap_over;
-			const float cap_smooth = cap_over * cap_over * (3.0f - 2.0f * cap_over);
-			const float cap_scale = 0.5f * cap_bright * (1.0f - cap_smooth);
-			// line_cap_width fattens the endpoint dot a touch beyond the bare beam spot (1.0 = exactly
-			// the line's sigma); the dwell dot is usually a little larger than the running stroke.
-			float sg_cap = std::max(sig_floor, normal_width / 3.2f);
-			float cap_wcore = 0.0f;
-			if (flat_f > 0.0f)
-			{
-				cap_wcore = flat_f * 0.5f * normal_width;
-				sg_cap = std::max(sig_floor, sg_cap * (1.0f - flat_f));
-			}
-			sg_cap *= std::max(0.1f, m_vs.line_cap_width);
-			const float cap_max = m_vs.line_cap_max_size * vec_res_scale();
-			if (cap_max > 0.0f)
-			{
-				const float extent = cap_wcore + sg_cap;
-				if (extent > cap_max)
-				{
-					const float shrink = cap_max / extent;
-					cap_wcore *= shrink;
-					sg_cap *= shrink;
-				}
-			}
-			auto cap_rgba_for = [&](float boost) -> uint32_t {
-				const float s = cap_scale * boost;
-				return u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * s * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(std::clamp(display_a, 0.0f, 1.0f) * 255.0f + 0.5f), 255));
-			};
-			// No brightness compensation: the dedicated no-persist FBO is combined 1:1 (the JSON's
-			// NoPersist Combine pass cancels the shader BLOOM_BRIGHTNESS_GAIN with scale 0.3745), so the
-			// cap carries the same z as the core spot (core_over) whether it went to the core or np FBO.
-			const float cap_z = core_over;
-			set_dot(cap_tgt, cap0, x0, y0, sg_cap, cap_rgba_for(start_cap), cap_z, cap_wcore);
-			set_dot(cap_tgt, cap1, x1, y1, sg_cap, cap_rgba_for(end_cap), cap_z, cap_wcore);
-		}
-		else
-		{
-			set_degenerate(cap_tgt, cap0);
-			set_degenerate(cap_tgt, cap1);
-		}
-	}
 
 	if (!m_defl_on)
 	{
@@ -3695,7 +3660,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// Deflection dynamics: draw the simulated beam trajectory as a short polyline of DEFL_NOUT sub-
 	// quads. Each sub-quad uses a saturated axial term (a = +BIG, b = -BIG -> the erf difference is 1),
 	// so there is no per-sub-segment end roll-off and the pieces join continuously; the true endpoints
-	// are handled by the cap dots above. The perpendicular gaussian (d = +-pad) still gives the width.
+	// roll-off. The perpendicular gaussian (d = +-pad) still gives the width.
 	float tx[DEFL_NOUT + 1], ty[DEFL_NOUT + 1];
 	const double draw_secs = (prim->t0 >= 0.0 && prim->t1 > prim->t0) ? (prim->t1 - prim->t0) : 0.0;
 	simulate_deflection(x0, y0, x1, y1, draw_secs, tx, ty);
@@ -3746,6 +3711,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = 0.0f; glow_vertex[i].m_rgba = glow_rgba;
 			glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 			glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = glow_sig;
+			glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
+			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = 0.0f;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
 		gv(m_glow_off_glow + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
@@ -3766,6 +3733,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = flare_z; glow_vertex[i].m_rgba = flare_rgba;
 				glow_vertex[i].m_u = wcore; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
+				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
+				glow_vertex[i].m_end_core = wcore; glow_vertex[i].m_end_transition = 0.0f;
 			};
 			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
 			fv(m_glow_off_flare + 1, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
@@ -3787,6 +3756,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = oglow_z; glow_vertex[i].m_rgba = oglow_rgba;
 				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
+				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
+				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = 0.0f;
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
 			ov(m_glow_off_oglow + 1, osx1 + nx * opad, osy1 + ny * opad, oa1, oa1 - seg_len,  opad);
@@ -4827,10 +4798,10 @@ int renderer_bgfx::draw(int update)
 			// draw order. A point shared by two consecutive segments is a vertex where the beam dwells in
 			// proportion to how sharply it turns (straight joint -> no dwell, sharp corner / reversal ->
 			// full dwell); an unshared point is a stroke terminus where the beam stops (full dwell). The
-			// per-endpoint factor scales the end-cap dot in put_analytic_line. vertex_dwell 0 = off
-			// (uniform caps, the old behaviour). Only meaningful for the analytic path (it draws caps).
+			// per-endpoint factor scales the in-stroke endpoint-width profile in put_analytic_line.
+			// vertex_dwell 0 = off (uniform endpoint profiles).
 			const float vertex_dwell = m_line_analytic ? m_chains->slider_value(0, "vertex_dwell", 0.0f) : 0.0f;
-			// cap_ramp_only: when on, line end-caps appear ONLY at the source-flagged RAMP termini
+			// cap_ramp_only: when on, widened line ends appear ONLY at the source-flagged RAMP termini
 			// (prim->cap_flags bit0 = stroke start / RAMP-on, bit1 = stroke end / RAMP-off), overriding the
 			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
 			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
@@ -4845,9 +4816,11 @@ int renderer_bgfx::draw(int update)
 			};
 			std::vector<cap_segment> cap_segments;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
-			if (deposit_vector_source && (vertex_dwell > 0.0f || cap_mode == 1 || junction_on))
+			std::unordered_map<const render_primitive*, std::pair<float, float>> round_terminus;
+			if (deposit_vector_source && m_line_analytic)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
+				round_terminus.reserve(size_t(vector_count) * 2);
 				const render_primitive *pv = nullptr;
 				float pdx = 0.0f, pdy = 0.0f;
 				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
@@ -4860,6 +4833,7 @@ int renderer_bgfx::draw(int update)
 						continue;  // dots have no direction; leave them transparent to the chain
 					const float ndx = ddx / len, ndy = ddy / len;
 					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
+					round_terminus.emplace(p, std::make_pair(1.0f, 1.0f));
 					if (junction_on)
 						cap_segments.push_back({ p, p->bounds.x0, p->bounds.y0, p->bounds.x1, p->bounds.y1, ddx, ddy, len * len });
 					if (pv != nullptr)
@@ -4873,6 +4847,8 @@ int renderer_bgfx::draw(int update)
 								: (1.0f - (pdx * ndx + pdy * ndy)) * 0.5f;  // legacy angular dwell
 							vtx_boost[pv].second = prof;  // prev segment's end
 							vtx_boost[p].first   = prof;  // this segment's start
+							round_terminus[pv].second = 0.0f;
+							round_terminus[p].first = 0.0f;
 						}
 					}
 					pv = p; pdx = ndx; pdy = ndy;
@@ -5475,8 +5451,8 @@ int renderer_bgfx::draw(int update)
 
 			// Deflection-amplifier dynamics: when on, each analytic line is drawn as a
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
-			// DEFL_NOUT*6 verts (+ the two caps). The beam integrator state is reset at the start of each
-			// frame's draw. Needs the analytic path; 0 = off (exact straight lines, 18 verts as before).
+			// DEFL_NOUT*6 verts. The beam integrator state is reset at the start of each frame's draw.
+			// Needs the analytic path; 0 = off (exact straight lines, 6 verts).
 			m_defl_on = m_line_analytic && (m_chains->slider_value(0, "deflection_dynamics", 0.0f) > 0.0f);
 			m_beam_valid = false;
 			m_lin_valid = false;
@@ -5499,11 +5475,8 @@ int renderer_bgfx::draw(int update)
 			const bool g_conv = !conv_blooms.empty();
 			const int  g_rays  = (m_chains->slider_value(0, "ray_gain", 0.0f) > 0.0f)
 					? int(std::clamp(m_chains->slider_value(0, "ray_count", 6.0f), 1.0f, 12.0f)) : 0;
-			// cap_no_persist: line end caps move from the core buffer to the glow buffer - the glow path
-			// is composited AFTER the phosphor pool, so the endpoint dot is bright at the drawing
-			// instant but leaves NO afterimage (the pool's peak-hold otherwise kept the slightly
-			// brighter/wider endpoints visible after the line body had decayed, turning a moving
-			// object's trail into a dotted line of cap ghosts).
+			// cap_no_persist: short-dwell junction dots move to a buffer composited AFTER the phosphor
+			// pool, so they remain visible at the drawing instant but leave no dotted afterimage.
 			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
 			m_optical_separate = bgfx::isValid(m_vec_optical_fb);
 			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
@@ -5524,9 +5497,9 @@ int renderer_bgfx::draw(int update)
 
 			// fill vertex data (classic: quad + rounded fans; analytic: one expanded quad)
 			int vertices = 0;
-			// analytic core: body quad 6 + two end-cap dots 6+6 (or DEFL_NOUT*6 body + 12 caps with deflection)
+			// analytic core: one body quad, or DEFL_NOUT quads with deflection dynamics
 			const uint32_t verts_per_line = m_line_analytic
-					? ((m_defl_on ? uint32_t(DEFL_NOUT * 6) : 6u) + (m_caps_glow ? 0u : 12u))
+					? (m_defl_on ? uint32_t(DEFL_NOUT * 6) : 6u)
 					: uint32_t(LINE_VERTICES_PER_LINE);
 			m_vec_vpl = verts_per_line;
 			const bgfx::VertexLayout &line_decl = m_line_analytic ? AnalyticLineVertex::ms_decl : ScreenVertex::ms_decl;
@@ -5537,10 +5510,10 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer optical_tvb = {};
 			int optical_verts = 0;
 			bool optical_alloc = false;
-			// No-persist buffer: fixed 18 verts/line - slots [0..5] no-persist dot, [6..11] cap0,
-			// [12..17] cap1. Active only in cap_no_persist mode; drawn into m_vec_np_fb.
+			// No-persist buffer: one short-dwell dot slot per primitive. Active only in
+			// cap_no_persist mode; drawn into m_vec_np_fb.
 			const bool np_on = m_line_analytic && m_caps_glow && bgfx::isValid(m_vec_np_fb);
-			static constexpr uint32_t NP_VPL = 18;
+			static constexpr uint32_t NP_VPL = 6;
 			bgfx::TransientVertexBuffer np_tvb = {};
 			int np_verts = 0;
 			bool np_alloc = false;
@@ -5582,8 +5555,8 @@ int renderer_bgfx::draw(int update)
 								optical_alloc = (optical_tvb.data != nullptr);
 							}
 						}
-						// Best-effort separate no-persist buffer (18 verts/line). If it cannot be
-						// allocated the core still draws; the caps/dots are simply skipped this frame.
+						// Best-effort separate no-persist buffer (one dot slot per primitive). If it
+						// cannot be allocated, the core still draws and short-dwell dots stay in it.
 						if (np_on)
 						{
 							const uint32_t npneeded = uint32_t(visible_count) * NP_VPL;
@@ -5628,6 +5601,8 @@ int renderer_bgfx::draw(int update)
 										bv[n].m_x=x; bv[n].m_y=y; bv[n].m_z=z; bv[n].m_rgba=rgba;
 										bv[n].m_u=0.0f; bv[n].m_v=0.0f; bv[n].m_a=a; bv[n].m_b=bloom.radius;
 										bv[n].m_d=d; bv[n].m_sigma=-falloff;
+										bv[n].m_end_start=0.0f; bv[n].m_end_finish=0.0f;
+										bv[n].m_end_core=0.0f; bv[n].m_end_transition=0.0f;
 									};
 									cvtx(0,bloom.x-pad,bloom.y-pad,-pad,-pad); cvtx(1,bloom.x+pad,bloom.y-pad,pad,-pad);
 									cvtx(2,bloom.x+pad,bloom.y+pad,pad,pad);   cvtx(3,bloom.x-pad,bloom.y-pad,-pad,-pad);
@@ -5666,6 +5641,13 @@ int renderer_bgfx::draw(int update)
 								if (m_line_analytic)
 								{
 									float scap = 1.0f, ecap = 1.0f;
+									float rscap = 1.0f, recap = 1.0f;
+									auto rit = round_terminus.find(vprim);
+									if (rit != round_terminus.end())
+									{
+										rscap = rit->second.first;
+										recap = rit->second.second;
+									}
 									if (cap_mode == 3)
 									{
 										scap = ecap = 0.0f;
@@ -5717,7 +5699,7 @@ int renderer_bgfx::draw(int update)
 									float scan_scale = 1.0f;
 									auto ait = m_scan_attenuation.find(vprim);
 									if (ait != m_scan_attenuation.end()) scan_scale = ait->second;
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, sps, dsc, scan_scale);
+									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -5777,13 +5759,13 @@ int renderer_bgfx::draw(int update)
 					inv->set(values, sizeof(float) * 2);
 					inv->upload();
 				}
-				// u_line_params.x = Overload Softness; .y = Edge Sharpness (super-gaussian order, >1 = sharper
-				// flat-topped cross-section so wide lines stay crisp). Only the body view sharpens; the glow
-				// view keeps .y = 1 so the soft halo stays soft.
+				// u_line_params.x = Line End Transition Curve; .y = Edge Sharpness (super-gaussian order,
+				// >1 = sharper flat-topped cross-section so wide lines stay crisp). Only the body view uses
+				// endpoint profiles; glow vertices carry zero endpoint amounts.
 				bgfx_uniform* lp = line_eff->uniform("u_line_params");
 				if (lp)
 				{
-					float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
+					float vals[4] = { std::max(0.1f, m_vs.line_cap_curve),
 									  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
 									  1.0f, m_chains->slider_value(0, "point_roundness", 0.4f) };
 					lp->set(vals, sizeof(float) * 4);
@@ -5904,6 +5886,8 @@ int renderer_bgfx::draw(int update)
 							ev[i].m_x = x; ev[i].m_y = y; ev[i].m_z = 0.0f; ev[i].m_rgba = ergba;
 							ev[i].m_u = 0.0f; ev[i].m_v = 0.0f;
 							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
+							ev[i].m_end_start = 0.0f; ev[i].m_end_finish = 0.0f;
+							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = 0.0f;
 						};
 						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
 						const float sx1 = ex1 + edx * epad, sy1 = ey1 + edy * epad;
@@ -5959,7 +5943,7 @@ int renderer_bgfx::draw(int update)
 					bgfx_uniform* lp = line_eff->uniform("u_line_params");
 					if (lp)
 					{
-						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f,
+						float vals[4] = { std::max(0.1f, m_vs.line_cap_curve), 0.0f,
 										  1.0f, 1.0f };
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
@@ -6025,7 +6009,7 @@ int renderer_bgfx::draw(int update)
 					bgfx_uniform* lp = line_eff->uniform("u_line_params");
 					if (lp)
 					{
-						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f), 0.0f, 1.0f, 1.0f };
+						float vals[4] = { std::max(0.1f, m_vs.line_cap_curve), 0.0f, 1.0f, 1.0f };
 						lp->set(vals, sizeof(float) * 4); lp->upload();
 					}
 				};
@@ -6043,7 +6027,7 @@ int renderer_bgfx::draw(int update)
 				if (!optical_submitted) bgfx::touch(optical_view);
 			}
 
-			// No-persist FBO: draw the caps / short-dwell dots into m_vec_np_fb (cleared, additive),
+			// No-persist FBO: draw short-dwell dots into m_vec_np_fb (cleared, additive),
 			// then inject it as "npglow0" so a chain pass adds it back AFTER the phosphor pool - bright
 			// while drawn, no afterimage, and never fed into the narrow/wide glow cascade. Uses the same
 			// analytic line effect as the body view (same u_line_params), unlike the soft
@@ -6082,7 +6066,7 @@ int renderer_bgfx::draw(int update)
 					bgfx_uniform* lp = line_eff->uniform("u_line_params");
 					if (lp)
 					{
-						float vals[4] = { m_chains->slider_value(0, "overload_softness", 1.0f),
+						float vals[4] = { std::max(0.1f, m_vs.line_cap_curve),
 										  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
 										  1.0f, m_chains->slider_value(0, "point_roundness", 0.4f) };
 						lp->set(vals, sizeof(float) * 4);

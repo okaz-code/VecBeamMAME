@@ -49,6 +49,10 @@ struct AnalyticLineVertex
 	float m_b;      // signed axial distance from p1 (= a - len)
 	float m_d;      // perpendicular distance (line) / second axis offset (point)
 	float m_sigma;  // gaussian sigma in pixels; negative flags point mode
+	float m_end_start;      // start-end width profile amount (0..1)
+	float m_end_finish;     // finish-end width profile amount (0..1)
+	float m_end_core;       // flat-core half-width at a fully active endpoint
+	float m_end_transition; // distance over which endpoint width returns to the body width
 
 	static void init()
 	{
@@ -57,6 +61,7 @@ struct AnalyticLineVertex
 			.add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
 			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord2, 4, bgfx::AttribType::Float)
 			.end();
 	}
 

@@ -1,5 +1,5 @@
-$input a_position, a_color0, a_texcoord0, a_texcoord1
-$output v_color0, v_texcoord1, v_texcoord0, v_texcoord2
+$input a_position, a_color0, a_texcoord0, a_texcoord1, a_texcoord2
+$output v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -30,4 +30,7 @@ void main()
 	// Spare vertex component carries the CPU-side Long-line classification.
 	// The fragment shader writes classified Long light to a second MRT target.
 	v_texcoord2 = vec2(a_texcoord0.y, 0.0);
+	// Per-line endpoint-width profile: start amount, finish amount, fully-active flat-core
+	// half-width, and transition distance. It remains constant across each line quad.
+	v_texcoord3 = a_texcoord2;
 }
