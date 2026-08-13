@@ -29,6 +29,7 @@ uniform vec4 u_tex_size2;
 uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_ambient_output_scale;
+uniform vec4 u_hdr_glow_compensation;
 uniform vec4 u_convergence_global;       // (centre uv x/y, gain, sigma / half-diagonal)
 uniform vec4 u_convergence_global_color; // normalised linear scatter colour
 uniform vec4 u_ambient_mask;
@@ -462,10 +463,14 @@ void main()
 		bezel = shape_glow(edge_light) * (band * line_gain) + shape_glow(monitor_light) * (band * monitor_gain);
 	}
 
-	vec3 composite = (base * mask_factor + glow) * face + ambient_out + monitor_out + global_out + bezel;
+	// Stabilize beam-derived optical light in absolute nits when HDR Beam Peak changes. Apply this
+	// after shape_glow so its nonlinear tail/toe controls do not change the compensation ratio.
+	float glow_compensation = max(u_hdr_glow_compensation.x, 0.0);
+	vec3 composite = (base * mask_factor + glow * glow_compensation) * face + ambient_out
+		+ (monitor_out + global_out + bezel) * glow_compensation;
 	float glass_activity = max(u_glass_forward_scatter.x, u_glass_surface_illumination.x);
 	vec3 glass_light = vec3_splat(0.0);
 	if (glass_activity > 0.0 && !emit_outside)
-		glass_light = max(color_transform(texture2D(s_glass_scatter, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN, vec3_splat(0.0));
+		glass_light = max(color_transform(texture2D(s_glass_scatter, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN, vec3_splat(0.0)) * glow_compensation;
 	gl_FragColor = vec4(apply_glass_optics(composite, glass_light), 1.0) * v_color0;
 }
