@@ -18,6 +18,9 @@ uniform vec4 u_phos_rgb;
 uniform vec4 u_np_gain;
 uniform vec4 u_line_channel_gain;
 uniform vec4 u_phos_debug;
+uniform vec4 u_phos_reset;
+uniform vec4 u_phos_peak;
+uniform vec4 u_phos_radiant;
 
 uniform vec4 u_source_size;
 uniform vec4 u_converge_red;
@@ -53,6 +56,26 @@ float phos_S(float age, float tau, float p, float total)
 float phos_two(float age, float tauN, float p, float totN, float accel, float norm, float over)
 {
 	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
+}
+
+// Must match the UPDATE pass: physical R/G/B emission adds by channel, whereas perceptual luma and
+// max-channel peak are unsuitable for the fresh-hit diagnostic.
+float phos_radiant_energy(vec3 rgb)
+{
+	rgb = max(rgb, vec3_splat(0.0));
+	float peak = max(rgb.r, max(rgb.g, rgb.b));
+	float additive = dot(rgb, vec3_splat(1.0));
+	return peak + max(0.0, u_phos_radiant.x) * (additive - peak);
+}
+
+// Preserve hue while making the emitted total RGB energy match the same metric used by UPDATE.
+// Strength 1 is an identity because ordinary linear RGB already adds the three primaries; 0
+// normalises a mixture to its strongest primary, while values above 1 deliberately exaggerate it.
+vec3 phos_combination_brightness(vec3 rgb)
+{
+	rgb = max(rgb, vec3_splat(0.0));
+	float additive = dot(rgb, vec3_splat(1.0));
+	return (additive > 1e-6) ? rgb * (phos_radiant_energy(rgb) / additive) : rgb;
 }
 
 vec3 sample_np_converged(vec2 uv)
@@ -129,6 +152,10 @@ vec3 color_transform(vec3 cin)
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
+	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
+	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
+	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
+		fresh *= u_phos_peak.x / raw_fresh_peak;
 	float accel = 1.0 + max(0.0, u_phos2.x);
 	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
@@ -146,17 +173,22 @@ void main()
 		if (u_phos_debug.x < 1.5)
 			composed = pool.rgb;
 		else if (u_phos_debug.x < 2.5)
-			composed = vec3_splat(pool.a / 50.0);
+			composed = vec3_splat(pool.a / max(u_phos.w, 1.0));
 		else if (u_phos_debug.x < 3.5)
-			composed = lit * u_line_channel_gain.rgb;
+			composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
+		else if (u_phos_debug.x < 4.5)
+			composed = phos_combination_brightness(fresh);
 		else
-			composed = texture2D(s_cur, v_texcoord0).rgb;
+		{
+			float cur_energy = phos_radiant_energy(fresh);
+			composed = vec3_splat(step(max(u_phos_reset.x, 1e-6), cur_energy));
+		}
 	}
 	else
 	{
-		lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
+		lit = max(lit, fresh);
 		lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
-		composed = lit * u_line_channel_gain.rgb;
+		composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
 	}
 
 	gl_FragColor = vec4(color_transform(composed), 1.0) * v_color0;

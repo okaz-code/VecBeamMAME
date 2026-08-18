@@ -13,6 +13,8 @@ SAMPLER2D(s_mask,  2);
 SAMPLER2D(s_glass_scatter, 3);
 SAMPLER2D(s_bezel_source, 4);
 SAMPLER2D(s_bezel_length, 5);
+SAMPLER2D(s_flare, 6);
+SAMPLER2D(s_overlap, 7);
 
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
@@ -20,6 +22,10 @@ uniform vec4 u_vec_pincushion_x_cubic;
 uniform vec4 u_vec_pincushion_y_quad;
 uniform vec4 u_vec_pincushion_y_cubic;
 uniform vec4 u_glow_enable;
+uniform vec4 u_masked_flare_gain;
+uniform vec4 u_masked_core_peak;
+uniform vec4 u_overlap_white_strength;
+uniform vec4 u_overlap_white_brightness;
 uniform vec4 u_shadow_mask_strength;
 uniform vec4 u_shadow_mask_brightboost;
 uniform vec4 u_shadow_mask_scale;
@@ -59,6 +65,8 @@ uniform vec4 u_glass_surface_illumination;
 uniform vec4 u_mglow_amount;
 uniform vec4 u_mglow_brightness;
 uniform vec4 u_mglow_edge_diff;
+uniform vec4 u_mglow_rgb_bands;
+uniform vec4 u_mglow_rgb_band_count;
 uniform vec4 u_primary_mode;
 uniform vec4 u_primary_red_hue;
 uniform vec4 u_primary_red_saturation;
@@ -417,6 +425,37 @@ void main()
 	vec2 base_uv = vector_pincushion_uv(emit_uv);
 	bool outside = base_uv.x < 0.0 || base_uv.x > 1.0 || base_uv.y < 0.0 || base_uv.y > 1.0;
 	vec3 base = outside ? vec3_splat(0.0) : sample_defocused(base_uv);
+	// The white-hot overdrive core is direct tube emission, not scattered halo light. It therefore
+	// joins the direct phosphor image before peak limiting and shadow-mask modulation. Its historical
+	// narrow-glow gain is retained; broad overload bloom remains in the unmasked glow path.
+	bool flare_outside = emit_uv.x < 0.0 || emit_uv.x > 1.0 || emit_uv.y < 0.0 || emit_uv.y > 1.0;
+	if (!flare_outside && u_masked_flare_gain.x > 0.0)
+		base += color_transform(texture2D(s_flare, emit_uv).rgb)
+			* (GLOW_BRIGHTNESS_GAIN * u_masked_flare_gain.x);
+	// Additive vector intersections can exceed the calibrated direct-beam peak. If that overrange is
+	// allowed into the HDR roll-off after masking, bright and dark mask cells converge and the slot
+	// pattern appears to vanish. Limit only direct phosphor emission here, before the mask, preserving
+	// hue and leaving physically scattered glow unmasked. A limit of 0 disables this correction.
+	float core_limit = u_masked_core_peak.x;
+	float core_peak = max(base.r, max(base.g, base.b));
+	if (core_limit > 0.0 && core_peak > core_limit)
+		base *= core_limit / core_peak;
+
+	// A single overloaded vector keeps its source hue. Only several overloaded vectors occupying
+	// the same pixel generate a white-hot direct-emission component. The overlap texture stores
+	// sum(h) and sum(h^2), with every individual contribution bounded to h <= 1; their ratio gives
+	// an effective contributor count and cannot mistake one extremely hot vector for many lines.
+	if (!flare_outside && u_overlap_white_strength.x > 0.0)
+	{
+		float white_amount = clamp(u_overlap_white_strength.x, 0.0, 1.0)
+			* clamp(texture2D(s_overlap, emit_uv).a, 0.0, 1.0);
+		if (white_amount > 0.0)
+		{
+			float limited_peak = max(base.r, max(base.g, base.b));
+			float white_peak = limited_peak * (1.0 + max(u_overlap_white_brightness.x, 0.0) * white_amount);
+			base = mix(base, vec3_splat(white_peak), white_amount);
+		}
+	}
 
 	vec2 surface_uv = tube_surface_uv(v_texcoord0, tube_active);
 	float face = tube_face_factor(v_texcoord0, tube_active);
@@ -440,13 +479,27 @@ void main()
 	float mintensity = u_mglow_amount.x * u_mglow_brightness.x * mbright;
 	float tint_peak = max(max(u_ambient_color.r, u_ambient_color.g), max(u_ambient_color.b, 1e-4));
 	vec3 monitor_tint = u_ambient_color.rgb / tint_peak;
-	vec3 monitor_out = shape_glow(vec3_splat(mintensity) * monitor_tint) * mask_factor * face * vignette;
+	// The observed real monitor has only a few broad, full-height colour bands across the complete
+	// face (approximately B-R-G-B-R-G-B-R), rather than a magnified phosphor-cell texture. Generate
+	// that low-frequency colour-purity/interference pattern directly in curved tube-surface space.
+	// Constant surface_uv.x contours bend with the same glass distortion as the slot mask while each
+	// band remains vertically uniform in tube space. Three 120-degree cosine phases give the repeating
+	// B/R/G order with smooth optical transitions. Their sum is zero, preserving average brightness.
+	float mglow_band_strength = clamp(u_mglow_rgb_bands.x, 0.0, 1.0);
+	float mglow_band_count = clamp(floor(u_mglow_rgb_band_count.x + 0.5), 3.0, 24.0);
+	float mglow_phase = clamp(surface_uv.x, 0.0, 1.0) * (mglow_band_count - 1.0) * 2.09439510;
+	vec3 mglow_band_chroma = vec3(
+		cos(mglow_phase - 2.09439510),
+		cos(mglow_phase - 4.18879020),
+		cos(mglow_phase));
+	vec3 mglow_bands = max(vec3_splat(0.0), vec3_splat(1.0) + mglow_band_chroma * mglow_band_strength);
+	mglow_bands = mix(vec3_splat(1.0), mglow_bands, face);
+	vec3 monitor_out = shape_glow(vec3_splat(mintensity) * monitor_tint) * mglow_bands * face * vignette;
 
 	vec3 glow = vec3_splat(0.0);
 	bool emit_outside = emit_uv.x < 0.0 || emit_uv.x > 1.0 || emit_uv.y < 0.0 || emit_uv.y > 1.0;
 	if (u_glow_enable.x > 0.0 && !emit_outside)
 		glow = shape_glow(color_transform(texture2D(s_bloom, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN);
-
 	vec2 global_delta = (v_texcoord0 - u_convergence_global.xy) * u_target_dims.xy;
 	float global_sigma = max(u_convergence_global.w * 0.5 * length(u_target_dims.xy), 1.0);
 	float global_weight = u_convergence_global.z * exp(-0.5 * dot(global_delta, global_delta) / (global_sigma * global_sigma));

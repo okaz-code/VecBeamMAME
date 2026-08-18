@@ -2209,11 +2209,17 @@ struct vec_slider_def { const char *name; float renderer_bgfx::vec_slider_cache:
 const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "analytic_glow", &renderer_bgfx::vec_slider_cache::analytic_glow, 0.0f },
 	{ "analytic_glow_width", &renderer_bgfx::vec_slider_cache::analytic_glow_width, 8.0f },
-	{ "beam_noise", &renderer_bgfx::vec_slider_cache::beam_noise, 0.0f },
+	{ "beam_jitter", &renderer_bgfx::vec_slider_cache::beam_jitter, 0.0f },
+	{ "beam_jitter_hz", &renderer_bgfx::vec_slider_cache::beam_jitter_hz, 15.0f },
+	{ "beam_jitter_saturation_start", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_start, 1.5f },
+	{ "beam_jitter_saturation_range", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_range, 1.5f },
+	{ "beam_jitter_saturation_curve", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_curve, 2.0f },
+	{ "overload_display_compression", &renderer_bgfx::vec_slider_cache::overload_display_compression, 1.0f },
 	{ "beam_width_max", &renderer_bgfx::vec_slider_cache::beam_width_max, 1.5f },
 	{ "beam_width_min", &renderer_bgfx::vec_slider_cache::beam_width_min, 1.0f },
 	{ "beam_width_over_scale", &renderer_bgfx::vec_slider_cache::beam_width_over_scale, -1.0f },
 	{ "beam_width_overmax", &renderer_bgfx::vec_slider_cache::beam_width_overmax, 4.0f },
+	{ "phosphor_rgb_combination_width", &renderer_bgfx::vec_slider_cache::phosphor_rgb_combination_width, 0.0f },
 	{ "bezel_long_threshold", &renderer_bgfx::vec_slider_cache::bezel_long_threshold, 160.0f },
 	{ "bright_curve", &renderer_bgfx::vec_slider_cache::bright_curve, 1.0f },
 	{ "bright_normal_cap", &renderer_bgfx::vec_slider_cache::bright_normal_cap, 1.0f },
@@ -2221,6 +2227,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "bright_sigmoid_center", &renderer_bgfx::vec_slider_cache::bright_sigmoid_center, 0.5f },
 	{ "bright_threshold", &renderer_bgfx::vec_slider_cache::bright_threshold, 0.0f },
 	{ "core_flat", &renderer_bgfx::vec_slider_cache::core_flat, 0.0f },
+	{ "core_overlap_max", &renderer_bgfx::vec_slider_cache::core_overlap_max, 0.0f },
 	{ "convergence_bloom_gain", &renderer_bgfx::vec_slider_cache::convergence_bloom_gain, 0.0f },
 	{ "convergence_bloom_falloff", &renderer_bgfx::vec_slider_cache::convergence_bloom_falloff, 96.0f },
 	{ "convergence_bloom_knee", &renderer_bgfx::vec_slider_cache::convergence_bloom_knee, 8.0f },
@@ -2241,11 +2248,6 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_dot_ref", &renderer_bgfx::vec_slider_cache::energy_dot_ref, 30.0f },
 	{ "energy_dwell_cap", &renderer_bgfx::vec_slider_cache::energy_dwell_cap, 16.0f },
 	{ "energy_infl", &renderer_bgfx::vec_slider_cache::energy_infl, 0.6f },
-	{ "energy_jitter", &renderer_bgfx::vec_slider_cache::energy_jitter, 0.0f },
-	{ "energy_jitter_base", &renderer_bgfx::vec_slider_cache::energy_jitter_base, 0.0f },
-	{ "energy_jitter_hz", &renderer_bgfx::vec_slider_cache::energy_jitter_hz, 15.0f },
-	{ "energy_jitter_onset", &renderer_bgfx::vec_slider_cache::energy_jitter_onset, 0.8f },
-	{ "energy_jitter_ramp", &renderer_bgfx::vec_slider_cache::energy_jitter_ramp, 0.5f },
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
 	{ "scan_variation", &renderer_bgfx::vec_slider_cache::scan_variation, 0.0f },
@@ -2256,14 +2258,13 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_obj_star", &renderer_bgfx::vec_slider_cache::energy_obj_star, 1.5f },
 	{ "energy_speed_norm", &renderer_bgfx::vec_slider_cache::energy_speed_norm, 0.8f },
 	{ "energy_stroke_agg", &renderer_bgfx::vec_slider_cache::energy_stroke_agg, 1.0f },
-	{ "glow_curve", &renderer_bgfx::vec_slider_cache::glow_curve, 1.0f },
 	{ "glow_narrow", &renderer_bgfx::vec_slider_cache::glow_narrow, 0.0f },
-	{ "glow_threshold", &renderer_bgfx::vec_slider_cache::glow_threshold, 0.0f },
 	{ "hv_droop", &renderer_bgfx::vec_slider_cache::hv_droop, 0.0f },
 	{ "hv_droop_onset", &renderer_bgfx::vec_slider_cache::hv_droop_onset, 0.0f },
 	{ "hv_droop_ref", &renderer_bgfx::vec_slider_cache::hv_droop_ref, 10.0f },
 	{ "intensity_overdrive", &renderer_bgfx::vec_slider_cache::intensity_overdrive, 0.0f },
 	{ "intensity_overdrive_curve", &renderer_bgfx::vec_slider_cache::intensity_overdrive_curve, 2.0f },
+	{ "mask_overdrive_flare", &renderer_bgfx::vec_slider_cache::mask_overdrive_flare, 0.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
 	{ "line_cap_junction_suppress", &renderer_bgfx::vec_slider_cache::line_cap_junction_suppress, 0.0f },
@@ -2428,32 +2429,69 @@ float renderer_bgfx::energy_object_lift(float intensity01, bool as_point) const
 	return b;
 }
 
-// DAC / integrator position noise: a time-coherent 2D offset (px) for a beam endpoint, modelling the
-// analog deflection chain's noise floor. Keyed on the endpoint POSITION so a shared vertex (two
-// connected strokes) and a parked dot's two coincident endpoints get the SAME offset - the beam path
-// stays joined and a dot stays a dot. The time axis is emulated time quantized to energy_jitter_hz
-// steps with smoothstep value-noise between them (bounded speed, freezes on pause). beam_noise 0 = off.
-void renderer_bgfx::beam_noise_offset(float x, float y, float &ox, float &oy) const
+// Unified CRT beam instability. A single user strength and time base drive both beam-current
+// modulation and DAC/integrator endpoint motion, so position noise can no longer be enabled while
+// energy jitter is absent (or vice versa). The fixed calibration keeps the UI simple:
+//   strength 1 = up to +/-8% beam energy and +/-2 reference pixels of endpoint motion.
+// Below the independently configured saturation knee only 2% of that calibration remains as an
+// almost invisible analogue noise floor. Beam-width overload therefore need not shake text; the
+// remaining 98% rises later, over the saturation range and curve, for genuinely extreme vectors.
+// Endpoint seeds depend only on endpoint position, so connected vectors share exactly the same offset.
+void renderer_bgfx::beam_jitter(float n, float x0, float y0, float x1, float y1,
+	float &energy_scale, float &ox0, float &oy0, float &ox1, float &oy1)
 {
-	ox = oy = 0.0f;
-	const float amt = m_vs.beam_noise;
-	if (amt <= 0.0f)
+	energy_scale = 1.0f;
+	ox0 = oy0 = ox1 = oy1 = 0.0f;
+	const float strength = std::clamp(m_vs.beam_jitter, 0.0f, 1.0f);
+	if (strength <= 0.0f)
 		return;
-	const float hz = std::max(1.0f, m_vs.energy_jitter_hz);   // share the jitter cadence
-	const double t = m_vec_time_ms * double(hz) * 0.001;
+
+	const float saturation_start = std::max(0.0f, m_vs.beam_jitter_saturation_start);
+	const float saturation_range = std::max(1.0e-3f, m_vs.beam_jitter_saturation_range);
+	const float saturation_curve = std::max(0.1f, m_vs.beam_jitter_saturation_curve);
+	float saturation = std::clamp((n - saturation_start) / saturation_range, 0.0f, 1.0f);
+	if (saturation_curve != 1.0f)
+		saturation = powf(saturation, saturation_curve);
+	// Smooth the curve's endpoints without changing its user-selected delayed/early rise.
+	const float saturation_gate = saturation * saturation * (3.0f - 2.0f * saturation);
+	const float activity = strength * (0.02f + 0.98f * saturation_gate);
+	const float energy_amount = 0.08f * activity;
+	const float position_amount = 2.0f * vec_res_scale() * activity;
+	const double t = m_vec_time_ms * double(std::max(1.0f, m_vs.beam_jitter_hz)) * 0.001;
 	const uint32_t step = uint32_t(int64_t(t));
 	const float frac = float(t - double(step));
 	const float sm = frac * frac * (3.0f - 2.0f * frac);
 	auto h = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
-	const uint32_t seed = h(uint32_t(int32_t(x))) ^ h(uint32_t(int32_t(y)) + 0x9e3779b9U);
-	auto nz = [&](uint32_t chan) -> float {
-		const uint32_t s = seed ^ h(chan);
+	auto sample = [&](uint32_t seed, uint32_t channel) -> float {
+		const uint32_t s = seed ^ h(channel);
 		const float a0 = float(h(s ^ h(step))      & 0xffffffu) / float(0x800000) - 1.0f;
 		const float a1 = float(h(s ^ h(step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
 		return a0 + (a1 - a0) * sm;
 	};
-	ox = amt * nz(0x68f1u);
-	oy = amt * nz(0xb5e3u);
+	auto endpoint_seed = [&](float x, float y) -> uint32_t {
+		return h(uint32_t(int32_t(x * 8.0f))) ^ h(uint32_t(int32_t(y * 8.0f)) + 0x9e3779b9U);
+	};
+	const uint32_t seed0 = endpoint_seed(x0, y0);
+	const uint32_t seed1 = endpoint_seed(x1, y1);
+	const uint32_t line_seed = seed0 ^ h(seed1 + 0x85ebca6bU);
+	energy_scale = std::max(0.0f, 1.0f + energy_amount * sample(line_seed, 0xc2b2ae35U));
+	ox0 = position_amount * sample(seed0, 0x68f1U);
+	oy0 = position_amount * sample(seed0, 0xb5e3U);
+	ox1 = position_amount * sample(seed1, 0x68f1U);
+	oy1 = position_amount * sample(seed1, 0xb5e3U);
+}
+
+// High-current display transfer. Keep raw beam energy for instability/EHT decisions, but compress
+// the part above nominal peak before it drives visible width, flare and per-vector overload. The
+// asymptote models Z-amplifier/beam-current/phosphor saturation: Star Wars current steps 1.256 and
+// 1.757 become roughly 1.20 and 1.32 at full compression instead of producing a bright quadrant.
+static float compress_overload_display_energy(float n, float amount)
+{
+	if (n <= 1.0f || amount <= 0.0f)
+		return n;
+	const float excess = n - 1.0f;
+	const float compressed = 1.0f + 0.35f * (1.0f - expf(-excess / 0.30f));
+	return n + (compressed - n) * std::clamp(amount, 0.0f, 1.0f);
 }
 
 // Point/short-vector classification must use the primitive before render-core clipping.  Using the
@@ -2772,19 +2810,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const bool point_optics = vector_primitive_is_point(*prim, 1.0e-4f)
 		&& !(prim->cap_flags & VECTOR_CAP_POINT_OPTICS_SUPPRESS);
 
-	// DAC / integrator position noise: jitter each endpoint by a time-coherent, position-keyed offset
-	// (analog deflection noise). Applied AFTER the point/line classification (so a dot - whose two
-	// endpoints share a position and thus an offset - stays a dot and is not reclassified as a line);
-	// the clean dx/dy/seg_len above are kept for the beam direction, width and energy (a sub-pixel
-	// offset does not change them meaningfully), only the drawn endpoint positions move.
-	if (m_vs.beam_noise > 0.0f)
-	{
-		float ox0, oy0, ox1, oy1;
-		beam_noise_offset(x0, y0, ox0, oy0);
-		beam_noise_offset(x1, y1, ox1, oy1);
-		x0 += ox0; y0 += oy0; x1 += ox1; y1 += oy1;
-	}
-
 	// Unified per-vector transfers. drive = beam_energy when the device supplies it (AVG: Tempest /
 	// Star Wars / Major Havoc), else the display intensity (DVG: Asteroids etc.). Brightness and width
 	// are two independent clipped power curves: out = clamp((drive-lo)/(hi-lo),0,1)^gamma. Decoupling
@@ -2839,42 +2864,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		const double dt_us = (prim->t1 - prim->t0) * 1e6;
 		n *= float(1.0 - std::exp(-dt_us / double(m_vs.z_rise_tau)));
 	}
-	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
-	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
-	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
-	// itself, BEFORE the transfer/overload chain, so below the two-regime threshold the brightness
-	// wobbles, and above it the core stays saturated while width / white-pull / flare / Overload
-	// Glow / halation shimmer - a bright beam that stays bright but trembles. The time axis is
-	// emulated time quantized to energy_jitter_hz steps with smoothstep value-noise between steps
-	// (bounded speed, freezes on pause); the per-vector seed hashes the quantized endpoints, so the
-	// wobble is stable within a frame and independent between vectors, with no RNG state.
-	const float jit = m_vs.energy_jitter;
-	if (jit > 0.0f)
-	{
-		const float j_onset = m_vs.energy_jitter_onset;
-		const float j_ramp  = std::max(0.05f, m_vs.energy_jitter_ramp);
-		// Base floor: normal (below-onset) vectors still get a slight always-on wobble (analog-noise
-		// shimmer of the whole image); the near-saturation ramp adds on top. energy_jitter_base 0 =
-		// ramp only (prior behaviour - only near-saturation vectors wobble).
-		const float j_w = std::max(std::clamp(m_vs.energy_jitter_base, 0.0f, 1.0f),
-								   std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f));
-		if (j_w > 0.0f)
-		{
-			const float j_hz = std::max(1.0f, m_vs.energy_jitter_hz);
-			const double j_t = m_vec_time_ms * double(j_hz) * 0.001;
-			const uint32_t j_step = uint32_t(int64_t(j_t));
-			const float j_frac = float(j_t - double(j_step));
-			auto jhash = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
-			const uint32_t j_seed = jhash(uint32_t(int32_t(x0 * 8.0f)) * 0x9e3779b9U)
-								  ^ jhash(uint32_t(int32_t(y0 * 8.0f)) + 0x85ebca6bU)
-								  ^ jhash(uint32_t(int32_t(x1 * 8.0f)) + 0xc2b2ae35U)
-								  ^ jhash(uint32_t(int32_t(y1 * 8.0f)) + 0x27d4eb2fU);
-			const float j_r0 = float(jhash(j_seed ^ jhash(j_step))      & 0xffffffu) / float(0x800000) - 1.0f;
-			const float j_r1 = float(jhash(j_seed ^ jhash(j_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
-			const float j_sm = j_frac * j_frac * (3.0f - 2.0f * j_frac);
-			n *= std::max(0.0f, 1.0f + jit * j_w * (j_r0 + (j_r1 - j_r0) * j_sm));
-		}
-	}
+	// One control now applies energy and position instability together. Classification, length and
+	// direction continue to use the clean geometry above; only the final endpoints are displaced.
+	float jitter_energy, jx0, jy0, jx1, jy1;
+	beam_jitter(n, x0, y0, x1, y1, jitter_energy, jx0, jy0, jx1, jy1);
+	n *= jitter_energy;
+	n = compress_overload_display_energy(n, m_vs.overload_display_compression);
+	x0 += jx0; y0 += jy0; x1 += jx1; y1 += jy1;
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
@@ -2997,6 +2993,22 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		beam_units = std::max(beam_units, m_vs.isolated_dot_min_size);
 		normal_beam_units = std::max(normal_beam_units, m_vs.isolated_dot_min_size);
+	}
+	// Simultaneous colour primaries excite a wider visible phosphor footprint than one primary at the
+	// same peak drive. Use the same additive-minus-peak basis as Phosphor RGB Combination Brightness,
+	// normalized so a pure primary is exactly 0, two equal primaries are 0.5, and equal RGB is 1.0.
+	// Apply it before sigma/core construction so current excitation, phosphor persistence and the
+	// beam-derived optical source all share the widened physical footprint. Chains without the slider
+	// retain an exact multiplier of one.
+	const float rgb_peak = std::max(prim->color.r, std::max(prim->color.g, prim->color.b));
+	if (rgb_peak > 1.0e-6f && m_vs.phosphor_rgb_combination_width > 0.0f)
+	{
+		const float rgb_additive = std::max(0.0f, prim->color.r)
+			+ std::max(0.0f, prim->color.g) + std::max(0.0f, prim->color.b);
+		const float combination = std::clamp((rgb_additive - rgb_peak) / (2.0f * rgb_peak), 0.0f, 1.0f);
+		const float combination_width = 1.0f + m_vs.phosphor_rgb_combination_width * combination;
+		beam_units *= combination_width;
+		normal_beam_units *= combination_width;
 	}
 	float width = beam_units * vec_res_scale();
 	const float normal_width = std::max(0.5f, normal_beam_units * vec_res_scale());
@@ -3163,17 +3175,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		uint32_t(std::min(prim->color.b / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(1.0f, flare_peak) * 255.0f + 0.5f));
 
-	// Overload Glow (bloom that fires ONLY on overload, distinct from the generic per-line
-	// "analytic_glow" which scales with plain brightness regardless of overdrive state, and from
-	// "Overload Bloom" which only widens the beam's OWN sigma - a bigger/softer spot, not a halo
-	// reaching pixels well away from the geometry). This reuses the SAME wide-cascade glow FBO
-	// pipeline as analytic_glow (glow_narrow/glow_wide), just with its own heat-gated magnitude and
-	// an independently wide sigma, so a hot dwell dot or overdriven line gets a real screen-space
-	// bloom that ordinary (non-overloaded) content never triggers. 0 = off.
+	// Overload-only analytic Gaussian halo. Points use a circular dot and lines use a continuous
+	// capsule, so the optical source is smooth before any scene composition.
 	const float oglow_gain = m_vs.overload_glow_gain;
-	const bool  oglow_on   = flare_on && oglow_gain > 0.0f;
-	const float oglow_mag  = flare_peak * oglow_gain;
-	const float oglow_z    = std::max(0.0f, oglow_mag - 1.0f);
+	const bool oglow_on = flare_on && oglow_gain > 0.0f;
+	const float oglow_mag = flare_peak * oglow_gain;
+	const float oglow_z = std::max(0.0f, oglow_mag - 1.0f);
 	const uint32_t oglow_rgba = u32Color(
 		uint32_t(std::min(prim->color.r / flare_pk, 1.0f) * 255.0f + 0.5f),
 		uint32_t(std::min(prim->color.g / flare_pk, 1.0f) * 255.0f + 0.5f),
@@ -3243,18 +3250,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// Edge skirt sigma from the remaining (1 - F) share of the gaussian.
 		sigma = std::max(sig_floor, sigma * (1.0f - flat_f));
 	}
-	// Overload Glow (bloom) sigma: add the wide-halo width on top of the shared beam sigma (same
-	// pattern as analytic_glow's glow_sig = sigma + glow_w). The width term is scaled by oglow_ramp
-	// (0..1, saturating with how deep into overload this vector is - same saturation point as the
-	// glow's own alpha, oglow_mag) rather than added flat: without this, a vector that barely crosses
-	// overload_threshold (line_over ~ 0.001, near-invisible glow) still paid the FULL wide-quad
-	// rasterization cost (width~40px -> ~300px quad side, ~90K px^2) as a vector deep in overload. In
-	// a mass-overload scene (explosion) most vectors are only marginally over threshold, so this was
-	// spending near-max fill-rate on near-zero-alpha quads across potentially hundreds of vectors -
-	// the actual cause of the Death Star explosion frame-rate drop. Ramping footprint with intensity
-	// keeps the dramatic wide halo for genuinely hot vectors while making barely-overloaded ones cheap.
+	// Legacy overload halo footprint.  It remains available only to chains without the
+	// screen-space Peak Curve marker; marginal overload ramps the footprint down for fill cost.
 	const float oglow_ramp = std::min(1.0f, oglow_mag);
-	const float oglow_sig = sigma + std::max(0.0f, m_vs.overload_glow_width * vec_res_scale()) * oglow_ramp;
+	const float oglow_sig = sigma
+		+ std::max(0.0f, m_vs.overload_glow_width * vec_res_scale()) * oglow_ramp;
 	// Endpoint thickness is part of the stroke itself, not an additive dot. At a fully active end,
 	// line_cap_width scales the body's apparent width; the shader tapers that core back to wcore over
 	// line_cap_transition while retaining the same colour and peak brightness as the body.
@@ -3352,15 +3352,10 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float glow_str  = m_vs.analytic_glow;
 	const float glow_w    = m_vs.analytic_glow_width * vec_res_scale();
 	const float glow_sig  = sigma + std::max(0.0f, glow_w);
-	// Glow onset: only sources brighter than glow_threshold glow, ramped by glow_curve - so faint
-	// stars stay dark while bright bullets/explosions bloom. glow_threshold 0 + glow_curve 1 reproduce
-	// the old linear behaviour (magnitude = colour x length_factor x analytic_glow) exactly. The hue is
-	// preserved (colour normalised by its peak) and the magnitude carries the shaped intensity.
-	const float glow_thr  = m_vs.glow_threshold;
-	const float glow_crv  = m_vs.glow_curve;
 	const float g_bI    = std::max(std::max(prim->color.r, prim->color.g), prim->color.b) * length_factor;
-	const float g_onset = std::max(0.0f, g_bI - glow_thr);
-	const float g_mag   = glow_str * ((glow_crv == 1.0f) ? g_onset : powf(g_onset, glow_crv));
+	// The shared Narrow/Wide source is deliberately linear. Brightness gating at values clustered
+	// around 1.0 behaved like an on/off switch for AVG vectors and made the source hard to tune.
+	const float g_mag = glow_str * g_bI;
 	const float g_peak  = std::max(std::max(std::max(prim->color.r, prim->color.g), prim->color.b), 1e-4f);
 	const float g_scale = g_mag * deposit_scale / g_peak;
 	const uint32_t glow_rgba = u32Color(
@@ -3416,7 +3411,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		{
 			// analytic glow dot (glow_rgba is 0 when analytic_glow is off -> invisible)
 			if (glow_vertex && m_glow_off_glow >= 0) set_dot(glow_vertex, m_glow_off_glow, cx, cy, glow_sig, glow_rgba, 0.0f, 0.0f);
-
 			// Halation around bright dwell dots (bullets). The rendered brightness includes the dwell
 			// boost, so only bright dots reach the threshold; the rim (gain) and the inner fill have
 			// independent brightness so the fill stays visible when the rim is dialed right down.
@@ -3488,19 +3482,19 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				else
 					set_degenerate(optics_vertex, m_glow_off_fill);
 			}
-			// Overdrive white flare (slot 18): an overdriven dwell dot blooms white-hot here in the glow
-			// buffer (post-mask), at the dot's own size, so it is not patterned by the shadow mask.
+			// Overdrive white flare (slot 18): the colour chain marks this direct hot core for MRT 2 and
+			// composites it before the shadow mask; legacy chains leave it in ordinary post-mask glow.
 			if (glow_vertex && m_glow_off_flare >= 0)
 			{
 				if (flare_on)
+				{
 					set_dot(glow_vertex, m_glow_off_flare, cx, cy, sigma, flare_rgba, flare_z, wcore);
+					if (m_vs.mask_overdrive_flare > 0.5f)
+						for (int i = m_glow_off_flare; i < m_glow_off_flare + 6; i++) glow_vertex[i].m_v = -1.0f;
+				}
 				else
 					set_degenerate(glow_vertex, m_glow_off_flare);
 			}
-			// Overload Glow (bloom): a wide soft halo, gated on the SAME heat as the flare, feeding the
-			// existing glow_narrow/glow_wide cascade for a real screen-space spread ordinary brightness
-			// never triggers (see the oglow_* comment above for why this differs from analytic_glow /
-			// Overload Bloom).
 			if (glow_vertex && m_glow_off_oglow >= 0)
 			{
 				if (oglow_on)
@@ -3558,7 +3552,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				const float rl_rand = std::clamp(m_vs.ray_length_rand, 0.0f, 1.0f);
 				const float rc_rand = std::clamp(m_vs.ray_count_rand, 0.0f, 1.0f);
 				auto rh = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
-				const float rl_hz = std::max(1.0f, m_vs.energy_jitter_hz);
+				const float rl_hz = std::max(1.0f, m_vs.beam_jitter_hz);
 				const double rl_t = m_vec_time_ms * double(rl_hz) * 0.001;
 				const uint32_t rl_step = uint32_t(int64_t(rl_t));
 				const float rl_fr = float(rl_t - double(rl_step));
@@ -3637,7 +3631,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	}
 
 	// Endpoint thickness is evaluated inside the line shader from the profile carried by the body
-	// vertices, so changing it never extends the centreline or adds brightness. A line never uses the
+	// vertices. Rounded termini are centred on the commanded endpoints and extend outward by their
+	// radius without shortening the specified line. A line never uses the
 	// short-dwell no-persist slot; blank it so stale point data cannot be drawn.
 	if (np_vertex != nullptr) set_degenerate(np_vertex, 0);
 
@@ -3721,8 +3716,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		gv(m_glow_off_glow + 4, gsx1 - nx * gpad, gsy1 - ny * gpad, ga1, ga1 - seg_len, -gpad);
 		gv(m_glow_off_glow + 5, gsx0 - nx * gpad, gsy0 - ny * gpad, ga0, ga0 - seg_len, -gpad);
 		}
-		// Overdrive white flare (slots 18-23): an overdriven line blooms white-hot here in the glow buffer
-		// (post-mask), at the beam's own sigma (not the wide analytic glow), so it is not mask-patterned.
+		// Overdrive white flare (slots 18-23): the colour chain marks this direct hot core for MRT 2 and
+		// composites it before the shadow mask; legacy chains leave it in ordinary post-mask glow.
 		if (m_glow_off_flare >= 0 && flare_on)
 		{
 			const float fpad = wcore + 3.5f * sigma + 0.5f;
@@ -3731,7 +3726,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float fa0 = -fpad, fa1 = seg_len + fpad;
 			auto fv = [&](int i, float x, float y, float a, float b, float d) {
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = flare_z; glow_vertex[i].m_rgba = flare_rgba;
-				glow_vertex[i].m_u = wcore; glow_vertex[i].m_v = bezel_long_mix;
+				glow_vertex[i].m_u = wcore;
+				glow_vertex[i].m_v = m_vs.mask_overdrive_flare > 0.5f ? -1.0f : bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
 				glow_vertex[i].m_end_core = wcore; glow_vertex[i].m_end_transition = 0.0f;
@@ -3745,7 +3741,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		}
 		else if (glow_vertex && m_glow_off_flare >= 0)
 			set_degenerate(glow_vertex, m_glow_off_flare);
-		// Overload Glow (bloom): same wide-halo mechanism as the point path above.
 		if (m_glow_off_oglow >= 0 && oglow_on)
 		{
 			const float opad = 3.5f * oglow_sig + 0.5f;
@@ -3821,42 +3816,11 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref);
-	// Energy Jitter (near-saturation shimmer): a vector whose normalized energy n approaches
-	// saturation wobbles by a band-limited PER-VECTOR random factor; dim vectors are untouched
-	// (the weight hits 0 at the onset), unlike the retired whole-frame Vector Flicker. Applied to n
-	// itself, BEFORE the transfer/overload chain, so below the two-regime threshold the brightness
-	// wobbles, and above it the core stays saturated while width / white-pull / flare / Overload
-	// Glow / halation shimmer - a bright beam that stays bright but trembles. The time axis is
-	// emulated time quantized to energy_jitter_hz steps with smoothstep value-noise between steps
-	// (bounded speed, freezes on pause); the per-vector seed hashes the quantized endpoints, so the
-	// wobble is stable within a frame and independent between vectors, with no RNG state.
-	const float jit = m_vs.energy_jitter;
-	if (jit > 0.0f)
-	{
-		const float j_onset = m_vs.energy_jitter_onset;
-		const float j_ramp  = std::max(0.05f, m_vs.energy_jitter_ramp);
-		// Base floor: normal (below-onset) vectors still get a slight always-on wobble (analog-noise
-		// shimmer of the whole image); the near-saturation ramp adds on top. energy_jitter_base 0 =
-		// ramp only (prior behaviour - only near-saturation vectors wobble).
-		const float j_w = std::max(std::clamp(m_vs.energy_jitter_base, 0.0f, 1.0f),
-								   std::clamp((n - j_onset) / j_ramp, 0.0f, 1.0f));
-		if (j_w > 0.0f)
-		{
-			const float j_hz = std::max(1.0f, m_vs.energy_jitter_hz);
-			const double j_t = m_vec_time_ms * double(j_hz) * 0.001;
-			const uint32_t j_step = uint32_t(int64_t(j_t));
-			const float j_frac = float(j_t - double(j_step));
-			auto jhash = [](uint32_t a) { a ^= a >> 16; a *= 0x7feb352dU; a ^= a >> 15; a *= 0x846ca68bU; a ^= a >> 16; return a; };
-			const uint32_t j_seed = jhash(uint32_t(int32_t(x0 * 8.0f)) * 0x9e3779b9U)
-								  ^ jhash(uint32_t(int32_t(y0 * 8.0f)) + 0x85ebca6bU)
-								  ^ jhash(uint32_t(int32_t(x1 * 8.0f)) + 0xc2b2ae35U)
-								  ^ jhash(uint32_t(int32_t(y1 * 8.0f)) + 0x27d4eb2fU);
-			const float j_r0 = float(jhash(j_seed ^ jhash(j_step))      & 0xffffffu) / float(0x800000) - 1.0f;
-			const float j_r1 = float(jhash(j_seed ^ jhash(j_step + 1u)) & 0xffffffu) / float(0x800000) - 1.0f;
-			const float j_sm = j_frac * j_frac * (3.0f - 2.0f * j_frac);
-			n *= std::max(0.0f, 1.0f + jit * j_w * (j_r0 + (j_r1 - j_r0) * j_sm));
-		}
-	}
+	float jitter_energy, jx0, jy0, jx1, jy1;
+	beam_jitter(n, x0, y0, x1, y1, jitter_energy, jx0, jy0, jx1, jy1);
+	n *= jitter_energy;
+	n = compress_overload_display_energy(n, m_vs.overload_display_compression);
+	x0 += jx0; y0 += jy0; x1 += jx1; y1 += jy1;
 	const float drive = std::clamp(n, 0.0f, 1.0f);
 	// Stock fallback (chains without bright_threshold, e.g. default-vector): plain intensity-linear
 	// response. The legacy intensity_clip_* / width_clip_* / intensity_curve transfer knobs are gone
@@ -4292,11 +4256,13 @@ int renderer_bgfx::draw(int update)
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
 			bgfx::TextureHandle at[2] = { tc, td };
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
-			bgfx::TextureHandle gc[2] = {
+			bgfx::TextureHandle gc[4] = {
 				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
-				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf)
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG16F, cf)
 			};
-			m_vec_glow_fb = bgfx::createFrameBuffer(2, gc, true);
+			m_vec_glow_fb = bgfx::createFrameBuffer(4, gc, true);
 			if (optical_supported)
 			{
 				bgfx::TextureHandle oc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
@@ -4445,7 +4411,11 @@ int renderer_bgfx::draw(int update)
 		// updated from THIS frame's own scan below, instead of a dedicated pre-pass over the whole
 		// primitive list - a chaotic, cyclic effect like this cannot perceive a one-present lag in
 		// "how busy was the scene," so this trades an exact result for skipping a full O(n) traversal.
-		const bool flicker_on = vstats.timed;
+		// MVEC already contains the final timed beam events and their recorded source cadence. Applying
+		// the synthetic rotating-bucket dropout again makes a stepped frame dim while its residue was
+		// deposited by an earlier undimmed frame, so the afterimage can incorrectly dominate the new
+		// lettering. Keep this live-hardware presentation model out of deterministic MVEC playback.
+		const bool flicker_on = vstats.timed && !vstats.playback_active;
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero
@@ -4627,7 +4597,7 @@ int renderer_bgfx::draw(int update)
 
 		if (vector_screen_present)
 		{
-			// Emulated time for this present, cached for the per-vector Energy Jitter time axis
+			// Emulated time for this present, cached for the per-vector Beam Jitter time axis
 			// (emulated so the wobble freezes on pause and tracks turbo/slow-motion).
 			m_vec_time_ms = vstats.playback_active
 			? vstats.playback_time_ms : window().machine().time().as_double() * 1000.0;
@@ -5771,7 +5741,14 @@ int renderer_bgfx::draw(int update)
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
-				line_eff->submit(fbo_view);
+				if (m_vs.core_overlap_max > 0.5f)
+				{
+					const uint64_t max_blend = BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE)
+						| BGFX_STATE_BLEND_EQUATION(BGFX_STATE_BLEND_EQUATION_MAX);
+					line_eff->submit(fbo_view, max_blend);
+				}
+				else
+					line_eff->submit(fbo_view);
 			}
 			else
 			{
@@ -6135,10 +6112,16 @@ int renderer_bgfx::draw(int update)
 			{
 				bgfx::TextureHandle glow_color = bgfx::getTexture(m_vec_glow_fb, 0);
 				bgfx::TextureHandle bezel_length = bgfx::getTexture(m_vec_glow_fb, 1);
+				bgfx::TextureHandle flare_color = bgfx::getTexture(m_vec_glow_fb, 2);
+				bgfx::TextureHandle overlap_stats = bgfx::getTexture(m_vec_glow_fb, 3);
 				if (bgfx::isValid(glow_color))
 					m_chains->inject_vector_glow(glow_color, m_vec_fb_w, m_vec_fb_h);
 				if (bgfx::isValid(bezel_length))
 					m_chains->inject_vector_bezel_length(bezel_length, m_vec_glow_fb_w, m_vec_glow_fb_h);
+				if (bgfx::isValid(flare_color))
+					m_chains->inject_vector_flare(flare_color, m_vec_glow_fb_w, m_vec_glow_fb_h);
+				if (bgfx::isValid(overlap_stats))
+					m_chains->inject_vector_overlap(overlap_stats, m_vec_glow_fb_w, m_vec_glow_fb_h);
 			}
 			// Expose explicit optical effects separately so the final composite can bypass tail shaping.
 			if (bgfx::isValid(m_vec_optical_fb))

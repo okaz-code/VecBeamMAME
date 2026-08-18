@@ -1,0 +1,14 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+{
+	"blend": { "equation":"add", "srcColor":"1", "dstColor":"0", "srcAlpha":"1", "dstAlpha":"0" },
+	"depth": { "function":"always" },
+	"cull": { "mode":"none" },
+	"write": { "rgb":true, "alpha":true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vector_overlap_white_extract",
+	"uniforms": [
+		{ "name":"s_tex", "type":"int", "values":[0.0] },
+		{ "name":"u_overlap_white_count", "type":"vec4", "values":[3.0,0.0,0.0,0.0] }
+	]
+}

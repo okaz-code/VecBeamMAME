@@ -598,21 +598,35 @@ void chain_manager::load_chains()
 	apply_hdr_auto();
 }
 
+static bool slider_matches_imported_value(const bgfx_slider &slider, float value)
+{
+	// bgfx_slider::import snaps a float to the slider's UI step. Compare with that snapped value,
+	// not the unsnapped calculation (for example 1390 / 500 = 2.78 imports as 2.80 at step 0.05).
+	const float step = std::max(slider.step_value(), 1.0e-6f);
+	const float snapped = std::round(value / step) * step;
+	return std::abs(slider.value() - snapped) < step * 0.25f;
+}
+
 void chain_manager::apply_hdr_auto()
 {
 	if ((!m_edr_relative_auto && m_hdr_display_peak <= 0.0f) || !m_options.bgfx_hdr())
 		return;
 
-	// Keep normal vector luminance stable relative to SDR reference white across displays. Tying it
-	// to 55% of display peak made the same chain jump from ~220 nits on a 400-nit HDR monitor to
-	// ~880 nits on a 1600-nit XDR panel. The established chain calibration is 330/200 = 1.65 times
-	// paper white; retain that ratio and use 85% of panel peak only as a safety ceiling. Additive
-	// crossings/overload then use hdr_rolloff_max to approach the actual display peak.
+	// Prefer a stable 500-nit normal-vector target when an absolute display peak is available and
+	// the panel can keep the target below the established 85% safety ceiling. A lower-peak panel, or
+	// relative macOS EDR where no absolute peak is known, retains the previous 1.65 * paper-white
+	// calibration. Additive crossings/overload then use hdr_rolloff_max to approach the display peak.
 	const float paper_white = std::max(1.0f, m_hdr_paper_white);
 	const float peak = m_hdr_display_peak;
-	const float desired_beam = m_edr_relative_auto
+	const float previous_desired_beam = m_edr_relative_auto
 		? 1.65f * paper_white
 		: std::min(1.65f * paper_white, 0.85f * peak);
+	constexpr float preferred_beam_nits = 500.0f;
+	const bool preferred_beam_has_headroom = !m_edr_relative_auto
+		&& preferred_beam_nits <= 0.85f * peak;
+	const float desired_beam = preferred_beam_has_headroom
+		? preferred_beam_nits
+		: previous_desired_beam;
 	const float beam = std::clamp(std::round(desired_beam / 10.0f) * 10.0f, 80.0f, 2000.0f);
 	const float rmax = m_edr_relative_auto ? 0.0f : std::clamp(peak / beam, 1.1f, 8.0f);
 	const float previous_beam = m_hdr_last_auto_beam;
@@ -632,7 +646,7 @@ void chain_manager::apply_hdr_auto()
 			{
 				// A display move updates hardware-derived defaults, but must not replace a value restored
 				// from cfg or edited live. Values still equal to the preceding auto result remain automatic.
-				if (!m_hdr_live_refresh || previous_beam <= 0.0f || std::abs(slider->value() - previous_beam) < 0.01f)
+				if (!m_hdr_live_refresh || previous_beam <= 0.0f || slider_matches_imported_value(*slider, previous_beam))
 				{
 					slider->import(beam);
 					applied = true;
@@ -644,7 +658,7 @@ void chain_manager::apply_hdr_auto()
 				// headroom independently constrains that value in the present shader.
 				if (m_edr_relative_auto)
 					continue;
-				if (!m_hdr_live_refresh || previous_rmax <= 0.0f || std::abs(slider->value() - previous_rmax) < 0.001f)
+				if (!m_hdr_live_refresh || previous_rmax <= 0.0f || slider_matches_imported_value(*slider, previous_rmax))
 				{
 					slider->import(rmax);
 					applied = true;
@@ -866,6 +880,22 @@ void chain_manager::inject_vector_bezel_length(bgfx::TextureHandle color_tex, ui
 	m_textures.remove_provider("bezel_length0");
 	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
 	m_textures.add_provider("bezel_length0", std::move(prov));
+}
+
+void chain_manager::inject_vector_flare(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	m_textures.remove_provider("flare0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("flare0", std::move(prov));
+}
+
+void chain_manager::inject_vector_overlap(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	// R=sum of bounded overload coverage, G=sum of its square. Kept separate from the
+	// visible core so Direct Core Overlap=Uniform Maximum does not erase overlap count.
+	m_textures.remove_provider("overlap0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("overlap0", std::move(prov));
 }
 
 void chain_manager::inject_vector_optical(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
@@ -1427,6 +1457,19 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 
 		for (bgfx_slider *slider : chain->sliders())
 		{
+			// Hardware-derived HDR defaults are intentionally transient. Do not persist a slider while
+			// it still equals the last auto result, otherwise the next launch restores that number from
+			// cfg after auto-config and silently turns monitor-dependent calibration into a fixed value.
+			// A one-step user edit no longer matches and is saved normally. Relative EDR has no automatic
+			// rolloff value (m_hdr_last_auto_rolloff == 0), so its artistic ceiling remains persistable.
+			const std::string beam_name = "beam_peak_nits" + std::to_string(index);
+			const std::string rmax_name = "hdr_rolloff_max" + std::to_string(index);
+			if ((slider->name() == beam_name && m_hdr_last_auto_beam > 0.0f
+					&& slider_matches_imported_value(*slider, m_hdr_last_auto_beam))
+				|| (slider->name() == rmax_name && m_hdr_last_auto_rolloff > 0.0f
+					&& slider_matches_imported_value(*slider, m_hdr_last_auto_rolloff)))
+				continue;
+
 			auto const val = slider->update(nullptr, SLIDER_NOCHANGE);
 			if (val == slider->core_slider()->defval)
 				continue;

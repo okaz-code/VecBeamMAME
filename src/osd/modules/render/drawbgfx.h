@@ -133,9 +133,10 @@ private:
 	// (see put_analytic_line) so it does not amplify fast multiplexed line content into a visible beat.
 	float energy_object_lift(float intensity01, bool as_point) const;
 
-	// DAC / integrator position noise: time-coherent, position-keyed 2D endpoint offset (px). See the
-	// definition; shared vertices / coincident dot endpoints get the same offset so the path stays joined.
-	void beam_noise_offset(float x, float y, float &ox, float &oy) const;
+	// Unified CRT beam jitter: one strength/time envelope drives energy and endpoint position together.
+	// Endpoint noise is position-keyed, so shared vertices and coincident dot endpoints remain joined.
+	void beam_jitter(float n, float x0, float y0, float x1, float y1,
+		float &energy_scale, float &ox0, float &oy0, float &ox1, float &oy1);
 
 	void set_bgfx_state(uint32_t blend);
 
@@ -234,7 +235,7 @@ private:
 	// "analytic" (see bgfx_chain::vector_engine). While false the vector FBOs are released and
 	// vector LINE primitives take the stock buffer_primitives path untouched.
 	bool m_vec_engine_active = false;
-	// Emulated time (ms) at this present, cached once per frame for the Energy Jitter time axis.
+	// Emulated time (ms) at this present, cached once per frame for the unified Beam Jitter time axis.
 	double m_vec_time_ms = 0.0;
 	// Renderer energy-model aids, rebuilt by a per-frame pre-pass when active (see draw()):
 	// - m_stroke_speed: per-primitive stroke-aggregate beam speed (px/ms) from cap_flags-delimited
@@ -259,11 +260,17 @@ public:
 	{
 		float analytic_glow = 0.0f;
 		float analytic_glow_width = 8.0f;
-		float beam_noise = 0.0f;   // DAC/integrator position noise amplitude (px); 0 = off
+		float beam_jitter = 0.0f;  // unified energy + endpoint-position instability; 0 = off
+		float beam_jitter_hz = 15.0f;
+		float beam_jitter_saturation_start = 1.5f;
+		float beam_jitter_saturation_range = 1.5f;
+		float beam_jitter_saturation_curve = 2.0f;
+		float overload_display_compression = 1.0f;
 		float beam_width_max = 1.5f;
 		float beam_width_min = 1.0f;
 		float beam_width_over_scale = -1.0f;
 		float beam_width_overmax = 4.0f;
+		float phosphor_rgb_combination_width = 0.0f; // full RGB width gain; single primaries remain unchanged
 		float bezel_long_threshold = 160.0f;
 		float bright_curve = 1.0f;
 		float bright_normal_cap = 1.0f;
@@ -271,6 +278,7 @@ public:
 		float bright_sigmoid_center = 0.5f;
 		float bright_threshold = 0.0f;
 		float core_flat = 0.0f;
+		float core_overlap_max = 0.0f; // colour chain: max-blend direct excitation to avoid overlap hotspots
 		float convergence_bloom_gain = 0.0f;
 		float convergence_bloom_falloff = 96.0f;
 		float convergence_bloom_knee = 8.0f;
@@ -291,11 +299,6 @@ public:
 		float energy_dot_ref = 30.0f;
 		float energy_dwell_cap = 16.0f;   // 16 = no cap (chains without the slider)
 		float energy_infl = 0.6f;
-		float energy_jitter = 0.0f;
-		float energy_jitter_base = 0.0f;   // always-on wobble floor for normal vectors (analog noise)
-		float energy_jitter_hz = 15.0f;
-		float energy_jitter_onset = 0.8f;
-		float energy_jitter_ramp = 0.5f;
 		float energy_line_max = 4.0f;
 		float energy_model = 0.0f;
 		float scan_variation = 0.0f;  // untimed list-arrival variation, percent; 0 = disabled
@@ -306,14 +309,13 @@ public:
 		float energy_obj_star = 1.5f;
 		float energy_speed_norm = 0.8f;
 		float energy_stroke_agg = 1.0f;
-		float glow_curve = 1.0f;
 		float glow_narrow = 0.0f;
-		float glow_threshold = 0.0f;
 		float hv_droop = 0.0f;
 		float hv_droop_onset = 0.0f;
 		float hv_droop_ref = 10.0f;
 		float intensity_overdrive = 0.0f;
 		float intensity_overdrive_curve = 2.0f;
+		float mask_overdrive_flare = 0.0f; // colour chain: route hot core through shadow mask
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
@@ -393,7 +395,7 @@ private:
 	// chain's glow_fbo_scale slider (1.0 when the chain has no such slider): glow content is smooth
 	// wide gaussians evaluated analytically from interpolated line-local varyings (no gl_FragCoord),
 	// so a reduced raster just samples the same function at lower density - the -lite variant chain
-	// sets 0.5 to quarter the fill cost of the biggest fill-rate consumer (200px oglow footprints).
+	// sets 0.5 to quarter the fill cost of broad analytic optical footprints.
 	bgfx::FrameBufferHandle m_vec_glow_fb = BGFX_INVALID_HANDLE;
 	// Explicit optical effects (halation rim/fill and starburst rays), sampled directly by
 	// the final composite so Glow Tail Curve / Black Toe affect ordinary glow only.

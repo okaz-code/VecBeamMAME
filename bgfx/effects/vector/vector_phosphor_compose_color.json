@@ -81,6 +81,36 @@
       ]
     },
     {
+      "name": "u_phos_reset",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_phos_peak",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_phos_radiant",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_np_gain",
       "type": "vec4",
       "values": [

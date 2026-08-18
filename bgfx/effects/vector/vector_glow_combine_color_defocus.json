@@ -62,6 +62,20 @@
       ]
     },
     {
+      "name": "s_flare",
+      "type": "int",
+      "values": [
+        6.0
+      ]
+    },
+    {
+      "name": "s_overlap",
+      "type": "int",
+      "values": [
+        7.0
+      ]
+    },
+    {
       "name": "u_defocus",
       "type": "vec4",
       "values": [
@@ -122,10 +136,70 @@
       ]
     },
     {
+      "name": "u_masked_flare_gain",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_shadow_mask_strength",
       "type": "vec4",
       "values": [
         0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_masked_core_peak",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_overlap_white_strength",
+      "type": "vec4",
+      "values": [
+        0.8,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_overlap_white_count",
+      "type": "vec4",
+      "values": [
+        3.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_overlap_white_brightness",
+      "type": "vec4",
+      "values": [
+        0.5,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_overlap_white_spread",
+      "type": "vec4",
+      "values": [
+        2.0,
         0.0,
         0.0,
         0.0
@@ -266,6 +340,36 @@
       "type": "vec4",
       "values": [
         0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_tex_size7",
+      "type": "vec4",
+      "values": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_mglow_rgb_bands",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_mglow_rgb_band_count",
+      "type": "vec4",
+      "values": [
+        8.0,
         0.0,
         0.0,
         0.0
