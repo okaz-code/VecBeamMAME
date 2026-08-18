@@ -60,6 +60,7 @@ public:
 	float min_value() const { return m_min; }
 	float default_value() const { return m_default; }
 	float max_value() const { return m_max; }
+	float step_value() const { return m_step; }
 	slider_state *core_slider() const { return m_slider_state.get(); }
 	size_t size() const { return get_size_for_type(m_type); }
 	static size_t get_size_for_type(slider_type type);

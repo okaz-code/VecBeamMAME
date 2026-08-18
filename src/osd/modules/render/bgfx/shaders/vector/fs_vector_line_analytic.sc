@@ -122,17 +122,26 @@ void main()
 		float local_core = mix(body_core, end_core, end_profile);
 		float start_radius = mix(body_core, end_core, clamp(start_amount, 0.0, 1.0));
 		float finish_radius = mix(body_core, end_core, clamp(finish_amount, 0.0, 1.0));
-		// Round only the enabled stroke termini, inward from the exact p0/p1 coordinates. This is the
-		// SDF of a variable-width body whose end is a semicircle: no extra cap primitive, brightness,
-		// or centreline extension is introduced. With Line End Width = 1 the ordinary line still has
-		// rounded corners; the width controls only how large that rounded terminal becomes.
+		// Round only the enabled stroke termini, centred on the exact p0/p1 coordinates. The commanded
+		// line remains the complete [p0,p1] body and each enabled semicircular LINE END extends outward
+		// by its radius. This deliberately makes the visible length line_length + start_radius +
+		// finish_radius, instead of consuming that radius inside the commanded line length.
 		float core_sd = abs(d) - local_core;
 		float start_round_zone = start_round * step(1e-4, start_radius) * (1.0 - step(start_radius, a));
 		float finish_round_zone = finish_round * step(1e-4, finish_radius) * (1.0 - step(finish_radius, -b));
+		// A connected endpoint must not receive a circular cap, but it must still meet the next
+		// segment at full beam coverage. With MAX composition, the two 0.5 axial end roll-offs no
+		// longer add to one and produced a visible dotted/gapped glyph. Give non-rounded endpoints a
+		// short square support overlap instead: it suppresses the axial roll-off across the join while
+		// preserving a straight (non-circular) edge. Two sigma also covers coreless Gaussian strokes.
+		float start_join_support = max(start_radius, 2.0 * sg);
+		float finish_join_support = max(finish_radius, 2.0 * sg);
+		float start_join_zone = (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
+		float finish_join_zone = (1.0 - finish_round) * step(-finish_join_support, b) * (1.0 - step(finish_join_support, b));
 		if (start_round_zone > 0.0)
-			core_sd = length(vec2(a - start_radius, d)) - start_radius;
+			core_sd = length(vec2(a, d)) - start_radius;
 		if (finish_round_zone > 0.0)
-			core_sd = length(vec2(b + finish_radius, d)) - finish_radius;
+			core_sd = length(vec2(b, d)) - finish_radius;
 		float dc = max(core_sd, 0.0);
 		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
 		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on
@@ -158,17 +167,34 @@ void main()
 		// rounded terminus the circular SDF is the complete beam shape, so do not multiply it by the
 		// swept-line axial roll-off again; that second fade made the semicircle look pinched/pointed.
 		perp = sharpen(perp, u_line_params.y);
-		float round_zone = clamp(max(start_round_zone, finish_round_zone), 0.0, 1.0);
-		fade = perp * mix(axial, 1.0, round_zone);
+		float endpoint_zone = clamp(max(max(start_round_zone, finish_round_zone), max(start_join_zone, finish_join_zone)), 0.0, 1.0);
+		fade = perp * mix(axial, 1.0, endpoint_zone);
 	}
 
 	// Float intensity multiplier. Core/overload geometry carries z >= 0 (x1 and above); very faint
 	// halation geometry may carry -1 < z < 0 so its gain is not quantized through RGBA8 vertex colour.
-	// The additive SRC_ALPHA blend deposits colour.rgb * out.a into the float FBO.
+	// Premultiply RGB explicitly. MIN/MAX blend equations ignore blend factors on some APIs, so
+	// relying on SRC_ALPHA there exposes the unattenuated expanded quad and makes every line huge.
+	// The analytic effect uses ONE for RGB; under ordinary ADD this is exactly the former
+	// colour.rgb * out.a contribution, while MAX now compares the correctly faded beam samples.
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
-	vec4 deposit = v_color0 * vec4(1.0, 1.0, 1.0, fade * over_mult);
-	gl_FragData[0] = deposit;
+	float coverage = v_color0.a * fade * over_mult;
+	vec4 deposit = vec4(v_color0.rgb * coverage, coverage);
+	// v_texcoord2.x < -0.5 marks the overdrive hot core for chains that mask it as direct phosphor
+	// emission. Keep it out of the ordinary unmasked glow attachment and route it through MRT 2.
+	float separated_flare = step(v_texcoord2.x, -0.5);
+	gl_FragData[0] = deposit * (1.0 - separated_flare);
 	// The glow FBO binds a second colour attachment containing only the
 	// CPU-classified Long contribution. Other views leave target 1 unbound.
-	gl_FragData[1] = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a);
+	gl_FragData[1] = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a) * (1.0 - separated_flare);
+	gl_FragData[2] = deposit * separated_flare;
+	// Overload-overlap statistics, accumulated independently of the visible core's optional MAX
+	// blend. Each vector contributes a bounded h, so even an arbitrarily hot single vector has
+	// effective count one. MRT 3 is RG16F in the analytic glow framebuffer.
+	// Count occupied overloaded strokes, not their raw current. Star Wars deliberately changes the
+	// VCTR current around explosion circles; using coverage here made the high-current quadrant reach
+	// white first even though the real monitor compresses those current steps. fade preserves the
+	// spatial beam profile while giving every qualifying vector the same unit peak contribution.
+	float h = clamp(fade, 0.0, 1.0) * separated_flare;
+	gl_FragData[3] = vec4(h, h * h, 0.0, 1.0);
 }

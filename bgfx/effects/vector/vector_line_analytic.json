@@ -7,7 +7,7 @@
 {
 	"blend": {
 		"equation": "add",
-		"srcColor": "srcalpha",
+		"srcColor": "1",
 		"dstColor": "1",
 		"srcAlpha": "srcalpha",
 		"dstAlpha": "1"

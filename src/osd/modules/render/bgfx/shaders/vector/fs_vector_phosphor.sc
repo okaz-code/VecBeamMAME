@@ -15,10 +15,17 @@ $input v_color0, v_texcoord0
 
 SAMPLER2D(s_prev, 0);   // pool, previous frame: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
+SAMPLER2D(s_overlap, 2); // packed local light: rgb=density bloom, a=overload white heat
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;   // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
 uniform vec4 u_phos_rgb; // rgb = per-channel half-life multiplier (blue phosphor shorter etc.); 1,1,1 = uniform
+uniform vec4 u_phos_reset; // x = meaningful fresh-hit floor; >0 makes every such hit replace old residue
+uniform vec4 u_phos_composite; // x > 0.5: a weaker hit cannot darken brighter surviving phosphor
+uniform vec4 u_phos_peak;  // x = direct-excitation peak limit applied before pool storage; 0 = off
+uniform vec4 u_phos_radiant; // x = RGB combination brightness: 0 peak-normalised, 1 physical additive, >1 emphasis
+uniform vec4 u_overlap_white_strength;
+uniform vec4 u_overlap_white_brightness;
 
 float phos_S(float age, float tau, float p, float total)
 {
@@ -37,16 +44,50 @@ float phos_two(float age, float tauN, float p, float totN, float accel, float no
 	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
 }
 
+// Radiometric excitation proxy.  Do not use perceptual luma here: independent R/G/B phosphors
+// contribute physical light simultaneously, so a two/three-primary hit carries more total emitted
+// energy than one primary at the same drive.  Unit weights deliberately preserve the old scale for
+// a full single primary; calibrated primary power weights can replace them later if measured SPDs
+// become available.  Peak-channel metrics are still used for clipping, where sum-energy is wrong.
+float phos_radiant_energy(vec3 rgb)
+{
+	rgb = max(rgb, vec3_splat(0.0));
+	float peak = max(rgb.r, max(rgb.g, rgb.b));
+	float additive = dot(rgb, vec3_splat(1.0));
+	return peak + max(0.0, u_phos_radiant.x) * (additive - peak);
+}
+
 void main()
 {
 	vec3  cur   = texture2D(s_tex,  v_texcoord0).rgb;
+	// Normalize the FRESH excitation before it enters temporal storage. Limiting only the final
+	// composite left overlap pixels with a larger stored peak, so they remained brighter for the
+	// entire decay. This makes the stored state obey the same calibrated ceiling as the visible core.
+	float raw_cur_peak = max(cur.r, max(cur.g, cur.b));
+	if (u_phos_peak.x > 0.0 && raw_cur_peak > u_phos_peak.x)
+		cur *= u_phos_peak.x / raw_cur_peak;
+	// Store the white-hot colour in the phosphor pool as well as showing its immediate direct flash.
+	// This lets a dense explosion decay from white naturally, while a single overloaded vector has
+	// effective count one and therefore retains its original colour throughout its afterimage.
+	if (u_overlap_white_strength.x > 0.0)
+	{
+		float white_amount = clamp(u_overlap_white_strength.x, 0.0, 1.0)
+			* clamp(texture2D(s_overlap, v_texcoord0).a, 0.0, 1.0);
+		if (white_amount > 0.0)
+		{
+			float limited_peak = max(cur.r, max(cur.g, cur.b));
+			float white_peak = limited_peak * (1.0 + max(u_overlap_white_brightness.x, 0.0) * white_amount);
+			cur = mix(cur, vec3_splat(white_peak), white_amount);
+		}
+	}
 	vec4  prev  = texture2D(s_prev, v_texcoord0);
 	vec3  peakP = prev.rgb;
 	float ageP  = prev.a;
 
 	// Two-phase energy decay + per-channel (RGB) half-life. accel = overrange-excess speed-up
 	// (u_phos2.x = phosphor_energy_decay); u_phos_rgb = per-channel half-life multiplier (1,1,1 =
-	// uniform). The re-excite test compares the BRIGHTEST surviving channel to the fresh frame.
+	// uniform). The re-excite test compares total radiometric RGB excitation, not perceptual luma or
+	// the brightest channel: simultaneous primaries physically add even when their perceived luma does not.
 	// Must match the compose pass so re-excite and display agree.
 	float accel = 1.0 + max(0.0, u_phos2.x);
 	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
@@ -59,19 +100,29 @@ void main()
 	// slowly-moving bright line's successive positions; the eye integrates ~a frame on the real
 	// thing, so holding for about one present closes the seams without lengthening the tail's shape.
 	// Must match fs_vector_phosphor_compose.
-	float ageE = max(0.0, ageP - u_phos2.y);
+	// Advance the previous phosphor state to the CURRENT source-frame time before comparing it with
+	// this frame's excitation. The old ordering compared against the previous frame's brighter value
+	// and only added dt afterward, producing a one-frame decision lag near moving/dimming strokes.
+	float advanced_age = ageP + max(u_phos.x, 0.0);
+	float ageE = max(0.0, advanced_age - u_phos2.y);
 	vec3 dRGB = vec3(
 		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
 		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
 		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
-	float decayed = max(max(dRGB.r, dRGB.g), dRGB.b);
-	float curL    = max(max(cur.r, cur.g), cur.b);
+	float decayed_energy = phos_radiant_energy(dRGB);
+	float cur_energy     = phos_radiant_energy(cur);
 
 	vec3  peak;
 	float age;
-	if (curL >= decayed)
+	// In Replace mode, a meaningful newly drawn stroke replaces the old phosphor history even when it
+	// is dimmer than the surviving residue. The floor rejects the gaussian beam's near-zero tails.
+	// Preserve Brighter instead uses temporal maximum composition so no fresh dark/weak sample can
+	// carve a step into brighter afterglow. A zero reset floor retains brightness-only replacement.
+	bool meaningful_hit = u_phos_reset.x > 0.0 && cur_energy >= u_phos_reset.x;
+	bool replace_weak_hit = meaningful_hit && u_phos_composite.x < 0.5;
+	if (replace_weak_hit || cur_energy >= decayed_energy)
 	{
-		// (Re)excited: the new excitation REPLACES the pixel (winner-take-all). Do NOT adopt the
+		// (Re)excited, or explicitly selected by Replace: the new excitation becomes the pixel. Do NOT adopt the
 		// decayed residue here (a previous max(cur, dRGB) "fix" did): re-anchoring the residue at
 		// age 0 every present combines with the Hill curve's flat shoulder (S(one present) ~ 1 at
 		// long half-lives) into a residue that effectively NEVER decays - old content re-hit by new
@@ -83,7 +134,9 @@ void main()
 	}
 	else
 	{
-		peak = peakP; age = ageP + u_phos.x; // not re-hit: hold the peak colour, advance age
+		// Temporal maximum composite: a dim gaussian end/tail cannot overwrite a brighter residue.
+		// Keep both the old peak and its advanced age, so preserving it does not re-anchor/freeze it.
+		peak = peakP; age = advanced_age;
 	}
 	gl_FragColor = vec4(peak, age);
 }
