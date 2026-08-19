@@ -82,6 +82,10 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 			break;
 	}
 
+	// Optional: hide this slider from the menu unless the chain's Advanced toggle is on. The value is
+	// still live and still persisted - only the MENU entry is withheld (see bgfx_slider::advanced()).
+	const bool advanced = value.HasMember("advanced") && value["advanced"].IsBool() && value["advanced"].GetBool();
+
 	std::string prefixed_desc = util::string_format("Window %1$u, Screen %2$u, %3$s", chains.window_index(), screen_index, description);
 	if (slider_count > 1)
 	{
@@ -117,7 +121,9 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 					desc = prefixed_desc + "Invalid";
 					break;
 			}
-			sliders.push_back(new bgfx_slider(chains.machine(), std::move(full_name), min[index], defaults[index], max[index], step, type, screen_type, format, desc, strings));
+			bgfx_slider *const created = new bgfx_slider(chains.machine(), std::move(full_name), min[index], defaults[index], max[index], step, type, screen_type, format, desc, strings);
+			created->set_advanced(advanced);
+			sliders.push_back(created);
 		}
 	}
 	else
@@ -125,7 +131,9 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 		const float min = get_float(value, "min", 0.0f);
 		const float def = get_float(value, "default", 0.0f);
 		const float max = get_float(value, "max", 1.0f);
-		sliders.push_back(new bgfx_slider(chains.machine(), name + "0", min, def, max, step, type, screen_type, format, prefixed_desc, strings));
+		bgfx_slider *const created = new bgfx_slider(chains.machine(), name + "0", min, def, max, step, type, screen_type, format, prefixed_desc, strings);
+		created->set_advanced(advanced);
+		sliders.push_back(created);
 	}
 	return sliders;
 }
