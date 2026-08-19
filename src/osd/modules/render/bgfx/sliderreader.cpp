@@ -97,7 +97,22 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 					"%1$sSlider '%2$s': targets[%3$u] must have a string 'slider'", prefix, name, i))
 				return sliders;
 			bgfx_slider::macro_target target;
-			target.name = std::string(t["slider"].GetString()) + "0";
+			// "component" addresses one part of a vec2/colour target (0 = X/Red, the default). Omitting
+			// it on a multi-component slider drives ALL of its components, which is what a defocus or
+			// convergence macro wants.
+			const std::string target_name = t["slider"].GetString();
+			if (t.HasMember("component"))
+			{
+				if (!READER_CHECK(t["component"].IsNumber(), "%1$sSlider '%2$s': targets[%3$u] 'component' must be a number", prefix, name, i))
+					return sliders;
+				target.name = target_name + std::to_string(int(t["component"].GetFloat()));
+			}
+			else
+			{
+				// resolved against the chain's sliders at apply time: name0, and name1/name2 when they exist
+				target.name = target_name;
+				target.all_components = true;
+			}
 			const std::string mode = t.HasMember("mode") && t["mode"].IsString() ? t["mode"].GetString() : "scale";
 			if (mode == "curve")
 			{

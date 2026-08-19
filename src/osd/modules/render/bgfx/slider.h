@@ -60,9 +60,10 @@ public:
 	enum macro_mode { MACRO_SCALE, MACRO_CURVE, MACRO_ENABLE };
 	struct macro_target
 	{
-		std::string name;
+		std::string name;              // slider name including the component suffix, or the bare name
+		bool        all_components = false;   // true = apply to name0 and any name1 / name2 as well
 		macro_mode  mode = MACRO_SCALE;
-		std::vector<float> xs, ys;   // MACRO_CURVE only, ascending in xs
+		std::vector<float> xs, ys;     // MACRO_CURVE only, ascending in xs
 	};
 
 	int32_t update(std::string *str, int32_t newval);

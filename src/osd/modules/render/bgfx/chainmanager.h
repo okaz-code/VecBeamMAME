@@ -291,6 +291,10 @@ private:
 	// output as a fixed user edit on the next launch.
 	std::map<std::string, float>    m_macro_last;
 	std::map<std::string, float>    m_macro_imported;
+	// Baseline a macro scales from: the value a target held BEFORE any macro touched it. That is the
+	// chain default for most sliders, but beam_peak_nits is auto-derived from the display first, and
+	// scaling its JSON default instead would throw the HDR auto-config away.
+	std::map<std::string, float>    m_macro_base;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;
