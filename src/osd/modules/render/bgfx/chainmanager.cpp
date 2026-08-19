@@ -596,6 +596,11 @@ void chain_manager::load_chains()
 	// here) makes them behave as computed defaults: the cfg restore that follows on the first frame,
 	// and restore_slider_settings() across live reloads, both overwrite them as usual.
 	apply_hdr_auto();
+	// Same idea for the macro sliders: their derived values are computed defaults, so a cfg entry for
+	// a detail slider (restored on the first frame) still wins.
+	m_macro_last.clear();
+	m_macro_imported.clear();
+	apply_macros(true);
 }
 
 static bool slider_matches_imported_value(const bgfx_slider &slider, float value)
@@ -605,6 +610,76 @@ static bool slider_matches_imported_value(const bgfx_slider &slider, float value
 	const float step = std::max(slider.step_value(), 1.0e-6f);
 	const float snapped = std::round(value / step) * step;
 	return std::abs(slider.value() - snapped) < step * 0.25f;
+}
+
+void chain_manager::apply_macros(bool force)
+{
+	for (bgfx_chain *chain : m_screen_chains)
+	{
+		if (chain == nullptr)
+			continue;
+		for (bgfx_slider *macro : chain->sliders())
+		{
+			if (!macro->is_macro())
+				continue;
+			const float value = macro->value();
+			const auto last = m_macro_last.find(macro->name());
+			const bool changed = (last == m_macro_last.end()) || (last->second != value);
+			if (!changed && !force)
+				continue;
+			m_macro_last[macro->name()] = value;
+			for (const bgfx_slider::macro_target &target : macro->macro_targets())
+			{
+				bgfx_slider *dest = nullptr;
+				for (bgfx_slider *candidate : chain->sliders())
+				{
+					if (candidate->name() == target.name)
+					{
+						dest = candidate;
+						break;
+					}
+				}
+				if (dest == nullptr)
+				{
+					osd_printf_verbose("BGFX: macro '%s' targets unknown slider '%s'\n",
+						macro->name().c_str(), target.name.c_str());
+					continue;
+				}
+				float derived = dest->default_value();
+				switch (target.mode)
+				{
+					case bgfx_slider::MACRO_SCALE:
+						derived = dest->default_value() * value;
+						break;
+					case bgfx_slider::MACRO_ENABLE:
+						derived = (value > 0.5f) ? dest->default_value() : 0.0f;
+						break;
+					case bgfx_slider::MACRO_CURVE:
+					{
+						// piecewise linear, clamped at both ends
+						derived = target.ys.front();
+						for (size_t i = 1; i < target.xs.size(); i++)
+						{
+							if (value <= target.xs[i] || i == target.xs.size() - 1)
+							{
+								const float x0 = target.xs[i - 1], x1 = target.xs[i];
+								const float y0 = target.ys[i - 1], y1 = target.ys[i];
+								const float t = (x1 > x0) ? std::clamp((value - x0) / (x1 - x0), 0.0f, 1.0f) : 0.0f;
+								derived = y0 + (y1 - y0) * t;
+								break;
+							}
+						}
+						break;
+					}
+				}
+				derived = std::clamp(derived, dest->min_value(), dest->max_value());
+				dest->import(derived);
+				m_macro_imported[dest->name()] = dest->value();
+				osd_printf_verbose("BGFX: macro %s = %.3f -> %s = %.4f\n",
+					macro->name().c_str(), value, dest->name().c_str(), dest->value());
+			}
+		}
+	}
 }
 
 void chain_manager::apply_hdr_auto()
@@ -1479,6 +1554,13 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 					&& slider_matches_imported_value(*slider, m_hdr_last_auto_beam))
 				|| (slider->name() == rmax_name && m_hdr_last_auto_rolloff > 0.0f
 					&& slider_matches_imported_value(*slider, m_hdr_last_auto_rolloff)))
+				continue;
+
+			// Same rule for macro-driven sliders: while a target still holds what the macro imported,
+			// it is the macro's output and not a user edit, so it must not be written. Nudge it by one
+			// step and it stops matching, which is exactly when it becomes worth persisting.
+			const auto imported = m_macro_imported.find(slider->name());
+			if (imported != m_macro_imported.end() && slider_matches_imported_value(*slider, imported->second))
 				continue;
 
 			auto const val = slider->update(nullptr, SLIDER_NOCHANGE);

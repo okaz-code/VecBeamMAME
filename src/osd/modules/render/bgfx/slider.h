@@ -50,6 +50,21 @@ public:
 	bgfx_slider(running_machine& machine, std::string &&name, float min, float def, float max, float step, slider_type type, screen_type screen, std::string format, std::string description, std::vector<std::string>& strings);
 	virtual ~bgfx_slider();
 
+	// A MACRO slider drives other sliders instead of a uniform: one user-facing control that imports
+	// derived values into the detail sliders it lists (see chain_manager::apply_macros). Declared in
+	// the chain JSON with a "targets" array, so the mapping stays data-driven per chain - the same
+	// "Bloom Strength" means different sliders on the colour and Vectrex chains.
+	//   scale : target = target's JSON default * macro value
+	//   curve : target = piecewise-linear interpolation of the declared [macro, target] points
+	//   enable: target = macro > 0.5 ? target's JSON default : 0   (group on/off)
+	enum macro_mode { MACRO_SCALE, MACRO_CURVE, MACRO_ENABLE };
+	struct macro_target
+	{
+		std::string name;
+		macro_mode  mode = MACRO_SCALE;
+		std::vector<float> xs, ys;   // MACRO_CURVE only, ascending in xs
+	};
+
 	int32_t update(std::string *str, int32_t newval);
 
 	// Getters
@@ -67,12 +82,15 @@ public:
 	// chain_manager::get_slider_list). Used for the "[-] " parameters that are inert at the chain
 	// defaults, so the menu opens on the controls that actually do something.
 	bool advanced() const { return m_advanced; }
+	const std::vector<macro_target> &macro_targets() const { return m_macro_targets; }
+	bool is_macro() const { return !m_macro_targets.empty(); }
 	size_t size() const { return get_size_for_type(m_type); }
 	static size_t get_size_for_type(slider_type type);
 
 	// Setters
 	void import(float val);
 	void set_advanced(bool advanced) { m_advanced = advanced; }
+	void set_macro_targets(std::vector<macro_target> &&targets) { m_macro_targets = std::move(targets); }
 
 protected:
 	std::unique_ptr<slider_state> create_core_slider();
@@ -80,6 +98,7 @@ protected:
 
 	std::string     m_name;
 	bool            m_advanced = false;
+	std::vector<macro_target> m_macro_targets;
 	float           m_min;
 	float           m_default;
 	float           m_max;

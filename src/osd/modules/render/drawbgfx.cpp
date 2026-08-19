@@ -4203,6 +4203,10 @@ int renderer_bgfx::draw(int update)
 	}
 	if (window_index == 0)
 		m_module().update_edr_headroom(native_window_handle());
+	// Macro sliders have no change callback, so poll them once per frame and import into their
+	// targets. Nothing happens on the frames where no macro moved.
+	if (window_index == 0)
+		m_chains->apply_macros();
 	// The Advanced toggle decides which sliders the menu publishes, so a change has to invalidate the
 	// list. MAME polls get_slider_list() and repopulates, the same way a chain change is picked up.
 	if (window_index == 0)

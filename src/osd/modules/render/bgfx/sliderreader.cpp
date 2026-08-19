@@ -82,11 +82,60 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 			break;
 	}
 
+	// Optional "targets": makes this a MACRO slider that drives other sliders (see bgfx_slider).
+	// Single-component sliders only - a vec2/colour macro has no sensible meaning.
+	std::vector<bgfx_slider::macro_target> macro_targets;
+	if (value.HasMember("targets"))
+	{
+		if (!READER_CHECK(value["targets"].IsArray(), "%1$sSlider '%2$s': value 'targets' must be an array", prefix, name))
+			return sliders;
+		const Value &target_array = value["targets"];
+		for (uint32_t i = 0; i < target_array.Size(); i++)
+		{
+			const Value &t = target_array[i];
+			if (!READER_CHECK(t.IsObject() && t.HasMember("slider") && t["slider"].IsString(),
+					"%1$sSlider '%2$s': targets[%3$u] must have a string 'slider'", prefix, name, i))
+				return sliders;
+			bgfx_slider::macro_target target;
+			target.name = std::string(t["slider"].GetString()) + "0";
+			const std::string mode = t.HasMember("mode") && t["mode"].IsString() ? t["mode"].GetString() : "scale";
+			if (mode == "curve")
+			{
+				target.mode = bgfx_slider::MACRO_CURVE;
+				if (!READER_CHECK(t.HasMember("curve") && t["curve"].IsArray() && t["curve"].Size() >= 2,
+						"%1$sSlider '%2$s': targets[%3$u] mode 'curve' needs a 'curve' array of at least two points", prefix, name, i))
+					return sliders;
+				const Value &curve = t["curve"];
+				for (uint32_t k = 0; k < curve.Size(); k++)
+				{
+					if (!READER_CHECK(curve[k].IsArray() && curve[k].Size() == 2 && curve[k][0].IsNumber() && curve[k][1].IsNumber(),
+							"%1$sSlider '%2$s': targets[%3$u] curve points must be [macro, value] pairs", prefix, name, i))
+						return sliders;
+					target.xs.push_back(curve[k][0].GetFloat());
+					target.ys.push_back(curve[k][1].GetFloat());
+				}
+			}
+			else if (mode == "enable")
+			{
+				target.mode = bgfx_slider::MACRO_ENABLE;
+			}
+			else if (!READER_CHECK(mode == "scale", "%1$sSlider '%2$s': targets[%3$u] unknown mode '%4$s'", prefix, name, i, mode))
+			{
+				return sliders;
+			}
+			macro_targets.emplace_back(std::move(target));
+		}
+	}
+
 	// Optional: hide this slider from the menu unless the chain's Advanced toggle is on. The value is
 	// still live and still persisted - only the MENU entry is withheld (see bgfx_slider::advanced()).
 	const bool advanced = value.HasMember("advanced") && value["advanced"].IsBool() && value["advanced"].GetBool();
 
 	std::string prefixed_desc = util::string_format("Window %1$u, Screen %2$u, %3$s", chains.window_index(), screen_index, description);
+	if (!READER_CHECK(macro_targets.empty() || slider_count == 1,
+			"%1$sSlider '%2$s': 'targets' is only supported on single-component sliders", prefix, name))
+		return sliders;
+
 	if (slider_count > 1)
 	{
 		if (!READER_CHECK(value["min"].IsArray(), "%1$sSlider '%2$s': value 'min' must be an array", prefix, name))
@@ -133,6 +182,7 @@ std::vector<bgfx_slider*> slider_reader::read_from_value(const Value& value, con
 		const float max = get_float(value, "max", 1.0f);
 		bgfx_slider *const created = new bgfx_slider(chains.machine(), name + "0", min, def, max, step, type, screen_type, format, prefixed_desc, strings);
 		created->set_advanced(advanced);
+		created->set_macro_targets(std::move(macro_targets));
 		sliders.push_back(created);
 	}
 	return sliders;
