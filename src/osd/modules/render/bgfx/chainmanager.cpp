@@ -595,11 +595,14 @@ void chain_manager::load_chains()
 	// Overlay the HDR auto-config values on the freshly-created sliders. Doing it here (and only
 	// here) makes them behave as computed defaults: the cfg restore that follows on the first frame,
 	// and restore_slider_settings() across live reloads, both overwrite them as usual.
-	apply_hdr_auto();
-	// Same idea for the macro sliders: their derived values are computed defaults, so a cfg entry for
-	// a detail slider (restored on the first frame) still wins.
+	// Reset the macro bookkeeping BEFORE the HDR auto-config: apply_hdr_auto() ends by running the
+	// macros itself, and the baseline captured there must survive.
 	m_macro_last.clear();
 	m_macro_imported.clear();
+	m_macro_base.clear();
+	apply_hdr_auto();
+	// Macro output is a computed default too, so a cfg entry for a detail slider (restored on the
+	// first frame) still wins.
 	apply_macros(true);
 }
 
@@ -630,29 +633,45 @@ void chain_manager::apply_macros(bool force)
 			m_macro_last[macro->name()] = value;
 			for (const bgfx_slider::macro_target &target : macro->macro_targets())
 			{
-				bgfx_slider *dest = nullptr;
+				// A bare target name drives every component the slider has (vec2 / colour), so one
+				// "Defocus" macro can move defocus X and Y together.
+				std::vector<bgfx_slider *> dests;
 				for (bgfx_slider *candidate : chain->sliders())
 				{
-					if (candidate->name() == target.name)
+					if (target.all_components)
 					{
-						dest = candidate;
-						break;
+						if (candidate->name().compare(0, target.name.size(), target.name) == 0
+							&& candidate->name().size() == target.name.size() + 1
+							&& candidate->name().back() >= '0' && candidate->name().back() <= '2')
+							dests.push_back(candidate);
+					}
+					else if (candidate->name() == target.name)
+					{
+						dests.push_back(candidate);
 					}
 				}
-				if (dest == nullptr)
+				if (dests.empty())
 				{
 					osd_printf_verbose("BGFX: macro '%s' targets unknown slider '%s'\n",
 						macro->name().c_str(), target.name.c_str());
 					continue;
 				}
-				float derived = dest->default_value();
+				for (bgfx_slider *dest : dests)
+				{
+				// Capture the pre-macro value once; everything scales from that, not from the JSON
+				// default, so an auto-derived target (beam_peak_nits) keeps its derivation.
+				const auto base_it = m_macro_base.find(dest->name());
+				const float base = (base_it != m_macro_base.end())
+						? base_it->second
+						: (m_macro_base[dest->name()] = dest->value());
+				float derived = base;
 				switch (target.mode)
 				{
 					case bgfx_slider::MACRO_SCALE:
-						derived = dest->default_value() * value;
+						derived = base * value;
 						break;
 					case bgfx_slider::MACRO_ENABLE:
-						derived = (value > 0.5f) ? dest->default_value() : 0.0f;
+						derived = (value > 0.5f) ? base : 0.0f;
 						break;
 					case bgfx_slider::MACRO_CURVE:
 					{
@@ -675,8 +694,17 @@ void chain_manager::apply_macros(bool force)
 				derived = std::clamp(derived, dest->min_value(), dest->max_value());
 				dest->import(derived);
 				m_macro_imported[dest->name()] = dest->value();
+				// The HDR auto-config refuses to update a slider that no longer matches what IT last
+				// wrote (that is how it protects user edits). A macro scaling the auto-derived peak is
+				// not a user edit, so move that baseline with it - otherwise a later display change
+				// would silently stop re-deriving the peak.
+				if (dest->name() == "beam_peak_nits0")
+					m_hdr_last_auto_beam = dest->value();
+				else if (dest->name() == "hdr_rolloff_max0")
+					m_hdr_last_auto_rolloff = dest->value();
 				osd_printf_verbose("BGFX: macro %s = %.3f -> %s = %.4f\n",
 					macro->name().c_str(), value, dest->name().c_str(), dest->value());
+				}
 			}
 		}
 	}
@@ -750,6 +778,14 @@ void chain_manager::apply_hdr_auto()
 	}
 	m_hdr_last_auto_beam = beam;
 	m_hdr_last_auto_rolloff = rmax;
+	// The values just imported are the new baseline for any macro that scales them, so drop the old
+	// capture and re-run the macros (which re-captures and re-applies the user's exposure).
+	if (applied)
+	{
+		m_macro_base.erase("beam_peak_nits0");
+		m_macro_base.erase("hdr_rolloff_max0");
+	}
+	apply_macros(true);
 
 	if (applied)
 	{
