@@ -107,6 +107,33 @@ public:
 	float edr_headroom() const { return m_edr_headroom; }
 	bool hdr_display_peak_is_absolute() const { return m_hdr_display_peak_absolute; }
 	bool edr_relative_auto() const { return m_edr_relative_auto; }
+	// macOS EDR relative auto has no absolute nits, but the whole EDR path already works in a nominal
+	// scale where 1.0 is SDR reference white (the present shader's display ceiling and the HDR
+	// diagnostics both use headroom * reference white). Express the display peak in that same scale so
+	// the chain HDR auto-config can apply one calibration rule on every platform. 0 until the current
+	// headroom resolves, which keeps the chains on their previous defaults until then.
+	float edr_nominal_peak_nits() const
+	{
+		return (m_edr_relative_auto && m_edr_headroom > 1.0f)
+			? m_edr_headroom * m_effective_paper_white_nits
+			: 0.0f;
+	}
+	// The peak chain_manager should calibrate from: absolute nits where the platform reports them,
+	// otherwise the macOS EDR nominal scale above.
+	float hdr_chain_peak_nits() const
+	{
+		const float nominal = edr_nominal_peak_nits();
+		return (nominal > 0.0f) ? nominal : m_hdr_calibration_peak_nits;
+	}
+	// Consumed once by the renderer after the macOS EDR current headroom resolves: the chain HDR
+	// auto-config first ran during initialisation, before any EDR frame existed and therefore before
+	// the nominal peak was knowable.
+	bool consume_edr_calibration_dirty()
+	{
+		const bool dirty = m_edr_calibration_dirty;
+		m_edr_calibration_dirty = false;
+		return dirty;
+	}
 	// Re-evaluate the monitor containing a native window. The platform lookup itself is cheap and is
 	// performed while drawing; the HDR calibration is only rebuilt when the owning monitor changes.
 	virtual bool refresh_hdr_display_peak(void *nwh) = 0;
@@ -162,6 +189,7 @@ protected:
 	bool m_hdr_display_peak_absolute = false;
 	bool m_edr_relative_auto = false;
 	bool m_edr_current_resolved = false;
+	bool m_edr_calibration_dirty = false;
 	bool m_macos_edr_force_applied = false;
 	uintptr_t m_hdr_display_id = 0;
 	uintptr_t m_macos_edr_layer_id = 0;
@@ -876,6 +904,7 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_hdr_display_peak_absolute = false;
 	m_edr_relative_auto = false;
 	m_edr_current_resolved = false;
+	m_edr_calibration_dirty = false;
 	m_macos_edr_force_applied = false;
 	m_macos_edr_layer_id = 0;
 	m_macos_edr_display_id = 0;
@@ -1065,6 +1094,10 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		m_edr_headroom = detected;
 		m_edr_logged_headroom = detected;
 		osd_printf_info("BGFX: macOS EDR current headroom resolved to %.2fx SDR white\n", detected);
+		// Relative auto derives its nominal display peak from this value, so the chain calibration that
+		// ran without it has to be redone. An explicit numeric peak is already absolute and needs no
+		// re-run (only edr_reference_white_nits() is reconstructed from the headroom, below).
+		m_edr_calibration_dirty = m_edr_relative_auto;
 	}
 	else if (std::abs(detected - m_edr_logged_headroom) >= std::max(0.10f, m_edr_logged_headroom * 0.05f))
 	{
@@ -1507,9 +1540,11 @@ int renderer_bgfx::create()
 			window().prescale(),
 			max_prescale_size);
 	// HDR auto-config: hand over the resolved display peak before the first load_chains() so the
-	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win).
+	// derived beam_peak_nits / hdr_rolloff_max act as defaults (cfg and live edits still win). On macOS
+	// EDR auto the nominal peak is not known yet (no EDR frame has been presented); the chains start on
+	// their relative defaults and draw() re-runs this once the current headroom resolves.
 	m_chains->set_hdr_display_peak(
-			m_module().hdr_calibration_peak_nits(),
+			m_module().hdr_chain_peak_nits(),
 			m_module().hdr_display_peak_is_absolute(),
 			m_module().edr_relative_auto());
 	m_chains->set_hdr_paper_white(m_module().paper_white_nits());
@@ -2247,6 +2282,8 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_dot_max", &renderer_bgfx::vec_slider_cache::energy_dot_max, 3.2f },
 	{ "energy_dot_ref", &renderer_bgfx::vec_slider_cache::energy_dot_ref, 30.0f },
 	{ "energy_dwell_cap", &renderer_bgfx::vec_slider_cache::energy_dwell_cap, 16.0f },
+	{ "energy_density", &renderer_bgfx::vec_slider_cache::energy_density, 0.0f },
+	{ "energy_dot_density", &renderer_bgfx::vec_slider_cache::energy_dot_density, 1.0f },
 	{ "energy_infl", &renderer_bgfx::vec_slider_cache::energy_infl, 0.6f },
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
@@ -2260,6 +2297,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_stroke_agg", &renderer_bgfx::vec_slider_cache::energy_stroke_agg, 1.0f },
 	{ "glow_narrow", &renderer_bgfx::vec_slider_cache::glow_narrow, 0.0f },
 	{ "hv_droop", &renderer_bgfx::vec_slider_cache::hv_droop, 0.0f },
+	{ "hv_droop_dim", &renderer_bgfx::vec_slider_cache::hv_droop_dim, 1.0f },
 	{ "hv_droop_onset", &renderer_bgfx::vec_slider_cache::hv_droop_onset, 0.0f },
 	{ "hv_droop_ref", &renderer_bgfx::vec_slider_cache::hv_droop_ref, 10.0f },
 	{ "intensity_overdrive", &renderer_bgfx::vec_slider_cache::intensity_overdrive, 0.0f },
@@ -2409,6 +2447,39 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 		emax = std::max(1.0f, m_vs.energy_line_max);
 	}
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
+}
+
+// Speed/dwell density as a MODULATION of a device-supplied beam current (see the header). Unlike
+// generic_beam_energy, which has to carry the whole brightness scale because nothing supplied a
+// current, this is normalised to exactly 1.0 at the reference speed/dwell: the level stays where the
+// chain calibrated it and only the sweep-dependent part moves.
+float renderer_bgfx::beam_density_factor(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms) const
+{
+	if (m_vs.energy_model <= 0.0f || !(prim->t0 >= 0.0 && prim->t1 > prim->t0))
+		return 1.0f;
+	const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
+	double s, lo, hi;
+	if (as_point)
+	{
+		const double x  = (dt_ms * 1000.0) / std::max(1.0, double(m_vs.energy_dot_ref));   // dwell us / ref us
+		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_dot_curve)));
+		s  = xg / (xg + 1.0);
+		hi = std::max(1.0f, m_vs.energy_dot_max);
+		lo = 1.0;                                  // boost only; z_rise_tau owns the short-dwell side
+	}
+	else
+	{
+		const double v  = (stroke_px_per_ms >= 0.0f)
+				? double(stroke_px_per_ms) / std::max(1.0f, screen_ref)
+				: (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);
+		const double x  = double(std::max(0.01f, m_vs.energy_speed_norm)) / std::max(1e-6, v);
+		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_curve)));
+		s  = xg / (xg + 1.0);
+		hi = std::max(1.0f, m_vs.energy_line_max);
+		lo = 1.0 / hi;
+	}
+	// s is exactly 0.5 at the reference, so 2s is the factor normalised to 1.0 there.
+	return float(std::clamp(2.0 * s, lo, hi));
 }
 
 // Port of the Vectrex driver's object_boost() (see vectrex_v.cpp): beam_energy *= 1..energy_obj_max
@@ -2827,6 +2898,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
+	// A device-supplied beam_energy is a CURRENT; the sweep-dependent part is TIME (energy = current x
+	// time). Compose them here instead of letting one replace the other: the density factor is
+	// normalised to 1.0 at the reference speed/dwell, so energy_density 0 leaves the commanded current
+	// untouched and the calibrated level never moves. This is what lets one calibration serve every
+	// title - the current carries the absolute scale, the density only modulates it. Sources that
+	// supply no current keep the legacy generic_beam_energy path above (energy_infl unchanged).
+	if (prim->beam_energy >= 0.0f)
+	{
+		const float dens_infl = std::clamp(as_point ? m_vs.energy_dot_density : m_vs.energy_density, 0.0f, 1.0f);
+		if (dens_infl > 0.0f)
+		{
+			const float dens = beam_density_factor(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
+			n *= (dens_infl >= 1.0f) ? dens : powf(dens, dens_infl);
+		}
+	}
 	// Same-spot dwell cap (energy_dwell_cap pre-pass in draw()): a run of dots deposited on ONE spot
 	// piles energy up only to the cap - the later dots' MODEL-DERIVED energy is scaled down by the
 	// pre-computed factor. Applies only when the renderer derived n itself (beam_energy < 0); a
@@ -3098,8 +3184,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// whole picture (here) and defocusing the spot (sigma, below). m_hv_load_norm is the smoothed 0..1
 	// frame load; hv_droop scales the effect (0 = off). The dim is capped at 0.4 of full brightness.
 	const float hv_droop = m_vs.hv_droop;
-	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
-		length_factor *= (1.0f - hv_droop * 0.4f * m_hv_load_norm);
+	// The dim and the defocus are one physical effect but not one artistic one: the sag makes an
+	// explosion bloom softly, and losing 20% of its brightness at the same time is what stops it
+	// reading as an explosion. hv_droop_dim scales ONLY the brightness half (1 = the coupled
+	// behaviour, 0 = defocus with no dim); the sigma growth below always follows hv_droop.
+	const float hv_dim = std::clamp(m_vs.hv_droop_dim, 0.0f, 1.0f);
+	if (hv_droop > 0.0f && hv_dim > 0.0f && m_hv_load_norm > 0.0f)
+		length_factor *= (1.0f - hv_droop * hv_dim * 0.4f * m_hv_load_norm);
 
 	// Overdrive white-out lives in the glow buffer (post shadow-mask), NOT here: a beam driven past
 	// the overload threshold deposits an UNMASKED white flare (below) so the white bloom is not patterned by
@@ -3220,7 +3311,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		sigma += edge_def * vec_res_scale() * powf(r, ecurve);
 	}
 	// HV droop defocus: the same supply sag that dims the picture widens the spot (capped ~2.5 px at
-	// 1920-ref, scaled by the load). Pairs with the dim applied to length_factor above.
+	// 1920-ref, scaled by the load). This half is unconditional - hv_droop_dim only gates the
+	// brightness half above, so hv_droop_dim = 0 keeps the sag's softening without the dim.
 	if (hv_droop > 0.0f && m_hv_load_norm > 0.0f)
 		sigma += hv_droop * 2.5f * vec_res_scale() * m_hv_load_norm;
 	// Rasterization floor so a sub-pixel gaussian does not fall between fragment centres and
@@ -3615,7 +3707,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 							ray_vertex[i].m_u = 0.0f; ray_vertex[i].m_v = 0.0f;
 							ray_vertex[i].m_a = a; ray_vertex[i].m_b = a - slen; ray_vertex[i].m_d = d; ray_vertex[i].m_sigma = ssig;
 							ray_vertex[i].m_end_start = 0.0f; ray_vertex[i].m_end_finish = 0.0f;
-							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = 0.0f;
+							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = -1.0f;   // halo quad
 						};
 						rvv(rbase + 0, sx0 + rnx * rpad, sy0 + rny * rpad, a0,  rpad);
 						rvv(rbase + 1, sx1 + rnx * rpad, sy1 + rny * rpad, a1,  rpad);
@@ -3707,7 +3799,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 			glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = glow_sig;
 			glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
-			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = 0.0f;
+			// end_transition < 0 marks a HALO quad: no endpoint join support (see fs_vector_line_analytic).
+			// A halo's sigma is tens of pixels, so the core's 2-sigma square join support would hold it at
+			// full strength that far past the line end and then drop it in one step - a hard rectangular
+			// edge around every primitive.
+			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
 		gv(m_glow_off_glow + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
@@ -3752,7 +3848,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
-				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = 0.0f;
+				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;   // halo quad
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
 			ov(m_glow_off_oglow + 1, osx1 + nx * opad, osy1 + ny * opad, oa1, oa1 - seg_len,  opad);
@@ -4099,7 +4195,7 @@ int renderer_bgfx::draw(int update)
 	if (window_index == 0 && m_module().refresh_hdr_display_peak(native_window_handle()))
 	{
 		m_chains->refresh_hdr_display(
-				m_module().hdr_calibration_peak_nits(),
+				m_module().hdr_chain_peak_nits(),
 				m_module().hdr_display_peak_is_absolute(),
 				m_module().edr_relative_auto(),
 				m_module().paper_white_nits());
@@ -4107,6 +4203,20 @@ int renderer_bgfx::draw(int update)
 	}
 	if (window_index == 0)
 		m_module().update_edr_headroom(native_window_handle());
+	// macOS EDR relative auto: the nominal display peak only becomes knowable once the layer has
+	// presented an EDR frame and the current headroom resolves, which is after the initial
+	// load_chains() calibration. Re-run it once here. refresh_hdr_display() replaces a slider only
+	// while it still equals the previous auto result, so cfg-restored values (applied later in this
+	// same draw()) and live edits are left alone regardless of which order the two land in.
+	if (window_index == 0 && m_module().consume_edr_calibration_dirty())
+	{
+		m_chains->refresh_hdr_display(
+				m_module().hdr_chain_peak_nits(),
+				m_module().hdr_display_peak_is_absolute(),
+				m_module().edr_relative_auto(),
+				m_module().paper_white_nits());
+		m_sliders_dirty = true;
+	}
 
 	// Set view 0 default viewport.
 	if (window_index == 0)
@@ -5864,7 +5974,7 @@ int renderer_bgfx::draw(int update)
 							ev[i].m_u = 0.0f; ev[i].m_v = 0.0f;
 							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
 							ev[i].m_end_start = 0.0f; ev[i].m_end_finish = 0.0f;
-							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = 0.0f;
+							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = -1.0f;   // halo quad
 						};
 						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
 						const float sx1 = ex1 + edx * epad, sy1 = ey1 + edy * epad;

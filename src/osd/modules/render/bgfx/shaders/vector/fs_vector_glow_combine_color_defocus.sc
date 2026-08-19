@@ -58,6 +58,13 @@ uniform vec4 u_bezel_short_reflection;
 uniform vec4 u_bezel_long_threshold;
 uniform vec4 u_glow_tail_curve;
 uniform vec4 u_glow_black_toe;
+// Same source-side reshape the wide glow pyramid applies in its first level (see
+// fs_vector_downsample.sc). The bezel reflection samples the raw per-line glow attachment directly -
+// it never passes through the pyramid - so without this the reshape had no effect on the reflection
+// and ordinary vectors kept their full bezel halo while their wide bloom was already suppressed.
+// (curve, 0, 0, 0) with curve = 1 -> identity, (pivot, 0, 0, 0).
+uniform vec4 u_wide_curve;
+uniform vec4 u_wide_pivot;
 uniform vec4 u_smoked_glass_rgb;
 uniform vec4 u_smoked_glass_transmission;
 uniform vec4 u_glass_forward_scatter;
@@ -319,6 +326,22 @@ vec3 shape_glow(vec3 c)
 	return c * (shaped / peak);
 }
 
+// Hue-preserving power curve about a fixed pivot, identical in form to the pyramid's per-tap reshape.
+// Applied once to the finished reflection rather than per source tap: the curve is monotonic, so the
+// brightest-candidate selection inside bezel_bloom_axis picks the same sample either way, and one pow
+// keeps this inside the ps_3_0 instruction budget.
+vec3 shape_wide_source(vec3 c)
+{
+	float curve = u_wide_curve.x;
+	if (curve == 1.0) return c;
+	vec3 x = max(c, vec3_splat(0.0));
+	float peak = max(x.r, max(x.g, x.b));
+	if (peak <= 1.0e-7) return vec3_splat(0.0);
+	float pivot = max(u_wide_pivot.x, 1.0e-4);
+	float shaped = min(pivot * pow(peak / pivot, curve), peak * 32.0);
+	return x * (shaped / peak);
+}
+
 vec3 apply_bezel_length_gain(vec2 uv, vec3 light)
 {
 	// MRT attachment 1 is already classified per primitive, before additive
@@ -511,7 +534,8 @@ void main()
 	{
 		float line_gain = max(u_bezel_glow_strength.x, 0.0);
 		float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
-		vec3 edge_light = line_gain > 0.0 && u_glow_enable.x > 0.0 ? bezel_bloom_source(emit_uv) : vec3_splat(0.0);
+		vec3 edge_light = line_gain > 0.0 && u_glow_enable.x > 0.0
+			? shape_wide_source(bezel_bloom_source(emit_uv)) : vec3_splat(0.0);
 		vec3 monitor_light = vec3_splat(mintensity) * monitor_tint;
 		bezel = shape_glow(edge_light) * (band * line_gain) + shape_glow(monitor_light) * (band * monitor_gain);
 	}

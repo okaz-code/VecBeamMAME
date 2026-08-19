@@ -83,6 +83,20 @@ protected:
 	required_address_space m_memspace;
 	offs_t m_membase;
 
+	// Window (Major Havoc ymin clip) sample-and-hold model. The hardware latches the CURRENT beam Y
+	// into a 1000pF mylar cap through an LF13201 analog switch, buffers it with a TL082 follower and
+	// compares the live Y against it (LM819) for the rest of the frame - so the trim line is not a
+	// fixed voltage but a held sample, and it wanders as the cap droops. window_ymin() reproduces
+	// that; with the options at 0 it returns the latched value unchanged (ideal hold = stock).
+	bool m_window_hold_model = false;                    // only the variant that has the circuit
+	bool m_window_sampled = false;
+	attotime m_window_sample_time = attotime::never;
+	int m_window_hold_bias = 0;                          // dielectric-absorption term, device units
+	int m_window_da_mem = 0;                             // relaxed memory of earlier held values
+
+	int window_ymin(int ymin, const attotime &when) const;
+	double window_percent_unit() const;                  // 1% of screen height in clip units
+
 	int m_xmin, m_ymin;
 	int m_xcenter, m_ycenter;
 
@@ -121,6 +135,7 @@ private:
 	// Resumable vg_flush state (clip window + beam position chain). Persists across vg_flush
 	// calls; re-primed at each list boundary for the stock one-flush-per-list behaviour.
 	int m_flush_cx0, m_flush_cy0, m_flush_cx1, m_flush_cy1;
+
 	int m_flush_xs, m_flush_ys;
 	bool m_flush_primed;
 };

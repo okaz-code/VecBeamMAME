@@ -124,6 +124,14 @@ private:
 	// the per-segment sweep speed with the whole stroke's aggregate (see m_stroke_speed).
 	float generic_beam_energy(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms = -1.0f);
 
+	// Speed/dwell density as a pure MODULATION of a device-supplied beam current, normalised to exactly
+	// 1.0 at the reference sweep speed (energy_speed_norm) or reference dwell (energy_dot_ref), so a
+	// chain can dial it in without moving the calibrated level. Lines run both ways (a fast sweep
+	// deposits less per pixel, a slow one more) within [1/energy_line_max, energy_line_max]; dots only
+	// ever boost ([1, energy_dot_max]) because the short-dwell side is already modelled by z_rise_tau.
+	// Returns 1.0 when the model is off or the primitive carries no timestamps.
+	float beam_density_factor(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms = -1.0f) const;
+
 	// Port of the Vectrex driver's object_boost() (vectrex_v.cpp): a smooth per-object-type lift of
 	// beam_energy, driven by display intensity - a bullet/explosion/star (typically drawn at higher
 	// intensity than an enemy/ship) sails past energy_obj_knee and multiplies up to energy_obj_max,
@@ -294,6 +302,11 @@ public:
 		float edge_defocus = 0.0f;
 		float edge_defocus_curve = 2.0f;
 		float energy_curve = 1.0f;
+		// Density modulation applied ON TOP of a device-supplied beam current (0 = current only).
+		// Separate from energy_infl, which still governs the fallback model for sources that supply
+		// no current at all. Dots default to on: a parked beam really does deposit more.
+		float energy_density = 0.0f;
+		float energy_dot_density = 1.0f;
 		float energy_dot_curve = 1.6f;
 		float energy_dot_max = 3.2f;
 		float energy_dot_ref = 30.0f;
@@ -311,6 +324,7 @@ public:
 		float energy_stroke_agg = 1.0f;
 		float glow_narrow = 0.0f;
 		float hv_droop = 0.0f;
+		float hv_droop_dim = 1.0f;
 		float hv_droop_onset = 0.0f;
 		float hv_droop_ref = 10.0f;
 		float intensity_overdrive = 0.0f;

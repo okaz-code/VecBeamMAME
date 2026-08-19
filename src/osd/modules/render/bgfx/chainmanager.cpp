@@ -612,18 +612,25 @@ void chain_manager::apply_hdr_auto()
 	if ((!m_edr_relative_auto && m_hdr_display_peak <= 0.0f) || !m_options.bgfx_hdr())
 		return;
 
-	// Prefer a stable 500-nit normal-vector target when an absolute display peak is available and
-	// the panel can keep the target below the established 85% safety ceiling. A lower-peak panel, or
-	// relative macOS EDR where no absolute peak is known, retains the previous 1.65 * paper-white
-	// calibration. Additive crossings/overload then use hdr_rolloff_max to approach the display peak.
+	// Prefer a stable 500-nit normal-vector target when a display peak is known and the panel can keep
+	// the target below the established 85% safety ceiling. macOS EDR auto has no absolute nits, so its
+	// peak arrives as headroom * reference white - the nominal scale the EDR present shader's dynamic
+	// ceiling and the HDR diagnostics already work in - and "500 nits" there means 2.5x SDR white
+	// rather than a physical figure. A lower-peak panel, or a peak that is not resolved yet (macOS
+	// before the first EDR frame), retains the previous 1.65 * paper-white calibration. Additive
+	// crossings/overload then use hdr_rolloff_max to approach the display peak.
 	const float paper_white = std::max(1.0f, m_hdr_paper_white);
 	const float peak = m_hdr_display_peak;
 	const float previous_desired_beam = m_edr_relative_auto
 		? 1.65f * paper_white
 		: std::min(1.65f * paper_white, 0.85f * peak);
 	constexpr float preferred_beam_nits = 500.0f;
-	const bool preferred_beam_has_headroom = !m_edr_relative_auto
-		&& preferred_beam_nits <= 0.85f * peak;
+	// Roll-off room kept above the preferred beam for additive crossings and overload. 1.0 applies the
+	// 85% safety ceiling alone (a panel whose peak only just clears the target still takes the 500-nit
+	// beam); raise it if crossings read as compressed on such a panel.
+	constexpr float preferred_beam_reserve = 1.0f;
+	const bool preferred_beam_has_headroom = peak > 0.0f
+		&& preferred_beam_nits * preferred_beam_reserve <= 0.85f * peak;
 	const float desired_beam = preferred_beam_has_headroom
 		? preferred_beam_nits
 		: previous_desired_beam;
@@ -671,9 +678,13 @@ void chain_manager::apply_hdr_auto()
 
 	if (applied)
 	{
-		if (m_edr_relative_auto)
+		if (m_edr_relative_auto && peak > 0.0f)
 			osd_printf_info(
-					"BGFX: EDR relative auto-config: beam=%.2fx reference white; dynamic display ceiling enabled\n",
+					"BGFX: EDR relative auto-config: nominal peak=%.0f nits (headroom %.2fx of %.0f-nit reference white), beam=%.0f nits (%.2fx reference white); dynamic display ceiling enabled\n",
+					peak, peak / paper_white, paper_white, beam, beam / paper_white);
+		else if (m_edr_relative_auto)
+			osd_printf_info(
+					"BGFX: EDR relative auto-config: beam=%.2fx reference white; headroom not resolved yet, dynamic display ceiling enabled\n",
 					beam / paper_white);
 		else if (m_hdr_display_peak_absolute)
 			osd_printf_info(

@@ -606,6 +606,26 @@
       ]
     },
     {
+      "name": "u_wide_curve",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_wide_pivot",
+      "type": "vec4",
+      "values": [
+        0.25,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_glow_tail_curve",
       "type": "vec4",
       "values": [

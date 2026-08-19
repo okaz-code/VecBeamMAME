@@ -120,6 +120,10 @@
 #define OPTION_VECTOR_OVERSCAN_X    "vector_overscan_x"
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
+#define OPTION_VECTOR_WINDOW_DROOP  "vector_window_droop"
+#define OPTION_VECTOR_WINDOW_MEMORY "vector_window_memory"
+#define OPTION_VECTOR_WINDOW_JITTER "vector_window_jitter"
+#define OPTION_VECTOR_WINDOW_BIAS   "vector_window_bias"
 #define OPTION_VECTOR_EVENT_DUMP    "vector_event_dump"
 #define OPTION_VECTOR_RECORD        "vector_record"
 #define OPTION_VECTOR_PLAYBACK      "vector_playback"
@@ -414,6 +418,10 @@ public:
 	float vector_overscan_x() const { return float_value(OPTION_VECTOR_OVERSCAN_X); }
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
+	float vector_window_droop() const { return float_value(OPTION_VECTOR_WINDOW_DROOP); }
+	float vector_window_memory() const { return float_value(OPTION_VECTOR_WINDOW_MEMORY); }
+	float vector_window_jitter() const { return float_value(OPTION_VECTOR_WINDOW_JITTER); }
+	float vector_window_bias() const { return float_value(OPTION_VECTOR_WINDOW_BIAS); }
 	const char *vector_event_dump() const { return value(OPTION_VECTOR_EVENT_DUMP); }
 	const char *vector_record() const { return value(OPTION_VECTOR_RECORD); }
 	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
