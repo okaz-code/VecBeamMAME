@@ -395,6 +395,9 @@ public:
 
 private:
 	vec_slider_cache m_vs;
+	// Last seen state of the chain's Advanced toggle. Flipping it changes WHICH sliders the menu
+	// publishes, so the list has to be marked dirty (see draw()).
+	bool m_advanced_sliders_shown = false;
 	void refresh_vec_slider_cache();
 	void rebuild_vec_slider_map();
 	// name->pointer map for the cache refresh, rebuilt when the screen-0 chain changes

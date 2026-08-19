@@ -4203,6 +4203,17 @@ int renderer_bgfx::draw(int update)
 	}
 	if (window_index == 0)
 		m_module().update_edr_headroom(native_window_handle());
+	// The Advanced toggle decides which sliders the menu publishes, so a change has to invalidate the
+	// list. MAME polls get_slider_list() and repopulates, the same way a chain change is picked up.
+	if (window_index == 0)
+	{
+		const bool advanced = m_chains->slider_value(0, "advanced_sliders", 0.0f) > 0.5f;
+		if (advanced != m_advanced_sliders_shown)
+		{
+			m_advanced_sliders_shown = advanced;
+			m_sliders_dirty = true;
+		}
+	}
 	// macOS EDR relative auto: the nominal display peak only becomes knowable once the layer has
 	// presented an EDR frame and the current headroom resolves, which is after the initial
 	// load_chains() calibration. Re-run it once here. refresh_hdr_display() replaces a slider only

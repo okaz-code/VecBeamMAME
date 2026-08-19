@@ -1613,8 +1613,24 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 		}
 
 		const std::vector<bgfx_slider*> &chain_sliders = chain->sliders();
+		// Advanced toggle: while it is off, sliders tagged "advanced" are withheld from the menu. Their
+		// values keep applying and keep being saved - this only decides what the user has to scroll
+		// past. A chain without the toggle shows everything, exactly as before.
+		bool show_advanced = true;
 		for (bgfx_slider* slider : chain_sliders)
 		{
+			if (slider->name() == "advanced_sliders0")
+			{
+				show_advanced = slider->value() > 0.5f;
+				break;
+			}
+		}
+		size_t published = 0;
+		for (bgfx_slider* slider : chain_sliders)
+		{
+			if (slider->advanced() && !show_advanced)
+				continue;
+			published++;
 			slider_state *const core_slider = slider->core_slider();
 
 			ui::menu_item item(ui::menu_item_type::SLIDER, core_slider);
@@ -1624,7 +1640,7 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 			sliders.emplace_back(std::move(item));
 		}
 
-		if (chain_sliders.size() > 0)
+		if (published > 0)
 		{
 			ui::menu_item item(ui::menu_item_type::SEPARATOR);
 			item.set_text(MENU_SEPARATOR_ITEM);

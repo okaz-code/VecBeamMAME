@@ -62,17 +62,24 @@ public:
 	float max_value() const { return m_max; }
 	float step_value() const { return m_step; }
 	slider_state *core_slider() const { return m_slider_state.get(); }
+	// "advanced": true in the chain JSON. Such a slider still works and still saves/restores - it is
+	// only hidden from the slider MENU while the chain's Advanced toggle is off (see
+	// chain_manager::get_slider_list). Used for the "[-] " parameters that are inert at the chain
+	// defaults, so the menu opens on the controls that actually do something.
+	bool advanced() const { return m_advanced; }
 	size_t size() const { return get_size_for_type(m_type); }
 	static size_t get_size_for_type(slider_type type);
 
 	// Setters
 	void import(float val);
+	void set_advanced(bool advanced) { m_advanced = advanced; }
 
 protected:
 	std::unique_ptr<slider_state> create_core_slider();
 	int32_t as_int() const { return int32_t(floor(m_value / m_step + 0.5f)); }
 
 	std::string     m_name;
+	bool            m_advanced = false;
 	float           m_min;
 	float           m_default;
 	float           m_max;
