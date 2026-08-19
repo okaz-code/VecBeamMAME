@@ -212,6 +212,11 @@ vec3 apply_glass_optics(vec3 c,vec3 scatter_source)
 }
 vec2 vector_pincushion_uv(vec2 texcoord)
 {
+	// All four coefficients at zero is the identity, and the transform below is ~6 multiplies per
+	// pixel. Skip it. x_quad stays a live control, so the gate has to test all four, not just one.
+	if (u_vec_pincushion_x_quad.x == 0.0 && u_vec_pincushion_x_cubic.x == 0.0
+		&& u_vec_pincushion_y_quad.x == 0.0 && u_vec_pincushion_y_cubic.x == 0.0)
+		return texcoord;
 	vec2 uv=texcoord*2.0-1.0;float x=uv.x,y=uv.y,y2=y*y,x2=x*x;
 	float px=(u_vec_pincushion_x_quad.x+u_vec_pincushion_x_cubic.x*y2)*PINCUSHION_GAIN;
 	float py=(u_vec_pincushion_y_quad.x+u_vec_pincushion_y_cubic.x*x2)*PINCUSHION_GAIN;

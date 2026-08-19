@@ -92,11 +92,22 @@ void main()
 			dot(L, vec3(0.627402, 0.329292, 0.043306)),
 			dot(L, vec3(0.069095, 0.919544, 0.011360)),
 			dot(L, vec3(0.016394, 0.088028, 0.895578)));
-		vec3 cp22 = vec3(
-			dot(L, vec3( 0.626148, 0.329664, 0.044188)),
-			dot(L, vec3( 0.067803, 0.920605, 0.011592)),
-			dot(L, vec3(-0.001794, 0.088115, 0.913679)));
-		vec3 c2020 = max(mix(c709, cp22, u_phosphor_gamut.x), vec3_splat(0.0));
+		// Only evaluate the P22 matrix when it is actually blended in: mix(c709, cp22, 0.0) returns
+		// c709 exactly, so gamut = 0 stays bit-identical and simply stops paying for three more dot
+		// products on every pixel of the HDR present.
+		vec3 c2020;
+		if (u_phosphor_gamut.x > 0.0)
+		{
+			vec3 cp22 = vec3(
+				dot(L, vec3( 0.626148, 0.329664, 0.044188)),
+				dot(L, vec3( 0.067803, 0.920605, 0.011592)),
+				dot(L, vec3(-0.001794, 0.088115, 0.913679)));
+			c2020 = max(mix(c709, cp22, u_phosphor_gamut.x), vec3_splat(0.0));
+		}
+		else
+		{
+			c2020 = max(c709, vec3_splat(0.0));
+		}
 		vec3 Ln = c2020 * 0.0001;
 
 		// ST.2084 is an OETF for each Rec.2020 component. Applying it only to max(R,G,B) preserves
