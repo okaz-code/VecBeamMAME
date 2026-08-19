@@ -1758,6 +1758,10 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 			sliders.emplace_back(std::move(item));
 		}
 
+		osd_printf_verbose("BGFX: slider menu for screen %u: %u of %u published (advanced %s)\n",
+			unsigned(index), unsigned(published), unsigned(chain_sliders.size()),
+			show_advanced ? "on" : "off");
+
 		if (published > 0)
 		{
 			ui::menu_item item(ui::menu_item_type::SEPARATOR);
