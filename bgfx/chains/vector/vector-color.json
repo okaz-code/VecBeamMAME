@@ -18,6 +18,13 @@
 	"vector_engine": "analytic",
 
 	"sliders": [
+		// ---- [M] マクロ: 1本で複数の詳細パラメータを駆動する（targets は各詳細スライダーの
+		//      JSON 既定値を基準にする。詳細側を cfg に保存済みなら、そちらが優先される） ----
+		{"type":"float","name":"macro_bloom","text":"[M] Bloom Strength","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector",
+		  "targets":[{"slider":"glow_wide","mode":"scale"},{"slider":"glow_narrow","mode":"scale"},{"slider":"analytic_glow","mode":"scale"},{"slider":"overload_glow_gain","mode":"scale"}]},
+		{"type":"float","name":"macro_beam_width","text":"[M] Beam Width","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
+		  "targets":[{"slider":"beam_width_min","mode":"scale"},{"slider":"beam_width_max","mode":"scale"},{"slider":"overload_width_add","mode":"scale"}]},
+
 		// ---- Phosphor persistence ----
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":8.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":3.0,"min":0.4,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
