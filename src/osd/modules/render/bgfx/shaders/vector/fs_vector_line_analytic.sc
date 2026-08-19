@@ -21,6 +21,10 @@ $input v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
 //   sg = exp(-(-ln g)^p)   (g^1 -> g, so p=1 is identity and the erf box-integration AA is preserved).
 uniform vec4 u_line_params;
 
+// exp(-3.5^2 / 2): the profile value still present where every analytic quad is cut off.
+#define QUAD_EDGE_PEDESTAL 0.0021874911
+#define QUAD_EDGE_RENORM   1.0021922
+
 float sharpen(float g, float p)
 {
 	if (p <= 1.0001) return g;
@@ -134,10 +138,19 @@ void main()
 		// longer add to one and produced a visible dotted/gapped glyph. Give non-rounded endpoints a
 		// short square support overlap instead: it suppresses the axial roll-off across the join while
 		// preserving a straight (non-circular) edge. Two sigma also covers coreless Gaussian strokes.
+		// HALO quads (analytic glow, overload halo, optical rays, edge glow) set end_transition < 0 to
+		// opt out. The support below is a hard step: inside it the axial roll-off is replaced by 1.0,
+		// outside it the erf roll-off applies, and at 2 sigma that erf is only ~0.023 - a 40x jump. For a
+		// CORE segment that step sits 2 sigma (a few px) past the endpoint and is covered by the next
+		// segment, which is the point of it. For a halo with sigma of tens of pixels it instead holds the
+		// halo at FULL strength ~2 sigma beyond the line end and then drops it in one step, drawing a hard
+		// axis-aligned boundary around every primitive - the square frame that appears as soon as a broad
+		// faint halo is dialled up. Halos need the plain swept-gaussian roll-off, not a join.
+		float join_allowed = step(0.0, v_texcoord3.w);
 		float start_join_support = max(start_radius, 2.0 * sg);
 		float finish_join_support = max(finish_radius, 2.0 * sg);
-		float start_join_zone = (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
-		float finish_join_zone = (1.0 - finish_round) * step(-finish_join_support, b) * (1.0 - step(finish_join_support, b));
+		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
+		float finish_join_zone = join_allowed * (1.0 - finish_round) * step(-finish_join_support, b) * (1.0 - step(finish_join_support, b));
 		if (start_round_zone > 0.0)
 			core_sd = length(vec2(a, d)) - start_radius;
 		if (finish_round_zone > 0.0)
@@ -177,6 +190,14 @@ void main()
 	// relying on SRC_ALPHA there exposes the unattenuated expanded quad and makes every line huge.
 	// The analytic effect uses ONE for RGB; under ordinary ADD this is exactly the former
 	// colour.rgb * out.a contribution, while MAX now compares the correctly faded beam samples.
+	// Quad-edge pedestal removal. Every analytic quad (core, caps, glow, halation ring, overload halo)
+	// is expanded to exactly 3.5 sigma (put_analytic_line's pad / gpad / opad / rpad / fpad / epad), so
+	// the profile is TRUNCATED there while it still carries exp(-3.5^2/2) = 0.22% of its peak. That step
+	// is a hard rectangular boundary around every primitive: invisible at ordinary gains, but plainly a
+	// square frame once a broad low-amplitude halo is dialled up, because then 0.22% of the peak is a
+	// large fraction of everything on screen at that radius. Subtract the pedestal and renormalise so
+	// the profile reaches exactly zero at the quad edge instead; nothing else moves by more than 0.22%.
+	fade = max(0.0, fade - QUAD_EDGE_PEDESTAL) * QUAD_EDGE_RENORM;
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
 	float coverage = v_color0.a * fade * over_mult;
 	vec4 deposit = vec4(v_color0.rgb * coverage, coverage);

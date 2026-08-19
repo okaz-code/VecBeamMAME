@@ -1,8 +1,10 @@
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
-// 4-tap bilinear box downsample
+// Vector glow pyramid downsample (4-tap box or 13-tap tent; see fs_vector_downsample.sc).
 // The chain system sets u_inv_screen_dims automatically from the first input texture size.
 // No u_ds_params injection from C++ is needed (the shader uses u_inv_screen_dims * 0.5).
+// The defaults below are the exact previous behaviour: legacy box kernel, no tonal reshape. A chain
+// opts in per pass (u_glow_curve / u_glow_pivot on the first level only, u_ds_kernel on every level).
 {
 	"blend": {
 		"equation": "add",
@@ -18,6 +20,9 @@
 	"fragment": "vector/fs_vector_downsample",
 	"uniforms": [
 		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
-		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_glow_curve",      "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_glow_pivot",      "type": "vec4", "values": [ 0.25, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_ds_kernel",       "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] }
 	]
 }

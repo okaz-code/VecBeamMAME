@@ -26,6 +26,11 @@ public:
 	static float s_overscan_x;          // overscan zoom factor about screen centre (1.0 = none)
 	static float s_overscan_y;
 	static float s_blank_leak;          // blanked-beam leak level (0 = off): faintly draw blanked move/retrace paths
+	// Major Havoc window (ymin clip) sample-and-hold model - see avgdvg.cpp window_ymin().
+	static float s_window_droop;        // hold droop, percent of screen height per second (0 = ideal hold)
+	static float s_window_memory;       // hold-capacitor dielectric absorption, 0..1 (0 = off)
+	static float s_window_jitter;       // per-frame sample scatter, percent of screen height (0 = off)
+	static float s_window_bias;         // systematic offset, percent of screen height (signed)
 
 protected:
 	static void init(emu_options& options);

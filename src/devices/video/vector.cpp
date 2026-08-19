@@ -973,6 +973,10 @@ float vector_options::s_beam_intensity_weight = 0.0f;
 float vector_options::s_overscan_x = 1.0f;
 float vector_options::s_overscan_y = 1.0f;
 float vector_options::s_blank_leak = 0.0f;
+float vector_options::s_window_droop = 0.0f;
+float vector_options::s_window_memory = 0.0f;
+float vector_options::s_window_jitter = 0.0f;
+float vector_options::s_window_bias = 0.0f;
 
 void vector_options::init(emu_options &options)
 {
@@ -984,6 +988,10 @@ void vector_options::init(emu_options &options)
 	s_overscan_x = options.vector_overscan_x();
 	s_overscan_y = options.vector_overscan_y();
 	s_blank_leak = options.vector_blank_leak();
+	s_window_droop = options.vector_window_droop();
+	s_window_memory = options.vector_window_memory();
+	s_window_jitter = options.vector_window_jitter();
+	s_window_bias = options.vector_window_bias();
 }
 
 // device type definition

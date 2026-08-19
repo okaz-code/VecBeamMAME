@@ -31,6 +31,11 @@
 #define VGVECTOR 0
 #define VGCLIP 1
 
+// Commanded-intensity full scale for every non-Star-Wars generator: a 4-bit intensity field, scaled by
+// 16 at each vg_add_point_buf call site (0xf << 4). Star Wars latches 8 bits and reports its own
+// current instead, so it never uses this.
+#define VG_MAX_INTENSITY 240
+
 
 /*************************************
  *
@@ -52,6 +57,40 @@ void avgdvg_device_base::apply_flipping(int &x, int &y) const
  *  Vector buffering
  *
  *************************************/
+
+// Effective ymin for one vector: the latched sample plus the hold cap's error at that vector's draw
+// time. C42 is only 1000pF and must hold for the rest of the frame, so switch/op-amp/board leakage
+// (nA class once the board is warm) drags it at I/C volts per second - that is what makes the real
+// trim line wander within a frame while an ideal digital clip sits still. Both terms default to 0,
+// which returns the latched value bit-for-bit (stock behaviour).
+//   s_window_droop  = percent of screen height per second, signed (which way the node leaks depends
+//                     on the board, so the sign is the user's choice)
+//   s_window_memory = mylar dielectric absorption: fraction of the way back toward earlier samples
+// 1% of screen height expressed in clip units (screen pixels << 16), so every knob below is a
+// percentage of picture height and stays valid at any resolution.
+double avgdvg_device_base::window_percent_unit() const
+{
+	return 0.01 * double(std::max(1, m_vector->screen().visible_area().height())) * 65536.0;
+}
+
+int avgdvg_device_base::window_ymin(int ymin, const attotime &when) const
+{
+	if (!m_window_hold_model || !m_window_sampled)
+		return ymin;
+	// m_window_hold_bias is fixed for the whole frame (it is decided when the cap is latched), so a
+	// text line is trimmed at ONE height - that is what real boards look like. The droop term below is
+	// the only part that varies WITHIN a frame; since the beam draws in time order it tilts the trim
+	// line along the drawing order, so keep it small (a realistic hold droops ~1-2 lines per frame).
+	s64 y = s64(ymin) + s64(m_window_hold_bias);
+	const float droop = vector_options::s_window_droop;
+	if (droop != 0.0f && !when.is_never() && !m_window_sample_time.is_never())
+	{
+		const double dt = (when - m_window_sample_time).as_double();
+		if (dt > 0.0)
+			y += s64(double(droop) * window_percent_unit() * dt);
+	}
+	return int(std::clamp<s64>(y, -0x5000000, 0x5000000));
+}
 
 void avgdvg_device_base::vg_flush()
 {
@@ -81,6 +120,9 @@ void avgdvg_device_base::vg_flush()
 		{
 			int xe = m_vectbuf[i].x;
 			int ye = m_vectbuf[i].y;
+			// The ymin edge is a held analog sample, so it is re-evaluated for every vector at that
+			// vector's own draw time. cy0 itself keeps the latched value.
+			const int wy0 = window_ymin(cy0, m_vectbuf[i].t0);
 			int x0 = m_flush_xs, y0 = m_flush_ys, x1 = xe, y1 = ye;
 			const int ox0 = x0, oy0 = y0, ox1 = x1, oy1 = y1;   // pre-clip endpoints, for the t0/t1 rescale below
 
@@ -111,23 +153,23 @@ void avgdvg_device_base::vg_flush()
 				x1 = cx1;
 			}
 
-			if ((y0 < cy0 && y1 < cy0) || (y0 > cy1 && y1 > cy1))
+			if ((y0 < wy0 && y1 < wy0) || (y0 > cy1 && y1 > cy1))
 				continue;
 
-			if (y0 < cy0)
+			if (y0 < wy0)
 			{
-				x0 += s64(cy0 - y0) * s64(x1 - x0) / (y1 - y0);
-				y0 = cy0;
+				x0 += s64(wy0 - y0) * s64(x1 - x0) / (y1 - y0);
+				y0 = wy0;
 			}
 			else if (y0 > cy1)
 			{
 				x0 += s64(cy1 - y0) * s64(x1 - x0) / (y1 - y0);
 				y0 = cy1;
 			}
-			if (y1 < cy0)
+			if (y1 < wy0)
 			{
-				x1 += s64(cy0 - y1) * s64(x1 - x0) / (y1 - y0);
-				y1 = cy0;
+				x1 += s64(wy0 - y1) * s64(x1 - x0) / (y1 - y0);
+				y1 = wy0;
 			}
 			else if (y1 > cy1)
 			{
@@ -171,6 +213,33 @@ void avgdvg_device_base::vg_flush()
 				swap(cx0, cx1);
 			if (cy0 > cy1)
 				swap(cy0, cy1);
+			if (m_window_hold_model)
+			{
+				// Everything decided at the instant the switch opens. All of it is CONSTANT for the
+				// rest of the frame, because the cap is latched once per list: the trim line stays
+				// straight and only its height changes from frame to frame.
+				const double unit = window_percent_unit();
+				// (1) mylar dielectric absorption: the cap is pulled back toward what it held on
+				//     earlier frames, so the error depends on what was drawn before.
+				const float da = std::clamp(vector_options::s_window_memory, 0.0f, 1.0f);
+				double bias = (m_window_sampled && da > 0.0f)
+						? double(da) * double(m_window_da_mem - cy0) : 0.0;
+				m_window_da_mem = m_window_sampled
+						? m_window_da_mem + int(0.35 * double(cy0 - m_window_da_mem)) : cy0;
+				// (2) systematic offset: charge injection as the LF13201 turns off, plus the LM819's
+				//     input offset. Always the same sign, so the trim sits slightly inside/outside.
+				bias += double(vector_options::s_window_bias) * unit;
+				// (3) per-frame scatter: the strobe lands on a slightly different point of the analog
+				//     Y ramp each frame and the injected charge varies with the level, so the LATCHED
+				//     value itself differs frame to frame. This is what makes a scrolling line get
+				//     cut deeper on one frame and come partly back on the next.
+				const float jitter = vector_options::s_window_jitter;
+				if (jitter != 0.0f)
+					bias += ((double(machine().rand() & 0xffff) / 32767.5) - 1.0) * double(jitter) * unit;
+				m_window_hold_bias = int(bias);
+				m_window_sample_time = m_vectbuf[i].t0;
+				m_window_sampled = true;
+			}
 		}
 	}
 
@@ -199,10 +268,27 @@ void avgdvg_device_base::vg_flush_reset()
 	m_flush_xs = 0;
 	m_flush_ys = 0;
 	m_flush_primed = false;
+	// The window is re-latched once per list (mhavoc's m_lst gate), so drop the previous sample.
+	// m_window_da_mem deliberately survives: dielectric absorption is a memory ACROSS frames.
+	m_window_sampled = false;
+	m_window_sample_time = attotime::never;
+	m_window_hold_bias = 0;
 }
 
 void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy)
 {
+	// Beam energy in the UNIFIED convention (0..1 = normal display range, > 1 = overdrive). Only Star
+	// Wars measures a real beam CURRENT (it is the one avgdvg title that varies the VCTR current, so it
+	// passes its own value, which can exceed 1). Every other variant commands a 4-bit intensity that the
+	// call sites scale by 16, so the generator's full scale is 0xf << 4 = VG_MAX_INTENSITY and the
+	// commanded intensity IS the current: report it here instead of leaving the renderer to GUESS the
+	// energy from segment timing. That guess is what made short strokes (text drawn at a small scale)
+	// read as slow and blow up in width and brightness - the speed/dwell density is now a modulation on
+	// top of a known current (drawbgfx's Energy Density sliders), not the whole brightness scale.
+	// Blanked moves (intensity 0) deliberately keep -1: a blank-leak line has no commanded current, so
+	// its level must stay derived from the move speed (see vector.cpp's s_blank_leak path).
+	if (beam_energy < 0.0f && intensity > 0)
+		beam_energy = std::min(float(intensity) / float(VG_MAX_INTENSITY), 1.0f);
 	if (m_nvect < MAXVECT)
 	{
 		m_vectbuf[m_nvect].status = VGVECTOR;
@@ -1592,6 +1678,9 @@ avg_mhavoc_device::avg_mhavoc_device(const machine_config &mconfig, const char *
 	m_colorram(*this, "colorram"),
 	m_bank_region(*this, DEVICE_SELF)
 {
+	// Only Major Havoc has the Y-window sample-and-hold (LF13201 + C42 + TL082 + LM819); Battlezone's
+	// clip window is latched differently, so its behaviour must not change.
+	m_window_hold_model = true;
 }
 
 avg_starwars_device::avg_starwars_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock) :
