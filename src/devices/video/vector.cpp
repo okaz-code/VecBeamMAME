@@ -1264,10 +1264,24 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	float stats_offscreen_energy[render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_monitor_glow_coverage[render_vector_stats::MONITOR_GLOW_ANGLE_BINS][render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_edge_energy[4][render_vector_stats::EDGE_GLOW_BINS] = {};
+	// Sweep extent of this list (see render_vector_stats::sweep_t0). Blanked moves count: the beam
+	// is physically travelling during them, so they are part of the pass's sweep time.
+	double stats_sweep_t0 = -1.0, stats_sweep_t1 = -1.0;
 
 	for (int i = 0; i < m_vector_index; i++)
 	{
 		render_bounds coords;
+
+		// Converted once here and reused by both add_line branches below.
+		const double prim_t0 = curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double();
+		const double prim_t1 = curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double();
+		if (prim_t0 >= 0.0 && prim_t1 > prim_t0)
+		{
+			if (stats_sweep_t0 < 0.0 || prim_t0 < stats_sweep_t0)
+				stats_sweep_t0 = prim_t0;
+			if (prim_t1 > stats_sweep_t1)
+				stats_sweep_t1 = prim_t1;
+		}
 
 		float intensity = (float)curpoint->intensity / 255.0f;
 		float intensity_weight = normalized_sigmoid(intensity, vector_options::s_beam_intensity_weight);
@@ -1326,8 +1340,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 					(curpoint->intensity << 24) | (curpoint->col & 0xffffff),
 					flags,
 					curpoint->beam_energy,
-					curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
-					curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double(),
+					prim_t0,
+					prim_t1,
 					cap_flags);
 			// Points surviving into a second emission (window-boundary blend) re-emit their
 			// primitive but must not re-fire the notifiers: one beam event, one notification.
@@ -1386,8 +1400,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 						(leak_i << 24) | (curpoint->col & 0xffffff),
 						flags,
 						-1.0f,
-						curpoint->t0.is_never() ? -1.0 : curpoint->t0.as_double(),
-						curpoint->t1.is_never() ? -1.0 : curpoint->t1.as_double(),
+						prim_t0,
+						prim_t1,
 						0);
 			}
 			if (!curpoint->emitted)
@@ -1412,6 +1426,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.list_generation = m_list_generation;
 	stats.list_stale = m_beam_list_stale;
 	stats.timed = frame_timed;
+	stats.sweep_t0 = stats_sweep_t0;
+	stats.sweep_t1 = stats_sweep_t1;
 	stats.total_energy = stats_total_energy;
 	stats.playback_active = playback_active;
 	stats.playback_paused = playback_active && m_stream->playback_paused();

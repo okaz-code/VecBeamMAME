@@ -55,6 +55,10 @@ public:
 	bool fastforward() const { return m_fastforward; }
 	bool vector_presenting() const { return m_vector_presenting; }
 	u32 vector_present_rate() const { return m_vector_present_rate; }
+	// One host presentation interval expressed in emulated time (m_speed applied). Public because
+	// the beam-time-window presentation model in the renderer uses it as its window width, so slow
+	// motion and other speed settings stay consistent for free.
+	attotime vector_present_period() const;
 
 	// setters
 	void set_frameskip(int frameskip);
@@ -105,7 +109,6 @@ private:
 
 	// speed and throttling helpers
 	int original_speed_setting() const;
-	attotime vector_present_period() const;
 	bool finish_screen_updates();
 	void present_update(attotime current_time);
 	void update_throttle(attotime emutime);

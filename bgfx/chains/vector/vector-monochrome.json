@@ -17,6 +17,7 @@
 	"sliders": [
 		// ---- Phosphor persistence ----
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":24.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
+		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":0.0,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector"},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":3.0,"min":0.4,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"phosphor_total_ms","text":"Phosphor Total (ms)","default":800.0,"min":20.0,"max":1500.0,"step":10.0,"format":"%4.0f","screen":"vector"},
 		{"type":"float","name":"phosphor_energy_decay","text":"Phosphor Energy Decay (bright faster)","default":3.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
@@ -111,6 +112,8 @@
 		{"type":"float","name":"flicker_thresh_ms","text":"Cyclic Flicker Threshold (draw ms)","default":22.0,"min":0.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector"},
 		{"type":"float","name":"flicker_buckets","text":"Cyclic Flicker Buckets (N)","default":6.0,"min":2.0,"max":16.0,"step":1.0,"format":"%2.0f","screen":"vector"},
 		{"type":"float","name":"flicker_period_ms","text":"Cyclic Flicker Step (ms)","default":16.7,"min":2.0,"max":100.0,"step":0.5,"format":"%2.1f","screen":"vector"},
+		{"type":"intenum","name":"beam_window","text":"Beam Time Window","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (Cyclic Flicker)","On"]},
+		{"type":"float","name":"beam_window_scale","text":"Beam Time Window Width (x present)","default":1.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 
 		// ---- Color adjustment ----
 
