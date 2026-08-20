@@ -567,6 +567,37 @@ private:
 	double m_flicker_prev_t0 = -1.0;
 	double m_flicker_prev_t1 = -1.0;
 
+	// Beam time window (beam_window slider), the physical alternative to cyclic flicker: instead of
+	// dropping a rotating bucket, each present deposits only the slice of the sweep the beam actually
+	// covered during one presentation interval, and the phosphor pool - which integrates those slices
+	// back into a whole pass - holds the rest. Where a pass is longer than the presentation time it
+	// receives, its tail is never deposited, and that is the flicker.
+	//
+	// The list handed to the renderer describes a pass that ALREADY COMPLETED (vg_flush runs only at
+	// the next VGGO), so a window in absolute machine time can never intersect it. The window walks
+	// the pass's own [sweep_t0, sweep_t1] instead, positioned by the emulated time elapsed since the
+	// list was first presented - NOT by counting presents, which would quantise the time a pass
+	// receives to the screen-update period. Deriving it from elapsed time also self-corrects when a
+	// present is dropped, and freezes on its own while the machine is paused.
+	double m_vec_window_base_time = -1.0;   // emulated seconds at this list's first present
+	// Keyed on list_generation, NOT frame_id: a pass must keep its window walk for as long as its
+	// list lives, and the VGGO cadence is not the screen refresh. Star Wars refreshes its vector
+	// screen every 24.381 ms but issues VGGO every 6 to 11 IRQ periods (measured median 36.53 ms in
+	// attract), so one list is presented across several screen updates - the stale ones. Keying on
+	// frame_id gave a 34 ms sweep only 24 ms worth of window and permanently clipped its tail.
+	uint32_t m_vec_window_generation = ~uint32_t(0);
+	bool m_vec_window_mode = false;        // beam_window active this present (read by the later chain gate)
+	// -verbose accounting: one "BEAMWIN" line per pass reporting how many presents it received and
+	// how much of it was deposited. deposited < total is expected - the VGGO cadence and the present
+	// rate are not commensurate, so a long pass loses its tail, which IS the flicker signal - but
+	// deposited > total never is, and glow must always equal total (the glow route is not windowed;
+	// if it starts tracking deposited instead, bloom will blink).
+	int m_vec_window_log_presents = 0;
+	int m_vec_window_log_deposited = 0;
+	int m_vec_window_log_total = 0;
+	int m_vec_window_log_glow = 0;
+	double m_vec_window_log_span = 0.0;
+
 	// Bezel edge glow (render_vector_stats::edge_energy): exact on-window CRT screen rectangle in
 	// window pixels, taken from the full-screen VECTORBUF background quad emitted by vector.cpp.
 	// Unlike a bounding box learned from lit lines, this is stable on sparse/title/ranking screens.

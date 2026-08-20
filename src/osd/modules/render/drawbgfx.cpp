@@ -4470,6 +4470,8 @@ int renderer_bgfx::draw(int update)
 			m_flicker_prev_count = 0;
 			m_flicker_prev_t0 = -1.0;
 			m_flicker_prev_t1 = -1.0;
+			m_vec_window_base_time = -1.0;
+			m_vec_window_generation = ~uint32_t(0);
 			m_vec_persist_prev_t = -1.0;
 			m_vec_phosphor_budget = 1.0;
 			m_vec_phosphor_last_hpc = 0;
@@ -4496,7 +4498,22 @@ int renderer_bgfx::draw(int update)
 		// sources and rebuilt every analytic vector up to 60 times per second. frame_id advances
 		// on every real vector screen_update, including a retained/list_stale CRT redraw, so it
 		// is the correct source boundary without reintroducing the old list_stale flicker bug.
-		const bool deposit_vector_source = bezel_threshold_changed
+		// Beam time window (beam_window slider): the physical alternative to the cyclic flicker
+		// below. Instead of dropping a rotating bucket, each present deposits only the slice of the
+		// sweep the beam actually covered during one presentation interval, and the phosphor pool
+		// holds the rest. Needs real AVG/DVG timestamps, a usable sweep extent, and the host-rate
+		// present loop: at vector_present_rate 0 there is exactly one present per source frame, so
+		// slicing the sweep would permanently discard most of the picture rather than spread it
+		// across presents.
+		const bool window_on = vstats.timed
+				&& vstats.sweep_t0 >= 0.0 && vstats.sweep_t1 > vstats.sweep_t0
+				&& window().machine().video().vector_present_rate() > 0
+				&& int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
+		m_vec_window_mode = window_on;
+
+		// A windowed present deposits a DIFFERENT slice of the same source list every time, so the
+		// source has to be re-scanned on every present, not only when a new emulated frame arrives.
+		const bool deposit_vector_source = bezel_threshold_changed || window_on
 			|| ((window().machine().video().vector_present_rate() == 0)
 				? !vector_present_repeat
 				: m_vec_frame_advanced);
@@ -4507,6 +4524,9 @@ int renderer_bgfx::draw(int update)
 			// all vector lines; cached for source-free re-presents (VECTORBUF owns the FBO path)
 		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
+		// Lines contributing GLOW this present. Equal to visible_count unless the beam time window is
+		// active, where the body is windowed but the glow is not - see the scan loop below.
+		int glow_count = 0;
 		// Point-classified count, using the SAME unclipped-length test put_analytic_line uses.
 		// Starburst rays (and only rays - see the glow buffer sizing below) are
 		// drawn for dwell POINTS only, so their (large) per-primitive vertex cost must be budgeted by
@@ -4536,7 +4556,9 @@ int renderer_bgfx::draw(int update)
 		// the synthetic rotating-bucket dropout again makes a stepped frame dim while its residue was
 		// deposited by an earlier undimmed frame, so the afterimage can incorrectly dominate the new
 		// lettering. Keep this live-hardware presentation model out of deterministic MVEC playback.
-		const bool flicker_on = vstats.timed && !vstats.playback_active;
+		// Mutually exclusive with the beam time window: both model the same physical constraint, one
+		// by subtracting a synthetic rotating bucket and one by depositing the real time slice.
+		const bool flicker_on = vstats.timed && !vstats.playback_active && !window_on;
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero
@@ -4603,6 +4625,76 @@ int renderer_bgfx::draw(int update)
 		// Separate depth controls let blue retain a mathematically non-zero shimmer at a fine step.
 		const bool flicker_partial = flicker_busy
 				&& (fl_rgb[0] < 0.999f || fl_rgb[1] < 0.999f || fl_rgb[2] < 0.999f);
+		// Beam time window bounds for this present. Keyed on list_generation, so a pass keeps its
+		// window walk for as long as its list lives - the VGGO cadence is not the screen refresh, and
+		// one list is normally presented across several screen updates (the stale ones). The window
+		// position is the emulated time elapsed since the list was first presented, which maps
+		// presentation time onto sweep time 1:1: a pass gets exactly as much window as its own VGGO
+		// interval allows, and the rest of that interval deposits nothing because the real beam is
+		// idle there. Deriving the position from elapsed time rather than accumulating one window per
+		// present matters: accumulating quantises the time a pass receives to the screen-update
+		// period, so a 34 ms sweep whose VGGO interval was 36.5 ms could be handed only 24.381 ms
+		// worth of windows and lose its tail to arithmetic instead of to physics.
+		// beam_window_scale 1.0 is the physically correct width; other values are for exploring how
+		// the effect reads.
+		double window_lo = 0.0, window_hi = 0.0;
+		bool window_active = false;
+		if (window_on)
+		{
+			const double now = window().machine().time().as_double();
+			if (vstats.list_generation != m_vec_window_generation || m_vec_window_base_time < 0.0)
+			{
+				// Report what the pass that just ended actually got (see m_vec_window_log_presents).
+				if (m_vec_window_log_presents != 0)
+					osd_printf_verbose("BEAMWIN span=%.4f presents=%d deposited=%d total=%d glow=%d\n",
+							m_vec_window_log_span * 1000.0, m_vec_window_log_presents,
+							m_vec_window_log_deposited, m_vec_window_log_total,
+							m_vec_window_log_glow);
+				m_vec_window_log_presents = 0;
+				m_vec_window_log_deposited = 0;
+				m_vec_window_log_total = 0;
+				m_vec_window_log_glow = 0;
+				m_vec_window_generation = vstats.list_generation;
+				m_vec_window_base_time = now;
+			}
+			m_vec_window_log_span = vstats.sweep_t1 - vstats.sweep_t0;
+			// beam_window_scale is the RATE at which the window walks the sweep, in multiples of real
+			// time, so it has to scale the window's POSITION as well as its width: the window advances
+			// by (elapsed x scale) and is (present interval x scale) wide, so successive windows tile
+			// the sweep exactly at any scale - no overlap, no gap. Scaling only the width overlapped
+			// them by (scale-1) x interval and deposited everything in that overlap once per window,
+			// measured as 133% coverage and visible as double brightness.
+			//
+			// 1.0 is the physical value: the window tracks the beam in real time, so a pass longer
+			// than the presentation time it receives loses its tail, and that loss IS the flicker.
+			// Above 1.0 the sweep is replayed faster than it happened, so more of it lands inside the
+			// pass's presentation time and the flicker weakens - the knob for dialling the effect back
+			// without giving up single-deposit correctness.
+			const double scale = double(std::clamp(
+					m_chains->slider_value(0, "beam_window_scale", 1.0f), 0.25f, 4.0f));
+			const double w = std::max(1e-9,
+					window().machine().video().vector_present_period().as_double() * scale);
+			window_lo = vstats.sweep_t0 + std::max(0.0, now - m_vec_window_base_time) * scale;
+			window_hi = window_lo + w;
+			// Past the end of the sweep nothing is deposited: the pass has finished and the beam is
+			// idle until the next VGGO. That gap is real - measured median 6.5 ms on Star Wars - and
+			// is what the phosphor pool turns into visible flicker.
+			window_active = (window_lo < vstats.sweep_t1);
+		}
+		// The counting scan and the write loop further down MUST reach the same include/exclude
+		// decision for every primitive - the count sizes the transient vertex buffer the write loop
+		// fills - so the test lives here once instead of being duplicated at both sites.
+		//
+		// A segment belongs to the window containing its t0, so every timed segment is deposited
+		// exactly once across the presents covering one pass: no gaps, and no double brightness at
+		// the boundaries. Splitting a segment at the boundary would be more exact but is not worth
+		// it - the longest AVG segment measured on Star Wars is 339 us against a 16.7 ms window at
+		// 60 Hz, about 2%. Untimed segments hold no position in the sweep and are always drawn.
+		const auto beam_window_excludes = [&] (const render_primitive &p) {
+			if (!window_on || !(p.t0 >= 0.0))
+				return false;
+			return !(window_active && p.t0 >= window_lo && p.t0 < window_hi);
+		};
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
 		double cur_first_t0 = -1.0, cur_last_t1 = -1.0;
@@ -4647,7 +4739,15 @@ int renderer_bgfx::draw(int update)
 						const int bucket = std::clamp(int((scan->t0 - first_t0) / flicker_span), 0, flicker_n - 1);
 						flicker_excluded = (bucket == flicker_active_bucket);
 					}
+					// The beam time window gates the BODY path only. The body feeds the phosphor pool,
+					// which integrates the per-present slices back into a whole pass; the glow buffer
+					// has no persistence of its own (it is cleared every present and composited after
+					// the pool), so a windowed glow would follow the instantaneous slice and blink.
+					// Glow therefore counts every vector of the pass, body counts only this window's.
+					const bool window_excluded = beam_window_excludes(*scan);
 					if (!flicker_excluded)
+						glow_count++;
+					if (!flicker_excluded && !window_excluded)
 					{
 						visible_count++;
 						// Same unclipped point test as the write loop below. These must stay identical
@@ -4679,6 +4779,18 @@ int renderer_bgfx::draw(int update)
 			}
 			m_vec_cached_vector_count = vector_count;
 			if (flicker_on) { m_flicker_prev_count = cur_raw_count; m_flicker_prev_t0 = cur_first_t0; m_flicker_prev_t1 = cur_last_t1; }
+			if (window_on)
+			{
+				// Untimed vectors hold no position in the sweep and are always drawn, so the windowed
+				// accounting looks only at the timed ones.
+				m_vec_window_log_presents++;
+				m_vec_window_log_total = vector_count - untimed_vector_count;
+				m_vec_window_log_deposited += visible_count - untimed_vector_count;
+				// Glow is not windowed (see the scan loop). Per present this must equal total, and it is
+				// how the glow exemption is verified without a picture: if it tracks deposited instead,
+				// the glow is following the window slice again and bloom will blink.
+				m_vec_window_log_glow = glow_count - untimed_vector_count;
+			}
 			const float screen_w = screen_max_x - screen_min_x;
 			m_vec_res_w = (screen_w > 1.0f)
 				? std::clamp(screen_w, 64.0f, float(s_width[window_index]))
@@ -5617,9 +5729,17 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer conv_tvb = {};
 			bool conv_alloc = false;
 			const bool ray_on = m_line_analytic && m_ray_vpl > 0 && bgfx::isValid(m_optical_separate ? m_vec_optical_fb : m_vec_glow_fb);
-			if (visible_count > 0)
+			// glow_count >= visible_count, and under the beam time window it can be non-zero while the
+			// body is empty (the window has walked past the end of the sweep). The glow still has to be
+			// built in that case, so the allocation gate follows glow_count too.
+			// One EXTRA line of body space is reserved as a scratch slot: a window-excluded vector still
+			// calls put_analytic_line to produce its glow, and that call always writes body vertices as
+			// well. They go to the scratch slot and are never submitted - the draw below passes an
+			// explicit vertex count rather than the whole buffer.
+			const uint32_t body_scratch_at = uint32_t(visible_count) * verts_per_line;
+			if (visible_count > 0 || glow_count > 0)
 			{
-				const uint32_t needed = uint32_t(visible_count) * verts_per_line;
+				const uint32_t needed = (uint32_t(visible_count) + 1u) * verts_per_line;
 				if (needed == bgfx::getAvailTransientVertexBuffer(needed, line_decl))
 				{
 					bgfx::allocTransientVertexBuffer(&tvb, needed, line_decl);
@@ -5629,7 +5749,7 @@ int renderer_bgfx::draw(int update)
 						// core still draws; glow is simply skipped this frame.
 						if (m_glow_on && m_glow_vpl > 0)
 						{
-							const uint32_t gneeded = uint32_t(visible_count) * uint32_t(m_glow_vpl);
+							const uint32_t gneeded = uint32_t(glow_count) * uint32_t(m_glow_vpl);
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
@@ -5713,7 +5833,17 @@ int renderer_bgfx::draw(int update)
 							// by flicker_rgb instead (and were counted by the scan).
 							const bool vp_in_bucket = flicker_busy && vprim->t0 >= 0.0
 								&& std::clamp(int((vprim->t0 - first_t0) / flicker_span), 0, flicker_n - 1) == flicker_active_bucket;
-							const bool vp_flicker_excluded = vp_in_bucket && !flicker_partial;
+							// A vector outside this present's beam time window still contributes its GLOW
+							// (the glow buffer has no persistence of its own - see the scan loop), so it
+							// is NOT skipped: put_analytic_line is called with its body geometry pointed
+							// at the scratch slot and the other post-pool routes (optical / no-persist /
+							// rays) nulled, since those are sized by visible_count. If there is no glow
+							// buffer to write - allocation failed, or the non-analytic path, which has no
+							// separate glow - the vector is skipped outright as before.
+							const bool vp_window_excluded = beam_window_excludes(*vprim);
+							const bool vp_glow_only = vp_window_excluded && m_line_analytic && glow_alloc;
+							const bool vp_flicker_excluded = (vp_in_bucket && !flicker_partial)
+								|| (vp_window_excluded && !vp_glow_only);
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
 								// Per-channel flicker is applied in place for the draw calls below and
@@ -5768,12 +5898,14 @@ int renderer_bgfx::draw(int update)
 										}
 									}
 									AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
-									AnalyticLineVertex *optr = optical_alloc ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
-									AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
+									// optical / no-persist / rays are reserved by visible_count, so a
+									// glow-only vector must not write them.
+									AnalyticLineVertex *optr = (optical_alloc && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
+									AnalyticLineVertex *npptr = (np_alloc && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
 									// Rays are point-only (see the m_ray_vpl comment); use the same unclipped
 									// classification as the pre-scan and put_analytic_line so reservation matches usage.
 									const bool r_is_point = vector_primitive_is_point(*vprim, pt_thresh);
-									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
+									AnalyticLineVertex *rptr = (ray_alloc && r_is_point && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
 									// Whole-stroke energy pre-pass results (see above): aggregate stroke
 									// speed and same-spot dwell scale, if this vector received either.
 									float sps = -1.0f, dsc = 1.0f;
@@ -5790,7 +5922,11 @@ int renderer_bgfx::draw(int update)
 									float scan_scale = 1.0f;
 									auto ait = m_scan_attenuation.find(vprim);
 									if (ait != m_scan_attenuation.end()) scan_scale = ait->second;
-									put_analytic_line(vprim, reinterpret_cast<AnalyticLineVertex*>(tvb.data) + vertices, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale);
+									// A glow-only vector writes its body geometry into the scratch slot, which
+									// the draw call's explicit vertex count leaves out.
+									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
+											+ (vp_glow_only ? body_scratch_at : uint32_t(vertices));
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -5798,7 +5934,8 @@ int renderer_bgfx::draw(int update)
 								}
 								else
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
-								vertices += verts_per_line;
+								if (!vp_glow_only)
+									vertices += verts_per_line;
 								if (vp_dimmed)
 									vprim->color = vp_saved_color;
 							}
@@ -5840,7 +5977,9 @@ int renderer_bgfx::draw(int update)
 
 			if (vertices > 0)
 			{
-				bgfx::setVertexBuffer(0, &tvb);
+				// Explicit count: the buffer carries one extra scratch line (see body_scratch_at) that
+				// window-excluded vectors write their discarded body geometry into.
+				bgfx::setVertexBuffer(0, &tvb, 0, uint32_t(vertices));
 				// no texture needed; fs_vector_line computes the fade in-shader
 				bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
 				bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
@@ -6270,8 +6409,11 @@ int renderer_bgfx::draw(int update)
 			// Guard against null chain (e.g. chain change from menu, or failed load).
 			if (m_chains->has_applicable_chain(0))
 			{
+				// In beam-window mode every present carries a different slice of the sweep, so a
+				// presentation-only frame is NOT a repeat: re-presenting the retained screen_hdr, or
+				// letting vector_phosphor_rate skip the chain, would drop that slice entirely.
 				const bool vector_repeat = (window().machine().video().vector_present_rate() > 0)
-					&& !m_vec_frame_advanced;
+					&& !m_vec_frame_advanced && !m_vec_window_mode;
 				bgfx_target *const completed_hdr = m_chains->targets().target(0, "screen_hdr");
 				const bool can_represent_completed = vector_repeat && completed_hdr
 					&& bgfx::isValid(completed_hdr->texture());

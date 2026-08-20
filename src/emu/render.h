@@ -284,6 +284,13 @@ struct render_vector_stats
 	u32   list_generation = 0U;     // increments when the CPU starts a NEW beam list
 	bool  list_stale = false;       // this frame re-showed the previous beam list (no new list started)
 	bool  timed = false;            // per-segment t0/t1 model real cycle-accurate sweep timing (AVG/DVG)
+	// Beam sweep extent of this frame's list, in absolute machine seconds (< 0 = untimed). One
+	// device list is one COMPLETE hardware pass - vg_flush() runs only from vg_flush_list_end() at
+	// VGGO (avgdvg.cpp) - so sweep_t1 - sweep_t0 is that pass's real sweep duration, and it is a
+	// property of the source frame that stays constant across host-rate re-presents. The
+	// beam-time-window presentation model needs it to place its window cursor without a pre-pass.
+	double sweep_t0 = -1.0;
+	double sweep_t1 = -1.0;
 	float total_energy = 0.0F;      // sum of beam_energy x normalized segment length this frame (EHT load)
 	// MVEC playback-tool state. Stock renderers ignore these fields. BGFX uses playback_dt_ms
 	// instead of wall/emulation time so a held frame freezes temporal effects, while a single step
