@@ -33,7 +33,7 @@
 		// ---- Phosphor persistence ----
 
 		// ---- Advanced 表示トグル。Off ではマクロだけが見える ----
-		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
+		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
 
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":16.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":3.0,"min":0.4,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -167,14 +167,15 @@
 		// ---- Smoked glass (100% transmission is an exact bypass) ----
 
 		// ---- Two-sided printed overlay ----
-		{"type":"float","name":"room_ambient","text":"Room Ambient (Overlay/Bezel)","default":0.5,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"room_ambient","text":"Room Ambient (Overlay/Bezel)","default":0.25,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_white_transmission","text":"Overlay White Transmission","default":0.65,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_white_diffusion","text":"Overlay Resin Diffusion Strength","default":0.7,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_white_diffusion","text":"Overlay Resin Diffusion Strength","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_diffusion_radius","text":"Overlay Resin Diffusion Radius (px)","default":12.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_white_reflectance","text":"Overlay White Reflectance","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_density","text":"Overlay Color Optical Density","default":7.2,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_glow","text":"Overlay Rear Resin Scatter","default":1.55,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_dark_level","text":"Overlay Resin Dark Level","default":0.03,"min":0.0,"max":0.20,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_diffusion_shape","text":"Overlay Resin Diffusion Curve","default":0.4,"min":0.2,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_white_reflectance","text":"Overlay White Reflectance","default":0.25,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_density","text":"Overlay Color Optical Density","default":1.75,"min":0.0,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_glow","text":"Overlay Rear Resin Scatter","default":1.10,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_dark_level","text":"Overlay Resin Dark Level","default":0.010,"min":0.0,"max":0.20,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_bleach","text":"Overlay Highlight Color Release","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_knee","text":"Overlay Highlight Release Knee","default":0.15,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_curve","text":"Overlay Highlight Release Curve","default":0.55,"min":0.20,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},

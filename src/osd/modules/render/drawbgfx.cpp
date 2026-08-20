@@ -1596,6 +1596,7 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
 		m_vectrex_overlay_mask_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_mask");
 		m_vectrex_overlay_blur_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_blur");
+		m_vectrex_overlay_downsample_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_downsample");
 		m_vectrex_overlay_composite_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_composite");
 
 		// Vector frame statistics (frame counter, list staleness, total / off-screen beam energy)
@@ -2657,17 +2658,27 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		return false;
 	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 4.0f));
 	uint32_t const blur_iterations = radius >= 12.0f ? 3U : (radius >= 7.0f ? 2U : 1U);
-	uint32_t const required_vertices = (role_quads + blur_iterations * 2U + 1U) * 6U;
-	// ink masks + repeated blur H/V pairs + composite
+	// ink masks + optional box prefilter + repeated blur H/V pairs + composite
+	uint32_t const required_vertices = (role_quads + blur_iterations * 2U + 2U) * 6U;
 	if (bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl) != required_vertices)
 		return false;
 
 	uint16_t const width = m_hdr_work->width();
 	uint16_t const height = m_hdr_work->height();
-	// Large tap spacing makes a sparse 9-tap kernel visible as a grid.  Downsample first so the
-	// same physical radius uses a dense 2-3 pixel kernel, then rely on linear upsampling during
-	// the composite.  Small radii stay full-resolution to preserve local detail.
-	uint16_t const blur_scale = radius >= 7.0f ? 4U : (radius >= 3.5f ? 2U : 1U);
+	// Tap spacing, not the reach, is what makes the sparse 9-tap kernel show up as a grid, and
+	// the reach is 4 * radius / sqrt(iterations) output pixels whatever the scale.  So the
+	// scale is chosen to hold the spacing at one destination texel or under - the densest the
+	// comb can be without pointlessly oversampling - and the halo keeps its length either way.
+	// A threshold table cannot do this because the spacing depends on the pass count too: the
+	// old one left the single-pass band around 4-7 px spaced over three texels, sparser than
+	// anything at the top of the slider.  Powers of two only, since the box prefilter is exact
+	// for 2, 4 and 8, and a scale of one needs no prefilter at all.  The cap at 8 is what
+	// leaves the largest radii slightly over one texel.  Linear upsampling in the composite
+	// reconstructs the result, and a broad diffusion halo carries no detail to lose.
+	uint16_t blur_scale = 1;
+	for (float const want = radius / std::sqrt(float(blur_iterations));
+		blur_scale < 8U && want > float(blur_scale); )
+		blur_scale = uint16_t(blur_scale * 2U);
 	uint16_t const blur_width = std::max<uint16_t>(1, (width + blur_scale - 1U) / blur_scale);
 	uint16_t const blur_height = std::max<uint16_t>(1, (height + blur_scale - 1U) / blur_scale);
 	auto wrong_size = [width, height](bgfx_target *target)
@@ -2740,7 +2751,61 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		return true;
 	};
 
+	// Band-limit the source before the blur decimates it.  The blur samples this texture with
+	// taps one destination texel apart, which is blur_scale source pixels; without an average
+	// over that block the first pass just point-samples the vector image and the diffusion
+	// carries the sampling comb as a visible lattice.  Scale one needs no prefilter.
 	bgfx::TextureHandle blur_source = screen_hdr->texture();
+	if (blur_scale > 1U && m_vectrex_overlay_downsample_effect != nullptr
+		&& screen_hdr->width() > 0 && screen_hdr->height() > 0)
+	{
+		uint16_t const view = uint16_t(s_current_view++);
+		bgfx::setViewFrameBuffer(view, m_vectrex_overlay_blur[1]->target());
+		bgfx::setViewRect(view, 0, 0, blur_width, blur_height);
+		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+		bgfx::setViewTransform(view, nullptr, projection);
+		bgfx_uniform *const sampler = m_vectrex_overlay_downsample_effect->uniform("s_tex");
+		bgfx_uniform *const params = m_vectrex_overlay_downsample_effect->uniform("u_overlay_ds");
+		if (sampler != nullptr && params != nullptr)
+		{
+			// Bilinear fetches land on the odd source-texel positions inside the covered block,
+			// measured from its centre, so each straddles a texel boundary and returns the mean of
+			// the pair.  Scale eight needs both magnitudes to reach all 64 texels; the smaller
+			// scales repeat one position, which keeps the mean exact.
+			float const near_tap = (blur_scale >= 4U) ? 1.0f : 0.0f;
+			float const far_tap = (blur_scale >= 8U) ? 3.0f : near_tap;
+			float const inv_w = 1.0f / float(screen_hdr->width());
+			float const inv_h = 1.0f / float(screen_hdr->height());
+			float values[4] = {
+				near_tap * inv_w, near_tap * inv_h,
+				far_tap * inv_w, far_tap * inv_h };
+			params->set(values, sizeof(values)); params->upload();
+			bgfx::setTexture(0, sampler->handle(), blur_source,
+				BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
+			if (submit_fullscreen(view, m_vectrex_overlay_downsample_effect))
+				blur_source = m_vectrex_overlay_blur[1]->texture();
+		}
+	}
+	// Diffusion tap profile: exp(-(|k|/2.5)^shape) over the nine symmetric taps.  A shape of
+	// 2.0 is a Gaussian and reproduces the former hard-coded binomial weights to within 0.6%
+	// of the peak.  Lowering it narrows the core and lifts the outer taps, which is the
+	// peaked-centre / long-floor profile that scattering in a diffusing plate actually has;
+	// the heavy floor survives the repeated H/V passes because an exponential tail stays
+	// exponential under self-convolution, unlike the Gaussian it replaces.  Building the
+	// weights here keeps the control free per pixel and the normalisation exact.
+	float const blur_shape = std::clamp(m_chains->slider_value(0, "overlay_diffusion_shape", 2.0f), 0.2f, 6.0f);
+	float blur_tap[5];
+	{
+		float sum = 0.0f;
+		for (int k = 0; k < 5; ++k)
+		{
+			blur_tap[k] = expf(-powf(float(k) / 2.5f, blur_shape));
+			sum += (k == 0) ? blur_tap[k] : 2.0f * blur_tap[k];
+		}
+		for (float &weight : blur_tap)
+			weight /= sum;
+	}
 	uint32_t const blur_passes = blur_iterations * 2U;
 	float const pass_radius = radius / (float(blur_scale) * std::sqrt(float(blur_iterations)));
 	for (uint32_t pass = 0; pass < blur_passes; ++pass)
@@ -2761,6 +2826,18 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 			direction ? (1.0f / blur_height) : 0.0f,
 			pass_radius, 0.0f };
 		params->set(values, sizeof(values)); params->upload();
+		// Optional so a stale effect JSON without the weight uniforms still renders with the
+		// Gaussian defaults declared there rather than disabling the whole overlay path.
+		if (bgfx_uniform *const taps0 = m_vectrex_overlay_blur_effect->uniform("u_overlay_blur_w0"))
+		{
+			float weights[4] = { blur_tap[0], blur_tap[1], blur_tap[2], blur_tap[3] };
+			taps0->set(weights, sizeof(weights)); taps0->upload();
+		}
+		if (bgfx_uniform *const taps1 = m_vectrex_overlay_blur_effect->uniform("u_overlay_blur_w1"))
+		{
+			float weights[4] = { blur_tap[4], 0.0f, 0.0f, 0.0f };
+			taps1->set(weights, sizeof(weights)); taps1->upload();
+		}
 		bgfx::setTexture(0, sampler->handle(), blur_source,
 			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
 		if (!submit_fullscreen(view, m_vectrex_overlay_blur_effect))
