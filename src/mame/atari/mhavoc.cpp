@@ -1000,10 +1000,11 @@ void alphaone_state::alphaone(machine_config &config)
 	// video hardware
 	VECTOR(config, "vector");
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_VECTOR));
-	// The real XY monitor has no refresh rate; see starwars.cpp - the screen rate is only the
-	// presentation sampling window, and the IRQ is a free-running periodic timer (5K clock),
-	// so 60Hz changes pacing only, not game speed.
-	screen.set_refresh_hz(60);
+	// Match the stock MAME sampling cadence (50 Hz); see starwars.cpp. Host-rate presentation is
+	// handled independently by vector_present_rate, while the game IRQ remains a free-running
+	// periodic timer (the 5K clock feeding an LS161), so this rate sets only the source vector
+	// frame cadence, not game speed.
+	screen.set_refresh_hz(50);
 	screen.set_size(400, 300);
 	screen.set_visarea(0, 580, 0, 500);
 	screen.set_screen_update("vector", FUNC(vector_device::screen_update));
