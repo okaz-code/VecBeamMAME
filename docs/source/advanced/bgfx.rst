@@ -230,10 +230,49 @@ ordinary MAME artwork and are composed after the optical layers.  See
 
 ``Overlay Resin Diffusion Strength`` and ``Overlay Resin Diffusion Radius``
 control weak lateral light transport behind the print.  Large radii use a
-downsampled multi-pass filter to avoid a visible sampling grid.  White
-transmission and ambient reflection, coloured-resin optical density, unlit
-resin level, and highlight colour release have independent controls.  The
-operation takes place in the linear HDR composite before HDR/SDR presentation.
+downsampled multi-pass filter to avoid a visible sampling grid.  A box prefilter
+averages each destination block before the blur samples it, because the blur
+taps sit a whole destination texel apart and would otherwise point-sample the
+vector image and carry the sampling comb through as a lattice.  The reach is
+four times radius over the square root of the pass count whatever the scale, so
+a coarser target buys a tighter tap spacing without shortening the halo.  The
+scale is therefore derived from radius and pass count together, as the smallest
+power of two that holds the spacing at one destination texel or under, capped at
+an eighth: only the largest radii end up slightly over one texel.
+``Overlay Resin Diffusion Curve`` shapes the nine-tap profile as
+``exp(-(abs(k)/2.5)^curve)``.  A curve of 2.0 is the Gaussian the filter used
+previously, while lower values narrow the core and lift the outer taps, giving
+the peaked centre and long shallow floor that scattering in a diffusing plate
+produces.  The floor survives the repeated passes because an exponential tail
+stays exponential under self-convolution.  Lowering the curve also widens the
+half-maximum slightly, so the radius may want trimming to compensate.
+
+White transmission and ambient reflection, coloured-resin optical density,
+unlit resin level, and highlight colour release have independent controls.
+The operation takes place in the linear HDR composite before HDR/SDR
+presentation.
+
+``Overlay Color Optical Density`` is a true optical density.  The coloured
+element RGB is the resin transmission at unit density -- the single-pass
+transmission, which is the square root of how the plate looks over a white
+ground, since light measured that way crosses the resin twice.  Transmission
+through the plate follows Beer-Lambert absorption, so a density of d transmits
+``base**d`` per channel.  Values above 1 therefore keep deepening the tint
+instead of saturating at the authored colour, and values below 1 thin it
+exponentially rather than linearly.  ``Overlay Highlight Color Release`` thins
+the effective density rather than fading the filter toward white.  Because a
+channel authored as nearly opaque stays nearly opaque at any appreciable
+density, the hue of a strongly tinted plate is set by the authored RGB; adjust
+that RGB, not the density, to let a channel leak through.
+
+The light paths differ in how many times they cross the resin, and the
+composite follows that.  CRT light reaches the viewer through the plate once,
+as does screen light scattered forward by the rear white ink.  Room light
+reflected off that ink crosses on the way in as well, so it is filtered twice
+and an unlit white print settles at the square of the transmission, matching a
+real plate on a white ground.  ``Overlay Resin Dark Level`` describes the plate
+itself rather than light passing through it, so it is tinted at the configured
+density and without the highlight release, keeping it a floor.
 
 ``Room Ambient (Overlay/Bezel)`` is a common illumination multiplier for the
 overlay's reflected white component, ordinary layout artwork/bezel luminance,

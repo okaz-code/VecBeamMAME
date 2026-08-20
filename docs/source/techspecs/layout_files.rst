@@ -794,7 +794,7 @@ ordinary element components, including ``rect``, ``disk``, ``text`` and
     <element ref="overlay_white" optical-role="vectrex-white" blend="alpha">
         <bounds x="0" y="0" width="1" height="1" />
     </element>
-    <element ref="overlay_color" optical-role="vectrex-color" blend="alpha">
+    <element ref="overlay_color" optical-role="vectrex-color" blend="multiply">
         <bounds x="0" y="0" width="1" height="1" />
     </element>
 
@@ -810,7 +810,14 @@ separate ordinary alpha-blended elements without an optical role.  Other
 machines and renderers ignore the optical role and draw both optical elements
 with their normal ``blend`` modes.
 Supplying explicit ``blend`` attributes as above therefore provides a portable
-fallback.
+fallback.  When the optical path is active the ``blend`` mode of a role-tagged
+element is not consulted at all: the element is consumed by the optical
+composite instead of being drawn as ordinary artwork.  Choose the fallback
+modes for their behaviour without the optical path.  Transparent coloured resin
+is a passive filter, so ``multiply`` suits it, while ``alpha`` would let it
+lighten unlit areas.  The white-ink mask must stay on ``alpha``, because
+``multiply`` reduces opaque white ink to an identity factor and makes the print
+vanish.
 
 The layout coordinate envelope should normally follow the physical overlay,
 not the emulated screen.  This allows the screen to be inset while bezel and
@@ -823,7 +830,7 @@ overlay with a centred 3:4 screen occupying 96 percent of its height uses::
     <element ref="overlay_white" optical-role="vectrex-white" blend="alpha">
         <bounds x="0" y="0" width="1613" height="2060" />
     </element>
-    <element ref="overlay_color" optical-role="vectrex-color" blend="alpha">
+    <element ref="overlay_color" optical-role="vectrex-color" blend="multiply">
         <bounds x="0" y="0" width="1613" height="2060" />
     </element>
 
