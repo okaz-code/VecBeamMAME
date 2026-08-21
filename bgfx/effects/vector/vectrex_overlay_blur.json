@@ -10,6 +10,8 @@
 	"fragment": "vector/fs_vectrex_overlay_blur",
 	"uniforms": [
 		{ "name": "s_tex",          "type": "int",  "values": [ 0.0 ] },
-		{ "name": "u_overlay_blur", "type": "vec4", "values": [ 0.001, 0.0, 1.25, 0.0 ] }
+		{ "name": "u_overlay_blur", "type": "vec4", "values": [ 0.001, 0.0, 1.25, 0.0 ] },
+		{ "name": "u_overlay_blur_w0", "type": "vec4", "values": [ 0.2270270270, 0.1945945946, 0.1216216216, 0.0540540541 ] },
+		{ "name": "u_overlay_blur_w1", "type": "vec4", "values": [ 0.0162162162, 0.0, 0.0, 0.0 ] }
 	]
 }
