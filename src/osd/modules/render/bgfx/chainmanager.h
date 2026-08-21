@@ -149,6 +149,11 @@ public:
 		m_edr_relative_auto = edr_relative_auto;
 	}
 	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
+	// MACRO sliders: import the values they derive into their target sliders. force = the user moved a
+	// macro (or the chain was just loaded), so the targets are overwritten; otherwise only macros whose
+	// value actually changed are applied. Called once per frame from the renderer, which is how a menu
+	// edit is noticed - bgfx_slider has no change callback.
+	void apply_macros(bool force = false);
 	// Update hardware-derived defaults after the host window crosses to another monitor. This is
 	// intentionally separate from the initial setter because the first application occurs as part of
 	// load_chains(), while a live display change must update the already-loaded sliders immediately.
@@ -190,6 +195,7 @@ private:
 	// Called at the end of load_chains() so the values act as computed defaults: user cfg (restored
 	// later) and live slider edits (restored across reloads) both take precedence.
 	void apply_hdr_auto();
+
 
 	// Rebuild m_compat_chain_indices according to m_is_vector_game.
 	void rebuild_compat_chain_indices();
@@ -280,6 +286,15 @@ private:
 	float                           m_hdr_last_auto_beam = 0.0f;
 	float                           m_hdr_last_auto_rolloff = 0.0f;
 	bool                            m_hdr_live_refresh = false;
+	// Last macro value applied, and the value last imported into each target. The latter is what keeps
+	// macro-derived numbers OUT of the cfg (see save_config): persisting them would freeze the macro's
+	// output as a fixed user edit on the next launch.
+	std::map<std::string, float>    m_macro_last;
+	std::map<std::string, float>    m_macro_imported;
+	// Baseline a macro scales from: the value a target held BEFORE any macro touched it. That is the
+	// chain default for most sliders, but beam_peak_nits is auto-derived from the display first, and
+	// scaling its JSON default instead would throw the HDR auto-config away.
+	std::map<std::string, float>    m_macro_base;
 
 	// Game type (initialized in the constructor)
 	bool m_is_vector_game = false;

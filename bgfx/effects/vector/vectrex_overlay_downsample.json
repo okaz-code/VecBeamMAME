@@ -1,0 +1,15 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Box prefilter that band-limits the vector image before the resin diffusion blur decimates it.
+{
+	"blend": { "equation": "add", "srcColor": "1", "dstColor": "0", "srcAlpha": "1", "dstAlpha": "0" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vectrex_overlay_downsample",
+	"uniforms": [
+		{ "name": "s_tex",         "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_overlay_ds",  "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+	]
+}

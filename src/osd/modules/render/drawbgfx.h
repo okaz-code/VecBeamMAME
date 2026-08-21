@@ -503,6 +503,7 @@ private:
 	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };
 	bgfx_effect *m_vectrex_overlay_mask_effect = nullptr;
 	bgfx_effect *m_vectrex_overlay_blur_effect = nullptr;
+	bgfx_effect *m_vectrex_overlay_downsample_effect = nullptr;
 	bgfx_effect *m_vectrex_overlay_composite_effect = nullptr;
 	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
 	// interval; the CPU applies the exact present roll-off to report requested/post-rolloff nits.

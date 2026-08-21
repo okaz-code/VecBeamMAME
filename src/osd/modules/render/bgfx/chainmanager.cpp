@@ -595,7 +595,15 @@ void chain_manager::load_chains()
 	// Overlay the HDR auto-config values on the freshly-created sliders. Doing it here (and only
 	// here) makes them behave as computed defaults: the cfg restore that follows on the first frame,
 	// and restore_slider_settings() across live reloads, both overwrite them as usual.
+	// Reset the macro bookkeeping BEFORE the HDR auto-config: apply_hdr_auto() ends by running the
+	// macros itself, and the baseline captured there must survive.
+	m_macro_last.clear();
+	m_macro_imported.clear();
+	m_macro_base.clear();
 	apply_hdr_auto();
+	// Macro output is a computed default too, so a cfg entry for a detail slider (restored on the
+	// first frame) still wins.
+	apply_macros(true);
 }
 
 static bool slider_matches_imported_value(const bgfx_slider &slider, float value)
@@ -605,6 +613,101 @@ static bool slider_matches_imported_value(const bgfx_slider &slider, float value
 	const float step = std::max(slider.step_value(), 1.0e-6f);
 	const float snapped = std::round(value / step) * step;
 	return std::abs(slider.value() - snapped) < step * 0.25f;
+}
+
+void chain_manager::apply_macros(bool force)
+{
+	for (bgfx_chain *chain : m_screen_chains)
+	{
+		if (chain == nullptr)
+			continue;
+		for (bgfx_slider *macro : chain->sliders())
+		{
+			if (!macro->is_macro())
+				continue;
+			const float value = macro->value();
+			const auto last = m_macro_last.find(macro->name());
+			const bool changed = (last == m_macro_last.end()) || (last->second != value);
+			if (!changed && !force)
+				continue;
+			m_macro_last[macro->name()] = value;
+			for (const bgfx_slider::macro_target &target : macro->macro_targets())
+			{
+				// A bare target name drives every component the slider has (vec2 / colour), so one
+				// "Defocus" macro can move defocus X and Y together.
+				std::vector<bgfx_slider *> dests;
+				for (bgfx_slider *candidate : chain->sliders())
+				{
+					if (target.all_components)
+					{
+						if (candidate->name().compare(0, target.name.size(), target.name) == 0
+							&& candidate->name().size() == target.name.size() + 1
+							&& candidate->name().back() >= '0' && candidate->name().back() <= '2')
+							dests.push_back(candidate);
+					}
+					else if (candidate->name() == target.name)
+					{
+						dests.push_back(candidate);
+					}
+				}
+				if (dests.empty())
+				{
+					osd_printf_verbose("BGFX: macro '%s' targets unknown slider '%s'\n",
+						macro->name().c_str(), target.name.c_str());
+					continue;
+				}
+				for (bgfx_slider *dest : dests)
+				{
+				// Capture the pre-macro value once; everything scales from that, not from the JSON
+				// default, so an auto-derived target (beam_peak_nits) keeps its derivation.
+				const auto base_it = m_macro_base.find(dest->name());
+				const float base = (base_it != m_macro_base.end())
+						? base_it->second
+						: (m_macro_base[dest->name()] = dest->value());
+				float derived = base;
+				switch (target.mode)
+				{
+					case bgfx_slider::MACRO_SCALE:
+						derived = base * value;
+						break;
+					case bgfx_slider::MACRO_ENABLE:
+						derived = (value > 0.5f) ? base : 0.0f;
+						break;
+					case bgfx_slider::MACRO_CURVE:
+					{
+						// piecewise linear, clamped at both ends
+						derived = target.ys.front();
+						for (size_t i = 1; i < target.xs.size(); i++)
+						{
+							if (value <= target.xs[i] || i == target.xs.size() - 1)
+							{
+								const float x0 = target.xs[i - 1], x1 = target.xs[i];
+								const float y0 = target.ys[i - 1], y1 = target.ys[i];
+								const float t = (x1 > x0) ? std::clamp((value - x0) / (x1 - x0), 0.0f, 1.0f) : 0.0f;
+								derived = y0 + (y1 - y0) * t;
+								break;
+							}
+						}
+						break;
+					}
+				}
+				derived = std::clamp(derived, dest->min_value(), dest->max_value());
+				dest->import(derived);
+				m_macro_imported[dest->name()] = dest->value();
+				// The HDR auto-config refuses to update a slider that no longer matches what IT last
+				// wrote (that is how it protects user edits). A macro scaling the auto-derived peak is
+				// not a user edit, so move that baseline with it - otherwise a later display change
+				// would silently stop re-deriving the peak.
+				if (dest->name() == "beam_peak_nits0")
+					m_hdr_last_auto_beam = dest->value();
+				else if (dest->name() == "hdr_rolloff_max0")
+					m_hdr_last_auto_rolloff = dest->value();
+				osd_printf_verbose("BGFX: macro %s = %.3f -> %s = %.4f\n",
+					macro->name().c_str(), value, dest->name().c_str(), dest->value());
+				}
+			}
+		}
+	}
 }
 
 void chain_manager::apply_hdr_auto()
@@ -675,6 +778,14 @@ void chain_manager::apply_hdr_auto()
 	}
 	m_hdr_last_auto_beam = beam;
 	m_hdr_last_auto_rolloff = rmax;
+	// The values just imported are the new baseline for any macro that scales them, so drop the old
+	// capture and re-run the macros (which re-captures and re-applies the user's exposure).
+	if (applied)
+	{
+		m_macro_base.erase("beam_peak_nits0");
+		m_macro_base.erase("hdr_rolloff_max0");
+	}
+	apply_macros(true);
 
 	if (applied)
 	{
@@ -1481,6 +1592,13 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 					&& slider_matches_imported_value(*slider, m_hdr_last_auto_rolloff)))
 				continue;
 
+			// Same rule for macro-driven sliders: while a target still holds what the macro imported,
+			// it is the macro's output and not a user edit, so it must not be written. Nudge it by one
+			// step and it stops matching, which is exactly when it becomes worth persisting.
+			const auto imported = m_macro_imported.find(slider->name());
+			if (imported != m_macro_imported.end() && slider_matches_imported_value(*slider, imported->second))
+				continue;
+
 			auto const val = slider->update(nullptr, SLIDER_NOCHANGE);
 			if (val == slider->core_slider()->defval)
 				continue;
@@ -1639,6 +1757,10 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 
 			sliders.emplace_back(std::move(item));
 		}
+
+		osd_printf_verbose("BGFX: slider menu for screen %u: %u of %u published (advanced %s)\n",
+			unsigned(index), unsigned(published), unsigned(chain_sliders.size()),
+			show_advanced ? "on" : "off");
 
 		if (published > 0)
 		{

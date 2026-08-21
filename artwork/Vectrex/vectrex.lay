@@ -14,25 +14,31 @@
         <rect>
             <bounds x="0" y="0" width="1" height="1"/>
 
-            <!-- 純粋な青。MAMEの色指定範囲は0～1 -->
-            <color red="0.03"
-                   green="0.55"
-                   blue="1.00"
-                   alpha="0.10"/>
+            <!--
+                樹脂の「単位光学濃度での片道透過率」。#5AD9EB = RGB(90, 217, 235)。
+                MAMEの色指定範囲は0～1なので 255 で割る。
+
+                白背景に置いた実物の見え方 #20b9d9 は、光が樹脂を通って白で反射し
+                もう一度樹脂を通って戻る往復なので T^2 にあたる。片道透過率はその
+                平方根 T = sqrt(#20b9d9) = #5AD9EB。(c^2.2)^0.5 == (c^0.5)^2.2 なので
+                線形空間での平方根はsRGB符号値の平方根と一致する。
+                CRT光は背面から樹脂を1回だけ通るので、シェーダが掛けるのは T の側。
+
+                alpha は「その画素が樹脂で覆われている割合」。板全面なので 1.0。
+                alpha=1 だとマスクのプレマルチプライ量子化が起きず色が厳密に通り、
+                Overlay Color Optical Density がそのまま実効濃度（板の厚み倍率、
+                1.0 = 実測プレート1枚分）になる。
+            -->
+            <color red="0.3530"
+                   green="0.8510"
+                   blue="0.9216"
+                   alpha="1.0"/>
         </rect>
     </element>
 
-    <!-- 表面カラー印刷。通常のベゼルと同じ描画 -->
+    <!-- 表面カラー印刷。外周ベゼルもこの1枚に含む -->
     <element name="overlay_front_print">
         <image file="mine_front.png">
-            <bounds x="0" y="0" width="1" height="1"/>
-            <color red="1" green="1" blue="1" alpha="1"/>
-        </image>
-    </element>
-
-    <!-- CRT開口の外側に見える通常ベゼル。光学印刷層とは分離する -->
-    <element name="overlay_bezel">
-        <image file="mine_bezel.png">
             <bounds x="0" y="0" width="1" height="1"/>
             <color red="1" green="1" blue="1" alpha="1"/>
         </image>
@@ -42,39 +48,57 @@
 
         <!--
             View全体は実物オーバーレイの1613:2060を基準にする。
-            Vectrex画面は3:4を維持したまま、オーバーレイ高の96%に縮小して中央配置する。
-            スクリーン外になるのは外周ベゼル相当の細い領域だけにする。
+            画面アスペクトはドライバに従って3:4固定（400x300 を ROT270 表示）。
 
-              screen height = 2060 * 0.96 = 1977.6
-              screen width  = 1977.6 * 3/4 = 1483.2
-              screen x      = (1613 - 1483.2) / 2 = 64.9
-              screen y      = (2060 - 1977.6) / 2 = 41.2
+            サイズは「オーバーレイ高の何%」ではなく表面印刷の窓幅から決める。高さ基準で
+            決めると窓幅より細くなり、左右のベゼル枠の内側に光の来ない黒い帯が残る。
+            mine_front.png を実測すると窓は x 54..1559（幅1506、行ごとの最小値は52）。
+
+              screen width  = 1512                      窓幅+左右2pxの余裕
+              screen height = 1512 * 4/3 = 2016         3:4を維持
+              screen x      = (1613 - 1512) / 2 = 50.5
+              screen y      = (2060 - 2016) / 2 = 22
+
+            上下は窓より約29px/123px はみ出すが、そこは表面印刷が不透明なので隠れる。
+            この矩形で「プレート内側かつ表面印刷が透明かつスクリーン外」の画素は0
+            （従来の 1483.2x1977.6 では42440画素あり、それが黒帯として見えていた）。
         -->
         <screen index="0">
-            <bounds x="64.9" y="41.2" width="1483.2" height="1977.6"/>
+            <bounds x="50.5" y="22" width="1512" height="2016"/>
         </screen>
 
-        <!-- 裏面白印刷 -->
+        <!--
+            裏面白印刷。blendは上と同様フォールバック専用。
+            白インクは multiply にすると係数が dst*(1+0) = 1.0 になり完全に消えるため、
+            ここは alpha を維持する。
+        -->
         <element ref="overlay_white_print"
                  optical-role="vectrex-white"
                  blend="alpha">
             <bounds x="0" y="0" width="1613" height="2060"/>
         </element>
 
-        <!-- 樹脂板の青着色。現在は通常Alphaアートワークとして処理 -->
+        <!--
+            樹脂板の青着色。
+            BGFX Vectrex光学パスが有効なとき、この要素は通常アートワーク描画から除外され
+            blendは一切参照されない（drawbgfx.cpp の optical-role スキップ）。RGBと
+            alphaはインクマスクとして読まれ、alphaは Overlay Color Optical Density
+            (overlay_color_density) と掛けて光学濃度になる。
+            blendは光学パスが使えない場合のフォールバック専用。透明樹脂板は受動フィルタで
+            光を足せないので multiply が正しい。alphaでは黒地を青く持ち上げてしまう。
+        -->
         <element ref="overlay_resin_color"
                  optical-role="vectrex-color"
-                 blend="alpha">
+                 blend="multiply">
             <bounds x="0" y="0" width="1613" height="2060"/>
         </element>
 
-        <!-- 通常ベゼルもオーバーレイ外形内に置く -->
-        <element ref="overlay_bezel"
-                 blend="alpha">
-            <bounds x="0" y="0" width="1613" height="2060"/>
-        </element>
-
-        <!-- 表面カラー印刷。光源がなくてもベゼル同様に見える -->
+        <!--
+            表面カラー印刷。光源がなくても見える通常アートワーク。
+            外周の黄枠・PLAYER表示・下部バーもこの1枚に含まれるので別のベゼル要素は不要。
+            mine_bezel.png は mine_front.png の真部分集合（bezelのみの不透明画素は0個）で、
+            重ねてもアンチエイリアス縁が二重合成されて硬くなるだけだった。
+        -->
         <element ref="overlay_front_print"
                  blend="alpha">
             <bounds x="0" y="0" width="1613" height="2060"/>
