@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "cpu/m6809/m6809.h"
 #include "machine/6522via.h"
 #include "sound/dac.h"
 #include "sound/ay8910.h"
@@ -106,7 +107,7 @@ protected:
 
 	unsigned char m_via_out[2];
 
-	required_device<cpu_device> m_maincpu;
+	required_device<mc6809_device> m_maincpu;
 	optional_device<vectrex_cart_slot_device> m_cart;
 
 	double m_imager_freq = 0;
@@ -298,6 +299,8 @@ protected:
 	virtual void machine_start() override ATTR_COLD;
 
 private:
+	uint8_t open_bus_r();
+
 	void vectrex_map(address_map &map) ATTR_COLD;
 };
 

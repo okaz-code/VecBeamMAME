@@ -24,11 +24,31 @@ Bruce Tomlin (hardware info)
 #include "speaker.h"
 
 
+// A Vectrex address that selects no device leaves the data bus floating, so the CPU reads
+// back whatever the previous bus cycle left there - not a fixed 0 or $ff. The 6809 core
+// already runs its dead cycles as real reads at the addresses the hardware drives (a
+// no-offset indexed read puts the post-operand PC on the bus, ,R+ and extended end on a
+// $ffff VMA-off cycle), so simply handing back the last byte driven reproduces the
+// measured behaviour, addressing mode and all.
+//
+// This is what keeps the Mine Storm split-child bug invisible on real hardware: the BIOS
+// vector loop's control-byte read at $f42c is LDA ,X, whose dead cycle exposes $f42e - the
+// $2f opcode of the BLE that follows it. $2f is positive, so the runaway scan started by
+// the bad pointer $3408 exits after one iteration instead of grinding through RAM.
+// See mame_doc/vectrex-openbus-testcart-dev.md and minestorm-split-child-draw-bug.md for
+// the real-hardware measurements this reproduces.
+uint8_t vectrex_state::open_bus_r()
+{
+	return m_maincpu->bus_data();
+}
+
 void vectrex_state::vectrex_map(address_map &map)
 {
-	map(0x0000, 0x7fff).noprw(); // cart area, handled at machine_start
+	map(0x0000, 0x7fff).r(FUNC(vectrex_state::open_bus_r)); // cart area, handled at machine_start
+	map(0x8000, 0xc7ff).r(FUNC(vectrex_state::open_bus_r)); // nothing decoded here
 	map(0xc800, 0xcbff).ram().mirror(0x0400).share("gce_vectorram");
 	map(0xd000, 0xd7ff).rw(FUNC(vectrex_state::via_r), FUNC(vectrex_state::via_w));
+	map(0xd800, 0xdfff).r(FUNC(vectrex_state::open_bus_r)); // nothing decoded here
 	map(0xe000, 0xffff).rom().region("maincpu", 0);
 }
 
