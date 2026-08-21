@@ -35,11 +35,6 @@ uniform vec4 u_tube_round_corner;
 uniform vec4 u_tube_smooth_border;
 uniform vec4 u_tube_vignetting;
 uniform vec4 u_tube_face_scale;
-// 0 = normalise the distortion on the EDGE MIDPOINTS (they map to themselves, the corners fall
-// outside the source and leave a gap against the artwork's screen cutout); 1 = normalise on the
-// CORNER, so the distorted image always covers the whole screen rect and the edge midpoints
-// overshoot instead - the bezel hides overshoot, it cannot hide a gap. Blends between the two.
-uniform vec4 u_tube_distort_fit;
 uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
@@ -61,7 +56,7 @@ uniform vec4 u_glass_surface_illumination;
 float tube_active_amount()
 {
 	float geometry=abs(u_tube_distortion.x)+abs(u_tube_cubic_distortion.x)+u_tube_distort_corner.x+u_tube_round_corner.x+u_tube_smooth_border.x;
-	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry+abs(1.0-u_tube_face_scale.x)+u_tube_distort_fit.x);
+	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry+abs(1.0-u_tube_face_scale.x));
 }
 // Vector Image Scale is applied to beam coordinates before rasterisation, preserving overscan and spot width.
 vec2 emission_uv(vec2 uv){return uv;}
@@ -76,11 +71,7 @@ vec2 distort_centered(vec2 p,float amount,float cubic_amount)
 	float r2=dot(physical,physical),f=1.0+r2*(amount+cubic*sqrt(max(r2,0.0)));vec2 half_extent=vec2_splat(0.5)*aspect;
 	float rx2=half_extent.x*half_extent.x,ry2=half_extent.y*half_extent.y;
 	float fit_x=1.0+rx2*(amount+cubic*sqrt(rx2)),fit_y=1.0+ry2*(amount+cubic*sqrt(ry2));
-	// Corner fit: the largest factor anywhere on the boundary, applied to both axes, so the corner
-	// maps to itself and the rect is fully covered for any distortion amount.
-	float rc2=rx2+ry2,fit_c=1.0+rc2*(amount+cubic*sqrt(rc2));
-	vec2 fit=mix(vec2(fit_x,fit_y),vec2_splat(fit_c),clamp(u_tube_distort_fit.x,0.0,1.0));
-	physical*=vec2(f/safe_distortion_divisor(fit.x),f/safe_distortion_divisor(fit.y));return physical/aspect;
+	physical*=vec2(f/safe_distortion_divisor(fit_x),f/safe_distortion_divisor(fit_y));return physical/aspect;
 }
 vec2 tube_quad_coord(vec2 uv,float active)
 {
