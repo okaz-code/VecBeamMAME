@@ -151,10 +151,26 @@ void main()
 		float finish_join_support = max(finish_radius, 2.0 * sg);
 		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
 		float finish_join_zone = join_allowed * (1.0 - finish_round) * step(-finish_join_support, b) * (1.0 - step(finish_join_support, b));
+		// Terminate the core as a CAPSULE rather than replacing the band with a disc. The round zones
+		// deliberately reach start_radius / finish_radius INSIDE the stroke - endpoint_zone below needs
+		// that reach to suppress the axial roll-off near the terminus - so substituting a disc centred
+		// on the endpoint threw the band away over that stretch. The disc's half-width falls to zero at
+		// a = start_radius while the band is still about start_radius wide there, which cut a crescent
+		// out of both edges and left a step where the cap met the body: on a 5 px cap over a 2 px body
+		// the profile jumped 2.7x at 4 px off-axis and 5.8x at 5 px, and it grows with the cap radius,
+		// which is why it showed on thick lines. Clamping the axial coordinate to the outward side
+		// keeps the band inside the stroke (cap_out = 0 gives length(vec2(0, d)) = abs(d)) and sweeps it
+		// into a circle beyond the terminus. local_core is the radius, and it equals start_radius /
+		// finish_radius exactly at the endpoint, so band and cap agree there by construction.
+		// One expression covers both ends: a < 0 and b > 0 cannot hold for the same fragment, and a
+		// stroke shorter than its two caps keeps its band because cap_out stays 0 inside.
+		float cap_out = 0.0;
 		if (start_round_zone > 0.0)
-			core_sd = length(vec2(a, d)) - start_radius;
+			cap_out = max(cap_out, max(-a, 0.0));
 		if (finish_round_zone > 0.0)
-			core_sd = length(vec2(b, d)) - finish_radius;
+			cap_out = max(cap_out, max(b, 0.0));
+		if (max(start_round_zone, finish_round_zone) > 0.0)
+			core_sd = length(vec2(cap_out, d)) - local_core;
 		float dc = max(core_sd, 0.0);
 		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
 		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on

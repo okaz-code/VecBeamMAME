@@ -160,6 +160,12 @@ void vectrex_base_state::vectrex_base(machine_config &config)
 
 	/* video hardware */
 	VECTOR(config, m_vector, 0);
+	// The beam events carry real sweep time: add_point is fed t0 = the previous event's end and
+	// t1 = now, straight from the RAMP/VIA timing (vectrex_v.cpp update_vector), so a segment's
+	// t1 - t0 is how long the beam actually took to draw it - the same contract avgdvg satisfies.
+	// One list is one complete pass now that the generation only advances when the display window
+	// moves (see screen_update), which the beam time window relies on.
+	m_vector->set_avg_timing(true);
 	SCREEN(config, m_screen, SCREEN_TYPE_VECTOR);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_size(400, 300);

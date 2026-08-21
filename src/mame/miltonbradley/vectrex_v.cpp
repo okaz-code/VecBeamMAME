@@ -131,6 +131,20 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 {
 	screen_configuration();
 
+	// The display window only moves when refresh() fires, and that timer is armed from VIA T2 at a
+	// period the GAME picks - about 46.6 Hz under Star Castle - which is not the screen refresh. At
+	// 60 Hz roughly a fifth of the screen updates therefore re-present the window they just showed.
+	// Declaring a new beam list on those told the renderer a pass had started when none had: the
+	// duplicates were never marked list_stale, MVEC recorded them as fresh lists instead of stale
+	// frames, and the beam time window reset its cursor and walked the same sweep again. Advance the
+	// generation only when the window actually moved. The list itself is still emptied every update,
+	// which is why the clear moved here from the end - nothing adds points between two updates.
+	const bool new_beam_list = (m_display_start != m_drawn_display_start)
+			|| (m_display_end != m_drawn_display_end);
+	m_drawn_display_start = m_display_start;
+	m_drawn_display_end = m_display_end;
+	m_vector->clear_list(new_beam_list);
+
 	// Spot killer (deflection protection): the real Vectrex cuts the beam if the deflection stops
 	// swinging, so a stationary lit beam cannot burn the phosphor. Model: the beam's total TRAVEL
 	// within each m_spotkill_secs window is compared against m_spotkill_dist - below it (deflection
@@ -145,7 +159,6 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 	if (m_spotkill && m_spotkill_engaged)
 	{
 		m_vector->screen_update(screen, bitmap, cliprect);   // empty list -> black screen (beam cut)
-		m_vector->clear_list();
 		return 0;
 	}
 
@@ -211,7 +224,6 @@ uint32_t vectrex_base_state::screen_update(screen_device &screen, bitmap_rgb32 &
 	}
 
 	m_vector->screen_update(screen, bitmap, cliprect);
-	m_vector->clear_list();
 	return 0;
 }
 

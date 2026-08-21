@@ -145,8 +145,8 @@
 		{"type":"float","name":"flicker_thresh_ms","text":"Cyclic Flicker Threshold (draw ms)","default":12.0,"min":0.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_buckets","text":"Cyclic Flicker Buckets (N)","default":6.0,"min":2.0,"max":16.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_period_ms","text":"Cyclic Flicker Step (ms)","default":16.7,"min":2.0,"max":100.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"intenum","name":"beam_window","text":"Beam Time Window","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off (Cyclic Flicker)","On"]},
-		{"type":"float","name":"beam_window_scale","text":"Beam Time Window Rate (x real time)","default":1.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"intenum","name":"beam_window","text":"Beam Time Window","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off (Cyclic Flicker)","On"]},
+		{"type":"float","name":"beam_window_scale","text":"Beam Time Window Rate (x real time)","default":1.25,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Color adjustment ----
 
