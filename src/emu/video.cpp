@@ -198,7 +198,10 @@ video_manager::video_manager(running_machine &machine)
 		{
 			m_vector_present_timer = machine.scheduler().timer_alloc(timer_expired_delegate(FUNC(video_manager::vector_present_update_callback), this));
 			m_vector_present_timer->adjust(vector_present_period());
-			osd_printf_verbose("Vector presentation timer enabled at %s%u Hz\n",
+			// Reported at info level, like the HDR peak: the presentation rate decides how finely a
+			// beam sweep can be sliced for display, so it belongs with the other numbers the user
+			// should see without having to ask for -verbose.
+			osd_printf_info("Vector presentation timer enabled at %s%u Hz\n",
 				m_vector_present_auto ? "auto, initial " : "", m_vector_present_rate);
 		}
 	}
@@ -602,8 +605,8 @@ void video_manager::update_vector_present_rate()
 	const u32 resolved = u32(std::clamp(int(std::lround(monitor_rate)), 1, 360));
 	if (resolved != m_vector_present_rate)
 	{
-		osd_printf_verbose("Vector presentation rate auto-detected at %.3f Hz; using %u Hz\n",
-			monitor_rate, resolved);
+		osd_printf_info("Vector presentation rate auto-detected at %.3f Hz; using %u Hz (%.3f ms)\n",
+			monitor_rate, resolved, 1000.0 / double(resolved));
 		m_vector_present_rate = resolved;
 	}
 }
