@@ -58,7 +58,13 @@ public:
 	virtual ~vector_device();
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void clear_list();
+	// advance_generation = false empties the list WITHOUT declaring a new beam list. A device whose
+	// display window is not advanced by the screen refresh - the Vectrex arms its own refresh timer
+	// from VIA T2, at a period the game chooses - re-presents the window it just showed whenever the
+	// two rates disagree. Bumping the generation there reports a new pass that never happened, and
+	// everything keyed on list identity (list_stale, MVEC's stale-frame encoding, the beam time
+	// window's cursor) is misled by it.
+	void clear_list(bool advance_generation = true);
 
 	// True when the beam list was not refreshed since the previous frame (the CPU did not start a
 	// new list). A renderer can use this to reproduce CRT flicker; the emulation does not act on it.

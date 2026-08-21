@@ -4680,15 +4680,18 @@ int renderer_bgfx::draw(int update)
 			// all vector lines; cached for source-free re-presents (VECTORBUF owns the FBO path)
 		int untimed_vector_count = 0;
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
-		// Lines contributing GLOW this present. Equal to visible_count unless the beam time window is
-		// active, where the body is windowed but the glow is not - see the scan loop below.
-		int glow_count = 0;
-		// Point-classified count, using the SAME unclipped-length test put_analytic_line uses.
-		// Starburst rays (and only rays - see the glow buffer sizing below) are
-		// drawn for dwell POINTS only, so their (large) per-primitive vertex cost must be budgeted by
-		// point_count, not visible_count - reserving it for every LINE too (most of a busy scene, e.g.
-		// dense BIOS/CCPU text) blew the transient vertex buffer and starved the whole glow buffer.
-		int point_count = 0;
+		// Lines and points feeding the POST-POOL routes this present (glow, optical, no-persist,
+		// starburst rays). Equal to visible_count unless the beam time window is active, where the
+		// body is windowed but those routes are not - see the scan loop below.
+		//
+		// aux_point_count is the point-classified count, using the SAME unclipped-length test
+		// put_analytic_line uses. Starburst rays are drawn for dwell POINTS only, so their (large)
+		// per-primitive vertex cost must be budgeted by that count and not by the line count -
+		// reserving it for every LINE too (most of a busy scene, e.g. dense BIOS/CCPU text) blew the
+		// transient vertex buffer and starved the whole glow buffer. There is no windowed point count
+		// any more: rays were its only consumer and they are no longer windowed.
+		int aux_count = 0;
+		int aux_point_count = 0;
 		const float pt_thresh = m_line_analytic
 				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
 		// Cyclic per-vector flicker (real AVG/DVG only, see render_vector_stats::timed): reproduces the
@@ -4898,16 +4901,17 @@ int renderer_bgfx::draw(int update)
 					// the pool), so a windowed glow would follow the instantaneous slice and blink.
 					// Glow therefore counts every vector of the pass, body counts only this window's.
 					const bool window_excluded = beam_window_excludes(*scan);
+					// Same unclipped point test as the write loop below. These must stay identical
+					// because they control ray-buffer reservation and routing respectively.
+					const bool scan_is_point = vector_primitive_is_point(*scan, pt_thresh);
 					if (!flicker_excluded)
-						glow_count++;
-					if (!flicker_excluded && !window_excluded)
 					{
-						visible_count++;
-						// Same unclipped point test as the write loop below. These must stay identical
-						// because they control ray-buffer reservation and routing respectively.
-						if (vector_primitive_is_point(*scan, pt_thresh))
-							point_count++;
+						aux_count++;
+						if (scan_is_point)
+							aux_point_count++;
 					}
+					if (!flicker_excluded && !window_excluded)
+						visible_count++;
 				}
 				else if (scan->type == render_primitive::QUAD && PRIMFLAG_GET_VECTORBUF(scan->flags))
 				{
@@ -4942,7 +4946,7 @@ int renderer_bgfx::draw(int update)
 				// Glow is not windowed (see the scan loop). Per present this must equal total, and it is
 				// how the glow exemption is verified without a picture: if it tracks deposited instead,
 				// the glow is following the window slice again and bloom will blink.
-				m_vec_window_log_glow = glow_count - untimed_vector_count;
+				m_vec_window_log_glow = aux_count - untimed_vector_count;
 			}
 			const float screen_w = screen_max_x - screen_min_x;
 			m_vec_res_w = (screen_w > 1.0f)
@@ -4966,7 +4970,8 @@ int renderer_bgfx::draw(int update)
 		if (!deposit_vector_source)
 		{
 			visible_count = 0;
-			point_count = 0;
+			aux_count = 0;
+			aux_point_count = 0;
 		}
 		// A VECTORBUF quad represents the vector screen even when the device deliberately emitted no
 		// lit vectors this frame (for example, a Vectrex game giving the CPU entirely to music).  Do
@@ -5847,7 +5852,7 @@ int renderer_bgfx::draw(int update)
 			if (g_fill)  { m_glow_off_fill  = m_optical_separate ? ooff : goff; if (m_optical_separate) ooff += 6; else goff += 6; }
 			m_glow_vpl = goff;
 			m_optical_vpl = ooff;
-			// Rays: own budget, sized by point_count (see below), not folded into m_glow_vpl.
+			// Rays: own budget, sized by aux_point_count (see below), not folded into m_glow_vpl.
 			m_glow_rays_n = g_rays;
 			m_ray_vpl = g_rays ? (6 * g_rays * GLOW_RAY_SEGS) : 0;
 
@@ -5882,15 +5887,15 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer conv_tvb = {};
 			bool conv_alloc = false;
 			const bool ray_on = m_line_analytic && m_ray_vpl > 0 && bgfx::isValid(m_optical_separate ? m_vec_optical_fb : m_vec_glow_fb);
-			// glow_count >= visible_count, and under the beam time window it can be non-zero while the
-			// body is empty (the window has walked past the end of the sweep). The glow still has to be
-			// built in that case, so the allocation gate follows glow_count too.
+			// aux_count >= visible_count, and under the beam time window it can be non-zero while the
+			// body is empty (the window has walked past the end of the sweep). The post-pool routes
+			// still have to be built in that case, so the allocation gate follows aux_count too.
 			// One EXTRA line of body space is reserved as a scratch slot: a window-excluded vector still
 			// calls put_analytic_line to produce its glow, and that call always writes body vertices as
 			// well. They go to the scratch slot and are never submitted - the draw below passes an
 			// explicit vertex count rather than the whole buffer.
 			const uint32_t body_scratch_at = uint32_t(visible_count) * verts_per_line;
-			if (visible_count > 0 || glow_count > 0)
+			if (visible_count > 0 || aux_count > 0)
 			{
 				const uint32_t needed = (uint32_t(visible_count) + 1u) * verts_per_line;
 				if (needed == bgfx::getAvailTransientVertexBuffer(needed, line_decl))
@@ -5902,17 +5907,18 @@ int renderer_bgfx::draw(int update)
 						// core still draws; glow is simply skipped this frame.
 						if (m_glow_on && m_glow_vpl > 0)
 						{
-							const uint32_t gneeded = uint32_t(glow_count) * uint32_t(m_glow_vpl);
+							const uint32_t gneeded = uint32_t(aux_count) * uint32_t(m_glow_vpl);
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&glow_tvb, gneeded, line_decl);
 								glow_alloc = (glow_tvb.data != nullptr);
 							}
 						}
-						// Explicit point-optics buffer: halation rim/fill bypass tail shaping.
+						// Explicit point-optics buffer: halation rim/fill bypass tail shaping. Sized by aux_count: like
+						// glow it is cleared every present and composited after the pool, so it is not windowed.
 						if (m_line_analytic && m_optical_vpl > 0 && bgfx::isValid(m_vec_optical_fb))
 						{
-							const uint32_t oneeded = uint32_t(visible_count) * uint32_t(m_optical_vpl);
+							const uint32_t oneeded = uint32_t(aux_count) * uint32_t(m_optical_vpl);
 							if (oneeded == bgfx::getAvailTransientVertexBuffer(oneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&optical_tvb, oneeded, line_decl);
@@ -5923,17 +5929,17 @@ int renderer_bgfx::draw(int update)
 						// cannot be allocated, the core still draws and short-dwell dots stay in it.
 						if (np_on)
 						{
-							const uint32_t npneeded = uint32_t(visible_count) * NP_VPL;
+							const uint32_t npneeded = uint32_t(aux_count) * NP_VPL;
 							if (npneeded == bgfx::getAvailTransientVertexBuffer(npneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&np_tvb, npneeded, line_decl);
 								np_alloc = (np_tvb.data != nullptr);
 							}
 						}
-						// Ray buffer: sized by point_count (dwell dots only), not visible_count.
-						if (ray_on && point_count > 0)
+						// Ray buffer: sized by the aux point count (dwell dots only), not visible_count.
+						if (ray_on && aux_point_count > 0)
 						{
-							const uint32_t rneeded = uint32_t(point_count) * uint32_t(m_ray_vpl);
+							const uint32_t rneeded = uint32_t(aux_point_count) * uint32_t(m_ray_vpl);
 							if (rneeded == bgfx::getAvailTransientVertexBuffer(rneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&ray_tvb, rneeded, line_decl);
@@ -5986,17 +5992,20 @@ int renderer_bgfx::draw(int update)
 							// by flicker_rgb instead (and were counted by the scan).
 							const bool vp_in_bucket = flicker_busy && vprim->t0 >= 0.0
 								&& std::clamp(int((vprim->t0 - first_t0) / flicker_span), 0, flicker_n - 1) == flicker_active_bucket;
-							// A vector outside this present's beam time window still contributes its GLOW
-							// (the glow buffer has no persistence of its own - see the scan loop), so it
-							// is NOT skipped: put_analytic_line is called with its body geometry pointed
-							// at the scratch slot and the other post-pool routes (optical / no-persist /
-							// rays) nulled, since those are sized by visible_count. If there is no glow
-							// buffer to write - allocation failed, or the non-analytic path, which has no
-							// separate glow - the vector is skipped outright as before.
+							// A vector outside this present's beam time window still contributes to every
+							// POST-POOL route - glow, point optics, no-persist dots, starburst rays. None of
+							// them has persistence of its own (each is cleared every present and composited
+							// after the phosphor pool), so windowing them makes them follow the instantaneous
+							// slice and blink; only the body, which the pool integrates, may be windowed.
+							// Such a vector is therefore NOT skipped: put_analytic_line is called with its
+							// body geometry pointed at the scratch slot, which the draw call's explicit
+							// vertex count leaves out. Without an analytic path there are no separate
+							// post-pool buffers at all, so there the vector is skipped outright as before.
 							const bool vp_window_excluded = beam_window_excludes(*vprim);
-							const bool vp_glow_only = vp_window_excluded && m_line_analytic && glow_alloc;
+							const bool vp_aux_only = vp_window_excluded && m_line_analytic
+									&& (glow_alloc || optical_alloc || np_alloc || ray_alloc);
 							const bool vp_flicker_excluded = (vp_in_bucket && !flicker_partial)
-								|| (vp_window_excluded && !vp_glow_only);
+								|| (vp_window_excluded && !vp_aux_only);
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
 								// Per-channel flicker is applied in place for the draw calls below and
@@ -6051,14 +6060,12 @@ int renderer_bgfx::draw(int update)
 										}
 									}
 									AnalyticLineVertex *gptr = glow_alloc ? reinterpret_cast<AnalyticLineVertex*>(glow_tvb.data) + glow_verts : nullptr;
-									// optical / no-persist / rays are reserved by visible_count, so a
-									// glow-only vector must not write them.
-									AnalyticLineVertex *optr = (optical_alloc && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
-									AnalyticLineVertex *npptr = (np_alloc && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
+									AnalyticLineVertex *optr = optical_alloc ? reinterpret_cast<AnalyticLineVertex*>(optical_tvb.data) + optical_verts : nullptr;
+									AnalyticLineVertex *npptr = np_alloc ? reinterpret_cast<AnalyticLineVertex*>(np_tvb.data) + np_verts : nullptr;
 									// Rays are point-only (see the m_ray_vpl comment); use the same unclipped
 									// classification as the pre-scan and put_analytic_line so reservation matches usage.
 									const bool r_is_point = vector_primitive_is_point(*vprim, pt_thresh);
-									AnalyticLineVertex *rptr = (ray_alloc && r_is_point && !vp_glow_only) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
+									AnalyticLineVertex *rptr = (ray_alloc && r_is_point) ? reinterpret_cast<AnalyticLineVertex*>(ray_tvb.data) + ray_verts : nullptr;
 									// Whole-stroke energy pre-pass results (see above): aggregate stroke
 									// speed and same-spot dwell scale, if this vector received either.
 									float sps = -1.0f, dsc = 1.0f;
@@ -6075,10 +6082,10 @@ int renderer_bgfx::draw(int update)
 									float scan_scale = 1.0f;
 									auto ait = m_scan_attenuation.find(vprim);
 									if (ait != m_scan_attenuation.end()) scan_scale = ait->second;
-									// A glow-only vector writes its body geometry into the scratch slot, which
+									// An aux-only vector writes its body geometry into the scratch slot, which
 									// the draw call's explicit vertex count leaves out.
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
-											+ (vp_glow_only ? body_scratch_at : uint32_t(vertices));
+											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
 									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
@@ -6087,7 +6094,7 @@ int renderer_bgfx::draw(int update)
 								}
 								else
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
-								if (!vp_glow_only)
+								if (!vp_aux_only)
 									vertices += verts_per_line;
 								if (vp_dimmed)
 									vprim->color = vp_saved_color;
@@ -6295,7 +6302,7 @@ int renderer_bgfx::draw(int update)
 			// Analytic glow: draw the separate glow buffer into m_vec_glow_fb (cleared, additive),
 			// then inject it as "glow0" so a chain pass can add it after the shadow mask. Starburst rays
 			// share this SAME FBO/view via a second submit from their own buffer (ray_tvb, sized by
-			// point_count - see m_ray_vpl), so no chain/JSON wiring is needed for them.
+			// aux_point_count - see m_ray_vpl), so no chain/JSON wiring is needed for them.
 			// Gated on the buffer ALLOCATION (glow_alloc || ray_alloc), not just m_glow_on: a successful
 			// alloc means we own the glow FBO this frame, so we clear it - even with no geometry this
 			// frame - which stops a previous frame's glow from being re-added forever (the frozen-dot

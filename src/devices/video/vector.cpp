@@ -1197,11 +1197,12 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity, float be
 // but only once per refresh.
 //-------------------------------------------------
 
-void vector_device::clear_list()
+void vector_device::clear_list(bool advance_generation)
 {
 	m_vector_index = 0;
 	// A new beam list is starting; bump the generation so screen_update can tell this frame redrew.
-	m_list_generation++;
+	if (advance_generation)
+		m_list_generation++;
 }
 
 //-------------------------------------------------

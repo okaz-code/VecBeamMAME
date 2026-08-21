@@ -171,6 +171,11 @@ private:
 	int m_point_index = 0;
 	int m_display_start = 0;
 	int m_display_end = 0;
+	// Window handed to the vector device by the previous screen_update. The game's refresh timer and
+	// the screen refresh run at different rates, so comparing against these is how screen_update
+	// tells a genuinely new beam list from a re-presentation of the one before it.
+	int m_drawn_display_start = -1;
+	int m_drawn_display_end = -1;
 	vectrex_point m_points[NVECT];
 	// 3D imager "Separate images" per-eye frame retention (layer B / eye-tag). Each eye's last completed
 	// frame is COPIED out (not a range into the wrapping ring) and capped, so screen_update can redraw

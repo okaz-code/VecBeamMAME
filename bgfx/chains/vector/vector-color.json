@@ -56,7 +56,7 @@
 		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
 
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":16.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":12.0,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":16.0,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":5.0,"min":0.4,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_total_ms","text":"Phosphor Total (ms)","default":100.0,"min":20.0,"max":1500.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_hit_reset","text":"Phosphor Hit Reset Floor","default":0.02,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
