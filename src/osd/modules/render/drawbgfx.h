@@ -587,6 +587,14 @@ private:
 	// frame_id gave a 34 ms sweep only 24 ms worth of window and permanently clipped its tail.
 	uint32_t m_vec_window_generation = ~uint32_t(0);
 	bool m_vec_window_mode = false;        // beam_window active this present (read by the later chain gate)
+	// Hysteresis state for the sweep-versus-window-width test in draw(): engage above 1.25x the
+	// window width, disengage below 1.0x, so a title whose spans straddle the threshold does not
+	// flip the phosphor between per-present and vector_phosphor_rate cadence every pass.
+	bool m_vec_window_engaged = false;
+	// Last reported engage decision and window width, so the info-level notice in draw() fires on a
+	// real change instead of every present.
+	bool m_vec_window_notice_engaged = false;
+	double m_vec_window_notice_w = -1.0;
 	// -verbose accounting: one "BEAMWIN" line per pass reporting how many presents it received and
 	// how much of it was deposited. deposited < total is expected - the VGGO cadence and the present
 	// rate are not commensurate, so a long pass loses its tail, which IS the flicker signal - but

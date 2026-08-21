@@ -4505,11 +4505,86 @@ int renderer_bgfx::draw(int update)
 		// present loop: at vector_present_rate 0 there is exactly one present per source frame, so
 		// slicing the sweep would permanently discard most of the picture rather than spread it
 		// across presents.
-		const bool window_on = vstats.timed
-				&& vstats.sweep_t0 >= 0.0 && vstats.sweep_t1 > vstats.sweep_t0
+		// "Available" is about the configuration - is this engine timed, is there a host-rate present
+		// loop, did the user ask for it - and is deliberately kept apart from whether THIS frame
+		// happens to carry a usable sweep. A frame without stamps must not clear the engage latch
+		// below, or a title whose spans sit near the threshold loses its hysteresis to a single
+		// blank frame.
+		const bool window_available = vstats.timed
 				&& window().machine().video().vector_present_rate() > 0
 				&& int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
+		const bool window_span_usable = vstats.sweep_t0 >= 0.0 && vstats.sweep_t1 > vstats.sweep_t0;
+		const bool window_wanted = window_available && window_span_usable;
+		// Window width, needed here because the sweep has to be compared against it before deciding
+		// whether to window at all. beam_window_scale is the rate the window walks the sweep at, in
+		// multiples of real time; see the bounds block below.
+		const double window_scale = window_wanted
+				? double(std::clamp(m_chains->slider_value(0, "beam_window_scale", 1.0f), 0.25f, 4.0f))
+				: 1.0;
+		const double window_w = std::max(1e-9,
+				window().machine().video().vector_present_period().as_double() * window_scale);
+		// A sweep no longer than one window is deposited in full by that window's own present - the
+		// window starts exactly at sweep_t0 - so windowing it produces the same picture the
+		// frame-based path does, while still forcing a source deposit on every present and running
+		// the chain every present. Measured on the Atari DVG, Asteroids sweeps for 6.5 ms (8.6 ms
+		// worst case) against a 12.5 ms window at the shipped scale on a 160 Hz display: identical
+		// output for 1.9x to 3.9x the CPU. So require the sweep to actually exceed the window.
+		//
+		// The span is a property of the list, so this decision is stable for as long as a pass lives
+		// and can only change at a pass boundary. Flipping there is visually harmless - a sweep at
+		// the threshold looks the same either way - but it moves the phosphor between per-present and
+		// vector_phosphor_rate cadence, which would beat audibly in the image on a title whose spans
+		// straddle the threshold. Hence the hysteresis band rather than a bare comparison.
+		const double window_span = vstats.sweep_t1 - vstats.sweep_t0;
+		if (!window_available)
+			m_vec_window_engaged = false;
+		else if (window_span_usable)
+			m_vec_window_engaged = m_vec_window_engaged
+					? (window_span > window_w)              // stay engaged down to 1.0x
+					: (window_span > window_w * 1.25);      // need 1.25x to engage
+		// else: no usable sweep this frame - hold the latch as it is
+		const bool window_on = window_wanted && m_vec_window_engaged;
 		m_vec_window_mode = window_on;
+		// Report the engage decision at info level, once per distinct window width and once per
+		// change of the decision itself. Without this the span test disables the whole feature in
+		// silence, and a title that shows no flicker is indistinguishable from one where the window
+		// never ran. The inert branch also reports the scale that WOULD engage, because at a low
+		// presentation rate a high scale makes one window cover the whole sweep - that is a real
+		// consequence of the display rate, not a fault, but it needs to be visible.
+		if (window_available && window_span_usable
+			&& (m_vec_window_engaged != m_vec_window_notice_engaged
+				|| std::abs(window_w - m_vec_window_notice_w) > 1e-9))
+		{
+			m_vec_window_notice_engaged = m_vec_window_engaged;
+			m_vec_window_notice_w = window_w;
+			if (m_vec_window_engaged)
+			{
+				osd_printf_info("BGFX: beam time window active - sweep %.2f ms over %.2f ms windows"
+					" (%.1f per sweep), scale %.2f\n",
+					window_span * 1000.0, window_w * 1000.0,
+					window_span / window_w, window_scale);
+			}
+			else
+			{
+				// The sweep has to exceed 1.25x the window to engage; below that one window covers it
+				// and the result is the frame-based picture at several times the CPU cost.
+				const double present_ms =
+					window().machine().video().vector_present_period().as_double() * 1000.0;
+				osd_printf_info("BGFX: beam time window inert - sweep %.2f ms fits one %.2f ms window;"
+					" needs scale below %.2f at this %.2f ms presentation interval\n",
+					window_span * 1000.0, window_w * 1000.0,
+					(window_span * 1000.0) / (present_ms * 1.25), present_ms);
+			}
+		}
+		if (!window_on)
+		{
+			// Leave no half-counted pass behind for the next engagement to add to.
+			m_vec_window_base_time = -1.0;
+			m_vec_window_log_presents = 0;
+			m_vec_window_log_deposited = 0;
+			m_vec_window_log_total = 0;
+			m_vec_window_log_glow = 0;
+		}
 
 		// A windowed present deposits a DIFFERENT slice of the same source list every time, so the
 		// source has to be re-scanned on every present, not only when a new emulated frame arrives.
@@ -4657,25 +4732,22 @@ int renderer_bgfx::draw(int update)
 				m_vec_window_generation = vstats.list_generation;
 				m_vec_window_base_time = now;
 			}
-			m_vec_window_log_span = vstats.sweep_t1 - vstats.sweep_t0;
+			m_vec_window_log_span = window_span;
 			// beam_window_scale is the RATE at which the window walks the sweep, in multiples of real
-			// time, so it has to scale the window's POSITION as well as its width: the window advances
-			// by (elapsed x scale) and is (present interval x scale) wide, so successive windows tile
-			// the sweep exactly at any scale - no overlap, no gap. Scaling only the width overlapped
-			// them by (scale-1) x interval and deposited everything in that overlap once per window,
-			// measured as 133% coverage and visible as double brightness.
+			// time, so it scales the window's POSITION as well as its width (window_scale / window_w,
+			// computed with the engage test above): the window advances by (elapsed x scale) and is
+			// (present interval x scale) wide, so successive windows tile the sweep exactly at any
+			// scale - no overlap, no gap. Scaling only the width overlapped them by (scale-1) x
+			// interval and deposited everything in that overlap once per window, measured as 133%
+			// coverage and visible as double brightness.
 			//
 			// 1.0 is the physical value: the window tracks the beam in real time, so a pass longer
 			// than the presentation time it receives loses its tail, and that loss IS the flicker.
 			// Above 1.0 the sweep is replayed faster than it happened, so more of it lands inside the
 			// pass's presentation time and the flicker weakens - the knob for dialling the effect back
 			// without giving up single-deposit correctness.
-			const double scale = double(std::clamp(
-					m_chains->slider_value(0, "beam_window_scale", 1.0f), 0.25f, 4.0f));
-			const double w = std::max(1e-9,
-					window().machine().video().vector_present_period().as_double() * scale);
-			window_lo = vstats.sweep_t0 + std::max(0.0, now - m_vec_window_base_time) * scale;
-			window_hi = window_lo + w;
+			window_lo = vstats.sweep_t0 + std::max(0.0, now - m_vec_window_base_time) * window_scale;
+			window_hi = window_lo + window_w;
 			// Past the end of the sweep nothing is deposited: the pass has finished and the beam is
 			// idle until the next VGGO. That gap is real - measured median 6.5 ms on Star Wars - and
 			// is what the phosphor pool turns into visible flicker.
