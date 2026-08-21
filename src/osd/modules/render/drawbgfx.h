@@ -431,7 +431,15 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f,
+			// Gain for the SCATTERED-LIGHT outputs only (overdrive flare, analytic glow, halation ring,
+			// starburst rays). Under the beam time window those routes are not windowed - they have no
+			// persistence of their own - so they would show a whole pass's scatter while the body shows
+			// one slice of it, which reads as far too much halation on a split pass. Passing the fraction
+			// of the sweep deposited so far keeps scatter in step with the light it is scattering.
+			// NOT applied to the no-persist dot: there the body vertex is degenerate and the dot lives
+			// entirely in that buffer, so it is beam rather than scatter and belongs at full strength.
+			float aux_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
