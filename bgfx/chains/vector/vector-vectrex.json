@@ -30,8 +30,7 @@
 		{"type":"float","name":"macro_persistence","text":"[M] Phosphor Persistence","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"phosphor_half_ms","mode":"scale"},{"slider":"phosphor_total_ms","mode":"scale"}]},
 		{"type":"int_enum","name":"macro_monitor_sim","text":"[M] Monitor/Glass Sim","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"],"targets":[{"slider":"ambient_level","mode":"enable"},{"slider":"tube_distortion","mode":"enable"},{"slider":"tube_round_corner","mode":"enable"},{"slider":"tube_vignetting","mode":"enable"},{"slider":"bezel_glow_strength","mode":"enable"},{"slider":"room_ambient","mode":"enable"},{"slider":"overlay_ambient_light","mode":"enable"},
 		             {"slider":"tube_cubic_distortion","mode":"enable"},{"slider":"tube_distort_corner","mode":"enable"},{"slider":"tube_smooth_border","mode":"enable"},
-		             {"slider":"tube_face_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.98]]},{"slider":"tube_distort_fit","mode":"enable"},
-		             {"slider":"vector_image_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.96]]}]},
+		             {"slider":"tube_face_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.98]]},{"slider":"vector_image_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.96]]}]},
 
 		// ---- Phosphor persistence ----
 
@@ -163,7 +162,6 @@
 		{"type":"float","name":"tube_round_corner","text":"Tube Rounded Corner","default":0.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_vignetting","text":"Tube Vignetting","default":0.8,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_face_scale","text":"Phosphor Face Scale","default":0.98,"min":0.8,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"tube_distort_fit","text":"Tube Distortion Fit (0 edge / 1 corner)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vector_image_scale","text":"Vector Image Scale","default":0.96,"min":0.75,"max":1.15,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.25,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_glow_width","text":"Bezel Glow Width (px)","default":32.0,"min":2.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
@@ -342,7 +340,6 @@
 			{ "uniform": "u_tube_smooth_border",    "slider": "tube_smooth_border" },
 			{ "uniform": "u_tube_vignetting",       "slider": "tube_vignetting" },
 			{ "uniform": "u_tube_face_scale",       "slider": "tube_face_scale" },
-			{ "uniform": "u_tube_distort_fit",     "slider": "tube_distort_fit" },
 			{ "uniform": "u_vector_image_scale",    "slider": "vector_image_scale" },
 			{ "uniform": "u_bezel_glow_strength",   "slider": "bezel_glow_strength" },
 			{ "uniform": "u_bezel_glow_width",      "slider": "bezel_glow_width" },
