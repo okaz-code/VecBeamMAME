@@ -302,6 +302,16 @@
       ]
     },
     {
+      "name": "u_tube_distort_fit",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_vector_image_scale",
       "type": "vec4",
       "values": [

@@ -2896,7 +2896,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 }
 
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float deposit_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float deposit_scale, float aux_scale)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -3329,7 +3329,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// patterned by the mask). White, peak proportional to the overdrive; peak > 1 is carried in z (the
 	// shader multiplies the deposit by 1+z) exactly like the body overrange. flare_on gates the slot.
 	const bool  flare_on   = (line_over > 0.0f);
-	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor * deposit_scale;
+	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor * deposit_scale * aux_scale;
 	const float flare_z    = std::max(0.0f, flare_peak - 1.0f);
 	// Flare colour = the beam's own hue at full strength, NOT fixed white: the 3D imager (and any
 	// colour source) puts a colour filter in front of the whole tube, so even the white-hot overload
@@ -3526,7 +3526,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// around 1.0 behaved like an on/off switch for AVG vectors and made the source hard to tune.
 	const float g_mag = glow_str * g_bI;
 	const float g_peak  = std::max(std::max(std::max(prim->color.r, prim->color.g), prim->color.b), 1e-4f);
-	const float g_scale = g_mag * deposit_scale / g_peak;
+	const float g_scale = g_mag * deposit_scale * aux_scale / g_peak;
 	const uint32_t glow_rgba = u32Color(
 		std::min<uint32_t>(uint32_t(prim->color.r * g_scale * 255.0f + 0.5f), 255),
 		std::min<uint32_t>(uint32_t(prim->color.g * g_scale * 255.0f + 0.5f), 255),
@@ -3623,9 +3623,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float da = std::clamp(display_a, 0.0f, 1.0f);
 			auto ring_color = [&](float strength) -> uint32_t {
 				return u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
 			};
 			const float optical_gain_comp = (!m_optical_separate && m_vs.glow_narrow > 1e-4f)
@@ -3769,7 +3769,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						// back up. Encode the desired deposit as byte x (1+z) instead: faint targets use
 						// z = 0 with a sub-0.5 byte (down to 1/255 x glow weight), bright ones a fixed
 						// 0.5 byte with z carrying the rest.
-						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp * deposit_scale;
+						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp * deposit_scale * aux_scale;
 						const float sstr = std::min(want, 0.5f);
 						const float szz  = (want > 0.5f) ? (want * 2.0f - 1.0f) : 0.0f;
 						const uint32_t srgba = ray_color(sstr);
@@ -4798,6 +4798,7 @@ int renderer_bgfx::draw(int update)
 		// the effect reads.
 		double window_lo = 0.0, window_hi = 0.0;
 		bool window_active = false;
+		float window_aux_ramp = 1.0f;
 		if (window_on)
 		{
 			const double now = window().machine().time().as_double();
@@ -4836,6 +4837,12 @@ int renderer_bgfx::draw(int update)
 			// idle until the next VGGO. That gap is real - measured median 6.5 ms on Star Wars - and
 			// is what the phosphor pool turns into visible flicker.
 			window_active = (window_lo < vstats.sweep_t1);
+			// Fraction of the sweep deposited by the end of THIS window. The scattered-light routes
+			// are not windowed (they have no persistence to integrate slices with), so left alone they
+			// put a whole pass's halation on screen while the body still shows one slice of it - far
+			// too much scatter, worst exactly when a pass splits, which is every pass on Asteroids'
+			// high-score screen. Scaling them by this keeps scatter in step with the light it scatters.
+			window_aux_ramp = float(std::clamp((window_hi - vstats.sweep_t0) / window_span, 0.0, 1.0));
 		}
 		// The counting scan and the write loop further down MUST reach the same include/exclude
 		// decision for every primitive - the count sizes the transient vertex buffer the write loop
@@ -6086,7 +6093,7 @@ int renderer_bgfx::draw(int update)
 									// the draw call's explicit vertex count leaves out.
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
 											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale);
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale, window_aux_ramp);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
