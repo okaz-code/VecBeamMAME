@@ -30,6 +30,13 @@ public:
 	auto interrupt_vector_read() { return m_vector_read_func.bind(); }
 	auto sync_acknowledge_write() { return m_syncack_write_func.bind(); }
 
+	// Last byte that a responding device (or a dead/VMA-off cycle) left on the data bus.
+	// A board with no device selected at the address being read leaves the bus floating,
+	// so a read of such an address sees this residual rather than a fixed value. Drivers
+	// that decode their unconnected space explicitly can hand this back from the handler
+	// installed there - see the Vectrex driver's open_bus_r().
+	uint8_t bus_data() const { return m_bus_data; }
+
 protected:
 	// construction/destruction
 	m6809_base_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, const device_type type, int divider);
@@ -185,6 +192,7 @@ protected:
 	int                         m_icount;
 	int                         m_addressing_mode;
 	PAIR16                      m_ea;                 // effective address
+	uint8_t                     m_bus_data;           // last byte driven on the data bus (see bus_data())
 
 	// Callbacks
 	devcb_write_line            m_lic_func;           // LIC pin on the 6809E
@@ -196,19 +204,19 @@ protected:
 	void eat_remaining();
 
 	// read a byte from given memory location
-	inline uint8_t read_memory(uint16_t address)             { eat(1); return m_mintf->read(address); }
+	inline uint8_t read_memory(uint16_t address)             { eat(1); return m_bus_data = m_mintf->read(address); }
 
 	// write a byte to given memory location
 	inline void write_memory(uint16_t address, uint8_t data) { eat(1); m_mintf->write(address, data); }
 
 	// read_opcode() is like read_memory() except it is used for reading opcodes. In  the case of a system
 	// with memory mapped I/O, this function can be used  to greatly speed up emulation.
-	inline uint8_t read_opcode(uint16_t address)             { eat(1); return m_mintf->read_opcode(address); }
+	inline uint8_t read_opcode(uint16_t address)             { eat(1); return m_bus_data = m_mintf->read_opcode(address); }
 
 	// read_opcode_arg() is identical to read_opcode() except it is used for reading opcode  arguments. This
 	// difference can be used to support systems that use different encoding mechanisms for opcodes
 	// and opcode arguments.
-	inline uint8_t read_opcode_arg(uint16_t address)         { eat(1); return m_mintf->read_opcode_arg(address); }
+	inline uint8_t read_opcode_arg(uint16_t address)         { eat(1); return m_bus_data = m_mintf->read_opcode_arg(address); }
 
 	// read_opcode() and bump the program counter
 	inline uint8_t read_opcode()                             { return read_opcode(m_pc.w++); }

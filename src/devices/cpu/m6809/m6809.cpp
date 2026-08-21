@@ -232,6 +232,7 @@ void m6809_base_device::device_start()
 	save_item(NAME(m_state));
 	save_item(NAME(m_ea.w));
 	save_item(NAME(m_addressing_mode));
+	save_item(NAME(m_bus_data));
 	save_item(NAME(m_reg));
 	save_item(NAME(m_cond));
 	save_item(NAME(m_free_run));
@@ -254,6 +255,7 @@ void m6809_base_device::device_reset()
 	m_free_run = false;
 
 	m_dp = 0x00;        // reset direct page register
+	m_bus_data = 0x00;  // nothing has driven the data bus yet
 
 	m_cc |= CC_I;       // IRQ disabled
 	m_cc |= CC_F;       // FIRQ disabled
