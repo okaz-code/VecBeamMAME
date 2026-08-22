@@ -187,7 +187,21 @@ video_manager::video_manager(running_machine &machine)
 	}
 	else
 	{
-		const int configured_present_rate = machine.options().vector_present_rate();
+		int configured_present_rate = machine.options().vector_present_rate();
+		// The beam time window deposits one presentation interval's worth of the sweep per present,
+		// so it has no slices to work with unless the host-rate present loop is running. Asking for
+		// the window is therefore also asking for that loop: at vector_present_rate 0 (the default)
+		// the window would otherwise be silently inert, which is the whole feature gone. An explicit
+		// rate - including an explicit 0 - is left exactly as the user set it.
+		bool present_rate_from_window = false;
+		const auto rate_entry = machine.options().get_entry(OPTION_VECTOR_PRESENT_RATE);
+		const bool rate_is_default = !rate_entry || rate_entry->priority() <= OPTION_PRIORITY_DEFAULT;
+		if (configured_present_rate == 0 && rate_is_default
+			&& machine.options().vector_beam_window())
+		{
+			configured_present_rate = -1;   // auto
+			present_rate_from_window = true;
+		}
 		m_vector_present_auto = configured_present_rate < 0;
 		m_vector_present_rate = m_vector_present_auto ? 60U : u32(std::clamp(configured_present_rate, 0, 360));
 		bool have_vector_screen = false;
@@ -201,8 +215,9 @@ video_manager::video_manager(running_machine &machine)
 			// Reported at info level, like the HDR peak: the presentation rate decides how finely a
 			// beam sweep can be sliced for display, so it belongs with the other numbers the user
 			// should see without having to ask for -verbose.
-			osd_printf_info("Vector presentation timer enabled at %s%u Hz\n",
-				m_vector_present_auto ? "auto, initial " : "", m_vector_present_rate);
+			osd_printf_info("Vector presentation timer enabled at %s%u Hz%s\n",
+				m_vector_present_auto ? "auto, initial " : "", m_vector_present_rate,
+				present_rate_from_window ? " (requested by vector_beam_window)" : "");
 		}
 	}
 }
