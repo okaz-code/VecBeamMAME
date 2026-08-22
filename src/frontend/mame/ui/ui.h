@@ -262,7 +262,6 @@ public:
 	bool image_display_enabled() const { return m_image_display_enabled; }
 	virtual void popup_time_string(int seconds, std::string message) override;
 	virtual void set_vector_playback_text(std::string message) override { m_vector_playback_text = std::move(message); }
-	virtual void set_hdr_diagnostic_text(std::string message) override { m_hdr_diagnostic_text = std::move(message); }
 
 	virtual void menu_reset() override;
 	virtual bool set_ui_event_handler(std::function<bool ()> &&handler) override;
@@ -308,7 +307,6 @@ private:
 	bool                    m_show_profiler;
 	osd_ticks_t             m_popup_text_end;
 	std::string             m_vector_playback_text;
-	std::string             m_hdr_diagnostic_text;
 	osd_ticks_t             m_last_frame_update;
 	std::unique_ptr<uint8_t []> m_non_char_keys_down;
 

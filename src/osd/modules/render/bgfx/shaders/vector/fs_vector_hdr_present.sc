@@ -13,7 +13,6 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_tex, 0);
 
 uniform vec4 u_hdr_params;
-uniform vec4 u_phosphor_gamut;   // (blend 0..1, 0, 0, 0) 0 = Rec.709 primaries, 1 = P22 phosphor primaries
 uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, saturation protect, current EDR headroom)
 uniform vec4 u_sdr_rolloff;      // (knee, ceiling, shadow_curve, 0) SDR-only, paper_white units; see SDR branch below
 
@@ -78,36 +77,16 @@ void main()
 		// Over-bright vectors and additive crossings therefore map into the available headroom.
 		// No PQ and no gamma encode: the layer colorspace applies the display transfer, so this is
 		// also correct on non-EDR displays where the
-		// >1.0 portion simply clips to SDR white. (709 primaries == sRGB primaries, so the P22
-		// phosphor-gamut push below is skipped for EDR; it targets the Rec.2020 PQ container.)
+		// >1.0 portion simply clips to SDR white.
 		outc = L / max(output_reference_white, 1.0);
 	}
 	else if (hdr)
 	{
-		// Rec.709 -> Rec.2020 (standard). Blended with a game-RGB -> P22-phosphor-primaries matrix
-		// (same Rec.2020 container) so phosphor_gamut pushes colours toward the real CRT phosphor
-		// chromaticities - mainly a more saturated Eu red that sRGB/709 cannot reach but Rec.2020 can
-		// Both preserve the white point; blend 0 = exact current behaviour.
-		vec3 c709 = vec3(
+		// Rec.709 -> Rec.2020 (standard).
+		vec3 c2020 = max(vec3(
 			dot(L, vec3(0.627402, 0.329292, 0.043306)),
 			dot(L, vec3(0.069095, 0.919544, 0.011360)),
-			dot(L, vec3(0.016394, 0.088028, 0.895578)));
-		// Only evaluate the P22 matrix when it is actually blended in: mix(c709, cp22, 0.0) returns
-		// c709 exactly, so gamut = 0 stays bit-identical and simply stops paying for three more dot
-		// products on every pixel of the HDR present.
-		vec3 c2020;
-		if (u_phosphor_gamut.x > 0.0)
-		{
-			vec3 cp22 = vec3(
-				dot(L, vec3( 0.626148, 0.329664, 0.044188)),
-				dot(L, vec3( 0.067803, 0.920605, 0.011592)),
-				dot(L, vec3(-0.001794, 0.088115, 0.913679)));
-			c2020 = max(mix(c709, cp22, u_phosphor_gamut.x), vec3_splat(0.0));
-		}
-		else
-		{
-			c2020 = max(c709, vec3_splat(0.0));
-		}
+			dot(L, vec3(0.016394, 0.088028, 0.895578))), vec3_splat(0.0));
 		vec3 Ln = c2020 * 0.0001;
 
 		// ST.2084 is an OETF for each Rec.2020 component. Applying it only to max(R,G,B) preserves
