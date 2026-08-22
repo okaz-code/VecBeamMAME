@@ -4476,7 +4476,11 @@ int renderer_bgfx::draw(int update)
 		// happens to carry a usable sweep. A frame without stamps must not clear the engage latch
 		// below, or a title whose spans sit near the threshold loses its hysteresis to a single
 		// blank frame.
-		const bool window_asked = int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
+		// Two switches, deliberately: vector_beam_window is the startup master (default on, and it
+		// turns the presentation timer on by itself), the chain's Beam Time Window slider is the
+		// live per-chain control. Either one off means off.
+		const bool window_asked = window().machine().options().vector_beam_window()
+				&& int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
 		const bool window_available = vstats.timed
 				&& window().machine().video().vector_present_rate() > 0
 				&& window_asked;
@@ -4490,7 +4494,8 @@ int renderer_bgfx::draw(int update)
 				m_vec_window_notice_blocked = true;
 				if (window().machine().video().vector_present_rate() <= 0)
 					osd_printf_info("BGFX: Beam Time Window is on but needs a host-rate present loop;"
-						" vector_present_rate is 0 (off). Run with vector_present_rate auto\n");
+						" vector_present_rate is explicitly 0. Use vector_present_rate auto, or leave"
+						" it unset and let vector_beam_window turn the timer on\n");
 				else
 					osd_printf_info("BGFX: Beam Time Window is on but this vector engine supplies no"
 						" per-vector timestamps; the window cannot slice a sweep it cannot see\n");

@@ -143,6 +143,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_OVERSCAN_X,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (X), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_OVERSCAN_Y,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_BLANK_LEAK,                          "0.0",       core_options::option_type::FLOAT,      "set vector blanked-beam leak level (0 = off), faintly draws blanked retrace/move paths" },
+	{ OPTION_VECTOR_BEAM_WINDOW ";beamwin",              "1",         core_options::option_type::BOOLEAN,    "deposit only the slice of the beam sweep each present covers, letting the phosphor hold the rest; turns the vector presentation timer on by itself" },
 	{ OPTION_VECTOR_WINDOW_DROOP,                        "0.0",       core_options::option_type::FLOAT,      "Major Havoc window sample-and-hold droop, percent of screen height per second (0 = off, ideal hold)" },
 	{ OPTION_VECTOR_WINDOW_MEMORY,                       "0.0",       core_options::option_type::FLOAT,      "Major Havoc window hold-capacitor dielectric absorption, 0..1 fraction pulled toward earlier samples (0 = off)" },
 	{ OPTION_VECTOR_WINDOW_JITTER,                       "0.0",       core_options::option_type::FLOAT,      "Major Havoc window per-frame sample scatter, percent of screen height (0 = off); constant within a frame" },
