@@ -18,16 +18,17 @@
 	"vector_engine": "analytic",
 
 	"sliders": [
-		// ---- [M] マクロ: 1本で複数の詳細パラメータを駆動する。基準はすべて「対象スライダーの
-		//      JSON 既定値」なので、既定 1.0(または On)では現状の校正値と完全に一致する。
-		//      curve は [マクロ値, 対象値] の折れ線。詳細側を cfg に保存済みならそちらが優先される ----
+		// ---- [M] マクロ: 1本で複数の詳細パラメータを駆動する。基準は「対象がマクロに触られる前に
+		//      持っていた値」なので、既定 1.0 / On では現状の校正値と完全に一致する。scale と enable は
+		//      係数として合成されるので、詳細1本を2本のマクロで駆動できる（Edge Defocus は [M] Defocus
+		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
 		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"}]},
 		{"type":"float","name":"macro_overload","text":"[M] Overload Amount","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"overload_threshold","mode":"curve","curve":[[0.0,4.0],[0.5,1.4],[1.0,1.0],[2.0,0.9]]},
 		             {"slider":"intensity_overdrive","mode":"curve","curve":[[0.0,0.0],[1.0,1.0],[2.0,1.6]]},
 		             {"slider":"overload_glow_gain","mode":"curve","curve":[[0.0,0.0],[1.0,1.06],[2.0,1.8]]}]},
-		{"type":"float","name":"macro_bloom","text":"[M] Bloom Strength","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector",
+		{"type":"float","name":"macro_bloom","text":"[M] Bloom Strength","default":1.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"glow_wide","mode":"scale"},{"slider":"glow_narrow","mode":"scale"},{"slider":"analytic_glow","mode":"scale"}]},
 		{"type":"float","name":"macro_beam_width","text":"[M] Beam Width","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"beam_width_min","mode":"scale"},{"slider":"beam_width_max","mode":"scale"},{"slider":"overload_width_add","mode":"scale"}]},
@@ -40,7 +41,7 @@
 		{"type":"float","name":"macro_persistence","text":"[M] Phosphor Persistence","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"phosphor_half_ms","mode":"scale"},{"slider":"phosphor_total_ms","mode":"scale"}]},
 		{"type":"int_enum","name":"macro_monitor_sim","text":"[M] Monitor/Glass Sim","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"],
-		  "targets":[{"slider":"shadow_mask_strength","mode":"enable"},{"slider":"ambient_level","mode":"enable"},
+		  "targets":[{"slider":"shadow_mask_strength","mode":"enable"},{"slider":"edge_defocus","mode":"enable"},{"slider":"ambient_level","mode":"enable"},
 		             {"slider":"tube_distortion","mode":"enable"},{"slider":"tube_round_corner","mode":"enable"},{"slider":"tube_vignetting","mode":"enable"},
 		             {"slider":"mglow_coefficient","mode":"enable"},{"slider":"mglow_brightness","mode":"enable"},{"slider":"mglow_rgb_bands","mode":"enable"},
 		             {"slider":"bezel_glow_strength","mode":"enable"},{"slider":"monitor_bezel_reflection","mode":"enable"},
@@ -49,11 +50,10 @@
 		  "targets":[{"slider":"beam_jitter","mode":"enable"},{"slider":"hv_droop","mode":"enable"},
 		             {"slider":"flicker_red_depth","mode":"enable"},{"slider":"flicker_green_depth","mode":"enable"},{"slider":"flicker_blue_depth","mode":"enable"}]},
 
-		// ---- Phosphor persistence ----
-
-		// ---- Advanced 表示トグル。Off ではマクロだけが見える ----
+		// ---- Advanced 表示トグル。Off ではマクロだけが見える。以下は関連グループごと・重要な順 ----
 		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
 
+		// ---- Phosphor persistence and decay ----
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":8.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":3.0,"min":0.4,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_total_ms","text":"Phosphor Total (ms)","default":300.0,"min":20.0,"max":1500.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
@@ -70,30 +70,36 @@
 		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":-2.0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
-		// ---- Beam shape, points and focus ----
-		{"type":"float","name":"width_curve","text":"Width Curve","default":2.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		// ---- Beam width ----
 		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":2.8,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":3.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"width_curve","text":"Width Curve","default":2.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"core_flat","text":"Line Core Flatness","default":0.4,"min":0.0,"max":0.98,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+
+		// ---- Points and dots ----
 		{"type":"float","name":"line_point_threshold","text":"Line/Point Threshold (px)","default":2.0,"min":0.0,"max":8.0,"step":0.5,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":1.8,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_brightness_scale","text":"Point Brightness Scale","default":2.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_roundness","text":"Point Roundness","default":0.25,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"intenum","name":"cap_no_persist","text":"Short-Dwell Dots: No Persistence","default":1,"max":1,"min":0,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
+		{"type":"float","name":"dot_no_persist_dwell","text":"Dot No-Persist Dwell (us)","default":20.0,"min":0.0,"max":60.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"z_rise_tau","text":"Z Rise Time (us)","default":0.2,"min":0.0,"max":20.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+
+		// ---- Focus and defocus ----
 		{"type":"vec2","name":"defocus","text":"Defocus (beam blur), ","default":[ 0.3, 0.3 ],"max":[2.0,2.0],"min":[0.0,0.0],"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"edge_defocus","text":"Edge Defocus","default":0.1,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"edge_defocus_curve","text":"Edge Defocus Curve","default":3.0,"min":0.5,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+
+		// ---- Line ends ----
 		{"type":"float","name":"line_cap_width","text":"Line End Width (x body)","default":1.1,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"line_cap_overload_add","text":"Line End Overload Add (px)","default":2.0,"min":0.0,"max":12.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"line_cap_overload_curve","text":"Line End Overload Curve","default":0.25,"min":0.25,"max":8.0,"step":0.25,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"line_cap_transition","text":"Line End Transition (px)","default":10.0,"min":0.5,"max":64.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"line_cap_curve","text":"Line End Transition Curve","default":0.5,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"line_cap_mode","text":"Line End Mode","default":0,"min":0,"max":3,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["All Ends","Blank Transitions","Ramp Flags","Off"]},
-		{"type":"intenum","name":"cap_no_persist","text":"Short-Dwell Dots: No Persistence","default":1,"max":1,"min":0,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
-		{"type":"float","name":"dot_no_persist_dwell","text":"Dot No-Persist Dwell (us)","default":20.0,"min":0.0,"max":60.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
-		// ---- Deflection and energy model ----
+		// ---- Beam energy model ----
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"energy_infl","text":"Energy Influence (no-current src)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_speed_norm","text":"Energy Speed Norm (scr/ms)","default":6.0,"min":0.05,"max":12.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -103,12 +109,8 @@
 		{"type":"float","name":"energy_dot_curve","text":"Energy Dot Curve","default":1.6,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_dot_max","text":"Energy Dot Max / Density Cap","default":3.2,"min":1.0,"max":16.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"energy_stroke_agg","text":"Energy Stroke Aggregation","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
-		{"type":"float","name":"hv_droop","text":"HV Droop (dim+defocus)","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"hv_droop_dim","text":"HV Droop Dim (0=defocus only)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"hv_droop_onset","text":"HV Droop Overload Onset","default":0.5,"min":0.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"hv_droop_ref","text":"HV Droop Load Ref","default":5.0,"min":1.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 
-		// ---- Overdrive and beam saturation ----
+		// ---- Overload and overdrive ----
 		{"type":"float","name":"overload_threshold","text":"Overload Threshold","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_ramp","text":"Overload Ramp (n span)","default":0.75,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"intensity_overdrive","text":"Overdrive (hot core)","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -126,15 +128,10 @@
 		{"type":"float","name":"overlap_white_brightness","text":"Overlap White Brightness","default":1.5,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlap_white_spread","text":"Overlap White Spread","default":1.25,"min":0.0,"max":12.0,"step":0.25,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_display_compression","text":"Overload Display Compression","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":1.06,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":16.0,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"convergence_global_gain","text":"Convergence Global Bloom","default":0.01,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"convergence_global_coverage","text":"Convergence Global Coverage","default":0.3,"min":0.1,"max":1.2,"step":0.025,"format":"%1.3f","screen":"vector","advanced":true},
 
-		// ---- Glow and halation ----
+		// ---- Glow and bloom ----
 		{"type":"float","name":"analytic_glow","text":"Glow Source Strength (all vectors)","default":0.12,"min":0.0,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Radius (all vectors)","default":20.0,"min":1.0,"max":80.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-
 		{"type":"float","name":"glow_narrow","text":"Glow Narrow Strength","default":0.005,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_core_gain","text":"Overload Hot Core Gain","default":0.015,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.003,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
@@ -142,23 +139,32 @@
 		{"type":"float","name":"glow_wide_pivot","text":"Glow Wide Pivot (source level)","default":1.0,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_wide_curve","text":"Glow Wide Curve (above pivot up)","default":1.6,"min":0.5,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"int_enum","name":"glow_wide_smooth","text":"Glow Wide Downsample","default":1,"min":0,"max":2,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Box (legacy)","Tent (smoother)","Tent + deep blur"]},
+		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":1.06,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":16.0,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.44,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.4,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_coefficient","text":"Monitor Glow Coefficient","default":0.4,"min":0.0,"max":10.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_brightness","text":"Monitor Glow Brightness","default":0.15,"min":0.0,"max":2.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_center_edge_diff","text":"Monitor Glow Center-Edge Diff","default":0.1,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_rgb_bands","text":"Monitor Glow RGB Bands","default":0.35,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_rgb_band_count","text":"Monitor Glow RGB Band Count","default":8.0,"min":3.0,"max":24.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_min_distance","text":"Monitor Glow Min Distance (screen)","default":0.3,"min":0.0,"max":0.75,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_coverage_start","text":"Monitor Glow Coverage Start","default":0.65,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mglow_coverage_full","text":"Monitor Glow Coverage Full","default":0.85,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
-		// ---- Flicker and beam instability ----
+		// ---- Convergence ----
+		{"type":"float","name":"convergence_global_gain","text":"Convergence Global Bloom","default":0.01,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"convergence_global_coverage","text":"Convergence Global Coverage","default":0.3,"min":0.1,"max":1.2,"step":0.025,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"converge_red","text":"Red Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"converge_green","text":"Green Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"converge_blue","text":"Blue Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"radial_converge_red","text":"Red Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"radial_converge_green","text":"Green Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"radial_converge_blue","text":"Blue Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+
+		// ---- Flicker, HV droop and beam jitter ----
 		{"type":"float","name":"flicker_thresh_ms","text":"Cyclic Flicker Threshold (draw ms)","default":24.0,"min":0.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_buckets","text":"Cyclic Flicker Buckets (N)","default":9.0,"min":2.0,"max":16.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_period_ms","text":"Cyclic Flicker Step (ms)","default":20.0,"min":2.0,"max":100.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_red_depth","text":"Cyclic Flicker Red Depth","default":1.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_green_depth","text":"Cyclic Flicker Green Depth","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"flicker_blue_depth","text":"Cyclic Flicker Blue Fine Depth","default":0.1,"min":0.0,"max":0.1,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"hv_droop","text":"HV Droop (dim+defocus)","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"hv_droop_dim","text":"HV Droop Dim (0=defocus only)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"hv_droop_onset","text":"HV Droop Overload Onset","default":0.5,"min":0.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"hv_droop_ref","text":"HV Droop Load Ref","default":5.0,"min":1.0,"max":60.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter","text":"Beam Jitter (energy + position)","default":0.1,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_hz","text":"Beam Jitter Speed (Hz)","default":15.0,"min":1.0,"max":120.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_saturation_start","text":"Beam Jitter Saturation Start","default":1.5,"min":0.5,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -181,24 +187,35 @@
 		{"type":"vec2","name":"chroma_c","text":"Phosphor C Chromaticity ","default":[0.17,0.07],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"color","name":"chroma_y_gain","text":"Phosphor Gain, ","default":[0.2124,0.62,0.1],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.001,"format":"%1.4f","screen":"vector","advanced":true},
 
-		// ---- Convergence and vector geometry ----
+		// ---- Vector geometry ----
+		{"type":"float","name":"vector_linearity_x","text":"Vector Linearity X (gain)","default":1.0,"min":0.8,"max":1.2,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"vector_linearity_y","text":"Vector Linearity Y (gain)","default":1.0,"min":0.8,"max":1.2,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"vector_pincushion_x_quad","text":"Vector Pincushion X (Quad)","default":0.0,"max":1.0,"min":-1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"vector_image_scale","text":"Vector Image Scale","default":0.94,"min":0.75,"max":1.15,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 
 		// ---- Shadow mask ----
 		{"type":"float","name":"shadow_mask_strength","text":"Shadow Mask Strength","default":0.3,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.65,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak","text":"Masked Core Peak Limit","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"core_overlap_max","text":"Direct Core Overlap","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Additive","Uniform Maximum"]},
-		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.65,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"ambient_mask","text":"Ambient Shadow-Mask (0=flat,1=masked)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
-		// ---- Ambient, tube and bezel ----
-		{"type":"color","name":"ambient_color","text":"Ambient Color ","default":[0.35,0.35,0.35],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"ambient_level","text":"Ambient Level (x0.001)","default":1.0,"min":0.0,"max":200.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
+		// ---- Tube, ambient and bezel ----
 		{"type":"float","name":"tube_distortion","text":"Tube Quadric Distortion","default":0.12,"min":-2.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_round_corner","text":"Tube Rounded Corner","default":0.15,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_vignetting","text":"Tube Vignetting","default":0.8,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_face_scale","text":"Tube Face Scale","default":0.98,"min":0.8,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"vector_image_scale","text":"Vector Image Scale","default":0.94,"min":0.75,"max":1.15,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"color","name":"ambient_color","text":"Ambient Color ","default":[0.35,0.35,0.35],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"ambient_level","text":"Ambient Level (x0.001)","default":1.0,"min":0.0,"max":200.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_coefficient","text":"Monitor Glow Coefficient","default":0.4,"min":0.0,"max":10.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_brightness","text":"Monitor Glow Brightness","default":0.15,"min":0.0,"max":2.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_center_edge_diff","text":"Monitor Glow Center-Edge Diff","default":0.1,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_rgb_bands","text":"Monitor Glow RGB Bands","default":0.35,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_rgb_band_count","text":"Monitor Glow RGB Band Count","default":8.0,"min":3.0,"max":24.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_min_distance","text":"Monitor Glow Min Distance (screen)","default":0.3,"min":0.0,"max":0.75,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_coverage_start","text":"Monitor Glow Coverage Start","default":0.65,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mglow_coverage_full","text":"Monitor Glow Coverage Full","default":0.85,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.05,"min":0.0,"max":0.5,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"monitor_bezel_reflection","text":"Monitor Glow Bezel Reflection","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_long_reflection","text":"Bezel Long-Line Reflection","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -206,10 +223,6 @@
 		{"type":"float","name":"bezel_long_threshold","text":"Bezel Long-Line Threshold (px)","default":160.0,"min":40.0,"max":400.0,"step":10.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_glow_width","text":"Bezel Glow Width (px)","default":100.0,"min":2.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_glow_curve","text":"Bezel Glow Curve","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.44,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"ambient_mask","text":"Ambient Shadow-Mask (0=flat,1=masked)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-
-		// ---- Smoked glass (100% transmission is an exact bypass) ----
 
 		// ---- HDR / SDR presentation ----
 		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":800,"min":80.0,"max":2000.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
@@ -250,14 +263,6 @@
 		{"type":"float","name":"color_saturation","text":"[-] Source Color Saturation","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"chroma_mode","text":"[-] Color Mode","default":3,"max":3,"min":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":[" ","Monochrome","Dichrome","Trichrome"]},
 		{"type":"color","name":"chroma_conversion_gain","text":"[-] Chroma Conversion Gain, ","default":[0.299,0.587,0.114],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"converge_red","text":"[-] Red Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"converge_green","text":"[-] Green Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"converge_blue","text":"[-] Blue Linear Convergence, ","default":[0.0,0.0],"max":[10.0,10.0],"min":[-10.0,-10.0],"step":0.1,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"radial_converge_red","text":"[-] Red Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"radial_converge_green","text":"[-] Green Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"radial_converge_blue","text":"[-] Blue Radial Convergence, ","default":[0.0,0.0],"max":[0.1,0.1],"min":[-0.1,-0.1],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"vector_linearity_x","text":"[-] Vector Linearity X (gain)","default":1.0,"min":0.8,"max":1.2,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"vector_linearity_y","text":"[-] Vector Linearity Y (gain)","default":1.0,"min":0.8,"max":1.2,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"vector_pincushion_x_cubic","text":"[-] Vector Pincushion X (Cubic)","default":0.0,"max":1.0,"min":-1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vector_pincushion_y_quad","text":"[-] Vector Pincushion Y (Quad)","default":0.0,"max":1.0,"min":-1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vector_pincushion_y_cubic","text":"[-] Vector Pincushion Y (Cubic)","default":0.0,"max":1.0,"min":-1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
@@ -272,7 +277,8 @@
 		{"type":"float","name":"glass_surface_illumination","text":"[-] Glass Surface Illumination (%)","default":0.0,"min":0.0,"max":10.0,"step":0.1,"format":"%4.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"edr_sdr_level","text":"[-] EDR SDR Level (UI/Art, macOS)","default":1.0,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_gamut","text":"[-] Phosphor Gamut (P22, HDR)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"hdr_diagnostics","text":"[-] HDR Diagnostics Overlay","default":0.0,"min":0.0,"max":1.0,"step":1.0,"format":"%1.0f","screen":"vector","advanced":true}	],
+		{"type":"float","name":"hdr_diagnostics","text":"[-] HDR Diagnostics Overlay","default":0.0,"min":0.0,"max":1.0,"step":1.0,"format":"%1.0f","screen":"vector","advanced":true}
+	],
 
 	"parameters": [
 		{ "name": "time",   "type": "time",  "limit": 0.0 }
