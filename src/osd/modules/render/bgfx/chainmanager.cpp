@@ -615,97 +615,123 @@ static bool slider_matches_imported_value(const bgfx_slider &slider, float value
 	return std::abs(slider.value() - snapped) < step * 0.25f;
 }
 
+// Does this macro target name address this detail slider?  A bare target name drives every
+// component the slider has (vec2 / colour), so one "Defocus" macro can move defocus X and Y
+// together.
+static bool macro_target_matches(const bgfx_slider::macro_target &target, const bgfx_slider &dest)
+{
+	if (!target.all_components)
+		return dest.name() == target.name;
+	return dest.name().compare(0, target.name.size(), target.name) == 0
+		&& dest.name().size() == target.name.size() + 1
+		&& dest.name().back() >= '0' && dest.name().back() <= '2';
+}
+
 void chain_manager::apply_macros(bool force)
 {
 	for (bgfx_chain *chain : m_screen_chains)
 	{
 		if (chain == nullptr)
 			continue;
+
+		// Collect the macros and note which of them moved.  A detail slider may be claimed by more
+		// than one macro - Edge Defocus is SCALED by [M] Defocus and GATED by [M] Monitor/Glass Sim -
+		// so its value has to be composed from every macro that targets it, not just from the one
+		// that happens to have moved.  Anything the moved macros touch is recomputed in full;
+		// everything else is left alone, so a hand edit in the Advanced list survives until a macro
+		// that actually owns that slider is moved.
+		std::vector<bgfx_slider *> macros;
+		std::vector<bgfx_slider *> dirty;
 		for (bgfx_slider *macro : chain->sliders())
 		{
 			if (!macro->is_macro())
 				continue;
-			const float value = macro->value();
+			macros.push_back(macro);
 			const auto last = m_macro_last.find(macro->name());
-			const bool changed = (last == m_macro_last.end()) || (last->second != value);
-			if (!changed && !force)
+			if (!force && last != m_macro_last.end() && last->second == macro->value())
 				continue;
-			m_macro_last[macro->name()] = value;
+			m_macro_last[macro->name()] = macro->value();
 			for (const bgfx_slider::macro_target &target : macro->macro_targets())
 			{
-				// A bare target name drives every component the slider has (vec2 / colour), so one
-				// "Defocus" macro can move defocus X and Y together.
-				std::vector<bgfx_slider *> dests;
+				bool found = false;
 				for (bgfx_slider *candidate : chain->sliders())
 				{
-					if (target.all_components)
-					{
-						if (candidate->name().compare(0, target.name.size(), target.name) == 0
-							&& candidate->name().size() == target.name.size() + 1
-							&& candidate->name().back() >= '0' && candidate->name().back() <= '2')
-							dests.push_back(candidate);
-					}
-					else if (candidate->name() == target.name)
-					{
-						dests.push_back(candidate);
-					}
+					if (!macro_target_matches(target, *candidate))
+						continue;
+					found = true;
+					if (std::find(dirty.begin(), dirty.end(), candidate) == dirty.end())
+						dirty.push_back(candidate);
 				}
-				if (dests.empty())
-				{
+				if (!found)
 					osd_printf_verbose("BGFX: macro '%s' targets unknown slider '%s'\n",
 						macro->name().c_str(), target.name.c_str());
-					continue;
-				}
-				for (bgfx_slider *dest : dests)
+			}
+		}
+		if (dirty.empty())
+			continue;
+
+		for (bgfx_slider *dest : dirty)
+		{
+			// Capture the pre-macro value once; everything scales from that, not from the JSON
+			// default, so an auto-derived target (beam_peak_nits) keeps its derivation.
+			const auto base_it = m_macro_base.find(dest->name());
+			const float base = (base_it != m_macro_base.end())
+					? base_it->second
+					: (m_macro_base[dest->name()] = dest->value());
+
+			// SCALE and ENABLE contribute factors, CURVE contributes an absolute level; a slider on
+			// both a curve macro and a scale/enable macro ends up as curve(x) * factors.
+			float level = base;
+			float factor = 1.0f;
+			for (bgfx_slider *macro : macros)
+			{
+				const float value = macro->value();
+				for (const bgfx_slider::macro_target &target : macro->macro_targets())
 				{
-				// Capture the pre-macro value once; everything scales from that, not from the JSON
-				// default, so an auto-derived target (beam_peak_nits) keeps its derivation.
-				const auto base_it = m_macro_base.find(dest->name());
-				const float base = (base_it != m_macro_base.end())
-						? base_it->second
-						: (m_macro_base[dest->name()] = dest->value());
-				float derived = base;
-				switch (target.mode)
-				{
-					case bgfx_slider::MACRO_SCALE:
-						derived = base * value;
-						break;
-					case bgfx_slider::MACRO_ENABLE:
-						derived = (value > 0.5f) ? base : 0.0f;
-						break;
-					case bgfx_slider::MACRO_CURVE:
+					if (!macro_target_matches(target, *dest))
+						continue;
+					switch (target.mode)
 					{
-						// piecewise linear, clamped at both ends
-						derived = target.ys.front();
-						for (size_t i = 1; i < target.xs.size(); i++)
+						case bgfx_slider::MACRO_SCALE:
+							factor *= value;
+							break;
+						case bgfx_slider::MACRO_ENABLE:
+							factor *= (value > 0.5f) ? 1.0f : 0.0f;
+							break;
+						case bgfx_slider::MACRO_CURVE:
 						{
-							if (value <= target.xs[i] || i == target.xs.size() - 1)
+							// piecewise linear, clamped at both ends
+							level = target.ys.front();
+							for (size_t i = 1; i < target.xs.size(); i++)
 							{
-								const float x0 = target.xs[i - 1], x1 = target.xs[i];
-								const float y0 = target.ys[i - 1], y1 = target.ys[i];
-								const float t = (x1 > x0) ? std::clamp((value - x0) / (x1 - x0), 0.0f, 1.0f) : 0.0f;
-								derived = y0 + (y1 - y0) * t;
-								break;
+								if (value <= target.xs[i] || i == target.xs.size() - 1)
+								{
+									const float x0 = target.xs[i - 1], x1 = target.xs[i];
+									const float y0 = target.ys[i - 1], y1 = target.ys[i];
+									const float t = (x1 > x0) ? std::clamp((value - x0) / (x1 - x0), 0.0f, 1.0f) : 0.0f;
+									level = y0 + (y1 - y0) * t;
+									break;
+								}
 							}
+							break;
 						}
-						break;
 					}
 				}
-				derived = std::clamp(derived, dest->min_value(), dest->max_value());
-				dest->import(derived);
-				m_macro_imported[dest->name()] = dest->value();
-				// The HDR auto-config refuses to update a slider that no longer matches what IT last
-				// wrote (that is how it protects user edits). A macro scaling the auto-derived peak is
-				// not a user edit, so move that baseline with it - otherwise a later display change
-				// would silently stop re-deriving the peak.
-				if (dest->name() == "beam_peak_nits0")
-					m_hdr_last_auto_beam = dest->value();
-				else if (dest->name() == "hdr_rolloff_max0")
-					m_hdr_last_auto_rolloff = dest->value();
-				osd_printf_verbose("BGFX: macro %s = %.3f -> %s = %.4f\n",
-					macro->name().c_str(), value, dest->name().c_str(), dest->value());
-				}
 			}
+
+			const float derived = std::clamp(level * factor, dest->min_value(), dest->max_value());
+			dest->import(derived);
+			m_macro_imported[dest->name()] = dest->value();
+			// The HDR auto-config refuses to update a slider that no longer matches what IT last
+			// wrote (that is how it protects user edits). A macro scaling the auto-derived peak is
+			// not a user edit, so move that baseline with it - otherwise a later display change
+			// would silently stop re-deriving the peak.
+			if (dest->name() == "beam_peak_nits0")
+				m_hdr_last_auto_beam = dest->value();
+			else if (dest->name() == "hdr_rolloff_max0")
+				m_hdr_last_auto_rolloff = dest->value();
+			osd_printf_verbose("BGFX: macros -> %s = %.4f (base %.4f)\n",
+				dest->name().c_str(), dest->value(), base);
 		}
 	}
 }
