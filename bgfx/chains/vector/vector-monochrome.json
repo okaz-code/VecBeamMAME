@@ -106,12 +106,12 @@
 		{"type":"color","name":"overdrive_color","text":"Overdrive Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Glow and bloom ----
-		{"type":"float","name":"analytic_glow","text":"Glow Source (per-line)","default":0.048,"min":0.0,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"analytic_glow","text":"Glow Source (per-line)","default":0.048,"min":0.0,"max":1.0,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":15.0,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_threshold","text":"Glow Source Threshold","default":0.5,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_curve","text":"Glow Source Curve","default":0.25,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.003,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.00018,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.00018,"min":0.0,"max":0.02,"step":0.00001,"format":"%1.5f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":0.6,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_black_toe","text":"Glow Black Toe","default":0.002,"min":0.0,"max":0.05,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.5,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -125,7 +125,7 @@
 		{"type":"float","name":"ring_width","text":"Halation Width (px)","default":3.0,"min":0.75,"max":12.0,"step":0.25,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"ring_min_dwell","text":"Halation Min Dwell (us)","default":20.0,"min":0.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"ring_threshold","text":"Halation Threshold (bright)","default":0.0,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"ray_gain","text":"Starburst Gain","default":0.005,"min":0.0,"max":0.5,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"ray_gain","text":"Starburst Gain","default":0.005,"min":0.0,"max":0.5,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_var","text":"Starburst Uneven","default":0.6,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_count","text":"Starburst Rays","default":6.0,"min":2.0,"max":12.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_length","text":"Starburst Length (px)","default":68.0,"min":8.0,"max":300.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
@@ -165,7 +165,7 @@
 		{"type":"float","name":"bezel_glow_curve","text":"Bezel Glow Curve","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- HDR / SDR presentation ----
-		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":192,"min":80.0,"max":2000.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":192,"min":80.0,"max":2000.0,"step":2.0,"format":"%4.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_glow_stability","text":"HDR Glow Stability","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_rolloff_knee","text":"HDR Highlight Knee (xpeak)","default":1.0,"min":0.5,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_rolloff_max","text":"HDR Highlight Max (xpeak)","default":2.5,"min":0.5,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
