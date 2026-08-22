@@ -730,7 +730,9 @@ void chain_manager::apply_macros(bool force)
 				m_hdr_last_auto_beam = dest->value();
 			else if (dest->name() == "hdr_rolloff_max0")
 				m_hdr_last_auto_rolloff = dest->value();
-			osd_printf_verbose("BGFX: macros -> %s = %.4f (base %.4f)\n",
+			// %g, not %.4f: the glow sliders calibrate around 1e-4, where four decimals cannot
+			// tell an exact value from one the UI step rounded off.
+			osd_printf_verbose("BGFX: macros -> %s = %.6g (base %.6g)\n",
 				dest->name().c_str(), dest->value(), base);
 		}
 	}

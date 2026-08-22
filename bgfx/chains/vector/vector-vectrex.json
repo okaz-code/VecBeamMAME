@@ -136,7 +136,7 @@
 		{"type":"float","name":"ring_width","text":"Halation Width (px)","default":1.25,"min":0.75,"max":12.0,"step":0.25,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"ring_min_dwell","text":"Halation Min Dwell (us)","default":20.0,"min":0.0,"max":200.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"ring_threshold","text":"Halation Threshold (bright)","default":0.0,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"ray_gain","text":"Starburst Gain","default":0.0044,"min":0.0,"max":0.5,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"ray_gain","text":"Starburst Gain","default":0.0044,"min":0.0,"max":0.5,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_var","text":"Starburst Uneven","default":0.6,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_count","text":"Starburst Rays","default":6.0,"min":2.0,"max":12.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"ray_length","text":"Starburst Length (px)","default":50.0,"min":8.0,"max":300.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
