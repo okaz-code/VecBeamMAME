@@ -39,17 +39,23 @@ Bruce Tomlin (hardware info)
 // the real-hardware measurements this reproduces.
 uint8_t vectrex_state::open_bus_r()
 {
+	// The debugger has no bus cycle of its own, so showing it the live residual would
+	// make memory views change under it for no reason.
+	if (machine().side_effects_disabled())
+		return 0x00;
+
 	return m_maincpu->bus_data();
 }
 
 void vectrex_state::vectrex_map(address_map &map)
 {
-	map(0x0000, 0x7fff).r(FUNC(vectrex_state::open_bus_r)); // cart area, handled at machine_start
-	map(0x8000, 0xc7ff).r(FUNC(vectrex_state::open_bus_r)); // nothing decoded here
+	// Catch-all first: everything the later entries do not claim is unconnected, and an
+	// unconnected address reads back the data bus. Leaving a gap unmapped instead would
+	// silently return the fixed unmap value, so the floor has to be explicit.
+	map(0x0000, 0xffff).r(FUNC(vectrex_state::open_bus_r));
 	map(0xc800, 0xcbff).ram().mirror(0x0400).share("gce_vectorram");
 	map(0xd000, 0xd7ff).rw(FUNC(vectrex_state::via_r), FUNC(vectrex_state::via_w));
-	map(0xd800, 0xdfff).r(FUNC(vectrex_state::open_bus_r)); // nothing decoded here
-	map(0xe000, 0xffff).rom().region("maincpu", 0);
+	map(0xe000, 0xffff).rom().region("maincpu", 0); // cart area is installed at machine_start
 }
 
 static INPUT_PORTS_START(vectrex)

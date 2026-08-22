@@ -30,11 +30,11 @@ public:
 	auto interrupt_vector_read() { return m_vector_read_func.bind(); }
 	auto sync_acknowledge_write() { return m_syncack_write_func.bind(); }
 
-	// Last byte that a responding device (or a dead/VMA-off cycle) left on the data bus.
-	// A board with no device selected at the address being read leaves the bus floating,
-	// so a read of such an address sees this residual rather than a fixed value. Drivers
-	// that decode their unconnected space explicitly can hand this back from the handler
-	// installed there - see the Vectrex driver's open_bus_r().
+	// Last byte left on the data bus - by a responding device, by a dead/VMA-off cycle, or
+	// by the CPU itself during a write. A board with no device selected at the address being
+	// read leaves the bus floating, so a read of such an address sees this residual rather
+	// than a fixed value. Drivers that decode their unconnected space explicitly can hand
+	// this back from the handler installed there - see the Vectrex driver's open_bus_r().
 	uint8_t bus_data() const { return m_bus_data; }
 
 protected:
@@ -207,7 +207,7 @@ protected:
 	inline uint8_t read_memory(uint16_t address)             { eat(1); return m_bus_data = m_mintf->read(address); }
 
 	// write a byte to given memory location
-	inline void write_memory(uint16_t address, uint8_t data) { eat(1); m_mintf->write(address, data); }
+	inline void write_memory(uint16_t address, uint8_t data) { eat(1); m_bus_data = data; m_mintf->write(address, data); }
 
 	// read_opcode() is like read_memory() except it is used for reading opcodes. In  the case of a system
 	// with memory mapped I/O, this function can be used  to greatly speed up emulation.
