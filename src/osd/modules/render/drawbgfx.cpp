@@ -4476,9 +4476,30 @@ int renderer_bgfx::draw(int update)
 		// happens to carry a usable sweep. A frame without stamps must not clear the engage latch
 		// below, or a title whose spans sit near the threshold loses its hysteresis to a single
 		// blank frame.
+		const bool window_asked = int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
 		const bool window_available = vstats.timed
 				&& window().machine().video().vector_present_rate() > 0
-				&& int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
+				&& window_asked;
+		// The whole path is gated behind a host-rate present loop, which is OFF by default
+		// (vector_present_rate 0). Without this line the slider looks broken: it is on, nothing
+		// changes, and neither of the notices below fires because they need window_available.
+		if (window_asked && !window_available)
+		{
+			if (!m_vec_window_notice_blocked)
+			{
+				m_vec_window_notice_blocked = true;
+				if (window().machine().video().vector_present_rate() <= 0)
+					osd_printf_info("BGFX: Beam Time Window is on but needs a host-rate present loop;"
+						" vector_present_rate is 0 (off). Run with vector_present_rate auto\n");
+				else
+					osd_printf_info("BGFX: Beam Time Window is on but this vector engine supplies no"
+						" per-vector timestamps; the window cannot slice a sweep it cannot see\n");
+			}
+		}
+		else
+		{
+			m_vec_window_notice_blocked = false;
+		}
 		const bool window_span_usable = vstats.sweep_t0 >= 0.0 && vstats.sweep_t1 > vstats.sweep_t0;
 		const bool window_wanted = window_available && window_span_usable;
 		// Window width, needed here because the sweep has to be compared against it before deciding
@@ -6364,8 +6385,14 @@ int renderer_bgfx::draw(int update)
 					}
 				}
 				const float mglow_amount = mglow_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
+				// The 0.8 release smooths CONTENT changes (a bright object leaving the edge), but it
+				// must not smooth the CONTROL: with Monitor/Glass Sim switched off - or the
+				// coefficient at 0 - the glow has to go out now, not fade for half a second, or the
+				// toggle reads as having no effect.
 				if (m_vec_frame_advanced)
-					m_mglow_smoothed = std::max(mglow_amount, m_mglow_smoothed * 0.80f);
+					m_mglow_smoothed = (mglow_amount > 0.0f)
+							? std::max(mglow_amount, m_mglow_smoothed * 0.80f)
+							: 0.0f;
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow", "u_mglow_amount", mglow_vals, 4);
 

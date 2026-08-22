@@ -43,7 +43,7 @@
 		{"type":"int_enum","name":"macro_monitor_sim","text":"[M] Monitor/Glass Sim","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"],
 		  "targets":[{"slider":"shadow_mask_strength","mode":"enable"},{"slider":"edge_defocus","mode":"enable"},{"slider":"ambient_level","mode":"enable"},
 		             {"slider":"tube_distortion","mode":"enable"},{"slider":"tube_round_corner","mode":"enable"},{"slider":"tube_vignetting","mode":"enable"},
-		             {"slider":"mglow_coefficient","mode":"enable"},{"slider":"mglow_brightness","mode":"enable"},{"slider":"mglow_rgb_bands","mode":"enable"},
+		             {"slider":"mglow_coefficient","mode":"enable"},{"slider":"mglow_brightness","mode":"enable"},{"slider":"mglow_center_edge_diff","mode":"enable"},{"slider":"mglow_rgb_bands","mode":"enable"},
 		             {"slider":"bezel_glow_strength","mode":"enable"},{"slider":"monitor_bezel_reflection","mode":"enable"},
 		             {"slider":"convergence_global_gain","mode":"enable"},
 		             {"slider":"tube_face_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.98]]},{"slider":"vector_image_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.94]]}]},

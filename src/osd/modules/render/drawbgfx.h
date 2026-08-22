@@ -582,6 +582,7 @@ private:
 	// Last reported engage decision and window width, so the info-level notice in draw() fires on a
 	// real change instead of every present.
 	bool m_vec_window_notice_engaged = false;
+	bool m_vec_window_notice_blocked = false;   // reported "on but unavailable" already
 	double m_vec_window_notice_w = -1.0;
 	// -verbose accounting: one "BEAMWIN" line per pass reporting how many presents it received and
 	// how much of it was deposited. deposited < total is expected - the VGGO cadence and the present
