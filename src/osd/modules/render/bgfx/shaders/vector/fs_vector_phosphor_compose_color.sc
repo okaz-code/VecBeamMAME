@@ -17,8 +17,6 @@ uniform vec4 u_phos2;
 uniform vec4 u_phos_rgb;
 uniform vec4 u_np_gain;
 uniform vec4 u_line_channel_gain;
-uniform vec4 u_phos_debug;
-uniform vec4 u_phos_reset;
 uniform vec4 u_phos_peak;
 uniform vec4 u_phos_radiant;
 
@@ -167,29 +165,9 @@ void main()
 		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
 		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 
-	vec3 composed;
-	if (u_phos_debug.x > 0.5)
-	{
-		if (u_phos_debug.x < 1.5)
-			composed = pool.rgb;
-		else if (u_phos_debug.x < 2.5)
-			composed = vec3_splat(pool.a / max(u_phos.w, 1.0));
-		else if (u_phos_debug.x < 3.5)
-			composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
-		else if (u_phos_debug.x < 4.5)
-			composed = phos_combination_brightness(fresh);
-		else
-		{
-			float cur_energy = phos_radiant_energy(fresh);
-			composed = vec3_splat(step(max(u_phos_reset.x, 1e-6), cur_energy));
-		}
-	}
-	else
-	{
-		lit = max(lit, fresh);
-		lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
-		composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
-	}
+	lit = max(lit, fresh);
+	lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
+	vec3 composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
 
 	gl_FragColor = vec4(color_transform(composed), 1.0) * v_color0;
 }

@@ -71,26 +71,6 @@
       ]
     },
     {
-      "name": "u_phos_debug",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_phos_reset",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
       "name": "u_phos_peak",
       "type": "vec4",
       "values": [

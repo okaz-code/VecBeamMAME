@@ -41,13 +41,6 @@
       ]
     },
     {
-      "name": "s_glass_scatter",
-      "type": "int",
-      "values": [
-        3.0
-      ]
-    },
-    {
       "name": "s_bezel_source",
       "type": "int",
       "values": [
@@ -73,36 +66,6 @@
     },
     {
       "name": "u_vec_pincushion_x_quad",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_vec_pincushion_x_cubic",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_vec_pincushion_y_quad",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_vec_pincushion_y_cubic",
       "type": "vec4",
       "values": [
         0.0,
@@ -242,37 +205,7 @@
       ]
     },
     {
-      "name": "u_tube_cubic_distortion",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_tube_distort_corner",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
       "name": "u_tube_round_corner",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_tube_smooth_border",
       "type": "vec4",
       "values": [
         0.0,
@@ -352,16 +285,6 @@
       ]
     },
     {
-      "name": "u_bezel_glow_inside",
-      "type": "vec4",
-      "values": [
-        0.25,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
       "name": "u_bezel_long_reflection",
       "type": "vec4",
       "values": [
@@ -403,46 +326,6 @@
     },
     {
       "name": "u_glow_black_toe",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_smoked_glass_rgb",
-      "type": "vec4",
-      "values": [
-        62.0,
-        62.0,
-        62.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_smoked_glass_transmission",
-      "type": "vec4",
-      "values": [
-        100.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_glass_forward_scatter",
-      "type": "vec4",
-      "values": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_glass_surface_illumination",
       "type": "vec4",
       "values": [
         0.0,
