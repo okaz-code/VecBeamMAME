@@ -6389,13 +6389,15 @@ int renderer_bgfx::draw(int update)
 						mglow_energy += vstats.offscreen_energy[mb] * keep;
 					}
 				}
-				const float mglow_amount = mglow_energy * m_chains->slider_value(0, "mglow_coefficient", 0.0f);
-				// The 0.8 release smooths CONTENT changes (a bright object leaving the edge), but it
-				// must not smooth the CONTROL: with Monitor/Glass Sim switched off - or the
-				// coefficient at 0 - the glow has to go out now, not fade for half a second, or the
-				// toggle reads as having no effect.
+				const float mglow_gain = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
+				const float mglow_amount = mglow_energy * mglow_gain;
+				// The 0.8 release smooths CONTENT changes - the energy legitimately falls to zero
+				// whenever no beam is off-screen, and that is exactly what it is there for. It must
+				// not smooth the CONTROL: the coefficient reaching 0 is the user switching the glow
+				// off, and that has to take effect now rather than fade for half a second. So gate
+				// the hard cut on the gain, never on the amount.
 				if (m_vec_frame_advanced)
-					m_mglow_smoothed = (mglow_amount > 0.0f)
+					m_mglow_smoothed = (mglow_gain > 0.0f)
 							? std::max(mglow_amount, m_mglow_smoothed * 0.80f)
 							: 0.0f;
 				const float mglow_vals[4] = { m_mglow_smoothed, 0.0f, 0.0f, 0.0f };
