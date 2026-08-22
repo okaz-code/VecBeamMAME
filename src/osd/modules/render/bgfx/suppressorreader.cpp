@@ -58,8 +58,8 @@ bgfx_suppressor* suppressor_reader::read_from_value(const Value& value, const st
 	// current slider values via bgfx_slider::value() (always float, for every slider type including
 	// int/intenum) and memcmp()s them against this buffer. Storing raw ints here (as this reader
 	// originally did) meant any comparison against a non-zero value could never match - int 1 is
-	// 0x00000001 but float 1.0f is 0x3F800000 - so conditions like "color_saturation == 1.0" or
-	// "chroma_mode == 3" silently never suppressed their pass. Only zero survived (all-zero bit
+	// 0x00000001 but float 1.0f is 0x3F800000 - so conditions like "glow_wide_smooth == 1.0"
+	// silently never suppressed their pass. Only zero survived (all-zero bit
 	// pattern is shared by int 0 and float 0.0f), which is why every ==0 disablewhen worked.
 	float values[4];
 	if (slider_count > 1)

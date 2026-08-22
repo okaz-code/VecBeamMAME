@@ -82,7 +82,6 @@ extern void *GetOSWindow(void *wincontroller);
 #include <queue>
 #include <unordered_map>
 
-
 //============================================================
 //  Renderer interface to parent module
 //============================================================
@@ -215,20 +214,16 @@ private:
 	unsigned m_renderer_count;
 };
 
-
 inline renderer_bgfx::parent_module_holder::parent_module_holder(parent_module &parent)
 	: m_parent(parent)
 {
 	m_parent.renderer_created();
 }
 
-
 inline renderer_bgfx::parent_module_holder::~parent_module_holder()
 {
 	m_parent.renderer_destroyed();
 }
-
-
 
 //============================================================
 //  OSD MODULE
@@ -281,7 +276,6 @@ private:
 	bool m_bgfx_library_initialized;
 };
 
-
 //============================================================
 //  video_bgfx::init
 //============================================================
@@ -331,7 +325,6 @@ int video_bgfx::init(osd_interface &osd, osd_options const &options)
 	return 0;
 }
 
-
 //============================================================
 //  video_bgfx::exit
 //============================================================
@@ -351,7 +344,6 @@ void video_bgfx::exit()
 	m_persistent_settings.reset();
 	m_options = nullptr;
 }
-
 
 //============================================================
 //  video_bgfx::create
@@ -377,7 +369,6 @@ std::unique_ptr<osd_renderer> video_bgfx::create(osd_window &window)
 	return std::make_unique<renderer_bgfx>(window, static_cast<renderer_bgfx::parent_module &>(*this));
 }
 
-
 //============================================================
 //  video_bgfx::last_renderer_destroyed
 //============================================================
@@ -394,7 +385,6 @@ void video_bgfx::last_renderer_destroyed()
 	}
 }
 
-
 //============================================================
 //  video_bgfx::load_config
 //============================================================
@@ -405,7 +395,6 @@ void video_bgfx::load_config(config_type cfg_type, config_level cfg_level, util:
 		m_load_notifier(*parentnode);
 }
 
-
 //============================================================
 //  video_bgfx::save_config
 //============================================================
@@ -415,7 +404,6 @@ void video_bgfx::save_config(config_type cfg_type, util::xml::data_node *parentn
 	if (cfg_type == config_type::SYSTEM)
 		m_save_notifier(*parentnode);
 }
-
 
 #if defined(__APPLE__)
 static float detect_edr_current_headroom(void *nwh);
@@ -575,7 +563,6 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 
 	return true;
 }
-
 
 //============================================================
 //  HDR auto-config: display peak luminance resolution
@@ -1126,7 +1113,6 @@ void video_bgfx::update_edr_headroom(void *nwh)
 #endif
 }
 
-
 //============================================================
 //  Utility for setting up window handle
 //============================================================
@@ -1263,8 +1249,6 @@ bool video_bgfx::set_platform_data(bgfx::PlatformData &platform_data, osd_window
 
 MODULE_DEFINITION(RENDERER_BGFX, osd::video_bgfx)
 
-
-
 //============================================================
 //  CONSTANTS
 //============================================================
@@ -1274,16 +1258,12 @@ uint32_t const renderer_bgfx::PACKABLE_SIZE = 128;
 uint32_t const renderer_bgfx::WHITE_HASH = 0x87654321;
 char const *const renderer_bgfx::WINDOW_PREFIX = "Window 0, ";
 
-
-
 //============================================================
 //  MACROS
 //============================================================
 
 #define GIBBERISH       (0)
 #define SCENE_VIEW      (0)
-
-
 
 //============================================================
 //  STATICS
@@ -1294,8 +1274,6 @@ static uint32_t s_bgfx_frame_number = 0;
 uint32_t renderer_bgfx::s_current_view = 0;
 uint32_t renderer_bgfx::s_width[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t renderer_bgfx::s_height[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-
-
 
 //============================================================
 //  helper for getting native platform window
@@ -1363,7 +1341,6 @@ static std::pair<void *, bool> sdlNativeWindowHandle(SDL_Window *window)
 #endif
 #endif // OSD_SDL
 
-
 void *renderer_bgfx::native_window_handle() const
 {
 #if defined(OSD_WINDOWS)
@@ -1376,8 +1353,6 @@ void *renderer_bgfx::native_window_handle() const
 	return nullptr;
 #endif
 }
-
-
 
 //============================================================
 //  renderer_bgfx - constructor
@@ -1416,8 +1391,6 @@ renderer_bgfx::renderer_bgfx(osd_window &window, parent_module &parent)
 	}
 }
 
-
-
 //============================================================
 //  renderer_bgfx - destructor
 //============================================================
@@ -1453,8 +1426,6 @@ renderer_bgfx::~renderer_bgfx()
 	}
 	m_vec_fb_w = m_vec_fb_h = 0;
 	m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
-	destroy_hdr_diagnostics();
-	window().machine().ui().set_hdr_diagnostic_text(std::string());
 
 	bgfx::reset(0, 0, BGFX_RESET_NONE);
 
@@ -1472,8 +1443,6 @@ renderer_bgfx::~renderer_bgfx()
 		delete m_avi_view;
 	}
 }
-
-
 
 //============================================================
 //  renderer_bgfx::create
@@ -1607,8 +1576,6 @@ int renderer_bgfx::create()
 
 	return 0;
 }
-
-
 
 //============================================================
 //  renderer_bgfx::record
@@ -2226,7 +2193,7 @@ int renderer_bgfx::simulate_deflection(float sx, float sy, float ex, float ey, d
 
 // Symmetric S-curve / sigmoid mapping of a 0..1 value about a pivot c. g>0 = sigmoid (push values away
 // from c toward 0/1 -> sharper, snappier transition); g<0 = inverse-S (ease around c); g=0 = identity.
-// k = 2^g. Shared by the brightness/width curves and the overload_gain shaping.
+// k = 2^g. Shared by the brightness and width curves.
 static float vec_scurve(float x, float g, float c)
 {
 	if (g == 0.0f) return x;
@@ -2257,7 +2224,6 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "beam_width_overmax", &renderer_bgfx::vec_slider_cache::beam_width_overmax, 4.0f },
 	{ "phosphor_rgb_combination_width", &renderer_bgfx::vec_slider_cache::phosphor_rgb_combination_width, 0.0f },
 	{ "bezel_long_threshold", &renderer_bgfx::vec_slider_cache::bezel_long_threshold, 160.0f },
-	{ "bright_curve", &renderer_bgfx::vec_slider_cache::bright_curve, 1.0f },
 	{ "bright_normal_cap", &renderer_bgfx::vec_slider_cache::bright_normal_cap, 1.0f },
 	{ "bright_sigmoid", &renderer_bgfx::vec_slider_cache::bright_sigmoid, 0.0f },
 	{ "bright_sigmoid_center", &renderer_bgfx::vec_slider_cache::bright_sigmoid_center, 0.5f },
@@ -2283,12 +2249,9 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_dot_max", &renderer_bgfx::vec_slider_cache::energy_dot_max, 3.2f },
 	{ "energy_dot_ref", &renderer_bgfx::vec_slider_cache::energy_dot_ref, 30.0f },
 	{ "energy_dwell_cap", &renderer_bgfx::vec_slider_cache::energy_dwell_cap, 16.0f },
-	{ "energy_density", &renderer_bgfx::vec_slider_cache::energy_density, 0.0f },
-	{ "energy_dot_density", &renderer_bgfx::vec_slider_cache::energy_dot_density, 1.0f },
 	{ "energy_infl", &renderer_bgfx::vec_slider_cache::energy_infl, 0.6f },
 	{ "energy_line_max", &renderer_bgfx::vec_slider_cache::energy_line_max, 4.0f },
 	{ "energy_model", &renderer_bgfx::vec_slider_cache::energy_model, 0.0f },
-	{ "scan_variation", &renderer_bgfx::vec_slider_cache::scan_variation, 0.0f },
 	{ "energy_obj_knee", &renderer_bgfx::vec_slider_cache::energy_obj_knee, 0.75f },
 	{ "energy_obj_lift", &renderer_bgfx::vec_slider_cache::energy_obj_lift, 0.0f },
 	{ "energy_obj_max", &renderer_bgfx::vec_slider_cache::energy_obj_max, 3.0f },
@@ -2306,7 +2269,6 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "mask_overdrive_flare", &renderer_bgfx::vec_slider_cache::mask_overdrive_flare, 0.0f },
 	{ "line_cap_brightness", &renderer_bgfx::vec_slider_cache::line_cap_brightness, 1.0f },
 	{ "line_cap_intensity_curve", &renderer_bgfx::vec_slider_cache::line_cap_intensity_curve, 0.0f },
-	{ "line_cap_junction_suppress", &renderer_bgfx::vec_slider_cache::line_cap_junction_suppress, 0.0f },
 	{ "line_cap_mode", &renderer_bgfx::vec_slider_cache::line_cap_mode, 0.0f },
 	{ "line_cap_min_size", &renderer_bgfx::vec_slider_cache::line_cap_min_size, 0.0f },
 	{ "line_cap_size", &renderer_bgfx::vec_slider_cache::line_cap_size, 2.0f },
@@ -2316,13 +2278,10 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "line_cap_transition", &renderer_bgfx::vec_slider_cache::line_cap_transition, 8.0f },
 	{ "line_cap_curve", &renderer_bgfx::vec_slider_cache::line_cap_curve, 1.5f },
 	{ "line_point_threshold", &renderer_bgfx::vec_slider_cache::line_point_threshold, 2.0f },
-	{ "linear_color", &renderer_bgfx::vec_slider_cache::linear_color, 0.0f },
 	{ "overdrive_core", &renderer_bgfx::vec_slider_cache::overdrive_core, 0.0f },
 	{ "overdrive_sat_curve", &renderer_bgfx::vec_slider_cache::overdrive_sat_curve, 1.0f },
 	{ "overload_bloom", &renderer_bgfx::vec_slider_cache::overload_bloom, 0.0f },
 	{ "overload_dot_gain", &renderer_bgfx::vec_slider_cache::overload_dot_gain, 1.0f },
-	{ "overload_gain", &renderer_bgfx::vec_slider_cache::overload_gain, 0.0f },
-	{ "overload_gain_center", &renderer_bgfx::vec_slider_cache::overload_gain_center, 0.5f },
 	{ "overload_glow_gain", &renderer_bgfx::vec_slider_cache::overload_glow_gain, 0.0f },
 	{ "overload_glow_width", &renderer_bgfx::vec_slider_cache::overload_glow_width, 40.0f },
 	{ "overload_max", &renderer_bgfx::vec_slider_cache::overload_max, 0.0f },
@@ -2448,39 +2407,6 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 		emax = std::max(1.0f, m_vs.energy_line_max);
 	}
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
-}
-
-// Speed/dwell density as a MODULATION of a device-supplied beam current (see the header). Unlike
-// generic_beam_energy, which has to carry the whole brightness scale because nothing supplied a
-// current, this is normalised to exactly 1.0 at the reference speed/dwell: the level stays where the
-// chain calibrated it and only the sweep-dependent part moves.
-float renderer_bgfx::beam_density_factor(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms) const
-{
-	if (m_vs.energy_model <= 0.0f || !(prim->t0 >= 0.0 && prim->t1 > prim->t0))
-		return 1.0f;
-	const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
-	double s, lo, hi;
-	if (as_point)
-	{
-		const double x  = (dt_ms * 1000.0) / std::max(1.0, double(m_vs.energy_dot_ref));   // dwell us / ref us
-		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_dot_curve)));
-		s  = xg / (xg + 1.0);
-		hi = std::max(1.0f, m_vs.energy_dot_max);
-		lo = 1.0;                                  // boost only; z_rise_tau owns the short-dwell side
-	}
-	else
-	{
-		const double v  = (stroke_px_per_ms >= 0.0f)
-				? double(stroke_px_per_ms) / std::max(1.0f, screen_ref)
-				: (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);
-		const double x  = double(std::max(0.01f, m_vs.energy_speed_norm)) / std::max(1e-6, v);
-		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_curve)));
-		s  = xg / (xg + 1.0);
-		hi = std::max(1.0f, m_vs.energy_line_max);
-		lo = 1.0 / hi;
-	}
-	// s is exactly 0.5 at the reference, so 2s is the factor normalised to 1.0 there.
-	return float(std::clamp(2.0 * s, lo, hi));
 }
 
 // Port of the Vectrex driver's object_boost() (see vectrex_v.cpp): beam_energy *= 1..energy_obj_max
@@ -2895,8 +2821,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	return true;
 }
 
-
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float deposit_scale, float aux_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float aux_scale)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -2975,21 +2900,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			: float(std::max(s_width[window().index()], s_height[window().index()]));
 	float n = (prim->beam_energy >= 0.0f) ? prim->beam_energy
 										  : generic_beam_energy(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
-	// A device-supplied beam_energy is a CURRENT; the sweep-dependent part is TIME (energy = current x
-	// time). Compose them here instead of letting one replace the other: the density factor is
-	// normalised to 1.0 at the reference speed/dwell, so energy_density 0 leaves the commanded current
-	// untouched and the calibrated level never moves. This is what lets one calibration serve every
-	// title - the current carries the absolute scale, the density only modulates it. Sources that
-	// supply no current keep the legacy generic_beam_energy path above (energy_infl unchanged).
-	if (prim->beam_energy >= 0.0f)
-	{
-		const float dens_infl = std::clamp(as_point ? m_vs.energy_dot_density : m_vs.energy_density, 0.0f, 1.0f);
-		if (dens_infl > 0.0f)
-		{
-			const float dens = beam_density_factor(prim, seg_len, as_point, e_screen_ref, stroke_px_per_ms);
-			n *= (dens_infl >= 1.0f) ? dens : powf(dens, dens_infl);
-		}
-	}
 	// Same-spot dwell cap (energy_dwell_cap pre-pass in draw()): a run of dots deposited on ONE spot
 	// piles energy up only to the cap - the later dots' MODEL-DERIVED energy is scaled down by the
 	// pre-computed factor. Applies only when the renderer derived n itself (beam_energy < 0); a
@@ -3068,11 +2978,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		if (wocurve != 1.0f && above > 0.0f && w_overmax > 0.0f) above = powf(above / w_overmax, wocurve) * w_overmax;
 		const float knee  = std::clamp(m_vs.width_knee, 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
-		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
-		// energy->brightness response (>1 = darker mids / later rise to peak, <1 = brighter mids);
-		// width_curve bends the energy->width response the same way. 1.0 = linear (unchanged).
-		const float bcurve = m_vs.bright_curve;
-		if (bcurve != 1.0f) display_a = powf(std::clamp(display_a, 0.0f, 1.0f), bcurve);
+		// width_curve bends the energy->width response (>1 = thinner mids / later growth to max,
+		// <1 = thicker mids). 1.0 = linear (unchanged).
 		const float wcurve = m_vs.width_curve;
 		// Shape ONLY the min->max transition (wf in [0,1]); leave the >1 region (energy past the
 		// threshold, where the beam grows beyond beam_width_max) linear. pow keeps 0->0 and 1->1, so
@@ -3217,12 +3124,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float ocurve = m_vs.intensity_overdrive_curve;
 			float shaped = (ot <= 1.0f) ? ((ocurve == 1.0f) ? ot : powf(ot, ocurve))
 										: (1.0f + (ot - 1.0f));   // linear growth past peak
-			// overload gain: sigmoid/logit shaping of the in-range overload about a movable centre
-			// (0 = identity). The >1 (past-ref) part keeps its linear growth.
-			const float og = m_vs.overload_gain;
-			if (og != 0.0f)
-				shaped = vec_scurve(std::min(shaped, 1.0f), og,
-						m_vs.overload_gain_center) + std::max(0.0f, shaped - 1.0f);
 			line_over = ov_gain * shaped;
 			// Cap the overdrive multiplier: dwell points reach several x peak energy, and uncapped the
 			// (1+z) deposit would land tens of x peak in the float FBO - the phosphor pool then holds that
@@ -3239,19 +3140,6 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// overrange multiplies the core deposit itself into the float FBO, where it feeds the phosphor
 	// pool and the bloom cascade like any other light. 0 = off (flare-only, prior behaviour).
 	float core_over = line_over * std::clamp(m_vs.overdrive_core, 0.0f, 1.0f);
-	// Colour-linear brightness (3D imager / colour sources): wheel-segment colour composition encodes
-	// the hue in the per-pass INTENSITY RATIOS, and the two-regime transfer erases them for bright
-	// objects - display_a saturates at T, so every channel of a bright ship deposits at 1.0 and the
-	// ship turns WHITE. At 1.0 the deposit is LINEAR in the beam energy instead (min(n,1) in the
-	// 8-bit alpha, the remainder in the (1+z) overrange - the float FBO / pool / present roll-off
-	// carry it), preserving channel ratios at any brightness. 0 = mono two-regime (unchanged).
-	const float lin_col = std::clamp(m_vs.linear_color, 0.0f, 1.0f);
-	if (lin_col > 0.0f)
-	{
-		display_a = display_a + lin_col * (std::min(n, 1.0f) - display_a);
-		core_over = core_over + lin_col * (std::max(n - 1.0f, 0.0f) - core_over);
-	}
-
 	// The legacy length-fade (vector_length_scale/ratio), dot_boost and dwell_* brightness knobs
 	// are gone - the unified energy model (speed / dwell derived from the per-segment timestamps)
 	// covers all three.
@@ -3320,16 +3208,16 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * deposit_scale * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * deposit_scale * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * deposit_scale * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(core_alpha * 255.0f + 0.5f));
 
 	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
 	// patterned by the mask). White, peak proportional to the overdrive; peak > 1 is carried in z (the
 	// shader multiplies the deposit by 1+z) exactly like the body overrange. flare_on gates the slot.
 	const bool  flare_on   = (line_over > 0.0f);
-	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor * deposit_scale * aux_scale;
+	const float flare_peak = std::clamp(display_a, 0.0f, 1.0f) * line_over * length_factor * aux_scale;
 	const float flare_z    = std::max(0.0f, flare_peak - 1.0f);
 	// Flare colour = the beam's own hue at full strength, NOT fixed white: the 3D imager (and any
 	// colour source) puts a colour filter in front of the whole tube, so even the white-hot overload
@@ -3526,7 +3414,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	// around 1.0 behaved like an on/off switch for AVG vectors and made the source hard to tune.
 	const float g_mag = glow_str * g_bI;
 	const float g_peak  = std::max(std::max(std::max(prim->color.r, prim->color.g), prim->color.b), 1e-4f);
-	const float g_scale = g_mag * deposit_scale * aux_scale / g_peak;
+	const float g_scale = g_mag * aux_scale / g_peak;
 	const uint32_t glow_rgba = u32Color(
 		std::min<uint32_t>(uint32_t(prim->color.r * g_scale * 255.0f + 0.5f), 255),
 		std::min<uint32_t>(uint32_t(prim->color.g * g_scale * 255.0f + 0.5f), 255),
@@ -3623,9 +3511,9 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			const float da = std::clamp(display_a, 0.0f, 1.0f);
 			auto ring_color = [&](float strength) -> uint32_t {
 				return u32Color(
-					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
-					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * deposit_scale * aux_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.r * length_factor * aux_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.g * length_factor * aux_scale * strength * 255.0f + 0.5f), 255),
+					std::min<uint32_t>(uint32_t(prim->color.b * length_factor * aux_scale * strength * 255.0f + 0.5f), 255),
 					std::min<uint32_t>(uint32_t(da * 255.0f + 0.5f), 255));
 			};
 			const float optical_gain_comp = (!m_optical_separate && m_vs.glow_narrow > 1e-4f)
@@ -3769,7 +3657,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						// back up. Encode the desired deposit as byte x (1+z) instead: faint targets use
 						// z = 0 with a sub-0.5 byte (down to 1/255 x glow weight), bright ones a fixed
 						// 0.5 byte with z carrying the rest.
-						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp * deposit_scale * aux_scale;
+						const float want = ray_gain * heat * seg_g[sj] * ray_gain_comp * aux_scale;
 						const float sstr = std::min(want, 0.5f);
 						const float szz  = (want > 0.5f) ? (want * 2.0f - 1.0f) : 0.0f;
 						const uint32_t srgba = ray_color(sstr);
@@ -4028,11 +3916,8 @@ void renderer_bgfx::put_solid_line(render_primitive *prim, ScreenVertex* vertex)
 		if (wocurve != 1.0f && above > 0.0f && w_overmax > 0.0f) above = powf(above / w_overmax, wocurve) * w_overmax;
 		const float knee  = std::clamp(m_vs.width_knee, 0.0f, 1.0f);
 		wf = knee * below + (1.0f - knee) * above;                          // gentle below T, steep above (unbounded)
-		// Optional shaping curves (powers) on top of the linear ramps: bright_curve bends the
-		// energy->brightness response (>1 = darker mids / later rise to peak, <1 = brighter mids);
-		// width_curve bends the energy->width response the same way. 1.0 = linear (unchanged).
-		const float bcurve = m_vs.bright_curve;
-		if (bcurve != 1.0f) display_a = powf(std::clamp(display_a, 0.0f, 1.0f), bcurve);
+		// width_curve bends the energy->width response (>1 = thinner mids / later growth to max,
+		// <1 = thicker mids). 1.0 = linear (unchanged).
 		const float wcurve = m_vs.width_curve;
 		// Shape ONLY the min->max transition (wf in [0,1]); leave the >1 region (energy past the
 		// threshold, where the beam grows beyond beam_width_max) linear. pow keeps 0->0 and 1->1, so
@@ -4675,10 +4560,11 @@ int renderer_bgfx::draw(int update)
 				: m_vec_frame_advanced);
 		m_vec_deposited_source = deposit_vector_source;
 
-
 		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
-			// all vector lines; cached for source-free re-presents (VECTORBUF owns the FBO path)
+		// Untimed vectors hold no position in the sweep, so the beam time window's accounting
+		// (m_vec_window_log_*) subtracts them out.
 		int untimed_vector_count = 0;
+			// all vector lines; cached for source-free re-presents (VECTORBUF owns the FBO path)
 		int visible_count = 0;  // lines drawn this frame (full-frame: every vector line)
 		// Lines and points feeding the POST-POOL routes this present (glow, optical, no-persist,
 		// starburst rays). Equal to visible_count unless the beam time window is active, where the
@@ -5000,46 +4886,6 @@ int renderer_bgfx::draw(int update)
 			m_vec_time_ms = vstats.playback_active
 			? vstats.playback_time_ms : window().machine().time().as_double() * 1000.0;
 
-			// Untimed display-list arrival fallback. Approximate constant deflection speed with cumulative
-			// segment length (including a one-pixel/dot-width floor), then attenuate each primitive at its
-			// temporal midpoint. scan_variation is an intuitive 0..100% strength: 25% is approximately the
-			// subtle #15692 response (oldest light ~0.89), while the cubic term makes the upper range useful
-			// for pronounced tuning (oldest light ~0.25 at 100%). This final-deposit scale never changes
-			// energy, width or overload decisions.
-			m_scan_attenuation.clear();
-			if (m_line_analytic && m_vs.scan_variation > 0.0f && untimed_vector_count > 1)
-			{
-				double total_scan_length = 0.0;
-				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
-				{
-					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags)
-						|| (p->t0 >= 0.0 && p->t1 > p->t0))
-						continue;
-					const double dx = p->bounds.x1 - p->bounds.x0, dy = p->bounds.y1 - p->bounds.y0;
-					total_scan_length += std::max(std::hypot(dx, dy), std::max(double(p->width), 1.0));
-				}
-				if (total_scan_length > 1.0e-9)
-				{
-					m_scan_attenuation.reserve(size_t(untimed_vector_count));
-					const float strength = std::clamp(m_vs.scan_variation * 0.01f, 0.0f, 1.0f);
-					const float dimming = 0.4f * strength + 0.35f * strength * strength * strength;
-					const float oldest_scale = 1.0f - dimming;
-					double elapsed_scan_length = 0.0;
-					for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
-					{
-						if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags)
-							|| (p->t0 >= 0.0 && p->t1 > p->t0))
-							continue;
-						const double dx = p->bounds.x1 - p->bounds.x0, dy = p->bounds.y1 - p->bounds.y0;
-						const double length = std::max(std::hypot(dx, dy), std::max(double(p->width), 1.0));
-						const float arrival = float((elapsed_scan_length + 0.5 * length) / total_scan_length);
-						const float age = 1.0f - std::clamp(arrival, 0.0f, 1.0f);
-						m_scan_attenuation.emplace(p, std::pow(oldest_scale, age));
-						elapsed_scan_length += length;
-					}
-				}
-			}
-
 			// Whole-stroke energy pre-pass (renderer-side counterparts of the Vectrex driver model's
 			// two list-order behaviours; only meaningful for MODEL-DERIVED energy, so both gate on
 			// energy_model, and both walk the FULL list including flicker-excluded vectors - exclusion
@@ -5174,15 +5020,6 @@ int renderer_bgfx::draw(int update)
 			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
 			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
 			const int cap_mode = m_line_analytic ? int(std::lround(m_vs.line_cap_mode)) : 0;
-			const float junction_suppress = std::clamp(m_vs.line_cap_junction_suppress, 0.0f, 1.0f);
-			const bool junction_on = cap_mode == 1 && junction_suppress > 0.0f;
-			struct cap_segment
-			{
-				render_primitive *prim;
-				float x0, y0, x1, y1, dx, dy, len2;
-				bool crowded0 = false, crowded1 = false;
-			};
-			std::vector<cap_segment> cap_segments;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> round_terminus;
 			if (deposit_vector_source && m_line_analytic)
@@ -5202,8 +5039,6 @@ int renderer_bgfx::draw(int update)
 					const float ndx = ddx / len, ndy = ddy / len;
 					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
 					round_terminus.emplace(p, std::make_pair(1.0f, 1.0f));
-					if (junction_on)
-						cap_segments.push_back({ p, p->bounds.x0, p->bounds.y0, p->bounds.x1, p->bounds.y1, ddx, ddy, len * len });
 					if (pv != nullptr)
 					{
 						const float gx = p->bounds.x0 - pv->bounds.x1;
@@ -5223,160 +5058,6 @@ int renderer_bgfx::draw(int update)
 				}
 			}
 
-			// A T junction receives the horizontal body plus the terminating line's 50% axial end and its
-			// blanking-transition cap. Keep the physically useful body overlap, but attenuate only that cap
-			// when an endpoint lands on the interior of a non-parallel vector. A small spatial grid avoids
-			// an O(N^2) scan in text-heavy scenes.
-			if (junction_on && cap_segments.size() > 1)
-			{
-				// Fine cells sharply reduce the candidate count in vector-dense radial
-				// frames.  Keep the coarser grid for ordinary scenes, where constructing
-				// a large mostly-empty grid would cost more than the saved comparisons.
-				const float CELL = cap_segments.size() >= 512 ? 8.0f : 32.0f;
-				const float tol = std::max(0.75f, vec_res_scale());
-				const float tol2 = tol * tol;
-				auto cell_key = [](int x, int y) -> uint64_t
-				{
-					return (uint64_t(uint32_t(x)) << 32) | uint32_t(y);
-				};
-				// A radial event can place thousands of segment endpoints on the exact same
-				// centre pixel.  Such a point cannot be a simple T junction: every candidate
-				// in the hot centre bucket is rejected as another endpoint.  Mark these
-				// high-degree shared vertices once so suppress_at does not repeat that
-				// fruitless O(N^2) bucket walk for every radial segment.
-				if (cap_segments.size() >= 64)
-				{
-					std::unordered_map<uint64_t, uint16_t> endpoint_degree;
-					endpoint_degree.reserve(cap_segments.size());
-					auto endpoint_key = [&](float x, float y) -> uint64_t
-					{
-						return cell_key(int(std::lround(x)), int(std::lround(y)));
-					};
-					for (const cap_segment &seg : cap_segments)
-					{
-						uint16_t &degree0 = endpoint_degree[endpoint_key(seg.x0, seg.y0)];
-						if (degree0 != std::numeric_limits<uint16_t>::max())
-							degree0++;
-						uint16_t &degree1 = endpoint_degree[endpoint_key(seg.x1, seg.y1)];
-						if (degree1 != std::numeric_limits<uint16_t>::max())
-							degree1++;
-					}
-					constexpr uint16_t CROWDED_VERTEX_DEGREE = 8;
-					for (cap_segment &seg : cap_segments)
-					{
-						seg.crowded0 = endpoint_degree[endpoint_key(seg.x0, seg.y0)] >= CROWDED_VERTEX_DEGREE;
-						seg.crowded1 = endpoint_degree[endpoint_key(seg.x1, seg.y1)] >= CROWDED_VERTEX_DEGREE;
-					}
-				}
-				int min_cell_x = std::numeric_limits<int>::max();
-				int min_cell_y = std::numeric_limits<int>::max();
-				int max_cell_x = std::numeric_limits<int>::min();
-				int max_cell_y = std::numeric_limits<int>::min();
-				for (const cap_segment &seg : cap_segments)
-				{
-					const int x0 = int(std::floor(seg.x0 / CELL));
-					const int y0 = int(std::floor(seg.y0 / CELL));
-					const int x1 = int(std::floor(seg.x1 / CELL));
-					const int y1 = int(std::floor(seg.y1 / CELL));
-					min_cell_x = std::min(min_cell_x, std::min(x0, x1));
-					min_cell_y = std::min(min_cell_y, std::min(y0, y1));
-					max_cell_x = std::max(max_cell_x, std::max(x0, x1));
-					max_cell_y = std::max(max_cell_y, std::max(y0, y1));
-				}
-				const int grid_width = max_cell_x - min_cell_x + 1;
-				const int grid_height = max_cell_y - min_cell_y + 1;
-				std::vector<std::vector<uint32_t>> cap_grid(size_t(grid_width) * size_t(grid_height));
-				auto grid_index = [&](int x, int y) -> size_t
-				{
-					return size_t(y - min_cell_y) * size_t(grid_width) + size_t(x - min_cell_x);
-				};
-				for (uint32_t i = 0; i < cap_segments.size(); i++)
-				{
-					const cap_segment &seg = cap_segments[i];
-					// Index only cells traversed by the segment centreline. The old AABB fill
-					// registered every cell in a diagonal line's bounding rectangle, making a
-					// dense radial event (the Death Star explosion) approach O(N^2) candidate
-					// work even though almost all candidates were geometrically unrelated.
-					// Endpoint lookup already searches a 3x3 neighbourhood and the final exact
-					// distance test uses tol, so centreline cells retain the same result.
-					const int cell_x0 = int(std::floor(seg.x0 / CELL));
-					const int cell_y0 = int(std::floor(seg.y0 / CELL));
-					const int cell_x1 = int(std::floor(seg.x1 / CELL));
-					const int cell_y1 = int(std::floor(seg.y1 / CELL));
-					const int steps = std::max(std::abs(cell_x1 - cell_x0), std::abs(cell_y1 - cell_y0));
-					uint64_t previous = std::numeric_limits<uint64_t>::max();
-					for (int step = 0; step <= steps; ++step)
-					{
-						const float t = steps ? float(step) / float(steps) : 0.0f;
-						const int cx = int(std::floor((seg.x0 + (seg.x1 - seg.x0) * t) / CELL));
-						const int cy = int(std::floor((seg.y0 + (seg.y1 - seg.y0) * t) / CELL));
-						const uint64_t key = cell_key(cx, cy);
-						if (key != previous)
-						{
-							cap_grid[grid_index(cx, cy)].push_back(i);
-							previous = key;
-						}
-					}
-				}
-				auto suppress_at = [&](const cap_segment &self, float x, float y, float &boost)
-				{
-					const int cell_x = int(std::floor(x / CELL));
-					const int cell_y = int(std::floor(y / CELL));
-					for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++)
-					{
-						const int query_x = cell_x + ox;
-						const int query_y = cell_y + oy;
-						if (query_x < min_cell_x || query_x > max_cell_x
-							|| query_y < min_cell_y || query_y > max_cell_y)
-							continue;
-						const std::vector<uint32_t> &bucket = cap_grid[grid_index(query_x, query_y)];
-						for (uint32_t index : bucket)
-						{
-							const cap_segment &other = cap_segments[index];
-							if (other.prim == self.prim || other.len2 <= 1e-6f)
-								continue;
-							// Dense radial events have thousands of segments sharing the same centre.
-							// They are endpoint joins, never T junctions. Reject them before the angle
-							// and projection work instead of discovering that after several divides/sqrts.
-							const float oe0x = x - other.x0, oe0y = y - other.y0;
-							const float oe1x = x - other.x1, oe1y = y - other.y1;
-							if (oe0x * oe0x + oe0y * oe0y <= tol2
-								|| oe1x * oe1x + oe1y * oe1y <= tol2)
-								continue;
-							const float cross = self.dx * other.dy - self.dy * other.dx;
-							if (cross * cross < 0.04f * self.len2 * other.len2)
-								continue; // collinear joins and retraces retain their normal blanking cap
-							const float t = ((x - other.x0) * other.dx + (y - other.y0) * other.dy) / other.len2;
-							if (t <= 0.0f || t >= 1.0f)
-								continue;
-							const float end_t = 1.0f - t;
-							if ((t <= 0.25f && t * t * other.len2 <= tol2)
-								|| (end_t <= 0.25f && end_t * end_t * other.len2 <= tol2))
-								continue; // shared endpoints are handled by the existing consecutive-line logic
-							const float qx = other.x0 + t * other.dx, qy = other.y0 + t * other.dy;
-							const float ex = x - qx, ey = y - qy;
-							if (ex * ex + ey * ey <= tol2)
-							{
-								boost *= 1.0f - junction_suppress;
-								return;
-							}
-						}
-					}
-				};
-				for (const cap_segment &seg : cap_segments)
-				{
-					auto boost = vtx_boost.find(seg.prim);
-					if (boost == vtx_boost.end())
-						continue;
-					// Connected consecutive vectors already have a zero cap.  Suppressing
-					// that cap cannot change the result, so avoid an otherwise expensive
-					// spatial query.  Dense AVG frames have roughly 90% zero-cap endpoints.
-					if (!seg.crowded0 && boost->second.first > 0.0f)
-						suppress_at(seg, seg.x0, seg.y0, boost->second.first);
-					if (!seg.crowded1 && boost->second.second > 0.0f)
-						suppress_at(seg, seg.x1, seg.y1, boost->second.second);
-				}
-			}
 			vector_perf_cap_end = bx::getHPCounter();
 			if (deposit_vector_source)
 				m_vector_perf_cap_ms = double(vector_perf_cap_end - vector_perf_energy_end)
@@ -6086,14 +5767,11 @@ int renderer_bgfx::draw(int update)
 										auto dit = m_dwell_scale.find(vprim);
 										if (dit != m_dwell_scale.end()) dsc = dit->second;
 									}
-									float scan_scale = 1.0f;
-									auto ait = m_scan_attenuation.find(vprim);
-									if (ait != m_scan_attenuation.end()) scan_scale = ait->second;
 									// An aux-only vector writes its body geometry into the scratch slot, which
 									// the draw call's explicit vertex count leaves out.
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
 											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, scan_scale, window_aux_ramp);
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, window_aux_ramp);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -6791,7 +6469,6 @@ int renderer_bgfx::draw(int update)
 		}
 	}
 
-
 	// Force-allocate m_ortho_view (the UI view) at a late index.
 	// Without this, when every primitive in the frame is skipped as VECTOR/VECTORBUF, the lazy
 	// allocation inside buffer_primitives never runs, m_ortho_view stays null, and the later
@@ -6886,17 +6563,8 @@ int renderer_bgfx::draw(int update)
 			}
 			}
 
-			// EDR-only SDR-content level: under macOS EDR the UI/artwork white is anchored to 1.0 =
-			// the display's SDR reference white (= the brightness setting), which can read much
-			// brighter than Windows HDR10's fixed paper_white nits. paper_white only moves the vector
-			// (beam_peak/paper_white) because the UI cancels to paper_white/paper_white = 1.0. This
-			// knob seeds the SDR-anchored content (UI + artwork blends) below paper_white so it
-			// presents at < 1.0 on EDR, dimming it relative to the HDR vectors without touching their
-			// brightness. Windows/SDR keep the factor at 1.0 (no change). Multiply blend stays a unit
-			// ratio.
-			const float edr_ui = s_bgfx_edr_active ? m_chains->slider_value(0, "edr_sdr_level", 1.0f) : 1.0f;
 			const float room_ambient = std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
-			m_hdr_ui_nits_scale = paper_white * edr_ui;
+			m_hdr_ui_nits_scale = paper_white;
 			m_hdr_art_nits_scale = m_hdr_ui_nits_scale * room_ambient;
 			// Set the per-frame nits scale on the HDR gui effects (multiply stays a unit ratio).
 			for (int b = 0; b < 4; b++)
@@ -7034,15 +6702,6 @@ int renderer_bgfx::draw(int update)
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
 			}
-			// Phosphor gamut blend: push the Rec.709 primaries toward the P22
-			// phosphor chromaticities in the Rec.2020 container. 0 = off (exact 709 -> 2020).
-			bgfx_uniform *pg = m_hdr_present_effect->uniform("u_phosphor_gamut");
-			if (pg)
-			{
-				float pgv[4] = { m_chains->slider_value(0, "phosphor_gamut", 0.0f), 0.0f, 0.0f, 0.0f };
-				pg->set(pgv, sizeof(float) * 4);
-				pg->upload();
-			}
 			// Hue-preserving highlight roll-off (knee / max as multiples of beam_peak). Caps over-bright
 			// additive crossings while keeping chromaticity, so a blue line crossing stays blue instead of
 			// the panel desaturating it to purple. max <= knee disables. Defaults leave a single full line
@@ -7127,8 +6786,6 @@ int renderer_bgfx::draw(int update)
 			}
 		}
 	}
-
-	update_hdr_diagnostics();
 
 	// The blit block was moved before buffer_primitives (see above); nothing to do here.
 	// The UI was already submitted to m_ortho_view (the late view) inside buffer_primitives.
@@ -7238,218 +6895,7 @@ int renderer_bgfx::draw(int update)
 		}
 	}
 
-
 	return 0;
-}
-
-namespace {
-
-float decode_r11g11b10_channel(uint32_t bits, int mantissa_bits)
-{
-	const uint32_t mantissa_mask = (1U << mantissa_bits) - 1U;
-	const uint32_t mantissa = bits & mantissa_mask;
-	const uint32_t exponent = (bits >> mantissa_bits) & 0x1fU;
-	if (exponent == 0U)
-		return std::ldexp(float(mantissa), 1 - 15 - mantissa_bits);
-	if (exponent == 0x1fU)
-		return mantissa ? 0.0f : std::numeric_limits<float>::infinity();
-	return std::ldexp(1.0f + float(mantissa) / float(1U << mantissa_bits), int(exponent) - 15);
-}
-
-} // anonymous namespace
-
-void renderer_bgfx::destroy_hdr_diagnostics()
-{
-	if (bgfx::isValid(m_hdr_diag_texture))
-		bgfx::destroy(m_hdr_diag_texture);
-	m_hdr_diag_texture = BGFX_INVALID_HANDLE;
-	m_hdr_diag_pixels.clear();
-	m_hdr_diag_w = m_hdr_diag_h = 0;
-	m_hdr_diag_ready_frame = 0;
-	m_hdr_diag_sample_counter = 0;
-	m_hdr_diag_pending = false;
-}
-
-void renderer_bgfx::process_hdr_diagnostics()
-{
-	if (!m_hdr_diag_pending || s_bgfx_frame_number < m_hdr_diag_ready_frame)
-		return;
-	m_hdr_diag_pending = false;
-
-	const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
-	float rolloff_knee = m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f) * beam_peak;
-	float rolloff_ceil = m_chains->slider_value(0, "hdr_rolloff_max", 1.3f) * beam_peak;
-	const float sat_protect = m_chains->slider_value(0, "hdr_sat_protect", 0.0f);
-	const float edr_reference = m_module().edr_reference_white_nits();
-	const float headroom = s_bgfx_edr_active
-		? m_module().edr_headroom()
-		: 0.0f;
-	if (s_bgfx_edr_active && headroom > 0.0f)
-	{
-		rolloff_ceil = std::min(rolloff_ceil, headroom * edr_reference);
-		rolloff_knee = std::min(rolloff_knee, rolloff_ceil * 0.85f);
-	}
-	float display_peak = m_module().hdr_display_peak_is_absolute()
-		? m_module().hdr_display_peak_nits()
-		: m_module().hdr_calibration_peak_nits();
-	if (s_bgfx_edr_active && !m_module().hdr_display_peak_is_absolute() && headroom > 0.0f)
-		display_peak = headroom * edr_reference;
-	if (display_peak <= 0.0f)
-		display_peak = rolloff_ceil;
-	const float hot_threshold = 0.8f * display_peak;
-
-	float pre_peak = 0.0f;
-	float post_peak = 0.0f;
-	double post_sum = 0.0;
-	uint64_t hot_pixels = 0;
-	uint64_t over_1000 = 0;
-	std::priority_queue<float, std::vector<float>, std::greater<float>> top;
-	constexpr size_t TOP_COUNT = 128;
-
-	for (uint32_t packed : m_hdr_diag_pixels)
-	{
-		float rgb[3] = {
-			decode_r11g11b10_channel(packed, 6),
-			decode_r11g11b10_channel(packed >> 11, 6),
-			decode_r11g11b10_channel(packed >> 22, 5) };
-		if (!std::isfinite(rgb[0]) || !std::isfinite(rgb[1]) || !std::isfinite(rgb[2]))
-			continue;
-		const float original = std::max({ rgb[0], rgb[1], rgb[2] });
-		pre_peak = std::max(pre_peak, original);
-		if (rolloff_ceil > rolloff_knee && original > rolloff_knee)
-		{
-			const float minimum = std::min({ rgb[0], rgb[1], rgb[2] });
-			const float saturation = (1.0f - minimum / std::max(original, 1e-4f)) * sat_protect;
-			const float effective_ceil = rolloff_ceil + (rolloff_knee - rolloff_ceil)
-				* std::clamp(saturation, 0.0f, 1.0f);
-			const float over = original - rolloff_knee;
-			const float range = std::max(effective_ceil - rolloff_knee, 1e-4f);
-			const float rolled = rolloff_knee + range * over / (over + range);
-			const float scale = rolled / original;
-			rgb[0] *= scale; rgb[1] *= scale; rgb[2] *= scale;
-		}
-		const float post = std::max({ rgb[0], rgb[1], rgb[2] });
-		post_peak = std::max(post_peak, post);
-		post_sum += post;
-		if (post >= hot_threshold) ++hot_pixels;
-		if (post >= 1000.0f) ++over_1000;
-		if (top.size() < TOP_COUNT)
-			top.push(post);
-		else if (post > top.top())
-		{
-			top.pop();
-			top.push(post);
-		}
-	}
-
-	double top_sum = 0.0;
-	const size_t top_count = top.size();
-	while (!top.empty()) { top_sum += top.top(); top.pop(); }
-	const double pixel_count = double(std::max<size_t>(1, m_hdr_diag_pixels.size()));
-	const float usage = display_peak > 0.0f ? 100.0f * post_peak / display_peak : 0.0f;
-	const float diagnostic_headroom = s_bgfx_edr_active
-		? headroom
-		: (m_module().paper_white_nits() > 0.0f
-			? display_peak / m_module().paper_white_nits() : 0.0f);
-	const char *mode = s_bgfx_edr_active ? "macOS EDR" : (s_bgfx_hdr_active ? "HDR10" : "SDR fallback");
-	if (s_bgfx_edr_active && !m_module().hdr_display_peak_is_absolute())
-	{
-		const float inv_reference = 1.0f / std::max(edr_reference, 1.0f);
-		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
-			"HDR diagnostic (macOS EDR, relative)\nAbsolute display peak: unknown  Available headroom: %.2fx\n"
-			"Beam peak: %.2fx  Pre-rolloff max: %.2fx\n"
-			"Post-rolloff max: %.2fx (%.1f%% headroom)  Top %u avg: %.2fx\n"
-			"Pixels >=80%% headroom: %llu  Frame avg: %.3fx",
-			diagnostic_headroom, beam_peak * inv_reference, pre_peak * inv_reference,
-			post_peak * inv_reference, usage, unsigned(top_count),
-			(top_count ? float(top_sum / double(top_count)) : 0.0f) * inv_reference,
-			(unsigned long long)hot_pixels, float(post_sum / pixel_count) * inv_reference));
-	}
-	else if (s_bgfx_edr_active)
-	{
-		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
-			"HDR diagnostic (macOS EDR, absolute)\nDisplay peak: %.0f nits  Reference white: %.1f nits  Headroom: %.2fx\n"
-			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
-			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
-			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
-			display_peak, edr_reference, diagnostic_headroom, beam_peak, pre_peak, post_peak, usage,
-			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
-			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
-	}
-	else
-	{
-		window().machine().ui().set_hdr_diagnostic_text(util::string_format(
-			"HDR diagnostic (%s)\nDisplay peak: %.0f nits  Headroom: %.2fx\n"
-			"Beam peak: %.0f nits  Pre-rolloff max: %.0f nits\n"
-			"Post-rolloff max: %.0f nits (%.1f%%)  Top %u avg: %.0f nits\n"
-			"Pixels >=80%% peak: %llu  >=1000 nits: %llu  Frame avg: %.2f nits",
-			mode, display_peak, diagnostic_headroom, beam_peak, pre_peak, post_peak, usage,
-			unsigned(top_count), top_count ? float(top_sum / double(top_count)) : 0.0f,
-			(unsigned long long)hot_pixels, (unsigned long long)over_1000, float(post_sum / pixel_count)));
-	}
-}
-
-void renderer_bgfx::update_hdr_diagnostics()
-{
-	if (window().index() != 0)
-		return;
-	const bool requested = m_vec_hdr_chain && m_chains && m_chains->has_applicable_chain(0)
-		&& m_chains->slider_value(0, "hdr_diagnostics", 0.0f) > 0.5f;
-	if (!requested)
-	{
-		window().machine().ui().set_hdr_diagnostic_text(std::string());
-		if (!m_hdr_diag_pending || s_bgfx_frame_number >= m_hdr_diag_ready_frame)
-			destroy_hdr_diagnostics();
-		return;
-	}
-
-	if (!(s_bgfx_hdr_active || s_bgfx_edr_active))
-	{
-		if (m_hdr_diag_pending && s_bgfx_frame_number >= m_hdr_diag_ready_frame)
-			process_hdr_diagnostics();
-		if (!m_hdr_diag_pending)
-			destroy_hdr_diagnostics();
-		window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic unavailable: HDR/EDR output is not active");
-		return;
-	}
-
-	process_hdr_diagnostics();
-	if (m_hdr_diag_pending || ++m_hdr_diag_sample_counter < 30U || m_hdr_work == nullptr)
-		return;
-	m_hdr_diag_sample_counter = 0;
-
-	const uint16_t width = m_hdr_work->width();
-	const uint16_t height = m_hdr_work->height();
-	if (!bgfx::isValid(m_hdr_diag_texture) || width != m_hdr_diag_w || height != m_hdr_diag_h)
-	{
-		destroy_hdr_diagnostics();
-		m_hdr_diag_w = width;
-		m_hdr_diag_h = height;
-		const uint64_t flags = BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK
-			| BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP
-			| BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
-		const bgfx::Caps *caps = bgfx::getCaps();
-		m_hdr_diag_supported = (caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)
-			&& (caps->supported & BGFX_CAPS_TEXTURE_BLIT)
-			&& bgfx::isTextureValid(0, false, 1, bgfx::TextureFormat::RG11B10F, flags);
-		if (!m_hdr_diag_supported)
-		{
-			window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic unavailable: RG11B10F readback is not supported by this backend");
-			return;
-		}
-		m_hdr_diag_texture = bgfx::createTexture2D(width, height, false, 1,
-			bgfx::TextureFormat::RG11B10F, flags);
-		m_hdr_diag_pixels.resize(size_t(width) * size_t(height));
-		window().machine().ui().set_hdr_diagnostic_text("HDR diagnostic: sampling final linear-nits buffer...");
-	}
-
-	if (!bgfx::isValid(m_hdr_diag_texture) || m_hdr_diag_pixels.empty())
-		return;
-	const uint16_t diag_view = uint16_t(s_current_view++);
-	bgfx::setViewName(diag_view, "HDR diagnostic readback");
-	bgfx::blit(diag_view, m_hdr_diag_texture, 0, 0, m_hdr_work->texture());
-	m_hdr_diag_ready_frame = bgfx::readTexture(m_hdr_diag_texture, m_hdr_diag_pixels.data());
-	m_hdr_diag_pending = true;
 }
 
 void renderer_bgfx::update_recording()
@@ -7941,7 +7387,6 @@ uint32_t renderer_bgfx::get_window_height(uint32_t index) const
 	return s_height[index];
 }
 
-
 void renderer_bgfx::load_config(util::xml::data_node const &parentnode)
 {
 	util::xml::data_node const *windownode = parentnode.get_child("window");
@@ -7963,7 +7408,6 @@ void renderer_bgfx::load_config(util::xml::data_node const &parentnode)
 		break;
 	}
 }
-
 
 void renderer_bgfx::save_config(util::xml::data_node &parentnode)
 {

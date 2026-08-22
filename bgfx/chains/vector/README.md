@@ -169,63 +169,20 @@ estimates their source rate from the absolute beam-event timestamps.  If a
 legacy file has no usable timing information, playback falls back to the
 current vector screen rate and reports the fallback in the log.
 
-## Smoked-glass optics
+## Removed parameters
 
-The final linear HDR composite includes an optional uniform smoked-glass model.
-It is evaluated before HDR/SDR presentation and is separate from MAME artwork
-overlays.  It does not use a dirt, scratch, or noise texture.
+Parameters whose code path was unreachable at the chain defaults were deleted
+along with their logic.  The smoked-glass optics model, the cubic and corner
+tube-distortion terms, three of the four pincushion coefficients, the bezel
+inside lobe, the phosphor diagnostic views, the P22 phosphor-gamut blend, the
+HDR diagnostics overlay, the T-junction cap suppression and the untimed
+scan-order variation are all gone; `Vector Pincushion X (Quad)`
+(`vector_pincushion_x_quad`) is the pincushion control that remains.
 
-### Controls
+Convergence (`converge_*`, `radial_converge_*`, `convergence_global_*`) and
+`Vector Linearity X/Y` (`vector_linearity_x` / `vector_linearity_y`) were kept
+for real-hardware alignment; they are advanced-only and cost nothing at their
+zero defaults.
 
-`Smoked Glass RGB (%)`
-: Glass transmission colour, specified as RGB percentages from 0 to 100.
-
-`Smoked Glass Transmission (%)`
-: Interpolates from the configured glass colour at 0% to clear glass at 100%.
-  The effective per-channel filter is:
-
-  `mix(smoked_glass_rgb / 100, 1, transmission / 100)`
-
-`Glass Forward Scatter (%)`
-: Adds a broad transmitted halo while preserving the original direct image.
-  Its range is 0.0% to 10.0% in 0.1% steps.  The added halo passes through the
-  smoked-glass colour filter.
-
-`Glass Surface Illumination (%)`
-: Adds broad light returned from the viewer-facing glass surface.  Its range is
-  0.0% to 10.0% in 0.1% steps.  This component is added after the bulk
-  transmission filter.
-
-In simplified form:
-
-```text
-filter      = mix(glassRGB, 1, transmission)
-transmitted = (directComposite + broadHalo * forwardScatter) * filter
-surfaceLit  = broadHalo * surfaceIllumination
-output      = transmitted + surfaceLit
-```
-
-With transmission at 100% and both optical controls at 0%, the glass operation
-is an exact identity.  Clear glass can still show scattering if either optical
-control is non-zero.
-
-The broad halo reuses the existing 1/16-resolution glow cascade.  No additional
-full-screen blur or composite pass is introduced.  If `Glow Wide` and both
-glass optical controls are all zero, the related downsample cascade can be
-skipped.
-
-## Starting point for smoked cabinet glass
-
-The following values are a conservative starting point for a neutral grey
-cabinet overlay such as the one in *Star Wars*:
-
-```text
-Smoked Glass RGB (%)             62 / 62 / 62
-Smoked Glass Transmission (%)    50.0
-Glass Forward Scatter (%)         1.0
-Glass Surface Illumination (%)    0.5
-```
-
-Increase forward scatter to spread bright vectors through the glass without
-softening or replacing the direct lines.  Increase surface illumination when
-bright halos should appear to light the glass itself.
+With glass gone, the `wide_glow_ds0..ds3` downsample passes skip on
+`Glow Wide` (`glow_wide`) alone.
