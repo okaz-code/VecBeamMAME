@@ -9,14 +9,10 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_base, 0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_optical, 2);
-SAMPLER2D(s_glass_scatter, 3);
 SAMPLER2D(s_bezel_source, 4);
 SAMPLER2D(s_bezel_length, 5);
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
-uniform vec4 u_vec_pincushion_x_cubic;
-uniform vec4 u_vec_pincushion_y_quad;
-uniform vec4 u_vec_pincushion_y_cubic;
 uniform vec4 u_glow_enable;
 uniform vec4 u_phosphor_color;
 uniform vec4 u_target_dims;
@@ -29,10 +25,7 @@ uniform vec4 u_hdr_glow_compensation;
 uniform vec4 u_convergence_global;
 uniform vec4 u_convergence_global_color;
 uniform vec4 u_tube_distortion;
-uniform vec4 u_tube_cubic_distortion;
-uniform vec4 u_tube_distort_corner;
 uniform vec4 u_tube_round_corner;
-uniform vec4 u_tube_smooth_border;
 uniform vec4 u_tube_vignetting;
 uniform vec4 u_tube_face_scale;
 uniform vec4 u_vector_image_scale;
@@ -40,22 +33,17 @@ uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
 uniform vec4 u_vector_render_scale;
 uniform vec4 u_bezel_glow_curve;
-uniform vec4 u_bezel_glow_inside;
 uniform vec4 u_bezel_long_reflection;
 uniform vec4 u_bezel_short_reflection;
 uniform vec4 u_bezel_long_threshold;
 uniform vec4 u_glow_tail_curve;
 uniform vec4 u_glow_black_toe;
-uniform vec4 u_smoked_glass_rgb;
-uniform vec4 u_smoked_glass_transmission;
-uniform vec4 u_glass_forward_scatter;
-uniform vec4 u_glass_surface_illumination;
 #define PINCUSHION_GAIN (5.0 / 30.0)
 #define GLOW_BRIGHTNESS_GAIN 2.67
 
 float tube_active_amount()
 {
-	float geometry=abs(u_tube_distortion.x)+abs(u_tube_cubic_distortion.x)+u_tube_distort_corner.x+u_tube_round_corner.x+u_tube_smooth_border.x;
+	float geometry=abs(u_tube_distortion.x)+u_tube_round_corner.x;
 	return step(0.0001,u_ambient_level.x)*step(0.0001,geometry+abs(1.0-u_tube_face_scale.x));
 }
 // Vector Image Scale is applied to beam coordinates before rasterisation, preserving overscan and spot width.
@@ -65,19 +53,17 @@ vec2 tube_view_scale(){return max(u_target_dims.xy,vec2_splat(1.0))/tube_quad_di
 vec2 tube_face_coord(vec2 uv,float active){float s=mix(1.0,clamp(u_tube_face_scale.x,0.75,1.0),active);return (uv-vec2_splat(0.5))*tube_view_scale()/s;}
 vec2 tube_aspect(){vec2 dims=tube_quad_dims();return dims/max(min(dims.x,dims.y),1.0);}
 float safe_distortion_divisor(float v){return abs(v)<1e-4?(v<0.0?-1e-4:1e-4):v;}
-vec2 distort_centered(vec2 p,float amount,float cubic_amount)
+vec2 distort_centered(vec2 p,float amount)
 {
-	vec2 aspect=tube_aspect(),physical=p*aspect;float cubic=cubic_amount>0.0?cubic_amount*1.1:cubic_amount*1.2;
-	float r2=dot(physical,physical),f=1.0+r2*(amount+cubic*sqrt(max(r2,0.0)));vec2 half_extent=vec2_splat(0.5)*aspect;
+	vec2 aspect=tube_aspect(),physical=p*aspect;
+	float r2=dot(physical,physical),f=1.0+r2*amount;vec2 half_extent=vec2_splat(0.5)*aspect;
 	float rx2=half_extent.x*half_extent.x,ry2=half_extent.y*half_extent.y;
-	float fit_x=1.0+rx2*(amount+cubic*sqrt(rx2)),fit_y=1.0+ry2*(amount+cubic*sqrt(ry2));
+	float fit_x=1.0+rx2*amount,fit_y=1.0+ry2*amount;
 	physical*=vec2(f/safe_distortion_divisor(fit_x),f/safe_distortion_divisor(fit_y));return physical/aspect;
 }
 vec2 tube_quad_coord(vec2 uv,float active)
 {
-	vec2 p=tube_face_coord(uv,active);float amount=u_tube_distortion.x*active,cubic=u_tube_cubic_distortion.x*active;
-	float corner_minimum=u_tube_distort_corner.x*active,corner_extra=max(corner_minimum-(amount+cubic),0.0);
-	return distort_centered(p,amount+corner_extra,cubic);
+	return distort_centered(tube_face_coord(uv,active),u_tube_distortion.x*active);
 }
 float round_box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return min(max(q.x,q.y),0.0)+length(max(q,vec2_splat(0.0)))-r;}
 float tube_signed_distance(vec2 uv,float active)
@@ -88,7 +74,7 @@ float tube_signed_distance(vec2 uv,float active)
 float tube_face_factor(vec2 uv,float active)
 {
 	if(active<0.5)return 1.0;float sd=tube_signed_distance(uv,active);vec2 dims=tube_quad_dims();
-	float aa=max(fwidth(sd),1.0/max(min(dims.x,dims.y),1.0))+u_tube_smooth_border.x*0.02;return 1.0-smoothstep(-aa,aa,sd);
+	float aa=max(fwidth(sd),1.0/max(min(dims.x,dims.y),1.0));return 1.0-smoothstep(-aa,aa,sd);
 }
 float tube_vignette(vec2 uv,float active)
 {
@@ -108,9 +94,8 @@ float bezel_band(vec2 uv,float active)
 {
 	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;
 	vec2 dims=tube_quad_dims();float signed_px=bezel_signed_distance(uv,active)*min(dims.x,dims.y);
-	float width_px=bezel_glow_width_px(),curve=max(u_bezel_glow_curve.x,0.25),inside_balance=clamp(u_bezel_glow_inside.x,0.0,1.0);
-	float outside=exp(-pow(max(signed_px,0.0)/width_px,curve)),inside=inside_balance*exp(-pow(max(-signed_px,0.0)/width_px,curve));
-	return mix(inside,outside,step(0.0,signed_px));
+	float width_px=bezel_glow_width_px(),curve=max(u_bezel_glow_curve.x,0.25);
+	return exp(-pow(max(signed_px,0.0)/width_px,curve))*step(0.0,signed_px);
 }
 vec3 shape_glow(vec3 c)
 {
@@ -199,28 +184,12 @@ vec3 bezel_corner_light(vec2 source_uv)
 	vec3 horizontal_light=bezel_axis_light(source_uv,horizontal_axis);
 	return mix(vertical_light,horizontal_light,smoothstep(-corner_blend,corner_blend,distance_delta));
 }
-vec3 apply_glass_optics(vec3 c,vec3 scatter_source)
-{
-	float transmission=clamp(u_smoked_glass_transmission.x*0.01,0.0,1.0);
-	float forward_scatter=clamp(u_glass_forward_scatter.x*0.01,0.0,1.0);
-	float surface_illumination=max(u_glass_surface_illumination.x*0.01,0.0);
-	if(transmission>=1.0&&forward_scatter<=0.0&&surface_illumination<=0.0)return c;
-	vec3 glass_rgb=clamp(u_smoked_glass_rgb.rgb*0.01,vec3_splat(0.0),vec3_splat(1.0));
-	vec3 glass_filter=mix(glass_rgb,vec3_splat(1.0),transmission);
-	vec3 transmitted=(c+scatter_source*forward_scatter)*glass_filter;
-	return transmitted+scatter_source*surface_illumination;
-}
 vec2 vector_pincushion_uv(vec2 texcoord)
 {
-	// All four coefficients at zero is the identity, and the transform below is ~6 multiplies per
-	// pixel. Skip it. x_quad stays a live control, so the gate has to test all four, not just one.
-	if (u_vec_pincushion_x_quad.x == 0.0 && u_vec_pincushion_x_cubic.x == 0.0
-		&& u_vec_pincushion_y_quad.x == 0.0 && u_vec_pincushion_y_cubic.x == 0.0)
-		return texcoord;
-	vec2 uv=texcoord*2.0-1.0;float x=uv.x,y=uv.y,y2=y*y,x2=x*x;
-	float px=(u_vec_pincushion_x_quad.x+u_vec_pincushion_x_cubic.x*y2)*PINCUSHION_GAIN;
-	float py=(u_vec_pincushion_y_quad.x+u_vec_pincushion_y_cubic.x*x2)*PINCUSHION_GAIN;
-	x*=1.0+px*y2;y*=1.0+py*x2;return (vec2(x,y)+1.0)*0.5;
+	// Zero is the identity and the transform costs a few multiplies per pixel, so skip it.
+	if (u_vec_pincushion_x_quad.x == 0.0) return texcoord;
+	vec2 uv=texcoord*2.0-1.0;float x=uv.x,y=uv.y,y2=y*y;
+	x*=1.0+u_vec_pincushion_x_quad.x*PINCUSHION_GAIN*y2;return (vec2(x,y)+1.0)*0.5;
 }
 vec3 sample_defocused(vec2 uv)
 {
@@ -249,7 +218,5 @@ void main()
 	// Apply after shape_glow so changing HDR Beam Peak does not reveal more of the nonlinear tail.
 	float glow_compensation=max(u_hdr_glow_compensation.x,0.0);
 	vec3 composite=(base+(glow+optical)*glow_compensation)*face+ambient+(global_out+bezel)*glow_compensation;
-	float glass_activity=max(u_glass_forward_scatter.x,u_glass_surface_illumination.x);vec3 glass_light=vec3_splat(0.0);
-	if(glass_activity>0.0&&!emit_outside)glass_light=max(texture2D(s_glass_scatter,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN,vec3_splat(0.0))*phosphor_tint*glow_compensation;
-	gl_FragColor=vec4(apply_glass_optics(composite,glass_light),1.0)*v_color0;
+	gl_FragColor=vec4(composite,1.0)*v_color0;
 }

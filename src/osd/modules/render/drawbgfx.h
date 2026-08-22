@@ -130,7 +130,6 @@ private:
 	// deposits less per pixel, a slow one more) within [1/energy_line_max, energy_line_max]; dots only
 	// ever boost ([1, energy_dot_max]) because the short-dwell side is already modelled by z_rise_tau.
 	// Returns 1.0 when the model is off or the primitive carries no timestamps.
-	float beam_density_factor(render_primitive *prim, float seg_len, bool as_point, float screen_ref, float stroke_px_per_ms = -1.0f) const;
 
 	// Port of the Vectrex driver's object_boost() (vectrex_v.cpp): a smooth per-object-type lift of
 	// beam_energy, driven by display intensity - a bullet/explosion/star (typically drawn at higher
@@ -255,7 +254,6 @@ private:
 	std::unordered_map<const render_primitive*, float> m_dwell_scale;
 	// Optional display-list arrival attenuation for untimed vector sources. Built once per frame from
 	// cumulative segment length; values affect final light deposit only, never energy or beam width.
-	std::unordered_map<const render_primitive*, float> m_scan_attenuation;
 
 public:
 	// Per-frame cache of every chain slider the per-vector hot paths read. slider_value() is a
@@ -280,7 +278,6 @@ public:
 		float beam_width_overmax = 4.0f;
 		float phosphor_rgb_combination_width = 0.0f; // full RGB width gain; single primaries remain unchanged
 		float bezel_long_threshold = 160.0f;
-		float bright_curve = 1.0f;
 		float bright_normal_cap = 1.0f;
 		float bright_sigmoid = 0.0f;
 		float bright_sigmoid_center = 0.5f;
@@ -305,8 +302,6 @@ public:
 		// Density modulation applied ON TOP of a device-supplied beam current (0 = current only).
 		// Separate from energy_infl, which still governs the fallback model for sources that supply
 		// no current at all. Dots default to on: a parked beam really does deposit more.
-		float energy_density = 0.0f;
-		float energy_dot_density = 1.0f;
 		float energy_dot_curve = 1.6f;
 		float energy_dot_max = 3.2f;
 		float energy_dot_ref = 30.0f;
@@ -314,7 +309,6 @@ public:
 		float energy_infl = 0.6f;
 		float energy_line_max = 4.0f;
 		float energy_model = 0.0f;
-		float scan_variation = 0.0f;  // untimed list-arrival variation, percent; 0 = disabled
 		float energy_obj_knee = 0.75f;
 		float energy_obj_lift = 0.0f;     // 0 = off (chains without the slider unchanged)
 		float energy_obj_max = 3.0f;
@@ -333,7 +327,6 @@ public:
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
 		float line_cap_brightness = 1.0f;
 		float line_cap_intensity_curve = 0.0f;
-		float line_cap_junction_suppress = 0.0f; // attenuate a cap terminating on another line's interior
 		float line_cap_mode = 0.0f;        // 0 legacy, 1 blank transitions, 2 RAMP flags, 3 off
 		float line_cap_min_size = 0.0f;
 		float line_cap_size = 2.0f;         // = LINE_CAP_SIZE_PX
@@ -343,13 +336,10 @@ public:
 		float line_cap_transition = 8.0f;   // endpoint-width taper length at 1920-ref
 		float line_cap_curve = 1.5f;        // endpoint-width taper power
 		float line_point_threshold = 2.0f;  // = LINE_POINT_THRESHOLD
-		float linear_color = 0.0f;
 		float overdrive_core = 0.0f;
 		float overdrive_sat_curve = 1.0f;
 		float overload_bloom = 0.0f;
 		float overload_dot_gain = 1.0f;
-		float overload_gain = 0.0f;
-		float overload_gain_center = 0.5f;
 		float overload_glow_gain = 0.0f;
 		float overload_glow_width = 40.0f;
 		float overload_max = 0.0f;
@@ -431,7 +421,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f, float deposit_scale = 1.0f);
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -507,17 +497,6 @@ private:
 	bgfx_effect *m_vectrex_overlay_composite_effect = nullptr;
 	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
 	// interval; the CPU applies the exact present roll-off to report requested/post-rolloff nits.
-	bgfx::TextureHandle m_hdr_diag_texture = BGFX_INVALID_HANDLE;
-	std::vector<uint32_t> m_hdr_diag_pixels;
-	uint16_t m_hdr_diag_w = 0;
-	uint16_t m_hdr_diag_h = 0;
-	uint32_t m_hdr_diag_ready_frame = 0;
-	uint32_t m_hdr_diag_sample_counter = 0;
-	bool m_hdr_diag_pending = false;
-	bool m_hdr_diag_supported = true;
-	void update_hdr_diagnostics();
-	void destroy_hdr_diagnostics();
-	void process_hdr_diagnostics();
 
 	// Broad glass/face scatter emitted only by a macro convergence-bloom component. Coordinates are
 	// full-window UV; gain is linear relative to one nominal beam and coverage is sigma/half-diagonal.

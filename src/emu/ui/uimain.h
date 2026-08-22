@@ -40,7 +40,6 @@ public:
 	virtual void set_vector_playback_text(std::string message) { }
 
 	// Dedicated persistent overlay used by the bgfx HDR luminance diagnostic; empty hides it.
-	virtual void set_hdr_diagnostic_text(std::string message) { }
 
 	virtual void menu_reset() { }
 
