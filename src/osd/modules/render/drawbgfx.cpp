@@ -1601,7 +1601,10 @@ void renderer_bgfx::record()
 	if (!m_avi_writer)
 	{
 		m_avi_writer.reset(new avi_write(window().machine(), m_new_dimensions.width(), m_new_dimensions.height()));
-		m_avi_data.reset(new uint8_t[m_new_dimensions.width() * m_dimensions.height() * 4]);
+		// m_avi_data is the readback destination for m_avi_texture, which is created below at
+		// m_new_dimensions, and the conversion loop walks all of m_avi_bitmap - so both axes have
+		// to come from m_new_dimensions. Upstream takes the height from m_dimensions instead.
+		m_avi_data.reset(new uint8_t[m_new_dimensions.width() * m_new_dimensions.height() * 4]);
 		m_avi_bitmap.allocate(m_new_dimensions.width(), m_new_dimensions.height());
 	}
 
