@@ -530,6 +530,10 @@ private:
 	std::unique_ptr<uint8_t []> m_avi_data;
 
 	std::unique_ptr<util::xml::file> m_config;
+	// The stored configuration, kept verbatim when the running chain selection came from an
+	// explicitly specified chain so save_config can write the stored one back untouched. Null
+	// otherwise, including when there was no stored configuration to keep.
+	std::unique_ptr<util::xml::file> m_config_stored;
 	const util::notifier_subscription m_load_sub;
 	const util::notifier_subscription m_save_sub;
 

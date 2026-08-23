@@ -1466,13 +1466,18 @@ void chain_manager::restore_slider_settings(int32_t id, std::vector<std::vector<
 	}
 }
 
+// treat source INI files or more specific as higher priority than CFG
+// FIXME: leaky abstraction - this depends on a front-end implementation detail
+bool chain_manager::chains_explicitly_specified(const osd_options &options)
+{
+	return ((OPTION_PRIORITY_NORMAL + 5) <= options.get_entry(OSDOPTION_BGFX_SCREEN_CHAINS)->priority())
+			&& *options.bgfx_screen_chains();
+}
+
 void chain_manager::load_config(util::xml::data_node const &windownode)
 {
-	// treat source INI files or more specific as higher priority than CFG
-	// FIXME: leaky abstraction - this depends on a front-end implementation detail
 	bool const persist = windownode.get_attribute_int("persist", 1) != 0;
-	bool const default_chains = (OPTION_PRIORITY_NORMAL + 5) > m_options.get_entry(OSDOPTION_BGFX_SCREEN_CHAINS)->priority();
-	bool const explicit_chains = !persist && !default_chains && *m_options.bgfx_screen_chains();
+	bool const explicit_chains = !persist && chains_explicitly_specified(m_options);
 
 	// if chains weren't explicitly specified, restore the chains from the config file
 	if (explicit_chains)
@@ -1591,6 +1596,19 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 {
 	if (!needs_sliders())
 		return;
+
+	// Do not write a selection that load_config would refuse to read. An explicitly specified chain
+	// is a command-line or per-game override of the stored one, and persisting it turns a one-off
+	// into the machine's new startup state - running once with -bgfx_screen_chains left starwars
+	// on the monochrome chain from then on. The renderer writes the stored selection back verbatim
+	// when there was one, so reaching here means there was none to keep.
+	if (chains_explicitly_specified(m_options))
+	{
+		osd_printf_verbose(
+				"BGFX: Not saving the chain selection for window %d - it was explicitly specified\n",
+				m_window_index);
+		return;
+	}
 
 	util::xml::data_node *const windownode = parentnode.add_child("window", nullptr);
 	windownode->set_attribute_int("index", m_window_index);
