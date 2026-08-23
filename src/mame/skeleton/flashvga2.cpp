@@ -250,9 +250,9 @@ void flashvga2_state::flashvga2(machine_config &config)
 	scn2681_device &uart(SCN2681(config, "uart", 3.6864_MHz_XTAL)); // Philips SCC2692AC1A44
 	uart.irq_cb().set_inputline(m_maincpu, INPUT_LINE_NMI);
 
-	M48T02(config, "rtc", 0); // ST M48T18-150PC1
+	M48T02(config, "rtc"); // ST M48T18-150PC1
 
-	I2C_24C256(config, m_eeprom, 0);
+	I2C_24C256(config, m_eeprom);
 
 	// TODO: refine, is it really 60 Hz?
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_RASTER));
@@ -295,11 +295,11 @@ ROM_START( ruletamag )
 	ROM_FILL( 0x0060 >> 1, 1, 0x0b )
 
 	// does further checks if this skipped (going back to "error en reloj")
-//	ROM_FILL( 0x00b0 >> 1, 1, 0x55 )
-//	ROM_FILL( 0x00b2 >> 1, 1, 0xaa )
+//  ROM_FILL( 0x00b0 >> 1, 1, 0x55 )
+//  ROM_FILL( 0x00b2 >> 1, 1, 0xaa )
 
-//	ROM_FILL( 0x0008 >> 1, 1, 0x71 )
-//	ROM_FILL( 0x000a >> 1, 1, 0xac )
+//  ROM_FILL( 0x0008 >> 1, 1, 0x71 )
+//  ROM_FILL( 0x000a >> 1, 1, 0xac )
 ROM_END
 
 

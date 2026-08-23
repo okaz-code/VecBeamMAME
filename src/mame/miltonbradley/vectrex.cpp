@@ -185,7 +185,7 @@ void vectrex_base_state::vectrex_base(machine_config &config)
 	MC6809(config, m_maincpu, 6_MHz_XTAL); // 68A09
 
 	/* video hardware */
-	VECTOR(config, m_vector, 0);
+	VECTOR(config, m_vector);
 	// The beam events carry real sweep time: add_point is fed t0 = the previous event's end and
 	// t1 = now, straight from the RAMP/VIA timing (vectrex_v.cpp update_vector), so a segment's
 	// t1 - t0 is how long the beam actually took to draw it - the same contract avgdvg satisfies.
@@ -224,7 +224,7 @@ void vectrex_state::vectrex(machine_config &config)
 
 	m_maincpu->set_addrmap(AS_PROGRAM, &vectrex_state::vectrex_map);
 
-	vectrex_cart_slot_device &slot(VECTREX_CART_SLOT(config, "cartslot", 0));
+	vectrex_cart_slot_device &slot(VECTREX_CART_SLOT(config, "cartslot"));
 	vectrex_cart(slot);
 
 	/* software lists */

@@ -1945,7 +1945,7 @@ void neogeo_base_state::neogeo_base(machine_config &config)
 	/* 4096 colors * two banks * normal and shadow */
 	PALETTE(config, m_palette, palette_device::BLACK, 4096*2*2);
 
-	NEOGEO_SPRITE_OPTIMZIED(config, m_sprgen, 0).set_screen(m_screen);
+	NEOGEO_SPRITE_OPTIMZIED(config, m_sprgen).set_screen(m_screen);
 
 	/* audio hardware */
 	INPUT_MERGER_ALL_HIGH(config, m_audionmi);
@@ -1975,7 +1975,7 @@ void neogeo_base_state::neogeo_stereo(machine_config &config)
 
 void neogeo_base_state::neogeo_memcard(machine_config &config)
 {
-	NG_MEMCARD(config, m_memcard, 0);
+	NG_MEMCARD(config, m_memcard);
 
 	m_systemlatch->q_out_cb<2>().set(m_memcard, FUNC(ng_memcard_device::lock1_w));
 	m_systemlatch->q_out_cb<3>().set(m_memcard, FUNC(ng_memcard_device::unlock2_w));
@@ -12126,9 +12126,9 @@ GAME( 1997, miexchng,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_ini
 GAME( 1997, dragonsh,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Face", "Dragon's Heaven (development board)", MACHINE_IS_INCOMPLETE | MACHINE_NO_SOUND | MACHINE_SUPPORTS_SAVE ) // same ID code as Voltage Fighter Gowkaizer, developed by ex-Technos staff
 
 // Hudson Soft
-GAME( 1994, panicbom,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Eighting / Hudson", "Panic Bomber", MACHINE_SUPPORTS_SAVE )
-GAME( 1995, kabukikl,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Hudson", "Far East of Eden - Kabuki Klash / Tengai Makyou - Shin Den", MACHINE_SUPPORTS_SAVE )
-GAME( 1997, neobombe,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Hudson", "Neo Bomberman", MACHINE_SUPPORTS_SAVE )
+GAME( 1994, panicbom,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Eighting / Hudson Soft", "Panic Bomber", MACHINE_SUPPORTS_SAVE )
+GAME( 1995, kabukikl,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Hudson Soft", "Far East of Eden - Kabuki Klash / Tengai Makyou - Shin Den", MACHINE_SUPPORTS_SAVE )
+GAME( 1997, neobombe,   neogeo,   neobase,   neogeo,    mvs_led_state, empty_init, ROT0, "Hudson Soft", "Neo Bomberman", MACHINE_SUPPORTS_SAVE )
 
 // Monolith Corp.
 GAME( 1990, minasan,    neogeo,   neogeo_mj, neogeo_mj, mvs_led_state, empty_init, ROT0, "Monolith Corp.", "Minasan no Okagesamadesu! Dai Sugoroku Taikai (MOM-001 ~ MOH-001)", MACHINE_SUPPORTS_SAVE )

@@ -25,6 +25,7 @@
 #include "vector.h"
 
 #include "emuopts.h"
+#include "input.h" // for the MVEC playback tool keys
 #include "render.h"
 #include "screen.h"
 #include "ui/uimain.h"

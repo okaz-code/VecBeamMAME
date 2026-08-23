@@ -4803,7 +4803,7 @@ ROM_START( suzume )
 	ROM_LOAD( "ic6k.bin",   0x0000, 0x0020, CRC(97e1defe) SHA1(b5002218b2292f7623dd9a205ce183dedeec03f1) )
 ROM_END
 
-ROM_START( jongshin )
+ROM_START( jongshin ) // standard Dyna base board + D8702158L1 sub board
 	ROM_REGION( 0x28000, "maincpu", 0 ) // all 2732
 	ROM_LOAD( "js1.p1",     0x00000, 0x1000, CRC(0c33eb1c) SHA1(4258f2df8e9d4d3fd3fd77c555bd36ced601c45f) )
 	ROM_LOAD( "js2.p2",     0x01000, 0x1000, CRC(a74bfa19) SHA1(378ec5dcddbe1c1e66b9ec0576b898442e3ba89c) )
@@ -5333,12 +5333,13 @@ ROM_END
 
 ROM_START( majrjh ) // ROM test gives all ok
 	ROM_REGION( 0x290000, "maincpu", 0 )
-	ROM_LOAD( "1051d.5e",         0x000000, 0x80000, CRC(5fdc5f9e) SHA1(4a599f83ee1c8ae41a44e98694b6d5515a29b813) ) // 1ST AND 2ND HALF IDENTICAL, tested as 2MB anyway
+	ROM_LOAD( "1051.5e",         0x000000, 0x80000, CRC(5fdc5f9e) SHA1(4a599f83ee1c8ae41a44e98694b6d5515a29b813) ) // 1ST AND 2ND HALF IDENTICAL, tested as 2MB anyway
+	// also seen with correctly sized ROM with hashes CRC(e87a77cb) SHA1(3480116e016c9c1d76e41113d585ef159204ad67)
 	ROM_LOAD( "tmp91p640n-10.3c", 0x000000, 0x04000, CRC(129a11c7) SHA1(450a6a7da29c9206937a16701b34075cda338147) ) // MCU has pins 9 to 10 & 12 to 15 stripped out
 	ROM_COPY( "maincpu", 0x00000, 0x010000, 0x80000 )
 	ROM_COPY( "maincpu", 0x00000, 0x090000, 0x80000 )
-	ROM_LOAD( "1053d.3e",         0x110000, 0x80000, CRC(e5abd309) SHA1(7d80ab9f7bcc66d7332c60a0d02c123582c31a34) )
-	ROM_LOAD( "1052d.4e",         0x210000, 0x80000, CRC(7200599c) SHA1(32e7caad9a9ea756b699f601fab90a419a437f57) )
+	ROM_LOAD( "1053.3e",         0x110000, 0x80000, CRC(e5abd309) SHA1(7d80ab9f7bcc66d7332c60a0d02c123582c31a34) )
+	ROM_LOAD( "1052.4e",         0x210000, 0x80000, CRC(7200599c) SHA1(32e7caad9a9ea756b699f601fab90a419a437f57) )
 
 	ROM_REGION( 0x400, "proms", 0 ) // Color PROMs
 	ROM_LOAD( "d105-2.7e", 0x000, 0x200, CRC(587bca5a) SHA1(327f7bfa035f652bbbfba3f74715515236322c09) )

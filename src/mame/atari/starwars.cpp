@@ -319,7 +319,7 @@ void starwars_state::starwars(machine_config &config)
 	outlatch.q_out_cb<7>().set(FUNC(starwars_state::recall_w)); // NVRAM array recall
 
 	/* video hardware */
-	VECTOR(config, "vector", 0);
+	VECTOR(config, "vector");
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_VECTOR));
 	// Match the stock MAME sampling cadence (~41.016 Hz). Host-rate presentation is handled
 	// independently by vector_present_rate, while the game IRQ remains a free-running timer.
@@ -328,7 +328,7 @@ void starwars_state::starwars(machine_config &config)
 	screen.set_visarea(0, 250, 0, 280);
 	screen.set_screen_update("vector", FUNC(vector_device::screen_update));
 
-	avg_device &avg(AVG_STARWARS(config, "avg", 0));
+	avg_device &avg(AVG_STARWARS(config, "avg"));
 	avg.set_vector("vector");
 	avg.set_memory(m_maincpu, AS_PROGRAM, 0x0000);
 
@@ -570,11 +570,11 @@ void starwars_state::init_esb()
  *
  *************************************/
 
-GAME( 1983, starwars, 0,        starwars, starwars, starwars_state, init_starwars, ROT0, "Atari", "Star Wars (set 1)", 0 ) // newest
-GAME( 1983, starwars1,starwars, starwars, starwars, starwars_state, init_starwars, ROT0, "Atari", "Star Wars (set 2)", 0 )
-GAME( 1983, starwarso,starwars, starwars, starwars, starwars_state, init_starwars, ROT0, "Atari", "Star Wars (set 3)", 0 ) // oldest
+GAME( 1983, starwars,  0,        starwars, starwars, starwars_state, init_starwars, ROT0, "Atari",       "Star Wars (Atari, set 1)", 0 ) // newest
+GAME( 1983, starwars1, starwars, starwars, starwars, starwars_state, init_starwars, ROT0, "Atari",       "Star Wars (Atari, set 2)", 0 )
+GAME( 1983, starwarso, starwars, starwars, starwars, starwars_state, init_starwars, ROT0, "Atari",       "Star Wars (Atari, set 3)", 0 ) // oldest
 // is there an even older starwars set with 136021-106.1m ?
 
-GAME( 1983, tomcatsw, tomcat,   starwars, starwars, starwars_state, init_starwars, ROT0, "Atari", "TomCat (Star Wars hardware, prototype)", MACHINE_NO_SOUND )
+GAME( 1983, tomcatsw,  tomcat,   starwars, starwars, starwars_state, init_starwars, ROT0, "Atari",       "TomCat (Star Wars hardware, prototype)", MACHINE_NO_SOUND )
 
-GAME( 1985, esb,      0,        esb,      esb,      starwars_state, init_esb,      ROT0, "Atari Games", "The Empire Strikes Back", 0 )
+GAME( 1985, esb,       0,        esb,      esb,      starwars_state, init_esb,      ROT0, "Atari Games", "The Empire Strikes Back", 0 )

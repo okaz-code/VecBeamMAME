@@ -65,11 +65,6 @@
 
 #include "speaker.h"
 
-#define LOG_CEM_WRITES (1U << 1)
-
-#define VERBOSE (0)
-#include "logmacro.h"
-
 
 DEFINE_DEVICE_TYPE(SENTE6VB, sente6vb_device, "sente6vb", "Bally Sente 6VB Audio Board")
 
@@ -113,7 +108,7 @@ void sente6vb_device::device_add_mconfig(machine_config &config)
 	m_audiocpu->set_addrmap(AS_PROGRAM, &sente6vb_device::mem_map);
 	m_audiocpu->set_addrmap(AS_IO, &sente6vb_device::io_map);
 
-	ACIA6850(config, m_uart, 0);
+	ACIA6850(config, m_uart);
 	m_uart->txd_handler().set([this] (int state) { m_send_cb(state); });
 	m_uart->irq_handler().set([this] (int state) { m_uint = bool(state); });
 
@@ -122,9 +117,9 @@ void sente6vb_device::device_add_mconfig(machine_config &config)
 	uartclock.signal_handler().append(m_uart, FUNC(acia6850_device::write_txc));
 	uartclock.signal_handler().append(m_uart, FUNC(acia6850_device::write_rxc));
 
-	TIMER(config, m_counter_0_timer, 0).configure_generic(FUNC(sente6vb_device::clock_counter_0_ff));
+	TIMER(config, m_counter_0_timer).configure_generic(FUNC(sente6vb_device::clock_counter_0_ff));
 
-	PIT8253(config, m_pit, 0);
+	PIT8253(config, m_pit);
 	m_pit->out_handler<0>().set(FUNC(sente6vb_device::counter_0_set_out));
 	m_pit->out_handler<2>().set_inputline(m_audiocpu, INPUT_LINE_IRQ0);
 	m_pit->set_clk<1>(8_MHz_XTAL / 4);
@@ -132,7 +127,7 @@ void sente6vb_device::device_add_mconfig(machine_config &config)
 
 	SPEAKER(config, "mono").front_center();
 
-	mm5837_stream_device &noise(MM5837_STREAM(config, "noise", 0));
+	mm5837_stream_device &noise(MM5837_STREAM(config, "noise"));
 //  noise.set_vdd(-6.5);   // seems too low -- possible the mapping in mm5837 is wrong
 	noise.set_vdd(-8.0);
 	noise.add_route(ALL_OUTPUTS, "ac_noise", 1.0);
@@ -140,12 +135,21 @@ void sente6vb_device::device_add_mconfig(machine_config &config)
 	filter_rc_device &ac_noise(FILTER_RC(config, "ac_noise"));
 	ac_noise.set_rc(filter_rc_device::HIGHPASS, RES_K(68) + RES_K(1), 0, 0, CAP_U(2.2)); // R19, R20, C115
 
+	cem3394_device::components comps =
+	{
+		.r_vco = RES_K(301),   // R1
+		.c_vco = CAP_U(0.002), // C1
+		.c_vcf = CAP_U(0.033), // C11
+		.c_ac = CAP_U(10),     // C3
+	};
+
+	cem3394_device::stream_inputs inputs;
+	inputs.ext_input = &ac_noise;
+
 	for (auto &cem_device : m_cem_device)
 	{
-		CEM3394(config, cem_device, 0);
-		cem_device->configure(RES_K(301), CAP_U(0.002), CAP_U(0.033), CAP_U(10)); // R1, C1, C11, C3 on voice 0 (U1)
+		CEM3394(config, cem_device, comps, inputs);
 		cem_device->add_route(ALL_OUTPUTS, "mono", 0.50);
-		ac_noise.add_route(0, *cem_device, 1.0);
 	}
 }
 
@@ -290,17 +294,17 @@ void sente6vb_device::update_counter_0_timer()
 	// find the counter with the maximum frequency
 	// this is used to calibrate the timers at startup
 	for (i = 0; i < 6; i++)
-		if (m_cem_device[i]->get_parameter(cem3394_device::FINAL_GAIN) < 10.0)
+		if (m_cem_device[i]->final_gain() > 0.1)
 		{
 			double tempfreq;
 
 			// if the filter resonance is high, then they're calibrating the filter frequency
-			if (m_cem_device[i]->get_parameter(cem3394_device::FILTER_RESONANCE) > 0.9)
-				tempfreq = m_cem_device[i]->get_parameter(cem3394_device::FILTER_FREQUENCY);
+			if (m_cem_device[i]->filt_res() > 3)
+				tempfreq = m_cem_device[i]->filt_freq();
 
 			// otherwise, they're calibrating the VCO frequency
 			else
-				tempfreq = m_cem_device[i]->get_parameter(cem3394_device::VCO_FREQUENCY);
+				tempfreq = m_cem_device[i]->vco_freq();
 
 			if (tempfreq > maxfreq) maxfreq = tempfreq;
 		}
@@ -388,21 +392,8 @@ void sente6vb_device::counter_control_w(uint8_t data)
 
 void sente6vb_device::chip_select_w(uint8_t data)
 {
-	static constexpr uint8_t register_map[8] =
-	{
-		cem3394_device::VCO_FREQUENCY,
-		cem3394_device::FINAL_GAIN,
-		cem3394_device::FILTER_RESONANCE,
-		cem3394_device::FILTER_FREQUENCY,
-		cem3394_device::MIXER_BALANCE,
-		cem3394_device::MODULATION_AMOUNT,
-		cem3394_device::PULSE_WIDTH,
-		cem3394_device::WAVE_SELECT
-	};
-
 	double voltage = (double)m_dac_value * (8.0 / 4096.0) - 4.0;
 	int diffchip = data ^ m_chip_select, i;
-	int reg = register_map[m_dac_register];
 
 	// remember the new select value
 	m_chip_select = data;
@@ -411,27 +402,17 @@ void sente6vb_device::chip_select_w(uint8_t data)
 	for (i = 0; i < 6; i++)
 		if ((diffchip & (1 << i)) && (data & (1 << i)))
 		{
-			// remember the previous value
-			double temp = m_cem_device[i]->get_parameter(reg);
-
 			// set the voltage
-			m_cem_device[i]->set_voltage(reg, voltage);
-
-			// only log changes
-			if (temp != m_cem_device[i]->get_parameter(reg))
+			switch (m_dac_register)
 			{
-				static const char *const names[] =
-				{
-					"VCO_FREQUENCY",
-					"FINAL_GAIN",
-					"FILTER_RESONANCE",
-					"FILTER_FREQUENCY",
-					"MIXER_BALANCE",
-					"MODULATION_AMOUNT",
-					"PULSE_WIDTH",
-					"WAVE_SELECT"
-				};
-				LOGMASKED(LOG_CEM_WRITES, "s%04X:   CEM#%d:%s=%f\n", m_audiocpu->pcbase(), i, names[m_dac_register], voltage);
+				case 0: m_cem_device[i]->set_vco_freq_cv(voltage);      break;
+				case 1: m_cem_device[i]->set_final_gain_cv(voltage);    break;
+				case 2: m_cem_device[i]->set_filt_res_cv(voltage);      break;
+				case 3: m_cem_device[i]->set_filt_freq_cv(voltage);     break;
+				case 4: m_cem_device[i]->set_mixer_balance_cv(voltage); break;
+				case 5: m_cem_device[i]->set_mod_amount_cv(voltage);    break;
+				case 6: m_cem_device[i]->set_pulse_width_cv(voltage);   break;
+				case 7: m_cem_device[i]->set_wave_select_cv(voltage);   break;
 			}
 		}
 

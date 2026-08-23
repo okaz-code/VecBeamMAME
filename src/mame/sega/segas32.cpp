@@ -683,32 +683,27 @@ void segas32_state::device_reset()
 void segas32_state::update_irq_state()
 {
 	const uint8_t effirq = m_v60_irq_control[7] & ~m_v60_irq_control[6] & 0x1f;
-	int vector;
-
-	/* loop over interrupt vectors, finding the highest priority one with */
-	/* an unmasked interrupt pending */
-	for (vector = 0; vector < 5; vector++)
-		if (BIT(effirq, vector))
-		{
-			m_maincpu->set_input_line_and_vector(0, ASSERT_LINE, vector); // V60
-			break;
-		}
-
-	/* if we didn't find any, clear the interrupt line */
-	if (vector == 5)
-		m_maincpu->set_input_line(0, CLEAR_LINE);
+	m_maincpu->set_input_line(0, effirq ? ASSERT_LINE : CLEAR_LINE);
 }
 
 
 void segas32_state::signal_v60_irq(int which)
 {
-	/* see if this interrupt input is mapped to any vectors; if so, mark them */
-	for (int i = 0; i < 5; i++)
-		if (m_v60_irq_control[i] == which)
-			m_v60_irq_control[7] |= 1 << i;
+	/* mark this source as pending */
+	if (which >= 0 && which < 5)
+		m_v60_irq_control[7] |= 1 << which;
 	update_irq_state();
 }
 
+
+u8 segas32_state::irq_callback()
+{
+	const uint8_t effirq = m_v60_irq_control[7] & ~m_v60_irq_control[6] & 0x1f;
+	for (int vector = 0; vector < 5; vector++)
+		if (BIT(effirq, vector))
+			return m_v60_irq_control[vector];
+	return 0;
+}
 
 TIMER_DEVICE_CALLBACK_MEMBER(segas32_state::signal_v60_irq_callback)
 {
@@ -2257,6 +2252,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
 
 	/* basic machine hardware */
 	V60(config, m_maincpu, MAIN_CLOCK/2);
+	m_maincpu->irq_cycle_callback().set(FUNC(segas32_state::irq_callback));
 	m_maincpu->set_addrmap(AS_PROGRAM, &segas32_state::system32_map);
 	m_maincpu->set_vblank_int("screen", FUNC(segas32_state::start_of_vblank_int));
 
@@ -2311,7 +2307,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
 	rfsnd.add_route(1, "speaker", 0.40, 1);
 	rfsnd.set_addrmap(0, &segas32_state::rf5c68_map);
 
-	S32COMM(config, m_s32comm, 0);
+	S32COMM(config, m_s32comm);
 }
 
 DEFINE_DEVICE_TYPE(SEGA_S32_REGULAR_DEVICE, segas32_regular_state, "segas32_pcb_regular", "Sega System 32 regular PCB")
@@ -2336,7 +2332,7 @@ void segas32_analog_state::device_add_mconfig(machine_config &config)
 
 	m_maincpu->set_addrmap(AS_PROGRAM, &segas32_analog_state::system32_analog_map);
 
-	msm6253_device &adc(MSM6253(config, "adc", 0));
+	msm6253_device &adc(MSM6253(config, "adc"));
 	adc.set_input_tag<0>("ANALOG1");
 	adc.set_input_tag<1>("ANALOG2");
 	adc.set_input_tag<2>("ANALOG3");
@@ -2443,7 +2439,7 @@ void segas32_v25_state::device_add_mconfig(machine_config &config)
 
 	m_maincpu->set_addrmap(AS_PROGRAM, &segas32_v25_state::ga2_main_map);
 
-	MB8421(config, "dpram", 0);
+	MB8421(config, "dpram");
 
 	/* add a V25 for protection */
 	v25_device &mcu(V25(config, "mcu", 10000000));
@@ -2556,6 +2552,7 @@ void sega_multi32_state::device_add_mconfig(machine_config &config)
 
 	/* basic machine hardware */
 	V70(config, m_maincpu, MULTI32_CLOCK/2);
+	m_maincpu->irq_cycle_callback().set(FUNC(sega_multi32_state::irq_callback));
 	m_maincpu->set_addrmap(AS_PROGRAM, &sega_multi32_state::multi32_map);
 	m_maincpu->set_vblank_int("screen", FUNC(segas32_state::start_of_vblank_int));
 
@@ -2625,7 +2622,7 @@ void sega_multi32_state::device_add_mconfig(machine_config &config)
 	m_multipcm->add_route(1, "sleft", 0.35);
 	m_multipcm->add_route(0, "sright", 0.35);
 
-	S32COMM(config, m_s32comm, 0);
+	S32COMM(config, m_s32comm);
 }
 
 
@@ -2657,7 +2654,7 @@ void sega_multi32_analog_state::device_add_mconfig(machine_config &config)
 
 	m_maincpu->set_addrmap(AS_PROGRAM, &sega_multi32_analog_state::multi32_analog_map);
 
-	msm6253_device &adc(MSM6253(config, "adc", 0));
+	msm6253_device &adc(MSM6253(config, "adc"));
 	adc.set_input_tag<0>("ANALOG1");
 	adc.set_input_tag<1>("ANALOG2");
 	adc.set_input_cb<2>(FUNC(sega_multi32_analog_state::in2_analog_read));
@@ -2779,68 +2776,68 @@ private:
 
 void segas32_new_state::sega_system32(machine_config &config)
 {
-	SEGA_S32_REGULAR_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_REGULAR_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_system32_analog(machine_config &config)
 {
-	SEGA_S32_ANALOG_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_ANALOG_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_system32_track(machine_config &config)
 {
-	SEGA_S32_TRACKBALL_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_TRACKBALL_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_system32_4p(machine_config &config)
 {
-	SEGA_S32_4PLAYER_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_4PLAYER_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_system32_cd(machine_config &config)
 {
-	SEGA_S32_CD_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_CD_DEVICE(config, "mainpcb");
 }
 
 // for f1en where there is a sub-board containing shared ram sitting underneath the ROM board bridging 2 PCBs (not a network link)
 void segas32_new_state::sega_system32_dual_direct(machine_config &config)
 {
-	SEGA_S32_ANALOG_DEVICE(config, "mainpcb", 0);
-	SEGA_S32_ANALOG_DEVICE(config, "subpcb", 0);
+	SEGA_S32_ANALOG_DEVICE(config, "mainpcb");
+	SEGA_S32_ANALOG_DEVICE(config, "subpcb");
 }
 
 // air rescue is like f1en above but also has the 837-8341 DSP daughterboard on the mainpcb side only
 void segas32_new_state::sega_system32_dual_direct_upd7725(machine_config &config)
 {
-	SEGA_S32_UPD7725_DEVICE(config, "mainpcb", 0);
-	SEGA_S32_ANALOG_DEVICE(config, "subpcb", 0);
+	SEGA_S32_UPD7725_DEVICE(config, "mainpcb");
+	SEGA_S32_ANALOG_DEVICE(config, "subpcb");
 }
 
 void segas32_new_state::sega_system32_ga2(machine_config &config)
 {
-	SEGA_S32_V25_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_V25_DEVICE(config, "mainpcb");
 	subdevice<v25_common_device>("mainpcb:mcu")->set_decryption_table(segas32_v25_state::ga2_opcode_table);
 }
 
 void segas32_new_state::sega_system32_arf(machine_config &config)
 {
-	SEGA_S32_V25_DEVICE(config, "mainpcb", 0);
+	SEGA_S32_V25_DEVICE(config, "mainpcb");
 	subdevice<v25_common_device>("mainpcb:mcu")->set_decryption_table(segas32_v25_state::arf_opcode_table);
 }
 
 void segas32_new_state::sega_multi32(machine_config &config)
 {
-	SEGA_MULTI32_DEVICE(config, "mainpcb", 0);
+	SEGA_MULTI32_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_multi32_analog(machine_config &config)
 {
-	SEGA_MULTI32_ANALOG_DEVICE(config, "mainpcb", 0);
+	SEGA_MULTI32_ANALOG_DEVICE(config, "mainpcb");
 }
 
 void segas32_new_state::sega_multi32_6p(machine_config &config)
 {
-	SEGA_MULTI32_6PLAYER_DEVICE(config, "mainpcb", 0);
+	SEGA_MULTI32_6PLAYER_DEVICE(config, "mainpcb");
 }
 
 

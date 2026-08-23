@@ -134,7 +134,7 @@ void cpzodiac_state::main_map(address_map &map)
 	map(0xa000, 0xbfff).ram();
 	map(0xc000, 0xdfff).ram().share("vram"); // video?
 	map(0xe000, 0xe00f).rw("io", FUNC(te7750_device::read), FUNC(te7750_device::write));
-//	map(0xe016, 0xe017).ram(); SED1351F data/address lines, r/w?
+//  map(0xe016, 0xe017).ram(); SED1351F data/address lines, r/w?
 	map(0xe020, 0xe020).w("syt", FUNC(tc0140syt_device::master_port_w));
 	map(0xe021, 0xe021).rw("syt", FUNC(tc0140syt_device::master_comm_r), FUNC(tc0140syt_device::master_comm_w));
 }
@@ -273,7 +273,7 @@ void cpzodiac_state::cpzodiac(machine_config &config)
 	ymsnd.add_route(1, "speaker", 1.0, 0);
 	ymsnd.add_route(2, "speaker", 1.0, 1);
 
-	tc0140syt_device &syt(TC0140SYT(config, "syt", 0));
+	tc0140syt_device &syt(TC0140SYT(config, "syt"));
 	syt.nmi_callback().set_inputline(m_audiocpu, INPUT_LINE_NMI);
 	syt.reset_callback().set_inputline(m_audiocpu, INPUT_LINE_RESET);
 }
@@ -319,6 +319,6 @@ ROM_END
 } // anonymous namespace
 
 
-//    YEAR  NAME       PARENT    MACHINE   INPUT     STATE           INIT        SCREEN  COMPANY              FULLNAME                  FLAGS
-GAME( 1993, cpzodiac,  0,        cpzodiac, cpzodiac, cpzodiac_state, empty_init, ROT0,   "Taito Corporation", "Captain Zodiac (World)", MACHINE_SUPPORTS_SAVE | MACHINE_MECHANICAL | MACHINE_NOT_WORKING )
-GAME( 1993, cpzodiacj, cpzodiac, cpzodiac, cpzodiac, cpzodiac_state, empty_init, ROT0,   "Taito Corporation", "Captain Zodiac (Japan)", MACHINE_SUPPORTS_SAVE | MACHINE_MECHANICAL | MACHINE_NOT_WORKING )
+//    YEAR  NAME       PARENT    MACHINE   INPUT     STATE           INIT        SCREEN  COMPANY  FULLNAME                  FLAGS
+GAME( 1993, cpzodiac,  0,        cpzodiac, cpzodiac, cpzodiac_state, empty_init, ROT0,   "Taito", "Captain Zodiac (World)", MACHINE_SUPPORTS_SAVE | MACHINE_MECHANICAL | MACHINE_NOT_WORKING )
+GAME( 1993, cpzodiacj, cpzodiac, cpzodiac, cpzodiac, cpzodiac_state, empty_init, ROT0,   "Taito", "Captain Zodiac (Japan)", MACHINE_SUPPORTS_SAVE | MACHINE_MECHANICAL | MACHINE_NOT_WORKING )
