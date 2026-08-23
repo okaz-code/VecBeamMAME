@@ -139,6 +139,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_BEAM_DOT_SIZE,                              "1.0",       core_options::option_type::FLOAT,      "set vector beam size for dots" },
 	{ OPTION_BEAM_INTENSITY_WEIGHT,                      "0",         core_options::option_type::FLOAT,      "set vector beam intensity weight " },
 	{ OPTION_FLICKER,                                    "0",         core_options::option_type::FLOAT,      "set vector flicker effect" },
+	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },

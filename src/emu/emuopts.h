@@ -120,6 +120,7 @@
 #define OPTION_BEAM_DOT_SIZE        "beam_dot_size"
 #define OPTION_BEAM_INTENSITY_WEIGHT   "beam_intensity_weight"
 #define OPTION_FLICKER              "flicker"
+#define OPTION_VECTOR_PLAYBACK      "vector_playback"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -406,6 +407,7 @@ public:
 	float beam_dot_size() const { return float_value(OPTION_BEAM_DOT_SIZE); }
 	float beam_intensity_weight() const { return float_value(OPTION_BEAM_INTENSITY_WEIGHT); }
 	float flicker() const { return float_value(OPTION_FLICKER); }
+	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }

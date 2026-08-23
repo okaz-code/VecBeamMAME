@@ -7,6 +7,7 @@
 
 #include "notifier.h"
 
+#include <memory>
 #include <utility>
 
 
@@ -41,6 +42,7 @@ public:
 
 	// construction/destruction
 	vector_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	virtual ~vector_device();
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void clear_list();
@@ -49,6 +51,7 @@ public:
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
+	virtual void device_stop() override ATTR_COLD;
 
 	// notifiers
 	util::notifier_subscription add_frame_begin_notifier(frame_begin_delegate &&n);
@@ -84,7 +87,12 @@ private:
 		int intensity;
 	};
 
+	// -vector_playback: reads an MVEC beam-event stream and replaces the emulated beam list
+	// with the recorded one every frame. Absent (null) unless the option is given.
+	class stream_state;
+
 	std::unique_ptr<point[]> m_vector_list;
+	std::unique_ptr<stream_state> m_stream;
 	int m_vector_index;
 	int m_min_intensity;
 	int m_max_intensity;
