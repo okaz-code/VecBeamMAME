@@ -121,7 +121,13 @@ public:
 		}
 		read_header();
 		m_playing = true;
+		m_overlay = owner.machine().options().vector_playback_overlay();
+		m_at_end_action = owner.machine().options().vector_playback_end();
 		osd_printf_info("MVEC: playing vector stream from %s\n", path);
+		// The readout leaves no other trace in a log, and this path is driven from scripts.
+		osd_printf_info("MVEC: position overlay %s, end of stream: %s\n",
+				m_overlay ? "shown" : "hidden",
+				(m_at_end_action == 1) ? "exit" : (m_at_end_action == 2) ? "loop" : "hold");
 		announce("Loaded");
 	}
 
@@ -152,14 +158,28 @@ public:
 
 		if (target >= m_index.size())
 		{
-			// Hold the last frame at end of file rather than going black.
-			if (!m_at_end)
+			// vector_playback_end 2 wraps instead of stopping. Falling through with target 0 leaves the
+			// work to the ordinary seek path below, which reloads the frame because the position is not
+			// the previous one plus one.
+			if ((m_at_end_action == 2) && !m_index.empty())
 			{
-				m_at_end = true;
-				announce("End of file");
+				target = 0;
+				announce("Looped");
 			}
-			emit(dest, capacity, count, visarea);
-			return;
+			else
+			{
+				// Hold the last frame at end of file rather than going black.
+				if (!m_at_end)
+				{
+					m_at_end = true;
+					osd_printf_info("MVEC: playback ended after %d frames (End of file)\n", int(m_index.size()));
+					announce("End of file");
+					if (m_at_end_action == 1)
+						m_owner.machine().schedule_exit();
+				}
+				emit(dest, capacity, count, visarea);
+				return;
+			}
 		}
 
 		if (target != m_position)
@@ -559,6 +579,8 @@ private:
 				m_goto_digits.clear();
 				return;
 			}
+			// A hidden readout makes the modal frame-number input indistinguishable from an input
+			// lock, so the prompt is drawn regardless; Alt+O remains the way to hide it afterwards.
 			m_owner.machine().popmessage("MVEC  go to frame: %s_", m_goto_digits);
 			return;
 		}
@@ -566,7 +588,12 @@ private:
 		if (!input.code_pressed(KEYCODE_LALT) && !input.code_pressed(KEYCODE_RALT))
 			return;
 
-		if (input.code_pressed_once(KEYCODE_P))
+		if (input.code_pressed_once(KEYCODE_O))
+		{
+			m_overlay = !m_overlay;
+			announce(m_paused ? "Paused" : "Playing");
+		}
+		else if (input.code_pressed_once(KEYCODE_P))
 		{
 			m_paused = !m_paused;
 			announce(m_paused ? "Paused" : "Playing");
@@ -579,6 +606,7 @@ private:
 		else if (input.code_pressed_once(KEYCODE_END)) request_position(m_index.size() - 1U);
 		else if (input.code_pressed_once(KEYCODE_G))
 		{
+			m_overlay = true;
 			m_goto_mode = true;
 			m_goto_digits.clear();
 			m_paused = true;
@@ -589,6 +617,9 @@ private:
 	// hook and does not add one, so the position is reported on change instead.
 	void announce(const char *status)
 	{
+		// Alt+O is authoritative: navigation and end-of-file status must not resurrect a hidden readout.
+		if (!m_overlay)
+			return;
 		const u64 shown = ((m_pending != MVEC_INVALID_POSITION) ? m_pending
 				: (m_position == MVEC_INVALID_POSITION ? 0U : m_position)) + 1U;
 		m_owner.machine().popmessage("MVEC  %s  frame %d / %d%s",
@@ -604,7 +635,9 @@ private:
 	u64 m_position = MVEC_INVALID_POSITION;
 	u64 m_pending = MVEC_INVALID_POSITION;
 	u64 m_cached_frame = MVEC_INVALID_POSITION;
+	int m_at_end_action = 0;   // vector_playback_end: 0 hold, 1 exit, 2 loop
 	bool m_playing = false;
+	bool m_overlay = true;
 	bool m_paused = false;
 	bool m_at_end = false;
 	bool m_goto_mode = false;

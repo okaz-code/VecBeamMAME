@@ -140,6 +140,8 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_BEAM_INTENSITY_WEIGHT,                      "0",         core_options::option_type::FLOAT,      "set vector beam intensity weight " },
 	{ OPTION_FLICKER,                                    "0",         core_options::option_type::FLOAT,      "set vector flicker effect" },
 	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
+	{ OPTION_VECTOR_PLAYBACK_END ";vector_exit_after_playback(0-2)", "0", core_options::option_type::INTEGER, "what to do when vector playback reaches the end of the stream (0 = hold the last frame, 1 = close the program, 2 = loop back to the first frame)" },
+	{ OPTION_VECTOR_PLAYBACK_OVERLAY,                    "1",         core_options::option_type::BOOLEAN,    "show the vector playback position readout (use -novector_playback_overlay to stay quiet; Alt+O still toggles it)" },
 
 	// sound options
 	{ nullptr,                                           nullptr,     core_options::option_type::HEADER,     "CORE SOUND OPTIONS" },
