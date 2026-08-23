@@ -131,7 +131,8 @@
 #define OPTION_VECTOR_EVENT_DUMP    "vector_event_dump"
 #define OPTION_VECTOR_RECORD        "vector_record"
 #define OPTION_VECTOR_PLAYBACK      "vector_playback"
-#define OPTION_VECTOR_EXIT_AFTER_PLAYBACK "vector_exit_after_playback"
+#define OPTION_VECTOR_PLAYBACK_END  "vector_playback_end"
+#define OPTION_VECTOR_PLAYBACK_OVERLAY "vector_playback_overlay"
 #define OPTION_VECTOR_PRESENT_RATE  "vector_present_rate"
 #define OPTION_VECTOR_PHOSPHOR_RATE "vector_phosphor_rate"
 
@@ -431,7 +432,9 @@ public:
 	const char *vector_event_dump() const { return value(OPTION_VECTOR_EVENT_DUMP); }
 	const char *vector_record() const { return value(OPTION_VECTOR_RECORD); }
 	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
-	bool vector_exit_after_playback() const { return bool_value(OPTION_VECTOR_EXIT_AFTER_PLAYBACK); }
+	// 0 = hold the last frame, 1 = exit, 2 = loop back to the first frame.
+	int vector_playback_end() const { return int_value(OPTION_VECTOR_PLAYBACK_END); }
+	bool vector_playback_overlay() const { return bool_value(OPTION_VECTOR_PLAYBACK_OVERLAY); }
 	int vector_present_rate() const;
 	int vector_phosphor_rate() const { return int_value(OPTION_VECTOR_PHOSPHOR_RATE); }
 
