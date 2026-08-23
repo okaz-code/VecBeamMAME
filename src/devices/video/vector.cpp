@@ -676,14 +676,26 @@ private:
 
 	attoseconds_t infer_frame_period()
 	{
-		// Version 1.0 did not store a frame period. Timed vector streams still
-		// contain absolute t0 values, so estimate the period from the median
-		// inter-frame advance. Seek directly to the first point timestamp in a
-		// bounded sample of indexed frames; do not reread multi-gigabyte payloads.
-		std::vector<double> periods;
+		// Version 1.0 did not store a frame period. Timed vector streams still contain absolute t0
+		// values, so recover it from how far the first point's timestamp advances across the stream.
+		// Seek directly to that timestamp in a bounded sample of indexed frames; do not reread
+		// multi-gigabyte payloads.
+		//
+		// The estimator is the total span over the frames it covers, NOT the median inter-frame
+		// advance. A list-start interval is not a fixed quantity: the game restarts the AVG, and a
+		// heavy frame takes longer, so the distribution is skewed right - on starwars.mvec the
+		// advances run 12.2 ms at the 5th percentile to 24.5 ms at the 95th. Its median therefore
+		// reads well below the true average, by 2.5% on that stream and by 13% on sw_mglow.mvec.
+		// Playback consumes one recorded frame per screen update, so the average is what matters.
+		//
+		// Samples are still screened pairwise: an implied period outside [1 ms, 1 s] means the newer
+		// timestamp is not trustworthy, so it is dropped rather than becoming an endpoint of the span.
 		const size_t stride = std::max<size_t>(1, m_frame_index.size() / 4096);
 		long double previous_time = 0.0L;
 		u64 previous_frame = 0;
+		long double first_time = 0.0L;
+		u64 first_frame = 0;
+		unsigned accepted = 0;
 		bool have_previous = false;
 		for (size_t i = 0; i < m_frame_index.size(); i += stride)
 		{
@@ -711,24 +723,36 @@ private:
 				continue;
 			const long double current_time = static_cast<long double>(seconds)
 				+ static_cast<long double>(attoseconds) / static_cast<long double>(ATTOSECONDS_PER_SECOND);
-			if (have_previous && current_time > previous_time)
+			if (!have_previous)
 			{
-				const double period = double((current_time - previous_time)
-					/ static_cast<long double>(u64(i) - previous_frame));
-				if (period >= 0.001 && period <= 1.0)
-					periods.push_back(period);
+				first_time = current_time;
+				first_frame = u64(i);
+				previous_time = current_time;
+				previous_frame = u64(i);
+				have_previous = true;
+				accepted = 1;
+				continue;
 			}
+			if (current_time <= previous_time)
+				continue;
+			const double implied = double((current_time - previous_time)
+				/ static_cast<long double>(u64(i) - previous_frame));
+			if (implied < 0.001 || implied > 1.0)
+				continue;
 			previous_time = current_time;
 			previous_frame = u64(i);
-			have_previous = true;
+			++accepted;
 		}
 		m_input.clear();
-		if (periods.empty())
+		if (accepted < 2 || previous_frame <= first_frame)
 			return 0;
-		std::sort(periods.begin(), periods.end());
-		const double median = periods[periods.size() / 2];
-		const attoseconds_t result = attoseconds_t(std::llround(median * double(ATTOSECONDS_PER_SECOND)));
-		osd_printf_info("MVEC: inferred legacy source rate %.6f Hz from timed beam events\n", 1.0 / median);
+		const double mean = double((previous_time - first_time)
+			/ static_cast<long double>(previous_frame - first_frame));
+		if (mean < 0.001 || mean > 1.0)
+			return 0;
+		const attoseconds_t result = attoseconds_t(std::llround(mean * double(ATTOSECONDS_PER_SECOND)));
+		osd_printf_info("MVEC: inferred legacy source rate %.6f Hz from timed beam events across frames %llu to %llu\n",
+				1.0 / mean, (unsigned long long)first_frame, (unsigned long long)previous_frame);
 		return result;
 	}
 
