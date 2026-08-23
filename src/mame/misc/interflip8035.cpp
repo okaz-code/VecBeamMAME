@@ -517,7 +517,6 @@ public:
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
-	virtual void machine_reset() override ATTR_COLD;
 
 	void add_em_reels(machine_config &config, int symbols, attotime period) ATTR_COLD;
 	void interflip(machine_config &config) ATTR_COLD;
@@ -591,10 +590,7 @@ private:
 
 void interflip8035_state::machine_start()
 {
-}
-
-void interflip8035_state::machine_reset()
-{
+	// TODO: savestates
 }
 
 
@@ -1071,14 +1067,14 @@ void interflip8035_state::irq_w(int state)
 
 void interflip8035_state::add_em_reels(machine_config &config, int symbols, attotime period)
 {
-	for(int i = 0; i < 4; i++)
-	{
-		std::set<uint16_t> detents;
-		for(int i = 0; i < symbols; i++)
-			detents.insert(i * STEPS_PER_SYMBOL);
+	std::set<uint16_t> detents;
+	for(int i = 0; i < symbols; i++)
+		detents.insert(i * STEPS_PER_SYMBOL);
 
-		EM_REEL(config, m_reels[i], symbols * STEPS_PER_SYMBOL, detents, period);
-		m_reels[i]->set_direction(em_reel_device::dir::FORWARD);
+	for(auto &reel : m_reels)
+	{
+		EM_REEL(config, reel, reel.finder_tag(), symbols * STEPS_PER_SYMBOL, detents, period);
+		reel->set_direction(em_reel_device::dir::FORWARD);
 	}
 }
 

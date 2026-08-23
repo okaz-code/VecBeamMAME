@@ -210,6 +210,7 @@ VBlank duration: 1/VSYNC * (16/256) = 1017.6 us
 #include "video/resnet.h"
 
 #include "emupal.h"
+#include "input.h" // for LaserDisc debug keys
 #include "screen.h"
 #include "speaker.h"
 #include "tilemap.h"
@@ -2217,7 +2218,7 @@ void gottlieb_ld_state::g2laser(machine_config &config)
 
 	GOTTLIEB_SOUND_REV2(config, m_r2_sound).add_route(ALL_OUTPUTS, "speaker", 1.0);
 
-	PIONEER_PR8210(config, m_laserdisc, 0);
+	PIONEER_PR8210(config, m_laserdisc);
 	m_laserdisc->set_audio(FUNC(gottlieb_ld_state::laserdisc_audio_process));
 	m_laserdisc->set_overlay(GOTTLIEB_VIDEO_HCOUNT, GOTTLIEB_VIDEO_VCOUNT, FUNC(gottlieb_ld_state::screen_update));
 	m_laserdisc->set_overlay_clip(0, GOTTLIEB_VIDEO_HBLANK-1, 0, GOTTLIEB_VIDEO_VBLANK-8);
@@ -2275,7 +2276,7 @@ void gottlieb_ld_state::cobram3(machine_config &config)
 	GOTTLIEB_SOUND_REV2(config, m_r2_sound).add_route(ALL_OUTPUTS, "speaker", 1.0);
 	m_r2_sound->enable_cobram3_mods();
 
-	PIONEER_PR8210(config, m_laserdisc, 0);
+	PIONEER_PR8210(config, m_laserdisc);
 	m_laserdisc->set_audio(FUNC(gottlieb_ld_state::laserdisc_audio_process));
 	m_laserdisc->set_overlay(GOTTLIEB_VIDEO_HCOUNT, GOTTLIEB_VIDEO_VCOUNT, FUNC(gottlieb_ld_state::screen_update));
 	m_laserdisc->set_overlay_clip(0, GOTTLIEB_VIDEO_HBLANK-1, 0, GOTTLIEB_VIDEO_VBLANK-8);

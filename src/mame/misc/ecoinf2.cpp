@@ -27,7 +27,7 @@ public:
 	ecoinf2_state(const machine_config &mconfig, device_type type, const char *tag) :
 		driver_device(mconfig, type, tag),
 		m_maincpu(*this, "maincpu"),
-		m_reels(*this, "reel%s", 0U),
+		m_reels(*this, "reel%s", 1U),
 		m_meters(*this, "meters"),
 		m_coins(*this, "COINS"),
 		m_key(*this, "PERKEY"),
@@ -538,10 +538,10 @@ void ecoinf2_state::ecoinf2_oxo(machine_config &config)
 	REEL(config, m_reels[3], ECOIN_200STEP_REEL, 12, 24, 0x09, 7, 200*2);
 	m_reels[3]->optic_handler().set(FUNC(ecoinf2_state::reel_optic_cb<3>));
 
-	METERS(config, m_meters, 0);
+	METERS(config, m_meters);
 	m_meters->set_number(8);
 
-//  I8255(config, "ic25_dips", 0);
+//  I8255(config, "ic25_dips");
 }
 
 

@@ -4747,9 +4747,9 @@ ROM_END
   * 2 7seg LEDs, 5 lamps, 1-bit sound
   * 3 lightsensors, lightgun
 
-  To play it in MAME, either use the clickable artwork with -mouse, or set
-  button 1 to "Z or X or C" and each lightsensor to one of those keys.
-  Although the game seems mostly playable without having to use the gun trigger
+  To play it in MAME, either use the clickable artwork, or set button 1 to
+  "Z or X or C" and each lightsensor to one of those keys. Although the game
+  seems mostly playable without having to use the gun trigger
 
 *******************************************************************************/
 
@@ -9153,7 +9153,9 @@ class mdndclab_state : public hh_tms1k_state
 {
 public:
 	mdndclab_state(const machine_config &mconfig, device_type type, const char *tag) :
-		hh_tms1k_state(mconfig, type, tag)
+		hh_tms1k_state(mconfig, type, tag),
+		m_colwall(*this, "colwall%u%u", 1U, 1U),
+		m_rowwall(*this, "rowwall%u%u", 1U, 1U)
 	{ }
 
 	void mdndclab(machine_config &config);
@@ -9162,6 +9164,9 @@ private:
 	void write_r(u32 data);
 	void write_o(u16 data);
 	u8 read_k();
+
+	// these are used by the layout to store the presence of walls
+	output_finder<7, 8> m_colwall, m_rowwall;
 };
 
 // handlers
