@@ -494,6 +494,18 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	if (!bgfx::init(init))
 		return false;
 
+	// -bgfx_backend is a request, not a guarantee: bgfx silently falls back to its default renderer
+	// when the requested one cannot initialise. On macOS the Vulkan renderer is compiled in but needs
+	// a libvulkan.dylib the OS does not ship, so it lands on Metal without a word. Report the renderer
+	// that was actually created, and say so plainly when an explicit request was not honoured.
+	const bgfx::RendererType::Enum renderer_type = bgfx::getRendererType();
+	osd_printf_verbose("BGFX: renderer = %s (requested '%s')\n", bgfx::getRendererName(renderer_type), backend);
+	if ((init.type != bgfx::RendererType::Count) && (renderer_type != init.type))
+	{
+		osd_printf_warning("BGFX: backend '%s' is unavailable; using %s instead\n",
+				backend, bgfx::getRendererName(renderer_type));
+	}
+
 	// Enable HDR only after the real renderer/output capability is known. This makes HDR-on-by-default
 	// safe for SDR monitors and unsupported backends: they keep the already-created SDR swapchain.
 	const bool hdr_requested = m_options->bgfx_hdr();
