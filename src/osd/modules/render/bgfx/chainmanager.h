@@ -131,6 +131,12 @@ public:
 	void load_config(util::xml::data_node const &screennode);
 	void save_config(util::xml::data_node &parentnode);
 
+	// True when -bgfx_screen_chains was set at source.ini priority or above, i.e. per-source,
+	// per-game or on the command line rather than as a global preference in mame.ini. The stored
+	// selection is neither read nor written in that case; see load_config and save_config.
+	// Static because the renderer has to ask before the chain manager exists.
+	static bool chains_explicitly_specified(const osd_options &options);
+
 	// Apply a chain-selection change requested via slider_changed(). The actual reload_chains()
 	// (which destroys and recreates all of the chain's bgfx targets) is deferred to here so it runs
 	// from the renderer at a clean frame boundary rather than mid-frame inside the slider callback -
