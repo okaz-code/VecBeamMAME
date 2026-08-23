@@ -165,11 +165,17 @@ static INPUT_PORTS_START(vectrex)
 	PORT_CONFSETTING(0x02, "right port")
 	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_BUTTON5) PORT_CODE(MOUSECODE_BUTTON1)
 
+	// Conditioned on the lightpen being plugged in. These are the only fields on the machine that
+	// carry a crosshair, and crosshair_manager keys on ioport_field::enabled(), so without the
+	// condition every Vectrex game draws a lightpen crosshair over itself - the machine ships with
+	// the pen unplugged, and the controller is an analog stick that has no crosshair of its own.
+	// via_cb2_w only reads these when LPENCONF selects a port, so conditioning them out changes
+	// nothing else.
 	PORT_START("LPENY")
-	PORT_BIT(0xff, 0x80, IPT_LIGHTGUN_X)  PORT_CROSSHAIR(Y, 1, 0, 0) PORT_MINMAX(0,0xff) PORT_SENSITIVITY(35) PORT_KEYDELTA(1) PORT_PLAYER(1)
+	PORT_BIT(0xff, 0x80, IPT_LIGHTGUN_X)  PORT_CROSSHAIR(Y, 1, 0, 0) PORT_MINMAX(0,0xff) PORT_SENSITIVITY(35) PORT_KEYDELTA(1) PORT_PLAYER(1) PORT_CONDITION("LPENCONF", 0x03, NOTEQUALS, 0x00)
 
 	PORT_START("LPENX")
-	PORT_BIT(0xff, 0x80, IPT_LIGHTGUN_Y)  PORT_CROSSHAIR(X, 1, 0, 0) PORT_MINMAX(0,0xff) PORT_SENSITIVITY(35) PORT_KEYDELTA(1) PORT_REVERSE PORT_PLAYER(1)
+	PORT_BIT(0xff, 0x80, IPT_LIGHTGUN_Y)  PORT_CROSSHAIR(X, 1, 0, 0) PORT_MINMAX(0,0xff) PORT_SENSITIVITY(35) PORT_KEYDELTA(1) PORT_REVERSE PORT_PLAYER(1) PORT_CONDITION("LPENCONF", 0x03, NOTEQUALS, 0x00)
 
 INPUT_PORTS_END
 

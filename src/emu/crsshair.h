@@ -74,7 +74,9 @@ public:
 private:
 	// private helpers
 	void create_bitmap();
-	void update_position();
+	// Returns false when no enabled field drives this crosshair, e.g. a lightgun conditioned
+	// out by an unplugged-controller setting.
+	bool update_position();
 
 	// private state
 	running_machine &   m_machine;  // reference to our machine

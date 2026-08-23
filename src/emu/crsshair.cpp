@@ -245,7 +245,7 @@ void render_crosshair::create_bitmap()
 //  for the given player
 //-------------------------------------------------
 
-void render_crosshair::update_position()
+bool render_crosshair::update_position()
 {
 	// read all the lightgun values
 	bool gotx = false, goty = false;
@@ -279,8 +279,10 @@ void render_crosshair::update_position()
 
 				// if we got both, stop
 				if (gotx && goty)
-					return;
+					return true;
 			}
+
+	return gotx || goty;
 }
 
 
@@ -291,8 +293,17 @@ void render_crosshair::update_position()
 void render_crosshair::animate(u16 auto_time)
 {
 	// read all the port values
-	if (m_used)
-		update_position();
+	if (m_used && !update_position())
+	{
+		// Nothing enabled drives this crosshair. The constructor marks a player as having one from
+		// the mere presence of a crosshair field, without asking whether it is enabled, so a field
+		// conditioned out by an unplugged-controller setting still gets here - and would otherwise
+		// leave the crosshair parked at whatever it last read, or at the origin. There is nothing
+		// to point at, so hide it. A later change to the condition re-enables the field and the
+		// crosshair comes back on its own.
+		m_visible = false;
+		return;
+	}
 
 	// auto visibility
 	if (m_mode == CROSSHAIR_VISIBILITY_AUTO)
