@@ -301,9 +301,17 @@ public:
 			// machine running to feed the renderer/UI, but never expose its unrelated frame-zero audio
 			// after a seek or while the vector stream is paused.
 			m_owner.machine().sound().vector_playback_mute(true);
+			// The overlay is on unless asked for otherwise. Alt+O still toggles it either way, and
+			// the go-to prompt still forces it visible - a hidden modal input reads as a lock-up.
+			m_tool_overlay = m_owner.machine().options().vector_playback_overlay();
 			m_tool_announced = true;
 			show_tool_message("Loaded");
 			osd_printf_info("MVEC: playing vector stream from %s\n", playback_path);
+			// The overlay leaves no other trace in a log, and this path is driven from scripts.
+			osd_printf_info("MVEC: position overlay %s, end of stream: %s\n",
+					m_tool_overlay ? "shown" : "hidden",
+					(m_owner.machine().options().vector_playback_end() == 1) ? "exit"
+						: (m_owner.machine().options().vector_playback_end() == 2) ? "loop" : "hold");
 		}
 	}
 
@@ -419,13 +427,25 @@ public:
 		m_pending_position = INVALID_POSITION;
 		if (target >= m_frame_index.size())
 		{
-			if (!m_eof)
-				playback_end("End of file");
-			copy_cached(dest, capacity, count, true);
-			stale = true;
-			if (m_tool_overlay)
-				show_tool_message("End of file");
-			return true;
+			// vector_playback_end 2 wraps instead of stopping. Falling through with target 0 lets the
+			// normal seek path below do the work: it sees a position that is not the previous one plus
+			// one, so it reloads the frame and raises the discontinuity that resynchronises the audio.
+			if ((m_owner.machine().options().vector_playback_end() == 2) && !m_frame_index.empty())
+			{
+				target = 0;
+				m_eof = false;
+				show_tool_message("Looped");
+			}
+			else
+			{
+				if (!m_eof)
+					playback_end("End of file");
+				copy_cached(dest, capacity, count, true);
+				stale = true;
+				if (m_tool_overlay)
+					show_tool_message("End of file");
+				return true;
+			}
 		}
 
 		if (m_play_position < 0 || target != u64(m_play_position))
@@ -928,7 +948,7 @@ private:
 		m_tool_paused = true;
 		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)m_frame_index.size(), reason);
 		show_tool_message("End of file");
-		if (m_owner.machine().options().vector_exit_after_playback())
+		if (m_owner.machine().options().vector_playback_end() == 1)
 			m_owner.machine().schedule_exit();
 	}
 

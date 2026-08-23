@@ -151,7 +151,8 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_EVENT_DUMP,                          nullptr,     core_options::option_type::PATH,       "debug: write timed beam events to this CSV file" },
 	{ OPTION_VECTOR_RECORD,                              nullptr,     core_options::option_type::PATH,       "record final vector beam events to an MVEC stream" },
 	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
-	{ OPTION_VECTOR_EXIT_AFTER_PLAYBACK,                 "0",         core_options::option_type::BOOLEAN,    "close the program at the end of vector playback" },
+	{ OPTION_VECTOR_PLAYBACK_END ";vector_exit_after_playback(0-2)", "0", core_options::option_type::INTEGER, "what to do when vector playback reaches the end of the stream (0 = hold the last frame, 1 = close the program, 2 = loop back to the first frame)" },
+	{ OPTION_VECTOR_PLAYBACK_OVERLAY,                    "1",         core_options::option_type::BOOLEAN,    "show the vector playback position overlay (use -novector_playback_overlay to start hidden; Alt+O still toggles it)" },
 	{ OPTION_VECTOR_PRESENT_RATE ";vecpresent",          "0",         core_options::option_type::STRING,     "present vector video at this rate without changing emulation timing (0 = off, auto = monitor rate)" },
 	{ OPTION_VECTOR_PHOSPHOR_RATE ";vecphosphor(0-360)", "0",         core_options::option_type::INTEGER,    "limit vector phosphor/monitor chain updates per second during high-rate presentation (0 = unlimited)" },
 
