@@ -4554,35 +4554,62 @@ int renderer_bgfx::draw(int update)
 		// else: no usable sweep this frame - hold the latch as it is
 		const bool window_on = window_wanted && m_vec_window_engaged;
 		m_vec_window_mode = window_on;
-		// Report the engage decision at info level, once per distinct window width and once per
-		// change of the decision itself. Without this the span test disables the whole feature in
-		// silence, and a title that shows no flicker is indistinguishable from one where the window
-		// never ran. The inert branch also reports the scale that WOULD engage, because at a low
-		// presentation rate a high scale makes one window cover the whole sweep - that is a real
-		// consequence of the display rate, not a fault, but it needs to be visible.
-		if (window_available && window_span_usable
-			&& (m_vec_window_engaged != m_vec_window_notice_engaged
-				|| std::abs(window_w - m_vec_window_notice_w) > 1e-9))
+		// Report each engage decision at info level ONCE per distinct window width, then stop.
+		// Without any notice the span test disables the whole feature in silence and a title that
+		// shows no flicker is indistinguishable from one where the window never ran, so the first
+		// occurrence of each state is worth a line. Reporting every CHANGE is not: the decision
+		// tracks the sweep length, which tracks what the game is drawing, and the hysteresis band
+		// only covers a sweep sitting near the threshold. A title that alternates between heavy and
+		// light scenes crosses it wholesale - mhavoc swings between 2.2 ms and 22 ms and flipped 31
+		// times in a 60-second capture - and none of those lines said anything the first two had not.
+		// The alternation itself is worth knowing about, so it gets one line of its own and then
+		// silence.
+		if (window_available && window_span_usable)
 		{
-			m_vec_window_notice_engaged = m_vec_window_engaged;
-			m_vec_window_notice_w = window_w;
-			if (m_vec_window_engaged)
+			// A new window width is a new configuration, so its decisions are reported afresh.
+			if (std::abs(window_w - m_vec_window_notice_w) > 1e-9)
 			{
-				osd_printf_info("BGFX: beam time window active - sweep %.2f ms over %.2f ms windows"
-					" (%.1f per sweep), scale %.2f\n",
-					window_span * 1000.0, window_w * 1000.0,
-					window_span / window_w, window_scale);
+				m_vec_window_notice_w = window_w;
+				m_vec_window_notice_seen[0] = m_vec_window_notice_seen[1] = false;
+				m_vec_window_notice_alternating = false;
+				m_vec_window_notice_engaged = !m_vec_window_engaged;
 			}
-			else
+			if (m_vec_window_engaged != m_vec_window_notice_engaged)
 			{
-				// The sweep has to exceed 1.25x the window to engage; below that one window covers it
-				// and the result is the frame-based picture at several times the CPU cost.
-				const double present_ms =
-					window().machine().video().vector_present_period().as_double() * 1000.0;
-				osd_printf_info("BGFX: beam time window inert - sweep %.2f ms fits one %.2f ms window;"
-					" needs scale below %.2f at this %.2f ms presentation interval\n",
-					window_span * 1000.0, window_w * 1000.0,
-					(window_span * 1000.0) / (present_ms * 1.25), present_ms);
+				m_vec_window_notice_engaged = m_vec_window_engaged;
+				bool &reported = m_vec_window_notice_seen[m_vec_window_engaged ? 1 : 0];
+				if (!reported)
+				{
+					reported = true;
+					if (m_vec_window_engaged)
+					{
+						osd_printf_info("BGFX: beam time window active - sweep %.2f ms over %.2f ms windows"
+							" (%.1f per sweep), scale %.2f\n",
+							window_span * 1000.0, window_w * 1000.0,
+							window_span / window_w, window_scale);
+					}
+					else
+					{
+						// The sweep has to exceed 1.25x the window to engage; below that one window
+						// covers it and the result is the frame-based picture at several times the
+						// CPU cost. The scale that WOULD engage is reported because at a low
+						// presentation rate a high scale makes one window cover the whole sweep -
+						// a real consequence of the display rate, not a fault, but it needs saying.
+						const double present_ms =
+							window().machine().video().vector_present_period().as_double() * 1000.0;
+						osd_printf_info("BGFX: beam time window inert - sweep %.2f ms fits one %.2f ms window;"
+							" needs scale below %.2f at this %.2f ms presentation interval\n",
+							window_span * 1000.0, window_w * 1000.0,
+							(window_span * 1000.0) / (present_ms * 1.25), present_ms);
+					}
+				}
+				else if (!m_vec_window_notice_alternating)
+				{
+					m_vec_window_notice_alternating = true;
+					osd_printf_info("BGFX: beam time window follows the sweep length, and this title's"
+						" sweep crosses the %.2f ms window in both directions; further changes at this"
+						" window width are not reported\n", window_w * 1000.0);
+				}
 			}
 		}
 		if (!window_on)

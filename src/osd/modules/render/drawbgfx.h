@@ -584,6 +584,10 @@ private:
 	bool m_vec_window_notice_engaged = false;
 	bool m_vec_window_notice_blocked = false;   // reported "on but unavailable" already
 	double m_vec_window_notice_w = -1.0;
+	// Each engage decision is reported once per window width, then the notices go quiet. Index by
+	// the decision: [0] inert, [1] active. m_vec_window_notice_alternating suppresses the rest.
+	bool m_vec_window_notice_seen[2] = { false, false };
+	bool m_vec_window_notice_alternating = false;
 	// -verbose accounting: one "BEAMWIN" line per pass reporting how many presents it received and
 	// how much of it was deposited. deposited < total is expected - the VGGO cadence and the present
 	// rate are not commensurate, so a long pass loses its tail, which IS the flicker signal - but
