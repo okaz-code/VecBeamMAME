@@ -121,6 +121,8 @@
 #define OPTION_BEAM_INTENSITY_WEIGHT   "beam_intensity_weight"
 #define OPTION_FLICKER              "flicker"
 #define OPTION_VECTOR_PLAYBACK      "vector_playback"
+#define OPTION_VECTOR_PLAYBACK_END  "vector_playback_end"
+#define OPTION_VECTOR_PLAYBACK_OVERLAY "vector_playback_overlay"
 
 // core sound options
 #define OPTION_SAMPLERATE           "samplerate"
@@ -408,6 +410,9 @@ public:
 	float beam_intensity_weight() const { return float_value(OPTION_BEAM_INTENSITY_WEIGHT); }
 	float flicker() const { return float_value(OPTION_FLICKER); }
 	const char *vector_playback() const { return value(OPTION_VECTOR_PLAYBACK); }
+	// 0 = hold the last frame, 1 = exit, 2 = loop back to the first frame.
+	int vector_playback_end() const { return int_value(OPTION_VECTOR_PLAYBACK_END); }
+	bool vector_playback_overlay() const { return bool_value(OPTION_VECTOR_PLAYBACK_OVERLAY); }
 
 	// core sound options
 	int sample_rate() const { return int_value(OPTION_SAMPLERATE); }
