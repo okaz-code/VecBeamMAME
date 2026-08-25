@@ -2099,8 +2099,17 @@ void renderer_bgfx::set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, rende
 	// Layout artwork and the MAME UI share the same final primitive list, but room light must not
 	// dim menu/text readability.  UI primitives carry the target's UI container; layout artwork
 	// either has no container or belongs to a screen container.
-	const bool is_ui = prim != nullptr && window().target() != nullptr
-		&& prim->container == window().target()->ui_container();
+	// Both sides of this comparison can be null, and null == null is the wrong answer. Layout
+	// artwork "either has no container or belongs to a screen container" per the note above, so a
+	// target whose ui_container is null classified every artwork primitive as UI and lit it at
+	// paper white instead of paper white times Room Ambient. With the shipped 0.25 that is exactly
+	// four times too bright, which is what the Vectrex overlay plate flashing to a vivid cyan on
+	// every UI toggle measured as: 8020 of 8700 sampled artwork pixels at a ratio of 4.0, with the
+	// menu text itself - genuinely UI - unchanged beside it.
+	render_container const *const ui_container = (window().target() != nullptr)
+			? window().target()->ui_container() : nullptr;
+	const bool is_ui = prim != nullptr && ui_container != nullptr
+		&& prim->container == ui_container;
 	const float scale = (blend == BLENDMODE_RGB_MULTIPLY)
 		? 1.0f
 		: (is_ui ? m_hdr_ui_nits_scale : m_hdr_art_nits_scale);
