@@ -4557,7 +4557,9 @@ int renderer_bgfx::draw(int update)
 	// all, so there would be no way to select an engine chain (the bootstrap deadlock). The chain
 	// itself is NOT processed here: its texture providers may be stale while the engine is off,
 	// and the stock buffer_primitives path draws the vector LINEs directly.
-	if (window_index == 0 && !m_vec_engine_active && atlas_valid)
+	// Same reasoning as the engine path below: this only surfaces the chain-selection slider, so a
+	// dropped atlas has no bearing on it.
+	if (window_index == 0 && !m_vec_engine_active)
 	{
 		bool have_vectors = false;
 		for (render_primitive *scan = window().m_primlist->first(); scan != nullptr; scan = scan->next())
@@ -4586,7 +4588,14 @@ int renderer_bgfx::draw(int update)
 	// On success, set m_vectors_in_fbo=true; buffer_primitives skips those LINEs, and right after we
 	// additively blit the FBO contents to the backbuffer.
 	m_vectors_in_fbo = false;
-	if (window_index == 0 && bgfx::isValid(m_vec_fb) && atlas_valid)
+	// Deliberately NOT gated on atlas_valid. The atlas is a UI/artwork concern - this path draws
+	// vector LINEs into its own framebuffer with its own effect and never looks one up. Gating it
+	// meant a single atlas pack failure, which throws the whole atlas away and returns false for
+	// that frame, also skipped the entire vector path: no FBO draw, no chain, and the Vectrex
+	// overlay compositing a screen_hdr that had not been updated. Since m_texinfo only ever grows,
+	// enough unique glyphs - the UI, or key input - overflow it repeatedly, and the result is the
+	// overlay bezel flickering in step with the failures.
+	if (window_index == 0 && bgfx::isValid(m_vec_fb))
 	{
 		vector_perf_source_begin = bx::getHPCounter();
 		// Only LINEs with PRIMFLAG_VECTOR go to the FBO, to keep UI lines out of the phosphor path
@@ -7839,8 +7848,14 @@ bool renderer_bgfx::check_for_dirty_atlas()
 		}
 	}
 
-	if (m_texinfo.size() == 1)
+	// m_texinfo holds only the 16x16 white texture whenever nothing packable is on screen, which
+	// for a vector game whose artwork is all too large to pack is the normal state - so this used
+	// to mark the atlas dirty on every single frame, and it was cleared, repacked and re-uploaded
+	// for nothing. Measured at 120 repacks a second on an idle Vectrex overlay. The white texture
+	// still has to reach the atlas once, so the first pass is kept.
+	if (m_texinfo.size() == 1 && !m_atlas_seeded)
 	{
+		m_atlas_seeded = true;
 		atlas_dirty = true;
 	}
 

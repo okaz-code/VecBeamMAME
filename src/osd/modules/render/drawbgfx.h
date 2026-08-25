@@ -596,6 +596,7 @@ private:
 	int m_avi_readback_count;   // requests in flight
 	bool m_avi_autostart_done;  // -bgfx_avi_name recording has been started for this session
 
+	bool m_atlas_seeded = false;   // the white texture has been packed at least once
 	uint32_t m_atlas_repacks = 0;
 	uint32_t m_atlas_pack_failures = 0;
 	int64_t m_atlas_report_hpc = 0;
