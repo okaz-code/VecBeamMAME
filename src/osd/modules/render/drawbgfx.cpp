@@ -2709,13 +2709,26 @@ void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t
 bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index)
 {
 	m_vectrex_overlay_active = false;
+	// Every bail below drops this frame back to the ordinary artwork path, which does not look the
+	// same - so a gate that fails intermittently reads as the overlay bezel flickering. Name the
+	// reason once per distinct reason so an intermittent one can be told from a permanent one
+	// without a debugger.
+	auto bail = [this] (const char *why) -> bool
+	{
+		if (m_vectrex_overlay_bail_reason == nullptr || strcmp(m_vectrex_overlay_bail_reason, why) != 0)
+		{
+			m_vectrex_overlay_bail_reason = why;
+			osd_printf_verbose("BGFX: Vectrex overlay path off - %s\n", why);
+		}
+		return false;
+	};
 	if (window_index != 0 || strcmp(window().machine().system().name, "vectrex")
 		|| screen_hdr == nullptr || m_hdr_work == nullptr
 		|| !bgfx::isValid(screen_hdr->texture())
 		|| m_vectrex_overlay_mask_effect == nullptr
 		|| m_vectrex_overlay_blur_effect == nullptr
 		|| m_vectrex_overlay_composite_effect == nullptr)
-		return false;
+		return false;   // permanent configuration, not worth a notice
 
 	bool have_white = false;
 	bool have_color = false;
@@ -2730,18 +2743,18 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 			// Do not activate the special path unless every marked item can be represented in its
 			// mask.  The ordinary artwork fallback must remain available as an all-or-nothing path.
 			if (prim->type != render_primitive::QUAD || prim->texture.base == nullptr)
-				return false;
+				return bail("a marked overlay item arrived without a texture quad");
 			++role_quads;
 		}
 	}
 	if (!have_white && !have_color)
-		return false;
+		return bail("no overlay artwork marked in this frame's primitives");
 	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 4.0f));
 	uint32_t const blur_iterations = radius >= 12.0f ? 3U : (radius >= 7.0f ? 2U : 1U);
 	// ink masks + optional box prefilter + repeated blur H/V pairs + composite
 	uint32_t const required_vertices = (role_quads + blur_iterations * 2U + 2U) * 6U;
 	if (bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl) != required_vertices)
-		return false;
+		return bail("transient vertex buffer exhausted before the overlay could take its share");
 
 	uint16_t const width = m_hdr_work->width();
 	uint16_t const height = m_hdr_work->height();
@@ -2787,7 +2800,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	};
 	if (!usable(m_vectrex_overlay_white) || !usable(m_vectrex_overlay_color)
 		|| !usable(m_vectrex_overlay_blur[0]) || !usable(m_vectrex_overlay_blur[1]))
-		return false;
+		return bail("an overlay target could not be created");
 
 	float projection[16];
 	float const logical_width = float(s_width[window_index]);
