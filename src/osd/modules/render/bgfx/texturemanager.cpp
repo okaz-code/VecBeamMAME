@@ -11,6 +11,8 @@
 
 #include "texturemanager.h"
 
+#include <bx/timer.h>
+
 #include "bgfxutil.h"
 #include "texture.h"
 
@@ -129,6 +131,58 @@ bgfx_texture* texture_manager::create_png_texture(
 	return create_texture(texture_name, bgfx::TextureFormat::BGRA8, width, 0, height, data32.get(), flags);
 }
 
+
+// MAME texture upload accounting.
+//
+// A cache hit costs nothing, but a miss re-pushes the whole bitmap - and layout artwork is large:
+// the Vectrex overlay plate is 1613x2060, 13.3 MB as BGRA, and a view can carry three of them.
+// Nothing uploads at all once a static layout has settled, so any steady traffic here means
+// something is bumping a texture's seqid every frame, and a burst means it just did. That is worth
+// being able to see, because the symptom at the other end is a frame the artwork misses - which
+// reads as the bezel flickering, with nothing in the renderer to point at.
+//
+// The window is closed from the renderer's frame loop rather than from the next upload, or a burst
+// followed by silence would be reported whenever the next one happened to arrive - which is to say
+// attributed to the wrong second, or not at all.
+namespace {
+
+uint32_t s_upload_count = 0;
+uint64_t s_upload_pixels = 0;
+uint32_t s_upload_largest = 0;
+
+void note_mame_texture_upload(int width, int height)
+{
+	s_upload_count++;
+	s_upload_pixels += uint64_t(width) * uint64_t(height);
+	s_upload_largest = std::max(s_upload_largest, uint32_t(width) * uint32_t(height));
+}
+
+} // anonymous namespace
+
+// Called once per frame. Reports only seconds that carried traffic, so a settled layout is silent.
+void texture_manager::tick_upload_report()
+{
+	const int64_t now = bx::getHPCounter();
+	if (!m_upload_window_begin)
+	{
+		m_upload_window_begin = now;
+		return;
+	}
+	if ((now - m_upload_window_begin) < bx::getHPFrequency())
+		return;
+
+	if (s_upload_count)
+	{
+		osd_printf_verbose("BGFX: MAME texture uploads %u/s, %.1f MB/s, largest %.1f MB\n",
+				s_upload_count, double(s_upload_pixels) * 4.0 / 1.0e6,
+				double(s_upload_largest) * 4.0 / 1.0e6);
+	}
+	s_upload_count = 0;
+	s_upload_pixels = 0;
+	s_upload_largest = 0;
+	m_upload_window_begin = now;
+}
+
 bgfx::TextureHandle texture_manager::create_or_update_mame_texture(
 		uint32_t format,
 		int width,
@@ -170,6 +224,7 @@ bgfx::TextureHandle texture_manager::create_or_update_mame_texture(
 					int width_div_factor = 1;
 					int width_mul_factor = 1;
 					const bgfx::Memory* mem = bgfx_util::mame_texture_data_to_bgfx_texture_data(dst_format, format, rowpixels, width_margin, height, palette, base, pitch, width_div_factor, width_mul_factor);
+					note_mame_texture_upload(int(width), int(height));
 					bgfx::updateTexture2D(handle, 0, 0, 0, 0, uint16_t((rowpixels * width_mul_factor) / width_div_factor), uint16_t(height), mem, pitch);
 					return handle;
 				}
@@ -200,6 +255,7 @@ bgfx::TextureHandle texture_manager::create_or_update_mame_texture(
 					int width_div_factor = 1;
 					int width_mul_factor = 1;
 					const bgfx::Memory* mem = bgfx_util::mame_texture_data_to_bgfx_texture_data(dst_format, format, rowpixels, width_margin, height, palette, base, pitch, width_div_factor, width_mul_factor);
+					note_mame_texture_upload(int(width), int(height));
 					bgfx::updateTexture2D(handle, 0, 0, 0, 0, uint16_t((rowpixels * width_mul_factor) / width_div_factor), uint16_t(height), mem, pitch);
 					return handle;
 				}
@@ -215,7 +271,8 @@ bgfx::TextureHandle texture_manager::create_or_update_mame_texture(
 	const bgfx::Memory* mem = bgfx_util::mame_texture_data_to_bgfx_texture_data(dst_format, format, rowpixels, width_margin, height, palette, base, pitch, width_div_factor, width_mul_factor);
 	const uint16_t adjusted_width = uint16_t((rowpixels * width_mul_factor) / width_div_factor);
 	handle = bgfx::createTexture2D(adjusted_width, height, false, 1, dst_format, flags, nullptr);
-	bgfx::updateTexture2D(handle, 0, 0, 0, 0, adjusted_width, uint16_t(height), mem, pitch);
+	note_mame_texture_upload(int(width), int(height));
+					bgfx::updateTexture2D(handle, 0, 0, 0, 0, adjusted_width, uint16_t(height), mem, pitch);
 
 	m_mame_textures[key] = { handle, seqid, width, height };
 	return handle;

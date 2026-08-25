@@ -4337,6 +4337,10 @@ int renderer_bgfx::draw(int update)
 	}
 	if (window_index == 0)
 		m_module().update_edr_headroom(native_window_handle());
+	// Closes the texture-upload accounting window (see texturemanager.cpp). Silent unless something
+	// actually uploaded, and unless -verbose asked.
+	if (window_index == 0)
+		m_textures->tick_upload_report();
 	// Macro sliders have no change callback, so poll them once per frame and import into their
 	// targets. Nothing happens on the frames where no macro moved.
 	if (window_index == 0)
