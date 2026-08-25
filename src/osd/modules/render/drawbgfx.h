@@ -552,6 +552,7 @@ private:
 	// Last reported reason the overlay path stood down, so the notice fires on change only.
 	const char *m_vectrex_overlay_bail_reason = nullptr;
 	bool m_vx_seen_active = false, m_vx_reported_active = false;
+	bool m_vx_reported_ui_items = false, m_vx_reported_timer_with_ui = false;
 	uint32_t m_vx_seen_role_quads = 0, m_vx_reported_role_quads = ~uint32_t(0);
 	uint32_t m_vx_seen_plain_quads = 0, m_vx_reported_plain_quads = ~uint32_t(0);
 	float m_vx_seen_seed_peak = 0.0f, m_vx_reported_seed_peak = -1.0f;
