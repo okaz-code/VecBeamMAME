@@ -7397,8 +7397,14 @@ int renderer_bgfx::draw(int update)
 					// roughly three quarters of the frame and always includes whichever pass
 					// a heavy scene pushes to the top; the remainder line accounts for the
 					// rest, and redirecting output to a file removes the cost entirely.
+					// ...unless -verbose asked for everything. Six hid a third of the frame in the
+					// remainder line - 21 passes on a Vectrex overlay frame - which is enough to
+					// hide a pass worth optimising. Anyone taking a -verbose log is redirecting it
+					// to a file, which is what made the line count cost nothing.
 					static constexpr size_t MAX_REPORTED_PASSES = 6;
-					const size_t reported = std::min(MAX_REPORTED_PASSES, m_view_gpu.size());
+					const size_t reported = window().machine().options().verbose()
+							? m_view_gpu.size()
+							: std::min(MAX_REPORTED_PASSES, m_view_gpu.size());
 					for (size_t i = 0; i < reported; ++i)
 					{
 						const view_gpu_bucket &b = m_view_gpu[i];
