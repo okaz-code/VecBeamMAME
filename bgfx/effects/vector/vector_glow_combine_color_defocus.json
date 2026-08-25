@@ -569,6 +569,36 @@
       ]
     },
     {
+      "name": "u_primary_basis_r",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_basis_g",
+      "type": "vec4",
+      "values": [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "u_primary_basis_b",
+      "type": "vec4",
+      "values": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_primary_mode",
       "type": "vec4",
       "values": [

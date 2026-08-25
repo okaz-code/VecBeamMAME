@@ -1663,6 +1663,103 @@ int renderer_bgfx::xy_to_render_target(int x, int y, int *xt, int *yt)
 #endif
 
 //============================================================
+//  inject_primary_basis
+//============================================================
+
+// Resolve the chain's three colour primaries once per frame and hand them to the two colour
+// passes that consume them (the glow combine and the phosphor compose).
+//
+// Both selectable modes derive the primaries from sliders alone, so they cannot vary within a
+// frame - yet the shaders used to rebuild them per pixel, three primaries per color_transform()
+// call, with color_transform() running twice in the combine pass and once in the compose. The
+// combine pass measures ALU-bound on low-end parts (on an Intel HD 520, removing eight of its
+// fourteen texture fetches cost it only 7%), so that was the largest avoidable work in it.
+//
+// The arithmetic here is a transcription of what those two shaders used to do inline. It has no
+// remaining counterpart in shader code, so there is nothing to keep in step - but the results
+// must match the old inline versions exactly, which is what makes this a pure speed change.
+void renderer_bgfx::inject_primary_basis()
+{
+	auto slider = [this] (const char *name, float def) { return m_chains->slider_value(0, name, def); };
+	auto component = [this] (const char *name, int index, float def)
+			{ return m_chains->slider_value_indexed(0, name, index, def); };
+
+	float basis[3][4] = {};
+	if (slider("primary_color_mode", 1.0f) > 0.5f)
+	{
+		// Direct Primary: each primary is a position on the RGB hue wheel, pulled back toward
+		// its own luma by the saturation control and then scaled.
+		auto frac = [] (float v) { return v - std::floor(v); };
+		auto hue_rgb = [&frac] (float h, float (&out)[3])
+		{
+			// Component c is sampled a third of a turn further round, as in the shader.
+			static constexpr float PHASE[3] = { 0.0f, 0.6666667f, 0.3333333f };
+			for (int c = 0; c < 3; ++c)
+				out[c] = std::clamp(std::fabs(frac(h + PHASE[c]) * 6.0f - 3.0f) - 1.0f, 0.0f, 1.0f);
+		};
+		auto primary = [&] (float base_hue, const char *hue_name, const char *sat_name,
+				const char *bright_name, float hue_def, float sat_def, float bright_def,
+				float (&out)[4])
+		{
+			float wheel[3];
+			hue_rgb(frac(base_hue + slider(hue_name, hue_def) / 360.0f), wheel);
+			const float luma = wheel[0] * 0.2126f + wheel[1] * 0.7152f + wheel[2] * 0.0722f;
+			const float saturation = slider(sat_name, sat_def);
+			const float brightness = slider(bright_name, bright_def);
+			for (int c = 0; c < 3; ++c)
+				out[c] = std::max(luma + (wheel[c] - luma) * saturation, 0.0f) * brightness;
+		};
+		primary(0.0f, "primary_red_hue", "primary_red_saturation", "primary_red_brightness",
+				1.0f, 0.85f, 1.0f, basis[0]);
+		primary(0.3333333f, "primary_green_hue", "primary_green_saturation", "primary_green_brightness",
+				0.0f, 0.8f, 1.0f, basis[1]);
+		primary(0.6666667f, "primary_blue_hue", "primary_blue_saturation", "primary_blue_brightness",
+				1.0f, 0.9f, 1.2f, basis[2]);
+	}
+	else
+	{
+		// CIE xy/Y: a chromaticity and a luminance per primary, converted to linear sRGB and
+		// normalised so the three together sum to white. That normalisation divides the SUM
+		// componentwise, so it distributes over the terms and folds into each basis vector.
+		static constexpr float XYZ_TO_SRGB[3][3] = {
+			{  3.2406f, -1.5372f, -0.4986f },
+			{ -0.9689f,  1.8758f,  0.0415f },
+			{  0.0557f, -0.2040f,  1.0570f } };
+		static constexpr const char *CHROMA[3] = { "chroma_a", "chroma_b", "chroma_c" };
+		static constexpr float CHROMA_DEF[3][2] = { { 0.63f, 0.34f }, { 0.31f, 0.595f }, { 0.17f, 0.07f } };
+		static constexpr float Y_DEF[3] = { 0.2124f, 0.62f, 0.1f };
+		float white[3] = {};
+		for (int i = 0; i < 3; ++i)
+		{
+			const float cx = component(CHROMA[i], 0, CHROMA_DEF[i][0]);
+			// The sliders bottom out at zero and y divides here. In the shader that produced an
+			// infinity per pixel; from a uniform it would poison the whole pass, so floor it.
+			const float cy = std::max(component(CHROMA[i], 1, CHROMA_DEF[i][1]), 1e-4f);
+			const float lum = component("chroma_y_gain", i, Y_DEF[i]);
+			const float x_val = cx / cy * lum;
+			const float z_val = (1.0f - cx - cy) / cy * lum;
+			for (int c = 0; c < 3; ++c)
+			{
+				basis[i][c] = XYZ_TO_SRGB[c][0] * x_val + XYZ_TO_SRGB[c][1] * lum
+						+ XYZ_TO_SRGB[c][2] * z_val;
+				white[c] += basis[i][c];
+			}
+		}
+		for (int i = 0; i < 3; ++i)
+			for (int c = 0; c < 3; ++c)
+				basis[i][c] /= std::max(white[c], 1e-4f);
+	}
+
+	static constexpr const char *UNIFORMS[3] =
+			{ "u_primary_basis_r", "u_primary_basis_g", "u_primary_basis_b" };
+	for (int i = 0; i < 3; ++i)
+	{
+		m_chains->inject_entry_uniform(0, "add_mglow", UNIFORMS[i], basis[i], 4);
+		m_chains->inject_entry_uniform(0, "Phosphor Apply", UNIFORMS[i], basis[i], 4);
+	}
+}
+
+//============================================================
 //  drawbgfx_window_draw
 //============================================================
 
@@ -6499,6 +6596,7 @@ int renderer_bgfx::draw(int update)
 				const float sdr_level = std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f);
 				const float ambient_output_scale = hdr_present ? 1.0f : (1.0f / sdr_level);
 				const float ambient_scale_vals[4] = { ambient_output_scale, 0.0f, 0.0f, 0.0f };
+				inject_primary_basis();
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_ambient_output_scale", ambient_scale_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_ambient_output_scale", ambient_scale_vals, 4);
 
