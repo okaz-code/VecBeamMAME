@@ -7189,7 +7189,13 @@ int renderer_bgfx::draw(int update)
 					std::sort(m_view_gpu.begin(), m_view_gpu.end(),
 							[] (const view_gpu_bucket &a, const view_gpu_bucket &b)
 							{ return a.total_ms > b.total_ms; });
-					static constexpr size_t MAX_REPORTED_PASSES = 12;
+					// Six, not the whole list. Every line here is console output on the
+					// emulation thread once a second, and a Windows console host makes that
+					// cost track line count - it was showing up as a stutter. Six covers
+					// roughly three quarters of the frame and always includes whichever pass
+					// a heavy scene pushes to the top; the remainder line accounts for the
+					// rest, and redirecting output to a file removes the cost entirely.
+					static constexpr size_t MAX_REPORTED_PASSES = 6;
 					const size_t reported = std::min(MAX_REPORTED_PASSES, m_view_gpu.size());
 					for (size_t i = 0; i < reported; ++i)
 					{
