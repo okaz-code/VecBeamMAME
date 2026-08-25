@@ -602,6 +602,18 @@ private:
 			osd_printf_warning("MVEC: recorded device is '%s', current device is '%s'\n", device.c_str(), m_owner.tag());
 		osd_printf_info("MVEC format %u.%u, machine %s, device %s\n", major, minor, system.c_str(), device.c_str());
 		build_frame_index();
+		// -vector_playback_start puts the stream where the goto tool would, before the first frame is
+		// served. Investigating something that only happens thousands of frames in otherwise means
+		// typing the position by hand every run, which is not a repeatable measurement.
+		{
+			const int start = m_owner.machine().options().vector_playback_start();
+			if (start > 0 && !m_frame_index.empty())
+			{
+				m_pending_position = std::min<u64>(u64(start), m_frame_index.size() - 1U);
+				osd_printf_info("MVEC: starting playback at frame %llu\n",
+					(unsigned long long)m_pending_position);
+			}
+		}
 		if (m_recorded_frame_period <= 0)
 			m_recorded_frame_period = infer_frame_period();
 		if (m_recorded_frame_period <= 0)
