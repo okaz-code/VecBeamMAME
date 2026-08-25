@@ -39,6 +39,8 @@ public:
 	void add_provider(const std::string &name, std::unique_ptr<bgfx_texture_handle_provider> &&texture);
 	void add_provider(const std::string &name, bgfx_texture_handle_provider &texture);
 	void remove_provider(const std::string &name);
+	// Close the upload accounting window; call once per frame. See texturemanager.cpp.
+	void tick_upload_report();
 	bgfx::TextureHandle create_or_update_mame_texture(uint32_t format, int width, int width_margin, int height,
 		int rowpixels, const rgb_t *palette, void *base, uint32_t seqid, uint32_t flags, uint64_t key, uint64_t old_key);
 
@@ -63,6 +65,7 @@ private:
 
 	std::map<std::string, std::pair<bgfx_texture_handle_provider *, std::unique_ptr<bgfx_texture_handle_provider> > > m_textures;
 	std::map<uint64_t, sequenced_handle> m_mame_textures;
+	int64_t m_upload_window_begin = 0;
 	bgfx::TextureHandle m_dummy = BGFX_INVALID_HANDLE;   // 1x1 black fallback (see dummy_handle)
 };
 
