@@ -74,34 +74,34 @@ vec2 tube_quad_coord(vec2 uv,float active)
 	return distort_centered(tube_face_coord(uv,active),u_tube_distortion.x*active);
 }
 float round_box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return min(max(q.x,q.y),0.0)+length(max(q,vec2_splat(0.0)))-r;}
-float tube_signed_distance(vec2 uv,float active)
+// These take the distorted tube coordinate and the aspect rather than deriving them, because
+// main() needs the same pair for the face, the vignette and the bezel band. Deriving it inside
+// each ran distort_centered three times per pixel - and tube_aspect five - for one answer.
+float tube_signed_distance_at(vec2 q,vec2 aspect,float active)
 {
-	if(active<0.5)return -1.0;vec2 aspect=tube_aspect(),q=tube_quad_coord(uv,active)*aspect;float radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
-	return round_box(q,vec2_splat(0.5)*aspect,radius);
+	if(active<0.5)return -1.0;float radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
+	return round_box(q*aspect,vec2_splat(0.5)*aspect,radius);
 }
-float tube_face_factor(vec2 uv,float active)
+float tube_face_factor_at(float sd,float active)
 {
-	if(active<0.5)return 1.0;float sd=tube_signed_distance(uv,active);vec2 dims=tube_quad_dims();
+	if(active<0.5)return 1.0;vec2 dims=tube_quad_dims();
 	float aa=max(fwidth(sd),1.0/max(min(dims.x,dims.y),1.0));return 1.0-smoothstep(-aa,aa,sd);
 }
-float tube_vignette(vec2 uv,float active)
+float tube_vignette_at(vec2 q,vec2 aspect,float active)
 {
-	if(active<0.5)return 1.0;float amount=max(u_tube_vignetting.x,0.0);vec2 aspect=tube_aspect();
-	float len=length(tube_quad_coord(uv,active)*aspect)*(1.41421356/length(aspect));float blur=amount*0.75+0.25,radius=1.0-amount*0.25;
+	if(active<0.5)return 1.0;float amount=max(u_tube_vignetting.x,0.0);
+	float len=length(q*aspect)*(1.41421356/length(aspect));float blur=amount*0.75+0.25,radius=1.0-amount*0.25;
 	return saturate(smoothstep(radius,radius-blur,len));
 }
 float bezel_glow_width_px(){return max(u_bezel_glow_width.x,1.0)*clamp(u_vector_render_scale.x,0.1,1.0);}
-float bezel_signed_distance(vec2 uv,float active)
-{
-	if(active<0.5)return -1.0;vec2 aspect=tube_aspect(),q=tube_quad_coord(uv,active)*aspect;
-	float tube_radius=clamp(u_tube_round_corner.x*0.25,0.0,0.45);
-	// Match tube_signed_distance exactly; glow width is falloff, not bezel geometry.
-	return round_box(q,vec2_splat(0.5)*aspect,tube_radius);
-}
-float bezel_band(vec2 uv,float active)
+
+// The bezel band was deriving its own signed distance with a comment saying it had to match
+// tube_signed_distance exactly - so it was the same round_box on the same coordinate, computed
+// twice. It takes that distance now.
+float bezel_band_at(float sd,float active)
 {
 	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;
-	vec2 dims=tube_quad_dims();float signed_px=bezel_signed_distance(uv,active)*min(dims.x,dims.y);
+	vec2 dims=tube_quad_dims();float signed_px=sd*min(dims.x,dims.y);
 	float width_px=bezel_glow_width_px(),curve=max(u_bezel_glow_curve.x,0.25);
 	return exp(-pow(max(signed_px,0.0)/width_px,curve))*step(0.0,signed_px);
 }
@@ -212,16 +212,25 @@ void main()
 {
 	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0);vec2 base_uv=vector_pincushion_uv(emit_uv);
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
-	float face=tube_face_factor(v_texcoord0,tube_active),vignette=tube_vignette(v_texcoord0,tube_active);
+	vec2 tube_aspect_v=tube_aspect();vec2 tube_q=tube_quad_coord(v_texcoord0,tube_active);
+	float tube_sd=tube_signed_distance_at(tube_q,tube_aspect_v,tube_active);
+	float face=tube_face_factor_at(tube_sd,tube_active),vignette=tube_vignette_at(tube_q,tube_aspect_v,tube_active);
 	vec3 phosphor_tint=max(u_phosphor_color.rgb,vec3_splat(0.0));
 	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=AUX_TEX2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
-	vec2 global_delta=(v_texcoord0-u_convergence_global.xy)*u_target_dims.xy;float global_sigma=max(u_convergence_global.w*0.5*length(u_target_dims.xy),1.0);
-	float global_weight=u_convergence_global.z*exp(-0.5*dot(global_delta,global_delta)/(global_sigma*global_sigma));
+	// The gain is a uniform, so this branch is coherent across the whole draw. At zero - which is
+	// the Vectrex chain's default - the exp and the sqrt inside length() were pure waste.
+	float global_weight=0.0;
+	if(u_convergence_global.z>0.0)
+	{
+		vec2 global_delta=(v_texcoord0-u_convergence_global.xy)*u_target_dims.xy;
+		float global_sigma=max(u_convergence_global.w*0.5*length(u_target_dims.xy),1.0);
+		global_weight=u_convergence_global.z*exp(-0.5*dot(global_delta,global_delta)/(global_sigma*global_sigma));
+	}
 	glow*=phosphor_tint;optical*=phosphor_tint;
 	vec3 global_out=max(u_convergence_global_color.rgb,vec3_splat(0.0))*phosphor_tint*global_weight*face;
-	vec3 bezel=vec3_splat(0.0);float band=bezel_band(v_texcoord0,tube_active);
+	vec3 bezel=vec3_splat(0.0);float band=bezel_band_at(tube_sd,tube_active);
 	if(band>0.0)bezel=bezel_corner_light(emit_uv)*phosphor_tint*(band*max(u_bezel_glow_strength.x,0.0));
 	// Apply after shape_glow so changing HDR Beam Peak does not reveal more of the nonlinear tail.
 	float glow_compensation=max(u_hdr_glow_compensation.x,0.0);

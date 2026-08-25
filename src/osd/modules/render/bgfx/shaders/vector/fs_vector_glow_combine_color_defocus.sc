@@ -152,13 +152,6 @@ vec2 distort_centered(vec2 p, float amount)
 	return physical / aspect;
 }
 
-vec2 tube_surface_uv(vec2 uv, float active)
-{
-	vec2 p = tube_face_coord(uv, active);
-	vec2 centered = distort_centered(p, u_tube_distortion.x * active);
-	return tube_target_uv(centered);
-}
-
 vec2 tube_quad_coord(vec2 uv, float active)
 {
 	vec2 p = tube_face_coord(uv, active);
@@ -171,30 +164,29 @@ float round_box(vec2 p, vec2 b, float r)
 	return min(max(q.x, q.y), 0.0) + length(max(q, vec2_splat(0.0))) - r;
 }
 
-float tube_signed_distance(vec2 uv, float active)
+// These take the distorted tube coordinate and the aspect rather than deriving them. main() needs
+// the same pair for the shadow-mask surface, the face, the vignette and the bezel band, and
+// deriving it inside each ran distort_centered three times per pixel for one answer.
+float tube_signed_distance_at(vec2 q, vec2 aspect, float active)
 {
 	if (active < 0.5) return -1.0;
-	vec2 aspect = tube_aspect();
-	vec2 q = tube_quad_coord(uv, active) * aspect;
 	float radius = clamp(u_tube_round_corner.x * 0.25, 0.0, 0.45);
-	return round_box(q, vec2_splat(0.5) * aspect, radius);
+	return round_box(q * aspect, vec2_splat(0.5) * aspect, radius);
 }
 
-float tube_face_factor(vec2 uv, float active)
+float tube_face_factor_at(float sd, float active)
 {
 	if (active < 0.5) return 1.0;
-	float sd = tube_signed_distance(uv, active);
 	vec2 dims = tube_quad_dims();
 	float aa = max(fwidth(sd), 1.0 / max(min(dims.x, dims.y), 1.0));
 	return 1.0 - smoothstep(-aa, aa, sd);
 }
 
-float tube_vignette(vec2 uv, float active)
+float tube_vignette_at(vec2 q, vec2 aspect, float active)
 {
 	if (active < 0.5) return 1.0;
 	float amount = max(u_tube_vignetting.x, 0.0);
-	vec2 aspect = tube_aspect();
-	float len = length(tube_quad_coord(uv, active) * aspect) * (1.41421356 / length(aspect));
+	float len = length(q * aspect) * (1.41421356 / length(aspect));
 	float blur = amount * 0.75 + 0.25;
 	float radius = 1.0 - amount * 0.25;
 	return saturate(smoothstep(radius, radius - blur, len));
@@ -205,27 +197,17 @@ float bezel_glow_width_px()
 	return max(u_bezel_glow_width.x, 1.0) * clamp(u_vector_render_scale.x, 0.1, 1.0);
 }
 
-float bezel_signed_distance(vec2 uv, float active)
-{
-	if (active < 0.5) return -1.0;
-	vec2 aspect = tube_aspect();
-	vec2 q = tube_quad_coord(uv, active) * aspect;
-	float tube_radius = clamp(u_tube_round_corner.x * 0.25, 0.0, 0.45);
-	// The bezel begins at the physical phosphor-face boundary, so its corner radius must be
-	// identical to tube_signed_distance().  Bezel Glow Width controls only the falloff distance;
-	// letting it enlarge the round-box radius classified valid corner phosphor as bezel and allowed
-	// reflected light to intrude into the face.
-	return round_box(q, vec2_splat(0.5) * aspect, tube_radius);
-}
-
-float bezel_band(vec2 uv, float active)
+// The bezel begins at the physical phosphor-face boundary, so its distance is by definition the
+// one tube_signed_distance_at already produced - it used to be recomputed here with a comment
+// saying the two had to stay identical. Bezel Glow Width controls only the falloff distance.
+float bezel_band_at(float sd, float active)
 {
 	if (active < 0.5 || u_ambient_level.x <= 0.0) return 0.0;
 	float line_gain = max(u_bezel_glow_strength.x, 0.0);
 	float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
 	if (line_gain <= 0.0 && monitor_gain <= 0.0) return 0.0;
 	vec2 dims = tube_quad_dims();
-	float signed_px = bezel_signed_distance(uv, active) * min(dims.x, dims.y);
+	float signed_px = sd * min(dims.x, dims.y);
 	float width_px = bezel_glow_width_px();
 	float curve = max(u_bezel_glow_curve.x, 0.25);
 
@@ -426,9 +408,12 @@ void main()
 		}
 	}
 
-	vec2 surface_uv = tube_surface_uv(v_texcoord0, tube_active);
-	float face = tube_face_factor(v_texcoord0, tube_active);
-	float vignette = tube_vignette(v_texcoord0, tube_active);
+	vec2 tube_aspect_v = tube_aspect();
+	vec2 tube_q = tube_quad_coord(v_texcoord0, tube_active);
+	float tube_sd = tube_signed_distance_at(tube_q, tube_aspect_v, tube_active);
+	vec2 surface_uv = tube_target_uv(tube_q);
+	float face = tube_face_factor_at(tube_sd, tube_active);
+	float vignette = tube_vignette_at(tube_q, tube_aspect_v, tube_active);
 	float strength = clamp(u_shadow_mask_strength.x, 0.0, 1.0);
 	float brightboost = clamp(u_shadow_mask_brightboost.x, 0.0, 2.0);
 	float raw_scale = max(0.25, u_shadow_mask_scale.x * (tube_quad_dims().x / 1920.0));
@@ -454,36 +439,51 @@ void main()
 	// Constant surface_uv.x contours bend with the same glass distortion as the slot mask while each
 	// band remains vertically uniform in tube space. Three 120-degree cosine phases give the repeating
 	// B/R/G order with smooth optical transitions. Their sum is zero, preserving average brightness.
+	// Three cosines for a result that is exactly 1 when the strength is zero, and the branch is on
+	// a uniform so it stays coherent across the draw.
 	float mglow_band_strength = clamp(u_mglow_rgb_bands.x, 0.0, 1.0);
-	float mglow_band_count = clamp(floor(u_mglow_rgb_band_count.x + 0.5), 3.0, 24.0);
-	float mglow_phase = clamp(surface_uv.x, 0.0, 1.0) * (mglow_band_count - 1.0) * 2.09439510;
-	vec3 mglow_band_chroma = vec3(
-		cos(mglow_phase - 2.09439510),
-		cos(mglow_phase - 4.18879020),
-		cos(mglow_phase));
-	vec3 mglow_bands = max(vec3_splat(0.0), vec3_splat(1.0) + mglow_band_chroma * mglow_band_strength);
-	mglow_bands = mix(vec3_splat(1.0), mglow_bands, face);
-	vec3 monitor_out = shape_glow(vec3_splat(mintensity) * monitor_tint) * mglow_bands * face * vignette;
+	vec3 mglow_bands = vec3_splat(1.0);
+	if (mglow_band_strength > 0.0)
+	{
+		float mglow_band_count = clamp(floor(u_mglow_rgb_band_count.x + 0.5), 3.0, 24.0);
+		float mglow_phase = clamp(surface_uv.x, 0.0, 1.0) * (mglow_band_count - 1.0) * 2.09439510;
+		vec3 mglow_band_chroma = vec3(
+			cos(mglow_phase - 2.09439510),
+			cos(mglow_phase - 4.18879020),
+			cos(mglow_phase));
+		mglow_bands = max(vec3_splat(0.0), vec3_splat(1.0) + mglow_band_chroma * mglow_band_strength);
+		mglow_bands = mix(vec3_splat(1.0), mglow_bands, face);
+	}
+	// The bezel branch below needs the same shaped monitor light, and used to call shape_glow - a
+	// pow - a second time on an identical argument.
+	vec3 monitor_light = vec3_splat(mintensity) * monitor_tint;
+	vec3 shaped_monitor = shape_glow(monitor_light);
+	vec3 monitor_out = shaped_monitor * mglow_bands * face * vignette;
 
 	vec3 glow = vec3_splat(0.0);
 	bool emit_outside = emit_uv.x < 0.0 || emit_uv.x > 1.0 || emit_uv.y < 0.0 || emit_uv.y > 1.0;
 	if (u_glow_enable.x > 0.0 && !emit_outside)
 		glow = shape_glow(color_transform(texture2D(s_bloom, emit_uv).rgb) * GLOW_BRIGHTNESS_GAIN);
-	vec2 global_delta = (v_texcoord0 - u_convergence_global.xy) * u_target_dims.xy;
-	float global_sigma = max(u_convergence_global.w * 0.5 * length(u_target_dims.xy), 1.0);
-	float global_weight = u_convergence_global.z * exp(-0.5 * dot(global_delta, global_delta) / (global_sigma * global_sigma));
+	// Gain is a uniform, so this branch is coherent; at zero the exp and the sqrt inside length()
+	// produced nothing.
+	float global_weight = 0.0;
+	if (u_convergence_global.z > 0.0)
+	{
+		vec2 global_delta = (v_texcoord0 - u_convergence_global.xy) * u_target_dims.xy;
+		float global_sigma = max(u_convergence_global.w * 0.5 * length(u_target_dims.xy), 1.0);
+		global_weight = u_convergence_global.z * exp(-0.5 * dot(global_delta, global_delta) / (global_sigma * global_sigma));
+	}
 	vec3 global_out = max(u_convergence_global_color.rgb, vec3_splat(0.0)) * global_weight * face;
 
 	vec3 bezel = vec3_splat(0.0);
-	float band = bezel_band(v_texcoord0, tube_active);
+	float band = bezel_band_at(tube_sd, tube_active);
 	if (band > 0.0)
 	{
 		float line_gain = max(u_bezel_glow_strength.x, 0.0);
 		float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
 		vec3 edge_light = line_gain > 0.0 && u_glow_enable.x > 0.0
 			? shape_wide_source(bezel_bloom_source(emit_uv)) : vec3_splat(0.0);
-		vec3 monitor_light = vec3_splat(mintensity) * monitor_tint;
-		bezel = shape_glow(edge_light) * (band * line_gain) + shape_glow(monitor_light) * (band * monitor_gain);
+		bezel = shape_glow(edge_light) * (band * line_gain) + shaped_monitor * (band * monitor_gain);
 	}
 
 	// Stabilize beam-derived optical light in absolute nits when HDR Beam Peak changes. Apply this
