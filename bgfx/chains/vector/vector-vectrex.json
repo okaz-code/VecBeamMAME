@@ -33,6 +33,10 @@
 		{"type":"int_enum","name":"macro_monitor_sim","text":"[M] Monitor/Glass Sim","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"],"targets":[{"slider":"edge_defocus","mode":"enable"},{"slider":"ambient_level","mode":"enable"},{"slider":"tube_distortion","mode":"enable"},{"slider":"tube_round_corner","mode":"enable"},{"slider":"tube_vignetting","mode":"enable"},{"slider":"bezel_glow_strength","mode":"enable"},{"slider":"room_ambient","mode":"enable"},{"slider":"overlay_ambient_light","mode":"enable"},
 		             {"slider":"tube_face_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.98]]},{"slider":"vector_image_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.96]]}]},
 
+		// Room light on the plate. Drives the composite and, since the front print is ordinary
+		// artwork rather than a role-tagged layer, the artwork nits scale as well - so this one
+		// control dims the whole overlay, face included.
+		{"type":"float","name":"overlay_ambient_light","text":"Overlay Ambient Light","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		// ---- Advanced 表示トグル。Off ではマクロだけが見える。以下は関連グループごと・重要な順 ----
 		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
 
@@ -195,7 +199,6 @@
 		{"type":"float","name":"overlay_color_highlight_bleach","text":"Overlay Highlight Color Release","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_knee","text":"Overlay Highlight Release Knee","default":0.15,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_curve","text":"Overlay Highlight Release Curve","default":0.55,"min":0.20,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_ambient_light","text":"Overlay Ambient Light","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- HDR / SDR presentation ----
 		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":240,"min":80.0,"max":2000.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
