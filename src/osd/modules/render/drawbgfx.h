@@ -21,6 +21,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -202,6 +203,33 @@ private:
 		uint32_t count = 0;
 	};
 	vector_perf_bucket m_vector_perf[3]; // source, repeat with chain, cached repeat
+
+	// Per-pass GPU accounting for -bgfx_debug, from bgfx::Stats::viewStats (which bgfx only
+	// fills when BGFX_DEBUG_PROFILER is set and the backend supports timer queries).
+	//
+	// Keyed by the label bgfx_view_profile put on the view, NOT by view id: a pass lands on a
+	// different id depending on which optional passes ran ahead of it that frame.
+	//
+	// gpu_busy is the sum of the per-view times for one frame. That is the honest "GPU was
+	// working" figure. m_vector_perf_gpu_max_ms below is the frame's whole gpuTimeBegin..End
+	// SPAN, which also covers the GPU sitting idle waiting for submissions, so it reads high
+	// on a CPU-fed pipeline and must not be used to decide whether the GPU is saturated.
+	struct view_gpu_bucket
+	{
+		std::string name;
+		double total_ms = 0.0;
+		double max_ms = 0.0;
+		uint32_t frames = 0;
+	};
+	std::vector<view_gpu_bucket> m_view_gpu;
+	std::vector<double> m_gpu_busy_ms;      // one entry per sampled frame, for avg/p95/max
+	uint32_t m_gpu_view_frames_untimed = 0; // frames where no per-view timing was available
+	// Dedup key for a repeated result set. ViewStats::gpuFrameNum would be the obvious choice
+	// but the Metal backend never fills it in (renderer_mtl.h: "TODO: implement (currently
+	// stays 0)"), so the first view's GPU begin timestamp stands in - it moves every time the
+	// timer-query ring resolves something new, on every backend.
+	int64_t m_gpu_last_view_begin = -1;
+
 	int64_t m_vector_perf_window_hpc = 0;
 	double m_vector_perf_gpu_max_ms = 0.0;
 	double m_vector_perf_scan_ms = 0.0;
