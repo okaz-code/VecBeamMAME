@@ -7015,13 +7015,26 @@ int renderer_bgfx::draw(int update)
 				m_vector_perf_window_hpc = vector_perf_frame_end;
 			if (vector_perf_frame_end - m_vector_perf_window_hpc >= bx::getHPFrequency())
 			{
+				// One osd_printf_info for the whole second, not one per line. Each call is a
+				// separate synchronous write to the console (and to error.log under -log), and
+				// on a Windows console host that is expensive enough to show up as a stutter
+				// once a second - the per-pass breakdown took this block from 5 lines to 18.
+				// Building the report first makes it a single write regardless of line count.
+				std::string report;
+				char line[320];
+				auto add_line = [&report, &line] (const char *fmt, auto... args)
+				{
+					snprintf(line, sizeof(line), fmt, args...);
+					report += line;
+				};
+
 				static constexpr const char *labels[3] = { "source", "repeat-chain", "repeat-cached" };
 				for (int i = 0; i < 3; ++i)
 				{
 					const vector_perf_bucket &b = m_vector_perf[i];
 					if (b.count)
 					{
-						osd_printf_info(
+						add_line(
 							"BGFX PERF %-13s n=%u prep avg/max %.3f/%.3f ms, "
 							"primitives %.3f/%.3f ms, frame-wait %.3f/%.3f ms\n",
 							labels[i], b.count,
@@ -7033,14 +7046,14 @@ int renderer_bgfx::draw(int update)
 				const vector_perf_bucket &source = m_vector_perf[0];
 				if (source.count)
 				{
-					osd_printf_info(
+					add_line(
 						"BGFX PERF source-detail scan %.3f/%.3f, analysis %.3f/%.3f, "
 						"geometry %.3f/%.3f, submit %.3f/%.3f ms (avg/max)\n",
 						source.scan_total_ms / double(source.count), source.scan_max_ms,
 						source.analysis_total_ms / double(source.count), source.analysis_max_ms,
 						source.geometry_total_ms / double(source.count), source.geometry_max_ms,
 						source.submit_total_ms / double(source.count), source.submit_max_ms);
-					osd_printf_info(
+					add_line(
 						"BGFX PERF analysis-detail energy %.3f/%.3f, cap-junction %.3f/%.3f, "
 						"convergence %.3f/%.3f ms (avg/max)\n",
 						source.energy_total_ms / double(source.count), source.energy_max_ms,
@@ -7051,7 +7064,7 @@ int renderer_bgfx::draw(int update)
 				// the whole frame, GPU idle included, so it runs high whenever the pipeline is
 				// waiting on the CPU. Read gpu-busy below for whether the GPU is actually the
 				// constraint, and frame-wait above for whether the CPU is blocked on it.
-				osd_printf_info("BGFX PERF gpu-frame max %.3f ms (frame span, GPU idle included),"
+				add_line("BGFX PERF gpu-frame max %.3f ms (frame span, GPU idle included),"
 					" cached vectors %d\n",
 					m_vector_perf_gpu_max_ms, m_vec_cached_vector_count);
 
@@ -7066,7 +7079,7 @@ int renderer_bgfx::draw(int update)
 					const size_t rank = size_t(std::ceil(0.95 * double(m_gpu_busy_ms.size())));
 					const size_t p95_index = std::min(m_gpu_busy_ms.size() - 1,
 							rank ? rank - 1 : 0);
-					osd_printf_info(
+					add_line(
 						"BGFX PERF gpu-busy avg/p95/max %.3f/%.3f/%.3f ms over %u frames"
 						" (sum of per-pass GPU time)\n",
 						busy_total / double(m_gpu_busy_ms.size()),
@@ -7083,7 +7096,7 @@ int renderer_bgfx::draw(int update)
 					for (size_t i = 0; i < reported; ++i)
 					{
 						const view_gpu_bucket &b = m_view_gpu[i];
-						osd_printf_info(
+						add_line(
 							"BGFX PERF gpu-pass %-32.32s %6.2f%% %.3f/%.3f ms (avg/max, n=%u)\n",
 							b.name.c_str(),
 							(busy_total > 0.0) ? (b.total_ms * 100.0 / busy_total) : 0.0,
@@ -7095,7 +7108,7 @@ int renderer_bgfx::draw(int update)
 						double rest_ms = 0.0;
 						for (size_t i = reported; i < m_view_gpu.size(); ++i)
 							rest_ms += m_view_gpu[i].total_ms;
-						osd_printf_info(
+						add_line(
 							"BGFX PERF gpu-pass %-32.32s %6.2f%% (%u further passes not listed)\n",
 							"(remainder)",
 							(busy_total > 0.0) ? (rest_ms * 100.0 / busy_total) : 0.0,
@@ -7107,10 +7120,12 @@ int renderer_bgfx::draw(int update)
 					// Named rather than silent, so an empty breakdown is never mistaken for
 					// "nothing to see here". frame-wait above still answers whether the GPU is
 					// the constraint; only the per-pass split is missing.
-					osd_printf_info("BGFX PERF gpu-busy unavailable:"
+					add_line("BGFX PERF gpu-busy unavailable:"
 						" the %s backend has no per-view GPU timer\n",
 						bgfx::getRendererName(bgfx::getRendererType()));
 				}
+
+				osd_printf_info("%s", report.c_str());
 
 				for (vector_perf_bucket &b : m_vector_perf)
 					b = vector_perf_bucket();
