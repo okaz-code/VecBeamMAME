@@ -419,6 +419,8 @@ private:
 	void refresh_vec_slider_cache();
 	// Resolve the chain's three colour primaries and hand them to the passes that use them.
 	void inject_primary_basis();
+	// Upload the halo pedestal/renormalisation matching m_halo_quad_extent.
+	void set_halo_quad_edge(bgfx_effect *effect);
 	void rebuild_vec_slider_map();
 	// name->pointer map for the cache refresh, rebuilt when the screen-0 chain changes
 	std::vector<std::pair<float vec_slider_cache::*, bgfx_slider*>> m_vs_map;
@@ -474,6 +476,13 @@ private:
 	float m_beam_px = 0.0f, m_beam_py = 0.0f;   // last actual beam position (pixels, drifted space)
 	float m_beam_vx = 0.0f, m_beam_vy = 0.0f;   // last actual beam velocity (pixels / second)
 	bool  m_defl_on = false;                    // deflection dynamics active this frame
+	// How far past the line a HALO quad (analytic glow, overload halo, starburst ray, edge glow) is
+	// expanded, in sigma. Their sigma runs to tens of pixels, so this is what the wide glow actually
+	// costs in fill: on Star Wars vec_glow_mrt is 17% of the frame in play and 30% during the Death
+	// Star explosion. The core stays at the compiled-in 3.5 (QUAD_EDGE_PEDESTAL in
+	// fs_vector_line_analytic.sc); only the halos follow this, and the shader gets the matching
+	// pedestal through u_halo_quad_edge so the profile still reaches zero exactly at the cut.
+	float m_halo_quad_extent = 3.5f;
 	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
 	bool  m_optical_separate = false;            // modern mono/Vectrex: explicit optics bypass glow shaping
 	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)

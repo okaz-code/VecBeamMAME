@@ -21,9 +21,15 @@ $input v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
 //   sg = exp(-(-ln g)^p)   (g^1 -> g, so p=1 is identity and the erf box-integration AA is preserved).
 uniform vec4 u_line_params;
 
-// exp(-3.5^2 / 2): the profile value still present where every analytic quad is cut off.
+// exp(-3.5^2 / 2): the profile value still present where a CORE quad is cut off.
 #define QUAD_EDGE_PEDESTAL 0.0021874911
 #define QUAD_EDGE_RENORM   1.0021922
+
+// Halo quads (end_transition < 0) may be cut closer in than 3.5 sigma to save fill - their sigma is
+// tens of pixels, so the quad area is what the wide glow actually costs. Their pedestal and
+// renormalisation therefore arrive from the renderer, which knows the extent it padded them to.
+// .x = pedestal, .y = renormalisation. At extent 3.5 these equal the two constants above.
+uniform vec4 u_halo_quad_edge;
 
 float sharpen(float g, float p)
 {
@@ -213,7 +219,10 @@ void main()
 	// square frame once a broad low-amplitude halo is dialled up, because then 0.22% of the peak is a
 	// large fraction of everything on screen at that radius. Subtract the pedestal and renormalise so
 	// the profile reaches exactly zero at the quad edge instead; nothing else moves by more than 0.22%.
-	fade = max(0.0, fade - QUAD_EDGE_PEDESTAL) * QUAD_EDGE_RENORM;
+	bool halo_quad = v_texcoord3.w < 0.0;
+	float quad_pedestal = halo_quad ? u_halo_quad_edge.x : QUAD_EDGE_PEDESTAL;
+	float quad_renorm   = halo_quad ? u_halo_quad_edge.y : QUAD_EDGE_RENORM;
+	fade = max(0.0, fade - quad_pedestal) * quad_renorm;
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
 	float coverage = v_color0.a * fade * over_mult;
 	vec4 deposit = vec4(v_color0.rgb * coverage, coverage);
