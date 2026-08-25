@@ -92,6 +92,9 @@ private:
 	void vertex(ScreenVertex* vertex, float x, float y, float z, uint32_t rgba, float u, float v);
 	void render_avi_quad();
 	void update_recording();
+	bool drain_recording();
+	void flush_recording();
+	void release_recording();
 
 	bool update_dimensions();
 	void *native_window_handle() const;
@@ -566,7 +569,21 @@ private:
 	bgfx_target *m_avi_target;
 	bgfx::TextureHandle m_avi_texture;
 	bitmap_rgb32 m_avi_bitmap;
-	std::unique_ptr<uint8_t []> m_avi_data;
+	// bgfx::readTexture fills its destination buffer on the render thread, and only promises the
+	// data is there once bgfx has reached the frame number it hands back - three frames later in
+	// practice. A single buffer therefore cannot be requested and converted in the same frame, so
+	// requests go into this ring and are converted when their frame comes up. Four slots covers
+	// the three that can be in flight plus the one being requested.
+	static constexpr int AVI_READBACK_SLOTS = 4;
+	struct avi_readback
+	{
+		std::unique_ptr<uint8_t []> data;
+		uint32_t ready_frame = 0;
+	};
+	avi_readback m_avi_readback[AVI_READBACK_SLOTS];
+	int m_avi_readback_head;    // oldest request still in flight
+	int m_avi_readback_count;   // requests in flight
+	bool m_avi_autostart_done;  // -bgfx_avi_name recording has been started for this session
 
 	std::unique_ptr<util::xml::file> m_config;
 	// The stored configuration, kept verbatim when the running chain selection came from an

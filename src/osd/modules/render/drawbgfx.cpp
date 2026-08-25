@@ -1396,6 +1396,9 @@ renderer_bgfx::renderer_bgfx(osd_window &window, parent_module &parent)
 	, m_avi_view()
 	, m_avi_writer()
 	, m_avi_target(nullptr)
+	, m_avi_readback_head(0)
+	, m_avi_readback_count(0)
+	, m_avi_autostart_done(false)
 	, m_load_sub(parent.subscribe_load(&renderer_bgfx::load_config, this))
 	, m_save_sub(parent.subscribe_save(&renderer_bgfx::save_config, this))
 {
@@ -1455,21 +1458,20 @@ renderer_bgfx::~renderer_bgfx()
 	m_vec_fb_w = m_vec_fb_h = 0;
 	m_vec_glow_fb_w = m_vec_glow_fb_h = 0;
 
-	bgfx::reset(0, 0, BGFX_RESET_NONE);
-
+	// Before bgfx::reset: flush_recording() pumps frames to land the readbacks still in flight,
+	// which the reset would strand.
 	if (m_avi_writer && m_avi_writer->recording())
 	{
+		flush_recording();
 		m_avi_writer->stop();
-
-		m_targets->destroy_target("avibuffer0");
-		m_avi_target = nullptr;
-
-		bgfx::destroy(m_avi_texture);
-
+		release_recording();
 		m_avi_writer.reset();
-		m_avi_data.reset();
-		m_avi_view.reset();
+
+		for (avi_readback &readback : m_avi_readback)
+			readback.data.reset();
 	}
+
+	bgfx::reset(0, 0, BGFX_RESET_NONE);
 }
 
 //============================================================
@@ -1617,20 +1619,21 @@ void renderer_bgfx::record()
 	if (!m_avi_writer)
 	{
 		m_avi_writer.reset(new avi_write(window().machine(), m_new_dimensions.width(), m_new_dimensions.height()));
-		// m_avi_data is the readback destination for m_avi_texture, which is created below at
+		// The readback slots are the destinations for m_avi_texture, which is created below at
 		// m_new_dimensions, and the conversion loop walks all of m_avi_bitmap - so both axes have
 		// to come from m_new_dimensions. Upstream takes the height from m_dimensions instead.
-		m_avi_data.reset(new uint8_t[m_new_dimensions.width() * m_new_dimensions.height() * 4]);
+		for (avi_readback &readback : m_avi_readback)
+			readback.data.reset(new uint8_t[m_new_dimensions.width() * m_new_dimensions.height() * 4]);
 		m_avi_bitmap.allocate(m_new_dimensions.width(), m_new_dimensions.height());
 	}
 
 	if (m_avi_writer->recording())
 	{
+		// Land the in-flight readbacks before tearing the texture down, or the tail of the
+		// recording is lost.
+		flush_recording();
 		m_avi_writer->stop();
-		m_targets->destroy_target("avibuffer0");
-		m_avi_target = nullptr;
-		bgfx::destroy(m_avi_texture);
-		m_avi_view.reset();
+		release_recording();
 	}
 	else
 	{
@@ -7035,6 +7038,23 @@ int renderer_bgfx::draw(int update)
 	// process submitted rendering primitives.
 	if (window_index == 0)
 	{
+		// -bgfx_avi_name names a GPU-side capture. Until now the only way to start one was
+		// IPT_OSD_8, which has no default binding, so an explicitly named file starts it here:
+		// this is the only capture path that sees what the chain actually rendered, since
+		// -aviwrite and -snapname both go through the software rasterizer in video_manager.
+		if (!m_avi_autostart_done)
+		{
+			m_avi_autostart_done = true;
+			const char *const name = m_module().options().bgfx_avi_name();
+			// record() toggles, and its stop path calls flush_recording(), which pumps
+			// bgfx::frame() - not something to do from inside draw(). Nothing can be recording
+			// on the first draw, so this only ever takes the start path; testing for it makes
+			// that a precondition rather than an assumption about call order.
+			if (name != nullptr && *name != '\0' && strcmp(name, OSDOPTVAL_AUTO) != 0
+				&& (!m_avi_writer || !m_avi_writer->recording()))
+				record();
+		}
+
 		if (m_avi_writer && m_avi_writer->recording() && window_index == 0)
 		{
 			render_avi_quad();
@@ -7276,27 +7296,101 @@ int renderer_bgfx::draw(int update)
 	return 0;
 }
 
+bool renderer_bgfx::drain_recording()
+{
+	// A request's buffer is only guaranteed to hold its frame once bgfx has reached the frame
+	// number readTexture returned. s_bgfx_frame_number is the last frame bgfx::frame() gave back,
+	// so comparing against it consumes requests in submission order and frees their slots.
+	// The comparison is a signed difference so it stays correct across a frame counter wrap.
+	bool wrote_any = false;
+
+	while (m_avi_readback_count > 0)
+	{
+		const avi_readback &oldest = m_avi_readback[m_avi_readback_head];
+		if (int32_t(s_bgfx_frame_number - oldest.ready_frame) < 0)
+			break;
+
+		const uint8_t *src = oldest.data.get();
+		int i = 0;
+		for (int y = 0; y < m_avi_bitmap.height(); y++)
+		{
+			uint32_t *dst = &m_avi_bitmap.pix(y);
+
+			for (int x = 0; x < m_avi_bitmap.width(); x++)
+			{
+				*dst++ = 0xff000000 | (src[i + 0] << 16) | (src[i + 1] << 8) | src[i + 2];
+				i += 4;
+			}
+		}
+
+		m_avi_writer->video_frame(m_avi_bitmap);
+		wrote_any = true;
+
+		m_avi_readback_head = (m_avi_readback_head + 1) % AVI_READBACK_SLOTS;
+		m_avi_readback_count--;
+	}
+
+	return wrote_any;
+}
+
 void renderer_bgfx::update_recording()
 {
+	// Hand over everything the GPU has finished with before asking for more, so a slot is free.
+	drain_recording();
+
+	if (m_avi_readback_count >= AVI_READBACK_SLOTS)
+	{
+		// Only reachable if readTexture starts promising more than AVI_READBACK_SLOTS - 1 frames
+		// of latency; dropping the frame beats overwriting a buffer the GPU is still writing.
+		osd_printf_verbose("BGFX: AVI readback slots exhausted, dropping a frame\n");
+		return;
+	}
+
+	const int slot = (m_avi_readback_head + m_avi_readback_count) % AVI_READBACK_SLOTS;
+
 	// s_current_view - 1 is render_avi_quad()'s view. Keying the blit to a view that sorts
 	// after the HDR present view matters: bgfx runs blits when their view begins, so an
 	// earlier view would read the avi target before the present pass has written this frame.
 	bgfx::blit(s_current_view > 0 ? s_current_view - 1 : 0, m_avi_texture, 0, 0, bgfx::getTexture(m_avi_target->target()));
-	bgfx::readTexture(m_avi_texture, m_avi_data.get());
+	m_avi_readback[slot].ready_frame = bgfx::readTexture(m_avi_texture, m_avi_readback[slot].data.get());
+	m_avi_readback_count++;
+}
 
-	int i = 0;
-	for (int y = 0; y < m_avi_bitmap.height(); y++)
+void renderer_bgfx::flush_recording()
+{
+	// Requests still in flight when recording stops have no frames left to ride out on, so pump
+	// empty ones until they land. This is about safety more than footage - the writer paces
+	// itself off machine time, which is frozen here, so little extra lands - but the destination
+	// buffers and m_avi_texture are freed right after, and bgfx would still write through them.
+	//
+	// Calls bgfx::frame(), so it must not run inside draw(). Both callers are stop paths -
+	// record() toggling a recording off, and the destructor - and the one place record() is
+	// reached from draw() (the -bgfx_avi_name autostart) is guarded so it can only ever start.
+	for (int guard = 0; m_avi_readback_count > 0 && guard <= AVI_READBACK_SLOTS + 2; guard++)
 	{
-		uint32_t *dst = &m_avi_bitmap.pix(y);
-
-		for (int x = 0; x < m_avi_bitmap.width(); x++)
-		{
-			*dst++ = 0xff000000 | (m_avi_data[i + 0] << 16) | (m_avi_data[i + 1] << 8) | m_avi_data[i + 2];
-			i += 4;
-		}
+		if (!drain_recording() && m_avi_readback_count > 0)
+			s_bgfx_frame_number = bgfx::frame();
 	}
 
-	m_avi_writer->video_frame(m_avi_bitmap);
+	if (m_avi_readback_count > 0)
+	{
+		osd_printf_verbose("BGFX: %d AVI frames never came back from the GPU\n", m_avi_readback_count);
+		m_avi_readback_count = 0;
+	}
+}
+
+void renderer_bgfx::release_recording()
+{
+	m_targets->destroy_target("avibuffer0");
+	m_avi_target = nullptr;
+
+	bgfx::destroy(m_avi_texture);
+	m_avi_texture = BGFX_INVALID_HANDLE;
+
+	m_avi_readback_head = 0;
+	m_avi_readback_count = 0;
+
+	m_avi_view.reset();
 }
 
 void renderer_bgfx::add_audio_to_recording(const int16_t *buffer, int samples_this_frame)
