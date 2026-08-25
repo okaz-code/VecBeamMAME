@@ -29,6 +29,14 @@ $input v_color0, v_texcoord0
 
 SAMPLER2D(s_tex, 0);
 
+// Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
+// window's deposited fraction. The renderer used to bake this into their vertices, but their
+// content only changes when a new source pass arrives, so it is built once per pass now and the
+// per-present ramp arrives here instead. It has to be applied at the sample, ahead of any tonal
+// reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
+uniform vec4 u_aux_ramp;
+#define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
+
 // set automatically by the chain system from the input texture size: (1/input_w, 1/input_h, 0, 0)
 uniform vec4 u_inv_screen_dims;
 uniform vec4 u_glow_curve;   // (curve, 0, 0, 0); 1 = identity
@@ -56,7 +64,7 @@ vec4 shape_tap(vec4 c)
 
 vec4 tap(vec2 uv)
 {
-	return shape_tap(texture2D(s_tex, uv));
+	return shape_tap(AUX_TEX2D(s_tex, uv));
 }
 
 void main()

@@ -486,6 +486,13 @@ private:
 	// fs_vector_line_analytic.sc); only the halos follow this, and the shader gets the matching
 	// pedestal through u_halo_quad_edge so the profile still reaches zero exactly at the cut.
 	float m_halo_quad_extent = 3.5f;
+	// window_aux_ramp for this present: the fraction of the sweep deposited so far, which the
+	// post-pool routes are scaled by so their scatter stays in step with the light scattering it.
+	// It used to be baked into the aux vertices; now the aux geometry is built once per source pass
+	// (see deposit_aux) and this arrives at the passes that sample those buffers instead. It has to
+	// be applied BEFORE the wide-glow pyramid's first level, which reshapes with a power curve -
+	// scaling after that is not the same thing.
+	float m_vec_aux_ramp = 1.0f;
 	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
 	bool  m_optical_separate = false;            // modern mono/Vectrex: explicit optics bypass glow shaping
 	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)

@@ -12,6 +12,14 @@ SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 SAMPLER2D(s_cur, 2);   // current excitation frame
 
+// Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
+// window's deposited fraction. The renderer used to bake this into their vertices, but their
+// content only changes when a new source pass arrives, so it is built once per pass now and the
+// per-present ramp arrives here instead. It has to be applied at the sample, ahead of any tonal
+// reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
+uniform vec4 u_aux_ramp;
+#define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
+
 uniform vec4 u_phos;
 uniform vec4 u_phos2;
 uniform vec4 u_phos_rgb;
@@ -83,14 +91,14 @@ vec3 sample_np_converged(vec2 uv)
 		dot(abs(u_radial_converge_blue.xy), vec2_splat(1.0));
 
 	if (amount <= 0.0)
-		return texture2D(s_np, uv).rgb;
+		return AUX_TEX2D(s_np, uv).rgb;
 
 	vec2 half_value = vec2_splat(0.5);
 	vec2 inv_source = vec2_splat(1.0) / u_source_size.xy;
 	vec2 uv_r = (uv - half_value) * (1.0 + u_radial_converge_red.xy) + half_value + u_converge_red.xy * inv_source;
 	vec2 uv_g = (uv - half_value) * (1.0 + u_radial_converge_green.xy) + half_value + u_converge_green.xy * inv_source;
 	vec2 uv_b = (uv - half_value) * (1.0 + u_radial_converge_blue.xy) + half_value + u_converge_blue.xy * inv_source;
-	return vec3(texture2D(s_np, uv_r).r, texture2D(s_np, uv_g).g, texture2D(s_np, uv_b).b);
+	return vec3(AUX_TEX2D(s_np, uv_r).r, AUX_TEX2D(s_np, uv_g).g, AUX_TEX2D(s_np, uv_b).b);
 }
 
 vec3 color_transform(vec3 cin)

@@ -30,6 +30,14 @@ SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 SAMPLER2D(s_cur, 2);   // the CURRENT excitation frame (same "internal" page the update pass read)
 
+// Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
+// window's deposited fraction. The renderer used to bake this into their vertices, but their
+// content only changes when a new source pass arrives, so it is built once per pass now and the
+// per-present ramp arrives here instead. It has to be applied at the sample, ahead of any tonal
+// reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
+uniform vec4 u_aux_ramp;
+#define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
+
 uniform vec4 u_phos;              // y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;             // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
 uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1,1 = uniform
@@ -84,6 +92,6 @@ void main()
 	// (pixel re-excited this present) pool == cur and this is exactly the previous output.
 	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
 
-	lit += texture2D(s_np, v_texcoord0).rgb * u_np_gain.x;
+	lit += AUX_TEX2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);
 }

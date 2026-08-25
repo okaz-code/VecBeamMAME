@@ -19,6 +19,7 @@
   "vertex": "vs_gui",
   "fragment": "vector/fs_vector_glow_combine_mono_defocus",
   "uniforms": [
+    { "name": "u_aux_ramp", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
     {
       "name": "s_base",
       "type": "int",

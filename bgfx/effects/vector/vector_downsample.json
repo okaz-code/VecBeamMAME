@@ -19,6 +19,7 @@
 	"vertex": "vs_gui",
 	"fragment": "vector/fs_vector_downsample",
 	"uniforms": [
+		{ "name": "u_aux_ramp", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "s_tex",             "type": "int",  "values": [ 1.0 ] },
 		{ "name": "u_inv_screen_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
 		{ "name": "u_glow_curve",      "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },

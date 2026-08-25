@@ -4772,6 +4772,18 @@ int renderer_bgfx::draw(int update)
 				? !vector_present_repeat
 				: m_vec_frame_advanced);
 		m_vec_deposited_source = deposit_vector_source;
+		// The post-pool routes are a different question from the body. The body carries a different
+		// slice of the sweep every windowed present, but glow, halation, no-persist dots and rays
+		// deliberately receive the WHOLE pass (see the window_aux_ramp comment below), and that pass
+		// only changes when a new source arrives. Redrawing them per present therefore rebuilt the
+		// same picture: on Star Wars at 160 Hz the accounting showed the full 2252-vector glow being
+		// generated and rasterised eight times over for one pass. Their buffers are the same ones a
+		// non-windowed present already retains between source frames, so this is the same clause
+		// without the window term.
+		const bool deposit_aux = bezel_threshold_changed
+			|| ((window().machine().video().vector_present_rate() == 0)
+				? !vector_present_repeat
+				: m_vec_frame_advanced);
 
 		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
 		// Untimed vectors hold no position in the sweep, so the beam time window's accounting
@@ -4943,6 +4955,8 @@ int renderer_bgfx::draw(int update)
 			// high-score screen. Scaling them by this keeps scatter in step with the light it scatters.
 			window_aux_ramp = float(std::clamp((window_hi - vstats.sweep_t0) / window_span, 0.0, 1.0));
 		}
+		// Handed to the chain passes that sample the aux buffers; see m_vec_aux_ramp.
+		m_vec_aux_ramp = window_aux_ramp;
 		// The counting scan and the write loop further down MUST reach the same include/exclude
 		// decision for every primitive - the count sizes the transient vertex buffer the write loop
 		// fills - so the test lives here once instead of being duplicated at both sites.
@@ -5813,7 +5827,7 @@ int renderer_bgfx::draw(int update)
 					{
 						// Best-effort separate glow buffer (6 verts/line). If it cannot be allocated the
 						// core still draws; glow is simply skipped this frame.
-						if (m_glow_on && m_glow_vpl > 0)
+						if (deposit_aux && m_glow_on && m_glow_vpl > 0)
 						{
 							const uint32_t gneeded = uint32_t(aux_count) * uint32_t(m_glow_vpl);
 							if (gneeded == bgfx::getAvailTransientVertexBuffer(gneeded, line_decl))
@@ -5824,7 +5838,7 @@ int renderer_bgfx::draw(int update)
 						}
 						// Explicit point-optics buffer: halation rim/fill bypass tail shaping. Sized by aux_count: like
 						// glow it is cleared every present and composited after the pool, so it is not windowed.
-						if (m_line_analytic && m_optical_vpl > 0 && bgfx::isValid(m_vec_optical_fb))
+						if (deposit_aux && m_line_analytic && m_optical_vpl > 0 && bgfx::isValid(m_vec_optical_fb))
 						{
 							const uint32_t oneeded = uint32_t(aux_count) * uint32_t(m_optical_vpl);
 							if (oneeded == bgfx::getAvailTransientVertexBuffer(oneeded, line_decl))
@@ -5835,7 +5849,7 @@ int renderer_bgfx::draw(int update)
 						}
 						// Best-effort separate no-persist buffer (one dot slot per primitive). If it
 						// cannot be allocated, the core still draws and short-dwell dots stay in it.
-						if (np_on)
+						if (deposit_aux && np_on)
 						{
 							const uint32_t npneeded = uint32_t(aux_count) * NP_VPL;
 							if (npneeded == bgfx::getAvailTransientVertexBuffer(npneeded, line_decl))
@@ -5845,7 +5859,7 @@ int renderer_bgfx::draw(int update)
 							}
 						}
 						// Ray buffer: sized by the aux point count (dwell dots only), not visible_count.
-						if (ray_on && aux_point_count > 0)
+						if (deposit_aux && ray_on && aux_point_count > 0)
 						{
 							const uint32_t rneeded = uint32_t(aux_point_count) * uint32_t(m_ray_vpl);
 							if (rneeded == bgfx::getAvailTransientVertexBuffer(rneeded, line_decl))
@@ -5856,7 +5870,7 @@ int renderer_bgfx::draw(int update)
 						}
 						// One boundary ring per detected overload object, independent of per-line glow allocation.
 						const uint32_t conv_needed = uint32_t(conv_blooms.size()) * 6u;
-						if (g_conv && conv_needed == bgfx::getAvailTransientVertexBuffer(conv_needed, line_decl))
+						if (deposit_aux && g_conv && conv_needed == bgfx::getAvailTransientVertexBuffer(conv_needed, line_decl))
 						{
 							bgfx::allocTransientVertexBuffer(&conv_tvb, conv_needed, line_decl);
 							conv_alloc = (conv_tvb.data != nullptr);
@@ -5991,7 +6005,7 @@ int renderer_bgfx::draw(int update)
 									// the draw call's explicit vertex count leaves out.
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
 											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, window_aux_ramp);
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, 1.0f);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -6096,7 +6110,7 @@ int renderer_bgfx::draw(int update)
 			bool edge_alloc = false;
 			const float edge_gain = m_chains->slider_value(0, "edge_glow", 0.0f);
 			static_assert(sizeof(m_edge_smooth) == sizeof(render_vector_stats::edge_energy));
-			if (edge_gain > 0.0f && bgfx::isValid(m_vec_glow_fb)
+			if (deposit_aux && edge_gain > 0.0f && bgfx::isValid(m_vec_glow_fb)
 				&& m_edge_box_max_x > m_edge_box_min_x + 8.0f && m_edge_box_max_y > m_edge_box_min_y + 8.0f)
 			{
 				// Temporal smoothing (instant attack, exponential release over edge_glow_persist ms of
@@ -6219,7 +6233,10 @@ int renderer_bgfx::draw(int update)
 			// A new empty source owns the auxiliary buffers just as surely as a source with allocated
 			// geometry.  Clear them explicitly or the preceding frame's post-phosphor glow is added back
 			// forever even though the core excitation FBO and phosphor pool are correctly fading to black.
-			const bool empty_vector_source = deposit_vector_source && visible_count == 0;
+			// Follows the aux cadence, not the body's: this exists to stop a previous pass's glow
+			// being re-added forever, and on a windowed repeat present there is no new pass to be
+			// empty - the retained buffers still hold the current one.
+			const bool empty_vector_source = deposit_aux && aux_count == 0;
 			if ((empty_vector_source || glow_alloc || (!m_optical_separate && ray_alloc) || conv_alloc || edge_alloc)
 				&& bgfx::isValid(m_vec_glow_fb))
 			{
@@ -6631,6 +6648,14 @@ int renderer_bgfx::draw(int update)
 				const float ambient_output_scale = hdr_present ? 1.0f : (1.0f / sdr_level);
 				const float ambient_scale_vals[4] = { ambient_output_scale, 0.0f, 0.0f, 0.0f };
 				inject_primary_basis();
+				// The aux buffers now hold a whole pass at full strength (deposit_aux), so the
+				// window's ramp is applied where they are sampled. Only the first pyramid level is
+				// listed: wide_glow_ds1 and up read glow_lo targets that ds0 already scaled, and the
+				// per-entry default of 1 covers them. Names absent from a chain are simply not found.
+				const float aux_ramp_vals[4] = { m_vec_aux_ramp, 0.0f, 0.0f, 0.0f };
+				for (const char *const entry : { "Glow Accum Narrow", "wide_glow_ds0", "add_mglow",
+						"Glow Combine", "Phosphor Apply" })
+					m_chains->inject_entry_uniform(0, entry, "u_aux_ramp", aux_ramp_vals, 4);
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_ambient_output_scale", ambient_scale_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_ambient_output_scale", ambient_scale_vals, 4);
 
