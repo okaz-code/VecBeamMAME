@@ -81,8 +81,15 @@ void main()
 	float spread_luma = dot(spread_only, vec3(0.2126, 0.7152, 0.0722));
 	float spread_normalized = spread_luma / max(u_overlay_params0.x, 1.0);
 	float backscatter_response = pow(saturate(spread_normalized), 0.55);
+	// Backscatter is generated inside the resin and has to climb back out through it, so a denser
+	// plate must generate less of it. resin_coverage cannot express that - it saturates at a density
+	// of one, so every plate from there up generated the same scatter and only the single outbound
+	// pass of color_filter told them apart. Weight the generation by the plate's own transmission as
+	// well, so density acts on both ends and the areas meant to read as opaque stop sitting on a
+	// grey scatter floor.
+	float plate_transmission = dot(static_filter, vec3(0.2126, 0.7152, 0.0722));
 	float backscatter_nits = u_overlay_params0.x * 0.08 * u_overlay_params1.w
-		* backscatter_response * resin_coverage;
+		* backscatter_response * resin_coverage * plate_transmission;
 	vec3 resin_backscatter = vec3_splat(backscatter_nits);
 
 	// Backscatter is neutral where it is generated, then traverses the coloured resin with all
