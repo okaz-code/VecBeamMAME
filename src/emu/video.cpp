@@ -705,10 +705,19 @@ inline bool video_manager::effective_throttle() const
 
 inline bool video_manager::vector_present_active() const
 {
+	// The UI is rendered by frame_update and nothing else. Handing OSD updates to the presentation
+	// timer while it has something on screen decouples the two: the container is rebuilt once per
+	// emulated frame, the timer presents several times in between, and whichever presents land
+	// outside the rebuilt window show a list without it. Measured on a Vectrex overlay at 160 Hz,
+	// the untagged textured quad count alternated between 1 and 232 frame to frame - the menu
+	// appearing and vanishing - which is what the overlay bezel flickering with the UI up actually
+	// was. So while the UI has content, frame_update presents, exactly as it does with no timer at
+	// all. Nothing is lost: the beam window has no work to do behind a menu.
 	return m_vector_present_timer
 		&& (machine().phase() == machine_phase::RUNNING)
 		&& !machine().paused()
 		&& !m_fastforward
+		&& machine().render().ui_container().is_empty()
 		&& effective_throttle();
 }
 
