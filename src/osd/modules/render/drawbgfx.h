@@ -545,6 +545,8 @@ private:
 	// rendered to optical masks and composed with screen_hdr.  Surface print images remain ordinary
 	// bezel/artwork elements; the coloured-resin role itself is consumed by this optical path.
 	bool m_vectrex_overlay_active = false;
+	// Last reported reason the overlay path stood down, so the notice fires on change only.
+	const char *m_vectrex_overlay_bail_reason = nullptr;
 	bgfx_target *m_vectrex_overlay_white = nullptr;
 	bgfx_target *m_vectrex_overlay_color = nullptr;
 	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };
