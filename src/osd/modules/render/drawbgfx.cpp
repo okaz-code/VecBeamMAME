@@ -23,6 +23,7 @@
 #include "bgfx/texturemanager.h"
 #include "bgfx/uniform.h"
 #include "bgfx/view.h"
+#include "bgfx/viewprofile.h"
 
 // render
 #include "aviwrite.h"
@@ -555,9 +556,24 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 			s_bgfx_hdr_active ? bgfx::TextureFormat::RGB10A2 : bgfx::TextureFormat::Count);
 	}
 
-	// Enable debug text if requested
+	// Enable debug text if requested. BGFX_DEBUG_PROFILER is what makes bgfx populate
+	// bgfx::Stats::viewStats with per-view GPU timings (renderer.h's Profiler is a no-op
+	// without it); the per-pass breakdown at the bottom of draw() reads those. Only ask for it
+	// on a backend that actually implements per-view timer queries - see
+	// bgfx_view_profile::backend_supports_view_timing().
+	//
+	// View names are still applied whenever bgfx_debug is on: they cost one string compare per
+	// view per frame and they label the passes in a graphics-debugger capture, which is the
+	// fallback on a backend without timer queries.
 	bool bgfx_debug = m_options->bgfx_debug();
-	bgfx::setDebug(bgfx_debug ? BGFX_DEBUG_STATS : BGFX_DEBUG_TEXT);
+	const bool view_timing = bgfx_debug && bgfx_view_profile::backend_supports_view_timing();
+	bgfx::setDebug(bgfx_debug
+		? (BGFX_DEBUG_STATS | (view_timing ? BGFX_DEBUG_PROFILER : 0))
+		: BGFX_DEBUG_TEXT);
+	bgfx_view_profile::set_enabled(bgfx_debug);
+	if (bgfx_debug && !view_timing)
+		osd_printf_verbose("BGFX: per-pass GPU timing unavailable on the %s backend;"
+			" BGFX PERF will report frame-level figures only\n", bgfx::getRendererName(bgfx::getRendererType()));
 
 	// Get actual maximum texture size
 	bgfx::Caps const *const caps = bgfx::getCaps();
@@ -1754,6 +1770,7 @@ void renderer_bgfx::render_avi_quad()
 	const auto view = uint16_t(s_current_view);
 	const auto w = uint16_t(s_width[0]);
 	const auto h = uint16_t(s_height[0]);
+	bgfx_view_profile::name(view, "avi_quad");
 
 	if (m_vec_hdr_chain)
 	{
@@ -2659,6 +2676,8 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		bgfx::getCaps()->homogeneousDepth);
 	uint16_t const white_view = uint16_t(s_current_view++);
 	uint16_t const color_view = uint16_t(s_current_view++);
+	bgfx_view_profile::name(white_view, "vx_overlay_white");
+	bgfx_view_profile::name(color_view, "vx_overlay_color");
 	auto setup_mask_view = [projection, width, height](uint16_t view, bgfx_target *target)
 	{
 		bgfx::setViewFrameBuffer(view, target->target());
@@ -2703,6 +2722,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		&& screen_hdr->width() > 0 && screen_hdr->height() > 0)
 	{
 		uint16_t const view = uint16_t(s_current_view++);
+		bgfx_view_profile::name(view, "vx_overlay_downsample");
 		bgfx::setViewFrameBuffer(view, m_vectrex_overlay_blur[1]->target());
 		bgfx::setViewRect(view, 0, 0, blur_width, blur_height);
 		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
@@ -2755,6 +2775,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	{
 		uint32_t const direction = pass & 1U;
 		uint16_t const view = uint16_t(s_current_view++);
+		bgfx_view_profile::name(view, "vx_overlay_blur");
 		bgfx::setViewFrameBuffer(view, m_vectrex_overlay_blur[direction]->target());
 		bgfx::setViewRect(view, 0, 0, blur_width, blur_height);
 		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
@@ -2789,6 +2810,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	}
 
 	uint16_t const composite_view = uint16_t(s_current_view++);
+	bgfx_view_profile::name(composite_view, "vx_overlay_composite");
 	bgfx::setViewFrameBuffer(composite_view, m_hdr_work->target());
 	bgfx::setViewRect(composite_view, 0, 0, width, height);
 	bgfx::setViewClear(composite_view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
@@ -4289,6 +4311,7 @@ int renderer_bgfx::draw(int update)
 	if (window_index == 0)
 	{
 		const uint16_t clear_view = uint16_t(s_current_view++);
+		bgfx_view_profile::name(clear_view, "backbuffer_clear");
 		const uint16_t cw = uint16_t(s_width[window_index]);
 		const uint16_t ch = uint16_t(s_height[window_index]);
 		bgfx::setViewFrameBuffer(clear_view, BGFX_INVALID_HANDLE);
@@ -5871,6 +5894,7 @@ int renderer_bgfx::draw(int update)
 			// allocate a view for FBO drawing
 			const uint16_t fbo_view = uint16_t(s_current_view);
 			s_current_view++;
+			bgfx_view_profile::name(fbo_view, "vec_core");
 			bgfx::setViewFrameBuffer(fbo_view, m_vec_fb);
 			// viewport: the whole FBO (post-supersample resolution)
 			bgfx::setViewRect(fbo_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
@@ -6073,6 +6097,7 @@ int renderer_bgfx::draw(int update)
 			{
 				const uint16_t glow_view = uint16_t(s_current_view);
 				s_current_view++;
+				bgfx_view_profile::name(glow_view, "vec_glow_mrt");
 				bgfx::setViewFrameBuffer(glow_view, m_vec_glow_fb);
 				// viewport = the (possibly reduced) glow FBO; the ortho below still maps SCREEN
 				// coordinates, so the geometry lands scaled onto the smaller raster automatically.
@@ -6142,6 +6167,7 @@ int renderer_bgfx::draw(int update)
 			if (m_optical_separate && bgfx::isValid(m_vec_optical_fb))
 			{
 				const uint16_t optical_view = uint16_t(s_current_view++);
+				bgfx_view_profile::name(optical_view, "vec_optical");
 				bgfx::setViewFrameBuffer(optical_view, m_vec_optical_fb);
 				bgfx::setViewRect(optical_view, 0, 0, m_vec_glow_fb_w, m_vec_glow_fb_h);
 				bgfx::setViewClear(optical_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
@@ -6195,6 +6221,7 @@ int renderer_bgfx::draw(int update)
 			{
 				const uint16_t np_view = uint16_t(s_current_view);
 				s_current_view++;
+				bgfx_view_profile::name(np_view, "vec_nopersist");
 				bgfx::setViewFrameBuffer(np_view, m_vec_np_fb);
 				bgfx::setViewRect(np_view, 0, 0, m_vec_fb_w, m_vec_fb_h);
 				bgfx::setViewClear(np_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
@@ -6606,6 +6633,7 @@ int renderer_bgfx::draw(int update)
 			if (!m_vectrex_overlay_active)
 			{
 			const uint16_t seed_view = uint16_t(s_current_view++);
+			bgfx_view_profile::name(seed_view, "hdr_seed");
 			bgfx::setViewFrameBuffer(seed_view, m_hdr_work->target());
 			bgfx::setViewRect(seed_view, 0, 0, m_hdr_work->width(), m_hdr_work->height());
 			bgfx::setViewClear(seed_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
@@ -6745,6 +6773,7 @@ int renderer_bgfx::draw(int update)
 
 			const uint16_t present_view = uint16_t(s_current_view);
 			s_current_view++;
+			bgfx_view_profile::name(present_view, "hdr_present");
 			// window 0 renders to the default backbuffer (m_framebuffer is null there).
 			// While AVI recording, present into the capture target instead: update_recording()
 			// reads that target back for the encoder, and render_avi_quad() copies it to the
@@ -6842,6 +6871,7 @@ int renderer_bgfx::draw(int update)
 				vertex(&uv[5], 0.0f, h,    0.0f, 0xffffffff, 0.0f, 1.0f);
 
 				const uint16_t upscale_view = uint16_t(s_current_view++);
+				bgfx_view_profile::name(upscale_view, "output_upscale");
 				bgfx::setViewFrameBuffer(upscale_view, present_fb);
 				bgfx::setViewRect(upscale_view, 0, 0, uint16_t(w), uint16_t(h));
 				bgfx::setViewClear(upscale_view, BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
@@ -6927,6 +6957,60 @@ int renderer_bgfx::draw(int update)
 				m_vector_perf_gpu_max_ms = std::max(m_vector_perf_gpu_max_ms, gpu_ms);
 			}
 
+			// Per-pass GPU time. bgfx hands back one ViewStats per view it submitted, each
+			// carrying that view's own GPU timestamps, so unlike the frame span above this
+			// excludes the gaps where the GPU had nothing to do.
+			//
+			// The backend's timer-query ring can hand back a result set it already reported
+			// (the query for this frame may not have resolved yet), so an unchanged set is
+			// dropped rather than counted twice. See m_gpu_last_view_begin for why the key is
+			// a timestamp and not ViewStats::gpuFrameNum.
+			//
+			// A view whose own query has not resolved yet carries its most recent finished
+			// result instead, which can be a frame or two old, so one frame's sum is really
+			// "latest known cost of each pass" rather than a strict single-frame total. That
+			// is fine for the question this answers - where the second went - but it is why
+			// the average is the number to trust and p95/max are indicative only.
+			if (stats && stats->gpuTimerFreq > 0 && stats->numViews > 0)
+			{
+				const double view_to_ms = 1000.0 / double(stats->gpuTimerFreq);
+				const int64_t view_begin = stats->viewStats[0].gpuTimeBegin;
+				if (view_begin != m_gpu_last_view_begin)
+				{
+					m_gpu_last_view_begin = view_begin;
+					double busy_ms = 0.0;
+					for (uint16_t i = 0; i < stats->numViews; ++i)
+					{
+						const bgfx::ViewStats &vs = stats->viewStats[i];
+						if (vs.gpuTimeEnd < vs.gpuTimeBegin)
+							continue;
+						const double ms = double(vs.gpuTimeEnd - vs.gpuTimeBegin) * view_to_ms;
+						busy_ms += ms;
+
+						// A pass with no label would be indistinguishable from any other
+						// unlabelled one, so those are pooled rather than silently merged
+						// into whichever bucket happened to sort first.
+						const char *const label = (vs.name[0] != '\0') ? vs.name : "(unnamed)";
+						auto it = std::find_if(m_view_gpu.begin(), m_view_gpu.end(),
+								[label] (const view_gpu_bucket &b) { return b.name == label; });
+						if (it == m_view_gpu.end())
+						{
+							m_view_gpu.push_back(view_gpu_bucket());
+							it = m_view_gpu.end() - 1;
+							it->name = label;
+						}
+						it->total_ms += ms;
+						it->max_ms = std::max(it->max_ms, ms);
+						it->frames++;
+					}
+					m_gpu_busy_ms.push_back(busy_ms);
+				}
+			}
+			else
+			{
+				m_gpu_view_frames_untimed++;
+			}
+
 			if (!m_vector_perf_window_hpc)
 				m_vector_perf_window_hpc = vector_perf_frame_end;
 			if (vector_perf_frame_end - m_vector_perf_window_hpc >= bx::getHPFrequency())
@@ -6963,11 +7047,77 @@ int renderer_bgfx::draw(int update)
 						source.cap_total_ms / double(source.count), source.cap_max_ms,
 						source.convergence_total_ms / double(source.count), source.convergence_max_ms);
 				}
-				osd_printf_info("BGFX PERF gpu-frame max %.3f ms, cached vectors %d\n",
+				// "frame span" is deliberate wording: this covers gpuTimeBegin..gpuTimeEnd for
+				// the whole frame, GPU idle included, so it runs high whenever the pipeline is
+				// waiting on the CPU. Read gpu-busy below for whether the GPU is actually the
+				// constraint, and frame-wait above for whether the CPU is blocked on it.
+				osd_printf_info("BGFX PERF gpu-frame max %.3f ms (frame span, GPU idle included),"
+					" cached vectors %d\n",
 					m_vector_perf_gpu_max_ms, m_vec_cached_vector_count);
+
+				if (!m_gpu_busy_ms.empty())
+				{
+					std::sort(m_gpu_busy_ms.begin(), m_gpu_busy_ms.end());
+					double busy_total = 0.0;
+					for (double v : m_gpu_busy_ms)
+						busy_total += v;
+					// Nearest-rank p95 (index ceil(0.95*n)-1), so a 20-sample window reports
+					// its worst frame rather than interpolating toward the median.
+					const size_t rank = size_t(std::ceil(0.95 * double(m_gpu_busy_ms.size())));
+					const size_t p95_index = std::min(m_gpu_busy_ms.size() - 1,
+							rank ? rank - 1 : 0);
+					osd_printf_info(
+						"BGFX PERF gpu-busy avg/p95/max %.3f/%.3f/%.3f ms over %u frames"
+						" (sum of per-pass GPU time)\n",
+						busy_total / double(m_gpu_busy_ms.size()),
+						m_gpu_busy_ms[p95_index], m_gpu_busy_ms.back(),
+						unsigned(m_gpu_busy_ms.size()));
+
+					// Descending by total, because what matters is where the second went, not
+					// which single frame spiked.
+					std::sort(m_view_gpu.begin(), m_view_gpu.end(),
+							[] (const view_gpu_bucket &a, const view_gpu_bucket &b)
+							{ return a.total_ms > b.total_ms; });
+					static constexpr size_t MAX_REPORTED_PASSES = 12;
+					const size_t reported = std::min(MAX_REPORTED_PASSES, m_view_gpu.size());
+					for (size_t i = 0; i < reported; ++i)
+					{
+						const view_gpu_bucket &b = m_view_gpu[i];
+						osd_printf_info(
+							"BGFX PERF gpu-pass %-32.32s %6.2f%% %.3f/%.3f ms (avg/max, n=%u)\n",
+							b.name.c_str(),
+							(busy_total > 0.0) ? (b.total_ms * 100.0 / busy_total) : 0.0,
+							b.total_ms / double(std::max<uint32_t>(1, b.frames)), b.max_ms,
+							b.frames);
+					}
+					if (m_view_gpu.size() > reported)
+					{
+						double rest_ms = 0.0;
+						for (size_t i = reported; i < m_view_gpu.size(); ++i)
+							rest_ms += m_view_gpu[i].total_ms;
+						osd_printf_info(
+							"BGFX PERF gpu-pass %-32.32s %6.2f%% (%u further passes not listed)\n",
+							"(remainder)",
+							(busy_total > 0.0) ? (rest_ms * 100.0 / busy_total) : 0.0,
+							unsigned(m_view_gpu.size() - reported));
+					}
+				}
+				else if (m_gpu_view_frames_untimed)
+				{
+					// Named rather than silent, so an empty breakdown is never mistaken for
+					// "nothing to see here". frame-wait above still answers whether the GPU is
+					// the constraint; only the per-pass split is missing.
+					osd_printf_info("BGFX PERF gpu-busy unavailable:"
+						" the %s backend has no per-view GPU timer\n",
+						bgfx::getRendererName(bgfx::getRendererType()));
+				}
+
 				for (vector_perf_bucket &b : m_vector_perf)
 					b = vector_perf_bucket();
 				m_vector_perf_gpu_max_ms = 0.0;
+				m_view_gpu.clear();
+				m_gpu_busy_ms.clear();
+				m_gpu_view_frames_untimed = 0;
 				m_vector_perf_window_hpc = vector_perf_frame_end;
 			}
 		}
@@ -7067,6 +7217,7 @@ void renderer_bgfx::setup_ortho_view()
 		if (m_hdr_work_view == UINT_MAX)
 		{
 			m_hdr_work_view = s_current_view++;
+			bgfx_view_profile::name(m_hdr_work_view, "ui_artwork");
 			const uint16_t vw = m_hdr_work->width();
 			const uint16_t vh = m_hdr_work->height();
 			bgfx::setViewFrameBuffer(uint16_t(m_hdr_work_view), m_hdr_work->target());
@@ -7087,6 +7238,7 @@ void renderer_bgfx::setup_ortho_view()
 	m_ortho_view->set_backbuffer(m_framebuffer);
 	if (m_ortho_view->get_index() == UINT_MAX)
 	{
+		bgfx_view_profile::name(s_current_view, "ui_artwork");
 		m_ortho_view->set_index(s_current_view);
 		m_ortho_view->setup();
 		s_current_view++;

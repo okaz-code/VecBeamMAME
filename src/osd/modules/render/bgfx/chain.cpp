@@ -25,6 +25,7 @@
 #include "target.h"
 #include "vertex.h"
 #include "clear.h"
+#include "viewprofile.h"
 #include "modules/osdwindow.h"
 
 bgfx_chain::bgfx_chain(
@@ -132,6 +133,10 @@ uint32_t bgfx_chain::process(chain_manager::screen_prim &prim, int view, int scr
 	{
 		if ((!vector_repeat || vector_repeat_entry(*m_entries[i])) && !m_entries[i]->skip())
 		{
+			// Label the view so this pass shows up by name in the per-view GPU breakdown
+			// (and in a graphics debugger's capture). Which id a pass lands on depends on
+			// which optional passes ran ahead of it, hence per submit rather than once.
+			bgfx_view_profile::name(uint32_t(current_view), m_entries[i]->name().c_str());
 			m_entries[i]->submit(current_view, prim, textures, screen_count, screen_width, screen_height, screen_scale_x, screen_scale_y, screen_offset_x, screen_offset_y,
 				rotation_type, swap_xy, screen);
 			current_view++;
@@ -202,6 +207,7 @@ uint32_t bgfx_chain::prepare_vector_repeat(int view, int screen)
 			continue;
 
 		const uint16_t clear_view = uint16_t(view + used_views++);
+		bgfx_view_profile::name(clear_view, "chain_repeat_clear");
 		bgfx::setViewFrameBuffer(clear_view, target->target());
 		bgfx::setViewRect(clear_view, 0, 0, target->width(), target->height());
 		bgfx::setViewClear(clear_view, BGFX_CLEAR_COLOR, 0x000000ff, 1.0f, 0);
