@@ -47,17 +47,24 @@ uniform vec4 u_primary_basis_r;
 uniform vec4 u_primary_basis_g;
 uniform vec4 u_primary_basis_b;
 
-float phos_S(float age, float tau, float p, float total)
+float phos_S(float age, float tau, float p, float total, float s1)
 {
 	if (age >= total) return 0.0;
 	float s  = 1.0 / (1.0 + pow(age   / max(tau, 0.001), p));
-	float s1 = 1.0 / (1.0 + pow(total / max(tau, 0.001), p));
 	return clamp((s - s1) / max(1e-4, 1.0 - s1), 0.0, 1.0);
 }
 
 float phos_two(float age, float tauN, float p, float totN, float accel, float norm, float over)
 {
-	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
+	float tauA = tauN / accel;
+	float totA = totN / accel;
+	// The residual at total is the same for both terms: the overdrive acceleration divides total and
+	// tau together, so their ratio survives it. The only way it does not is the 0.001 floor biting on
+	// the accelerated tau, which needs a half-life under a microsecond - computed properly there
+	// rather than assumed away. Everywhere else this is one pow per channel instead of two.
+	float s1  = 1.0 / (1.0 + pow(totN / max(tauN, 0.001), p));
+	float s1a = (tauA >= 0.001) ? s1 : (1.0 / (1.0 + pow(totA / max(tauA, 0.001), p)));
+	return norm * phos_S(age, tauN, p, totN, s1) + over * phos_S(age, tauA, p, totA, s1a);
 }
 
 // Must match the UPDATE pass: physical R/G/B emission adds by channel, whereas perceptual luma and

@@ -48,11 +48,10 @@ uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
                                   // only (shows how much of the content this present actually drew -
                                   // beam-window slicing on busy scenes appears directly here)
 
-float phos_S(float age, float tau, float p, float total)
+float phos_S(float age, float tau, float p, float total, float s1)
 {
 	if (age >= total) return 0.0;
 	float s  = 1.0 / (1.0 + pow(age   / max(tau, 0.001), p));
-	float s1 = 1.0 / (1.0 + pow(total / max(tau, 0.001), p));
 	return clamp((s - s1) / max(1e-4, 1.0 - s1), 0.0, 1.0);
 }
 
@@ -62,7 +61,15 @@ float phos_S(float age, float tau, float p, float total)
 // stored peak, so a bright centre never decays below its dimmer edge (no centre-first ring).
 float phos_two(float age, float tauN, float p, float totN, float accel, float norm, float over)
 {
-	return norm * phos_S(age, tauN, p, totN) + over * phos_S(age, tauN / accel, p, totN / accel);
+	float tauA = tauN / accel;
+	float totA = totN / accel;
+	// The residual at total is the same for both terms: the overdrive acceleration divides total and
+	// tau together, so their ratio survives it. The only way it does not is the 0.001 floor biting on
+	// the accelerated tau, which needs a half-life under a microsecond - computed properly there
+	// rather than assumed away. Everywhere else this is one pow per channel instead of two.
+	float s1  = 1.0 / (1.0 + pow(totN / max(tauN, 0.001), p));
+	float s1a = (tauA >= 0.001) ? s1 : (1.0 / (1.0 + pow(totA / max(tauA, 0.001), p)));
+	return norm * phos_S(age, tauN, p, totN, s1) + over * phos_S(age, tauA, p, totA, s1a);
 }
 
 void main()
