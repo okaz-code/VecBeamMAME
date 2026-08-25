@@ -191,7 +191,7 @@
 		{"type":"float","name":"overlay_white_reflectance","text":"Overlay White Reflectance","default":0.25,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_density","text":"Overlay Color Optical Density","default":1.75,"min":0.0,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_glow","text":"Overlay Rear Resin Scatter","default":1.10,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_dark_level","text":"Overlay Resin Dark Level","default":0.010,"min":0.0,"max":0.20,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_dark_level","text":"Overlay Resin Dark Level","default":0.08,"min":0.0,"max":1.6,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_bleach","text":"Overlay Highlight Color Release","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_knee","text":"Overlay Highlight Release Knee","default":0.15,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_curve","text":"Overlay Highlight Release Curve","default":0.55,"min":0.20,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},

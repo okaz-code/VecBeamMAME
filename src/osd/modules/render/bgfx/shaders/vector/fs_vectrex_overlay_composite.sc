@@ -98,6 +98,10 @@ void main()
 	// by the transmission at unit density however dense the plate was set, so the floor stayed
 	// at single-pass brightness and washed out: at a density of six it came out about six times
 	// too bright and far too desaturated, and it dominated everything else in an unlit area.
-	vec3 dark_resin = static_filter * (u_overlay_params1.y * u_overlay_params2.x * resin_coverage);
+	// Room light is what makes an unlit plate visible at all, so the floor scales with it. It used
+	// to be an absolute level, which meant turning the light down left the dark parts of the
+	// overlay exactly as bright as before - the one place a viewer expects a light control to work.
+	vec3 dark_resin = static_filter
+		* (u_overlay_params1.y * u_overlay_params1.x * u_overlay_params2.x * resin_coverage);
 	gl_FragColor = vec4(behind_resin * color_filter + dark_resin, 1.0) * v_color0;
 }
