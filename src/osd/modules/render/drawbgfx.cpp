@@ -1663,6 +1663,26 @@ int renderer_bgfx::xy_to_render_target(int x, int y, int *xt, int *yt)
 #endif
 
 //============================================================
+//  set_halo_quad_edge
+//============================================================
+
+// The halo pedestal has to match the extent the CPU actually padded those quads to, or the profile
+// stops reaching zero at the cut and the rectangular step the subtraction exists to remove comes
+// back. Both are derived from m_halo_quad_extent here so there is one source of truth.
+void renderer_bgfx::set_halo_quad_edge(bgfx_effect *effect)
+{
+	if (effect == nullptr)
+		return;
+	bgfx_uniform *const edge = effect->uniform("u_halo_quad_edge");
+	if (edge == nullptr)
+		return;
+	const float pedestal = std::exp(-0.5f * m_halo_quad_extent * m_halo_quad_extent);
+	const float vals[4] = { pedestal, 1.0f / std::max(1.0f - pedestal, 1e-3f), 0.0f, 0.0f };
+	edge->set(const_cast<float *>(vals), sizeof(float) * 4);
+	edge->upload();
+}
+
+//============================================================
 //  inject_primary_basis
 //============================================================
 
@@ -3797,7 +3817,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 						const float sstr = std::min(want, 0.5f);
 						const float szz  = (want > 0.5f) ? (want * 2.0f - 1.0f) : 0.0f;
 						const uint32_t srgba = ray_color(sstr);
-						const float rpad = 3.5f * ssig + 0.5f;
+						const float rpad = m_halo_quad_extent * ssig + 0.5f;
 						const float bx = cx + ux * l0, by = cy + uy * l0;   // sub-segment start
 						const float sx0 = bx - ux * rpad, sy0 = by - uy * rpad;
 						const float sx1 = bx + ux * (slen + rpad), sy1 = by + uy * (slen + rpad);
@@ -3891,7 +3911,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		if (m_glow_off_glow >= 0)
 		{
-		const float gpad = 3.5f * glow_sig + 0.5f;
+		const float gpad = m_halo_quad_extent * glow_sig + 0.5f;
 		const float gsx0 = x0 - dx * gpad, gsy0 = y0 - dy * gpad;
 		const float gsx1 = x1 + dx * gpad, gsy1 = y1 + dy * gpad;
 		const float ga0 = -gpad, ga1 = seg_len + gpad;
@@ -3940,7 +3960,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			set_degenerate(glow_vertex, m_glow_off_flare);
 		if (m_glow_off_oglow >= 0 && oglow_on)
 		{
-			const float opad = 3.5f * oglow_sig + 0.5f;
+			const float opad = m_halo_quad_extent * oglow_sig + 0.5f;
 			const float osx0 = x0 - dx * opad, osy0 = y0 - dy * opad;
 			const float osx1 = x1 + dx * opad, osy1 = y1 + dy * opad;
 			const float oa0 = -opad, oa1 = seg_len + opad;
@@ -5693,6 +5713,13 @@ int renderer_bgfx::draw(int update)
 			// DEFL_NOUT*6 verts. The beam integrator state is reset at the start of each frame's draw.
 			// Needs the analytic path; 0 = off (exact straight lines, 6 verts).
 			m_defl_on = m_line_analytic && (m_chains->slider_value(0, "deflection_dynamics", 0.0f) > 0.0f);
+			// Halo quad extent. 3.5 sigma truncates the profile at 0.22% of its peak, which is what
+			// the pedestal subtraction was written for; pulling in to 2.5 cuts it at 4.4% instead and
+			// the same subtraction still lands it on exactly zero at the quad edge, so no rectangular
+			// step appears - what changes is that the outer tail is compressed and the visible halo
+			// gets smaller. That is a look decision, so it is a slider and the default changes nothing.
+			m_halo_quad_extent = std::clamp(
+					m_chains->slider_value(0, "halo_quad_extent", 3.5f), 2.0f, 3.5f);
 			m_beam_valid = false;
 			m_lin_valid = false;
 
@@ -6037,6 +6064,7 @@ int renderer_bgfx::draw(int update)
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
+				set_halo_quad_edge(line_eff);
 				if (m_vs.core_overlap_max > 0.5f)
 				{
 					const uint64_t max_blend = BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE)
@@ -6104,7 +6132,7 @@ int renderer_bgfx::draw(int update)
 				const float half = std::max(4.0f, 0.5f * m_chains->slider_value(0, "edge_glow_length", 80.0f) * res_scale);
 				const float edge_threshold = std::max(0.0f, m_chains->slider_value(0, "edge_glow_threshold", 0.0f));
 				const float edge_sensitivity = std::max(0.01f, m_chains->slider_value(0, "edge_glow_sensitivity", 1.0f));
-				const float epad = 3.5f * sig + 0.5f;
+				const float epad = m_halo_quad_extent * sig + 0.5f;
 				AnalyticLineVertex *ev = reinterpret_cast<AnalyticLineVertex *>(edge_tvb.data);
 				int vi = 0;
 				constexpr int NB = render_vector_stats::EDGE_GLOW_BINS;
@@ -6222,6 +6250,7 @@ int renderer_bgfx::draw(int update)
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
+					set_halo_quad_edge(line_eff);
 				};
 				bool glow_submitted = false;
 				if (glow_verts > 0)
@@ -6287,6 +6316,7 @@ int renderer_bgfx::draw(int update)
 						float vals[4] = { std::max(0.1f, m_vs.line_cap_curve), 0.0f, 1.0f, 1.0f };
 						lp->set(vals, sizeof(float) * 4); lp->upload();
 					}
+					set_halo_quad_edge(line_eff);
 				};
 				bool optical_submitted = false;
 				if (optical_verts > 0)
@@ -6348,6 +6378,7 @@ int renderer_bgfx::draw(int update)
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
+					set_halo_quad_edge(line_eff);
 					line_eff->submit(np_view);
 				}
 				else
