@@ -4340,7 +4340,10 @@ int renderer_bgfx::draw(int update)
 	// Closes the texture-upload accounting window (see texturemanager.cpp). Silent unless something
 	// actually uploaded, and unless -verbose asked.
 	if (window_index == 0)
+	{
 		m_textures->tick_upload_report();
+		report_atlas_activity();
+	}
 	// Macro sliders have no change callback, so poll them once per frame and import into their
 	// targets. Nothing happens on the frames where no macro moved.
 	if (window_index == 0)
@@ -7711,6 +7714,7 @@ bool renderer_bgfx::update_atlas()
 
 	if (atlas_dirty)
 	{
+		m_atlas_repacks++;
 		m_hash_to_entry.clear();
 
 		std::vector<std::vector<rectangle_packer::packed_rectangle>> packed;
@@ -7728,10 +7732,38 @@ bool renderer_bgfx::update_atlas()
 			m_packer.pack(m_texinfo, packed, CACHE_SIZE);
 			process_atlas_packs(packed);
 
+			// Everything the atlas held is gone, and this frame draws with atlas_valid false, so
+			// every packable primitive falls back to a standalone texture for one frame. If that
+			// happens intermittently it is visible as artwork changing appearance frame to frame.
+			m_atlas_pack_failures++;
 			return false;
 		}
 	}
 	return true;
+}
+
+// Reported once a second and only for seconds that saw activity, so a settled scene is silent.
+// A repack is ordinary when the visible set changes; a repack every frame, or any failure at all,
+// is not - a failure drops the whole atlas and forces one frame through the standalone path.
+void renderer_bgfx::report_atlas_activity()
+{
+	const int64_t now = bx::getHPCounter();
+	if (!m_atlas_report_hpc)
+	{
+		m_atlas_report_hpc = now;
+		return;
+	}
+	if ((now - m_atlas_report_hpc) < bx::getHPFrequency())
+		return;
+
+	if (m_atlas_repacks || m_atlas_pack_failures)
+	{
+		osd_printf_verbose("BGFX: atlas repacks %u/s, pack failures %u/s, entries %u\n",
+				m_atlas_repacks, m_atlas_pack_failures, unsigned(m_texinfo.size()));
+	}
+	m_atlas_repacks = 0;
+	m_atlas_pack_failures = 0;
+	m_atlas_report_hpc = now;
 }
 
 void renderer_bgfx::process_atlas_packs(std::vector<std::vector<rectangle_packer::packed_rectangle>>& packed)

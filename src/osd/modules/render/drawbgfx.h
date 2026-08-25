@@ -155,6 +155,8 @@ private:
 
 	bool check_for_dirty_atlas();
 	bool update_atlas();
+	// Atlas churn accounting; see drawbgfx.cpp. Call once per frame.
+	void report_atlas_activity();
 	void process_atlas_packs(std::vector<std::vector<rectangle_packer::packed_rectangle>>& packed);
 	uint32_t get_texture_hash(render_primitive *prim);
 
@@ -593,6 +595,10 @@ private:
 	int m_avi_readback_head;    // oldest request still in flight
 	int m_avi_readback_count;   // requests in flight
 	bool m_avi_autostart_done;  // -bgfx_avi_name recording has been started for this session
+
+	uint32_t m_atlas_repacks = 0;
+	uint32_t m_atlas_pack_failures = 0;
+	int64_t m_atlas_report_hpc = 0;
 
 	std::unique_ptr<util::xml::file> m_config;
 	// The stored configuration, kept verbatim when the running chain selection came from an
