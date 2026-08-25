@@ -11,6 +11,14 @@ SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_optical, 2);
 SAMPLER2D(s_bezel_source, 4);
 SAMPLER2D(s_bezel_length, 5);
+
+// Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
+// window's deposited fraction. The renderer used to bake this into their vertices, but their
+// content only changes when a new source pass arrives, so it is built once per pass now and the
+// per-present ramp arrives here instead. It has to be applied at the sample, ahead of any tonal
+// reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
+uniform vec4 u_aux_ramp;
+#define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_glow_enable;
@@ -135,7 +143,7 @@ vec2 bezel_source_step(vec2 axis)
 }
 vec3 apply_bezel_length_gain(vec2 uv,vec3 light)
 {
-	vec3 long_light=min(max(texture2D(s_bezel_length,uv).rgb,vec3_splat(0.0)),light);
+	vec3 long_light=min(max(AUX_TEX2D(s_bezel_length,uv).rgb,vec3_splat(0.0)),light);
 	vec3 short_light=max(light-long_light,vec3_splat(0.0));
 	return short_light*max(u_bezel_short_reflection.x,0.0)+long_light*max(u_bezel_long_reflection.x,0.0);
 }
@@ -143,24 +151,24 @@ vec3 bezel_bloom_source(vec2 edge_uv,vec2 reach_uv)
 {
 	// Sample raw analytic light so bezel reflection strength and reach do not
 	// inherit the visible Glow Wide field.
-	vec2 best_uv=edge_uv;vec3 source=apply_bezel_length_gain(best_uv,texture2D(s_bezel_source,best_uv).rgb);float best_peak=max(source.r,max(source.g,source.b));
-	vec2 candidate_uv=edge_uv+reach_uv*0.125;vec3 candidate=apply_bezel_length_gain(candidate_uv,texture2D(s_bezel_source,candidate_uv).rgb);float peak=max(candidate.r,max(candidate.g,candidate.b));
+	vec2 best_uv=edge_uv;vec3 source=apply_bezel_length_gain(best_uv,AUX_TEX2D(s_bezel_source,best_uv).rgb);float best_peak=max(source.r,max(source.g,source.b));
+	vec2 candidate_uv=edge_uv+reach_uv*0.125;vec3 candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);float peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv*0.25;candidate=apply_bezel_length_gain(candidate_uv,texture2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv*0.25;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv*0.5;candidate=apply_bezel_length_gain(candidate_uv,texture2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv*0.5;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv;candidate=apply_bezel_length_gain(candidate_uv,texture2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
 	return source*GLOW_BRIGHTNESS_GAIN;
 }
 vec3 bezel_optical_source(vec2 edge_uv,vec2 reach_uv)
 {
-	vec3 source=texture2D(s_optical,edge_uv).rgb;
-	source=max(source,texture2D(s_optical,edge_uv+reach_uv*0.125).rgb);
-	source=max(source,texture2D(s_optical,edge_uv+reach_uv*0.25).rgb);
-	source=max(source,texture2D(s_optical,edge_uv+reach_uv*0.5).rgb);
-	return max(source,texture2D(s_optical,edge_uv+reach_uv).rgb)*GLOW_BRIGHTNESS_GAIN;
+	vec3 source=AUX_TEX2D(s_optical,edge_uv).rgb;
+	source=max(source,AUX_TEX2D(s_optical,edge_uv+reach_uv*0.125).rgb);
+	source=max(source,AUX_TEX2D(s_optical,edge_uv+reach_uv*0.25).rgb);
+	source=max(source,AUX_TEX2D(s_optical,edge_uv+reach_uv*0.5).rgb);
+	return max(source,AUX_TEX2D(s_optical,edge_uv+reach_uv).rgb)*GLOW_BRIGHTNESS_GAIN;
 }
 vec3 bezel_axis_light(vec2 source_uv,vec2 axis)
 {
@@ -208,7 +216,7 @@ void main()
 	vec3 phosphor_tint=max(u_phosphor_color.rgb,vec3_splat(0.0));
 	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
-	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=texture2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
+	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=AUX_TEX2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
 	vec2 global_delta=(v_texcoord0-u_convergence_global.xy)*u_target_dims.xy;float global_sigma=max(u_convergence_global.w*0.5*length(u_target_dims.xy),1.0);
 	float global_weight=u_convergence_global.z*exp(-0.5*dot(global_delta,global_delta)/(global_sigma*global_sigma));
 	glow*=phosphor_tint;optical*=phosphor_tint;

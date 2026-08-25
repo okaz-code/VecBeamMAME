@@ -15,6 +15,7 @@
 	"vertex": "vs_gui",
 	"fragment": "vector/fs_vector_glow_accum",
 	"uniforms": [
+		{ "name": "u_aux_ramp", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "s_tex",            "type": "int",  "values": [ 0.0 ] },
 		{ "name": "u_blit_intensity", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_inv_view_dims",  "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }

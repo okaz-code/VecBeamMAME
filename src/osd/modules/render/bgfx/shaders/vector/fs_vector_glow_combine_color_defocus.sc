@@ -15,6 +15,14 @@ SAMPLER2D(s_bezel_length, 5);
 SAMPLER2D(s_flare, 6);
 SAMPLER2D(s_overlap, 7);
 
+// Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
+// window's deposited fraction. The renderer used to bake this into their vertices, but their
+// content only changes when a new source pass arrives, so it is built once per pass now and the
+// per-present ramp arrives here instead. It has to be applied at the sample, ahead of any tonal
+// reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
+uniform vec4 u_aux_ramp;
+#define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
+
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_glow_enable;
@@ -301,7 +309,7 @@ vec3 apply_bezel_length_gain(vec2 uv, vec3 light)
 {
 	// MRT attachment 1 is already classified per primitive, before additive
 	// overlap. Subtraction therefore separates coincident broad glows exactly.
-	vec3 long_light = min(max(texture2D(s_bezel_length, uv).rgb, vec3_splat(0.0)), light);
+	vec3 long_light = min(max(AUX_TEX2D(s_bezel_length, uv).rgb, vec3_splat(0.0)), light);
 	vec3 short_light = max(light - long_light, vec3_splat(0.0));
 	return short_light * max(u_bezel_short_reflection.x, 0.0)
 		+ long_light * max(u_bezel_long_reflection.x, 0.0);
@@ -331,22 +339,22 @@ vec3 bezel_bloom_axis(vec2 edge_uv, vec2 inward)
 		edge_uv.x = clamp(edge_uv.x, tangent_min.x, tangent_max.x);
 	vec2 reach_uv = inward * source_reach_uv;
 	vec2 best_uv = edge_uv;
-	vec3 source = apply_bezel_length_gain(best_uv, texture2D(s_bezel_source, best_uv).rgb);
+	vec3 source = apply_bezel_length_gain(best_uv, AUX_TEX2D(s_bezel_source, best_uv).rgb);
 	float best_peak = max(source.r, max(source.g, source.b));
 	vec2 candidate_uv = edge_uv + reach_uv * 0.125;
-	vec3 candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	vec3 candidate_light = apply_bezel_length_gain(candidate_uv, AUX_TEX2D(s_bezel_source, candidate_uv).rgb);
 	float candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
 	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
 	candidate_uv = edge_uv + reach_uv * 0.25;
-	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_light = apply_bezel_length_gain(candidate_uv, AUX_TEX2D(s_bezel_source, candidate_uv).rgb);
 	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
 	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
 	candidate_uv = edge_uv + reach_uv * 0.5;
-	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_light = apply_bezel_length_gain(candidate_uv, AUX_TEX2D(s_bezel_source, candidate_uv).rgb);
 	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
 	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
 	candidate_uv = edge_uv + reach_uv;
-	candidate_light = apply_bezel_length_gain(candidate_uv, texture2D(s_bezel_source, candidate_uv).rgb);
+	candidate_light = apply_bezel_length_gain(candidate_uv, AUX_TEX2D(s_bezel_source, candidate_uv).rgb);
 	candidate_peak = max(candidate_light.r, max(candidate_light.g, candidate_light.b));
 	if (candidate_peak > best_peak) { best_uv = candidate_uv; source = candidate_light; best_peak = candidate_peak; }
 
@@ -391,7 +399,7 @@ void main()
 	// narrow-glow gain is retained; broad overload bloom remains in the unmasked glow path.
 	bool flare_outside = emit_uv.x < 0.0 || emit_uv.x > 1.0 || emit_uv.y < 0.0 || emit_uv.y > 1.0;
 	if (!flare_outside && u_masked_flare_gain.x > 0.0)
-		base += color_transform(texture2D(s_flare, emit_uv).rgb)
+		base += color_transform(AUX_TEX2D(s_flare, emit_uv).rgb)
 			* (GLOW_BRIGHTNESS_GAIN * u_masked_flare_gain.x);
 	// Additive vector intersections can exceed the calibrated direct-beam peak. If that overrange is
 	// allowed into the HDR roll-off after masking, bright and dark mask cells converge and the slot
