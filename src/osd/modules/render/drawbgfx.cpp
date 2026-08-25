@@ -1704,7 +1704,26 @@ void renderer_bgfx::report_vectrex_overlay_state()
 	if (strcmp(window().machine().system().name, "vectrex"))
 		return;
 
-	const bool changed = m_vx_seen_active != m_vx_reported_active
+	// Which clock presented this frame, and whether this window's own UI container had anything in
+	// it. Together they say whether the presentation timer actually stood down while the UI was up,
+	// which is what the fix depends on - the count of untagged quads alone cannot distinguish "the
+	// timer presented a list without the UI" from "the UI genuinely was not there".
+	// Which clock presented this frame alternates by design, so it is not part of the change key -
+	// it only matters in one combination. The presentation timer running while this window's UI
+	// container has content is the exact condition the flicker came from: the UI is rebuilt once
+	// per emulated frame and the timer presents several times in between, so presents landing
+	// outside that window show a list without it. That combination gets its own notice.
+	const bool from_timer = window().machine().video().vector_presenting();
+	const bool ui_items = window().target() && window().target()->ui_container()
+			&& !window().target()->ui_container()->is_empty();
+	if (ui_items && from_timer && !m_vx_reported_timer_with_ui)
+	{
+		m_vx_reported_timer_with_ui = true;
+		osd_printf_verbose("BGFX: vx overlay - presentation timer ran while the UI had content;"
+			" presents can miss it and the plate will flicker\n");
+	}
+	const bool changed = ui_items != m_vx_reported_ui_items
+		|| m_vx_seen_active != m_vx_reported_active
 		|| m_vx_seen_role_quads != m_vx_reported_role_quads
 		|| m_vx_seen_plain_quads != m_vx_reported_plain_quads
 		|| std::abs(m_vx_seen_seed_peak - m_vx_reported_seed_peak) > 0.01f
@@ -1713,14 +1732,17 @@ void renderer_bgfx::report_vectrex_overlay_state()
 	if (!changed)
 		return;
 
+	m_vx_reported_ui_items = ui_items;
 	m_vx_reported_active = m_vx_seen_active;
 	m_vx_reported_role_quads = m_vx_seen_role_quads;
 	m_vx_reported_plain_quads = m_vx_seen_plain_quads;
 	m_vx_reported_seed_peak = m_vx_seen_seed_peak;
 	m_vx_reported_paper_white = m_vx_seen_paper_white;
 	m_vx_reported_ambient = m_vx_seen_ambient;
-	osd_printf_verbose("BGFX: vx overlay composite=%d role=%u plain=%u seed=%.1f paper=%.1f ambient=%.4f\n",
+	osd_printf_verbose("BGFX: vx overlay composite=%d role=%u plain=%u ui=%d timerbug=%d"
+			" seed=%.1f paper=%.1f ambient=%.4f\n",
 			m_vx_seen_active ? 1 : 0, m_vx_seen_role_quads, m_vx_seen_plain_quads,
+			ui_items ? 1 : 0, m_vx_reported_timer_with_ui ? 1 : 0,
 			m_vx_seen_seed_peak, m_vx_seen_paper_white, m_vx_seen_ambient);
 }
 
