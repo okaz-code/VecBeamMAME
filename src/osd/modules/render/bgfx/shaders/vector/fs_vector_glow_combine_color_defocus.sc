@@ -63,19 +63,15 @@ uniform vec4 u_mglow_edge_diff;
 uniform vec4 u_mglow_rgb_bands;
 uniform vec4 u_mglow_rgb_band_count;
 uniform vec4 u_primary_mode;
-uniform vec4 u_primary_red_hue;
-uniform vec4 u_primary_red_saturation;
-uniform vec4 u_primary_red_brightness;
-uniform vec4 u_primary_green_hue;
-uniform vec4 u_primary_green_saturation;
-uniform vec4 u_primary_green_brightness;
-uniform vec4 u_primary_blue_hue;
-uniform vec4 u_primary_blue_saturation;
-uniform vec4 u_primary_blue_brightness;
-uniform vec4 u_y_gain;
-uniform vec4 u_chroma_a;
-uniform vec4 u_chroma_b;
-uniform vec4 u_chroma_c;
+// The three colour primaries this chain resolves to, precomputed on the CPU by
+// renderer_bgfx::inject_primary_basis(). Both modes used to rebuild them per pixel out of
+// uniforms that cannot vary within a frame: direct_primary() ran three times per
+// color_transform(), and color_transform() runs twice in the combine pass and once here.
+// The combine pass measured ALU-bound on an Intel HD 520 (removing eight of its fourteen
+// texture fetches cost it only 7%), so that was the largest piece of pure waste in it.
+uniform vec4 u_primary_basis_r;
+uniform vec4 u_primary_basis_g;
+uniform vec4 u_primary_basis_b;
 
 #define PINCUSHION_GAIN (5.0 / 30.0)
 #define GLOW_BRIGHTNESS_GAIN 2.67
@@ -251,46 +247,25 @@ vec3 sample_defocused(vec2 uv)
 	return b * (1.0 / 9.0);
 }
 
-vec3 cie_color(vec3 cin)
-{
-	mat3 xy = mat3(u_chroma_a.xyz, u_chroma_b.xyz, u_chroma_c.xyz);
-	mat3 xyz_to_srgb = mtxFromRows3(vec3(3.2406,-1.5372,-0.4986),vec3(-0.9689,1.8758,0.0415),vec3(0.0557,-0.2040,1.0570));
-	vec3 cout=vec3_splat(0.0), white=vec3_splat(0.0);
-	for (int i=0;i<3;++i)
-	{
-		float Y=u_y_gain[i], X=xy[i].x/xy[i].y*Y, Z=(1.0-xy[i].x-xy[i].y)/xy[i].y*Y;
-		vec3 primary=mul(xyz_to_srgb,vec3(X,Y,Z)); cout+=primary*cin[i]; white+=primary;
-	}
-	return max(cout/max(white,vec3_splat(1e-4)),vec3_splat(0.0));
-}
-
-vec3 hue_rgb(float h)
-{
-	vec3 p = abs(fract(vec3(h, h + 0.6666667, h + 0.3333333)) * 6.0 - 3.0);
-	return saturate(p - 1.0);
-}
-
-vec3 direct_primary(float base_hue, float shift_deg, float saturation, float brightness)
-{
-	vec3 c = hue_rgb(fract(base_hue + shift_deg / 360.0));
-	float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	return max(mix(vec3_splat(y), c, saturation), vec3_splat(0.0)) * brightness;
-}
-
-vec3 direct_color(vec3 cin)
-{
-	cin = max(cin, vec3_splat(0.0));
-	float neutral = min(cin.r, min(cin.g, cin.b));
-	vec3 chroma = cin - vec3_splat(neutral);
-	vec3 pr = direct_primary(0.0, u_primary_red_hue.x, u_primary_red_saturation.x, u_primary_red_brightness.x);
-	vec3 pg = direct_primary(0.3333333, u_primary_green_hue.x, u_primary_green_saturation.x, u_primary_green_brightness.x);
-	vec3 pb = direct_primary(0.6666667, u_primary_blue_hue.x, u_primary_blue_saturation.x, u_primary_blue_brightness.x);
-	return vec3_splat(neutral) + pr * chroma.r + pg * chroma.g + pb * chroma.b;
-}
-
 vec3 color_transform(vec3 cin)
 {
-	return u_primary_mode.x > 0.5 ? direct_color(cin) : cie_color(cin);
+	// Direct Primary keeps the neutral axis and re-maps only the chroma standing above it;
+	// the CIE path is a plain change of basis (its per-primary normalisation by the white sum
+	// is componentwise, so it folds into the basis vectors). Same two results as the inlined
+	// versions this replaces.
+	if (u_primary_mode.x > 0.5)
+	{
+		cin = max(cin, vec3_splat(0.0));
+		float neutral = min(cin.r, min(cin.g, cin.b));
+		vec3 chroma = cin - vec3_splat(neutral);
+		return vec3_splat(neutral)
+			+ u_primary_basis_r.xyz * chroma.r
+			+ u_primary_basis_g.xyz * chroma.g
+			+ u_primary_basis_b.xyz * chroma.b;
+	}
+	return max(u_primary_basis_r.xyz * cin.r
+		+ u_primary_basis_g.xyz * cin.g
+		+ u_primary_basis_b.xyz * cin.b, vec3_splat(0.0));
 }
 
 vec3 shape_glow(vec3 c)

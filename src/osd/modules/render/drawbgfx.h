@@ -417,6 +417,8 @@ private:
 	// publishes, so the list has to be marked dirty (see draw()).
 	bool m_advanced_sliders_shown = false;
 	void refresh_vec_slider_cache();
+	// Resolve the chain's three colour primaries and hand them to the passes that use them.
+	void inject_primary_basis();
 	void rebuild_vec_slider_map();
 	// name->pointer map for the cache refresh, rebuilt when the screen-0 chain changes
 	std::vector<std::pair<float vec_slider_cache::*, bgfx_slider*>> m_vs_map;
