@@ -1685,6 +1685,45 @@ void renderer_bgfx::set_halo_quad_edge(bgfx_effect *effect)
 	edge->upload();
 }
 
+
+// The Vectrex overlay bezel changes brightness when the UI appears and flickers as it goes away,
+// and the two obvious explanations are ruled out: the overlay path never stands down (its own bail
+// diagnostic stays silent), and the artwork is not being re-uploaded (upload accounting shows only
+// glyph-sized traffic). So the question is which of the composite's inputs moves.
+//
+// The bezel lives in overlay_front_print, which the layout deliberately leaves untagged, so it is
+// drawn as ordinary artwork over whatever the composite left in the work target. That makes four
+// things worth watching together: whether the composite ran at all, how many role-tagged quads it
+// consumed, how many plain textured quads went the artwork way beside it, and the three levels its
+// output is scaled by. A step in any of them when the UI comes up names the cause; a step in none
+// of them rules this whole area out.
+//
+// Reported on change, not on a timer - the interesting moment is a transition.
+void renderer_bgfx::report_vectrex_overlay_state()
+{
+	if (strcmp(window().machine().system().name, "vectrex"))
+		return;
+
+	const bool changed = m_vx_seen_active != m_vx_reported_active
+		|| m_vx_seen_role_quads != m_vx_reported_role_quads
+		|| m_vx_seen_plain_quads != m_vx_reported_plain_quads
+		|| std::abs(m_vx_seen_seed_peak - m_vx_reported_seed_peak) > 0.01f
+		|| std::abs(m_vx_seen_paper_white - m_vx_reported_paper_white) > 0.01f
+		|| std::abs(m_vx_seen_ambient - m_vx_reported_ambient) > 0.0001f;
+	if (!changed)
+		return;
+
+	m_vx_reported_active = m_vx_seen_active;
+	m_vx_reported_role_quads = m_vx_seen_role_quads;
+	m_vx_reported_plain_quads = m_vx_seen_plain_quads;
+	m_vx_reported_seed_peak = m_vx_seen_seed_peak;
+	m_vx_reported_paper_white = m_vx_seen_paper_white;
+	m_vx_reported_ambient = m_vx_seen_ambient;
+	osd_printf_verbose("BGFX: vx overlay composite=%d role=%u plain=%u seed=%.1f paper=%.1f ambient=%.4f\n",
+			m_vx_seen_active ? 1 : 0, m_vx_seen_role_quads, m_vx_seen_plain_quads,
+			m_vx_seen_seed_peak, m_vx_seen_paper_white, m_vx_seen_ambient);
+}
+
 //============================================================
 //  inject_primary_basis
 //============================================================
@@ -2709,6 +2748,7 @@ void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t
 bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index)
 {
 	m_vectrex_overlay_active = false;
+	m_vx_seen_active = false;
 	// Every bail below drops this frame back to the ordinary artwork path, which does not look the
 	// same - so a gate that fails intermittently reads as the overlay bezel flickering. Name the
 	// reason once per distinct reason so an intermittent one can be told from a permanent one
@@ -2733,8 +2773,12 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	bool have_white = false;
 	bool have_color = false;
 	uint32_t role_quads = 0;
+	uint32_t plain_quads = 0;
 	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
 	{
+		if (prim->type == render_primitive::QUAD && prim->texture.base != nullptr
+			&& PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_NONE)
+			plain_quads++;
 		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
 		have_white = have_white || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE;
 		have_color = have_color || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR;
@@ -2756,6 +2800,8 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	if (bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl) != required_vertices)
 		return bail("transient vertex buffer exhausted before the overlay could take its share");
 
+	m_vx_seen_role_quads = role_quads;
+	m_vx_seen_plain_quads = plain_quads;
 	uint16_t const width = m_hdr_work->width();
 	uint16_t const height = m_hdr_work->height();
 	// Tap spacing, not the reach, is what makes the sparse 9-tap kernel show up as a grid, and
@@ -2972,9 +3018,13 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		std::clamp(m_chains->slider_value(0, "overlay_white_transmission", 0.65f), 0.0f, 1.0f),
 		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.18f)),
 		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.50f), 0.0f, 1.0f) };
+	const float ambient_product = std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f))
+			* std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
+	m_vx_seen_seed_peak = seed_peak;
+	m_vx_seen_paper_white = paper_white;
+	m_vx_seen_ambient = ambient_product;
 	float values1[4] = {
-		std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f))
-			* std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f)),
+		ambient_product,
 		paper_white,
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 4.0f)),
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 0.60f)) };
@@ -2990,6 +3040,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		return false;
 
 	m_vectrex_overlay_active = true;
+	m_vx_seen_active = true;
 	return true;
 }
 
@@ -4343,6 +4394,7 @@ int renderer_bgfx::draw(int update)
 	{
 		m_textures->tick_upload_report();
 		report_atlas_activity();
+		report_vectrex_overlay_state();
 	}
 	// Macro sliders have no change callback, so poll them once per frame and import into their
 	// targets. Nothing happens on the frames where no macro moved.

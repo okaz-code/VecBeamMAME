@@ -157,6 +157,8 @@ private:
 	bool update_atlas();
 	// Atlas churn accounting; see drawbgfx.cpp. Call once per frame.
 	void report_atlas_activity();
+	// Vectrex overlay input tracing; see drawbgfx.cpp. Call once per frame.
+	void report_vectrex_overlay_state();
 	void process_atlas_packs(std::vector<std::vector<rectangle_packer::packed_rectangle>>& packed);
 	uint32_t get_texture_hash(render_primitive *prim);
 
@@ -549,6 +551,12 @@ private:
 	bool m_vectrex_overlay_active = false;
 	// Last reported reason the overlay path stood down, so the notice fires on change only.
 	const char *m_vectrex_overlay_bail_reason = nullptr;
+	bool m_vx_seen_active = false, m_vx_reported_active = false;
+	uint32_t m_vx_seen_role_quads = 0, m_vx_reported_role_quads = ~uint32_t(0);
+	uint32_t m_vx_seen_plain_quads = 0, m_vx_reported_plain_quads = ~uint32_t(0);
+	float m_vx_seen_seed_peak = 0.0f, m_vx_reported_seed_peak = -1.0f;
+	float m_vx_seen_paper_white = 0.0f, m_vx_reported_paper_white = -1.0f;
+	float m_vx_seen_ambient = 0.0f, m_vx_reported_ambient = -1.0f;
 	bgfx_target *m_vectrex_overlay_white = nullptr;
 	bgfx_target *m_vectrex_overlay_color = nullptr;
 	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };
