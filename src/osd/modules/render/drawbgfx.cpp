@@ -2099,13 +2099,13 @@ void renderer_bgfx::set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, rende
 	// Layout artwork and the MAME UI share the same final primitive list, but room light must not
 	// dim menu/text readability.  UI primitives carry the target's UI container; layout artwork
 	// either has no container or belongs to a screen container.
-	// Both sides of this comparison can be null, and null == null is the wrong answer. Layout
-	// artwork "either has no container or belongs to a screen container" per the note above, so a
-	// target whose ui_container is null classified every artwork primitive as UI and lit it at
-	// paper white instead of paper white times Room Ambient. With the shipped 0.25 that is exactly
-	// four times too bright, which is what the Vectrex overlay plate flashing to a vivid cyan on
-	// every UI toggle measured as: 8020 of 8700 sampled artwork pixels at a ratio of 4.0, with the
-	// menu text itself - genuinely UI - unchanged beside it.
+	// Both sides of this comparison can be null, and null == null is the wrong answer: a target
+	// whose ui_container is null would otherwise classify every artwork primitive as UI.
+	// This comparison is only sound because render_primitive::reset() clears container; the field
+	// is assigned by add_container_primitives alone, so without that clear a recycled primitive
+	// handed layout artwork a stale ui_container pointer and lit it at paper white instead of
+	// paper white times Room Ambient - exactly 4x with the shipped 0.25, for one frame at a time.
+	// That was the Vectrex overlay bezel flash; see mame_doc/vectrex-overlay-bezel-flash.md.
 	render_container const *const ui_container = (window().target() != nullptr)
 			? window().target()->ui_container() : nullptr;
 	const bool is_ui = prim != nullptr && ui_container != nullptr

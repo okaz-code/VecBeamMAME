@@ -217,6 +217,13 @@ void render_primitive::reset()
 {
 	// do not clear m_next!
 	memset(&type, 0, uintptr_t(&texcoords + 1) - uintptr_t(&type));
+	// container sits after texcoords and so is outside the block above. It is assigned only by
+	// add_container_primitives; layout artwork never assigns it, so a recycled primitive that last
+	// served a UI item handed the artwork a stale ui_container pointer. drawbgfx classifies a
+	// primitive as UI by that pointer and lights UI at paper white instead of paper white times
+	// room ambient - with the shipped 0.25 that is exactly four times too bright for one frame,
+	// which is what the Vectrex overlay bezel flash was.
+	container = nullptr;
 }
 
 
