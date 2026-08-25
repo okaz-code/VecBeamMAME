@@ -6939,8 +6939,22 @@ int renderer_bgfx::draw(int update)
 			}
 
 			const float room_ambient = std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
+			// The Vectrex front-print element - the bezel frame, the MineStorm label, the
+			// ESCAPE/THRUST/FIRE panel - is untagged artwork. The overlay composite consumes only the
+			// role-tagged white and colour layers, so Overlay Ambient Light reached everything behind
+			// the plate but nothing printed on its face: measured at zero change across the slider's
+			// whole 0..1 range while the resin behind it moved by a factor of three. Couple it here so
+			// one light control dims the entire plate.
+			//
+			// Normalised against the chain's shipped default rather than applied raw, so the shipped
+			// look is unchanged. Chains without the slider - every non-Vectrex chain - read the same
+			// value back as the default and come out at unity, leaving them untouched.
+			constexpr float overlay_ambient_reference = 0.5f;
+			const float overlay_ambient = std::max(0.0f,
+					m_chains->slider_value(0, "overlay_ambient_light", overlay_ambient_reference));
 			m_hdr_ui_nits_scale = paper_white;
-			m_hdr_art_nits_scale = m_hdr_ui_nits_scale * room_ambient;
+			m_hdr_art_nits_scale = m_hdr_ui_nits_scale * room_ambient
+					* (overlay_ambient / overlay_ambient_reference);
 			// Set the per-frame nits scale on the HDR gui effects (multiply stays a unit ratio).
 			for (int b = 0; b < 4; b++)
 			{
