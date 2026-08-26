@@ -76,8 +76,6 @@ uniform vec4 u_glow_black_toe;
 // it never passes through the pyramid - so without this the reshape had no effect on the reflection
 // and ordinary vectors kept their full bezel halo while their wide bloom was already suppressed.
 // (curve, 0, 0, 0) with curve = 1 -> identity, (pivot, 0, 0, 0).
-uniform vec4 u_wide_curve;
-uniform vec4 u_wide_pivot;
 uniform vec4 u_mglow_amount;
 uniform vec4 u_mglow_brightness;
 uniform vec4 u_mglow_edge_diff;
@@ -284,22 +282,6 @@ vec3 shape_glow(vec3 c)
 	return c * (shaped / peak);
 }
 
-// Hue-preserving power curve about a fixed pivot, identical in form to the pyramid's per-tap reshape.
-// Applied once to the finished reflection rather than per source tap: the curve is monotonic, so the
-// brightest-candidate selection inside bezel_bloom_axis picks the same sample either way, and one pow
-// keeps this inside the ps_3_0 instruction budget.
-vec3 shape_wide_source(vec3 c)
-{
-	float curve = u_wide_curve.x;
-	if (curve == 1.0) return c;
-	vec3 x = max(c, vec3_splat(0.0));
-	float peak = max(x.r, max(x.g, x.b));
-	if (peak <= 1.0e-7) return vec3_splat(0.0);
-	float pivot = max(u_wide_pivot.x, 1.0e-4);
-	float shaped = min(pivot * pow(peak / pivot, curve), peak * 32.0);
-	return x * (shaped / peak);
-}
-
 vec3 apply_bezel_length_gain(vec2 uv, vec3 light)
 {
 	// MRT attachment 1 is already classified per primitive, before additive
@@ -494,9 +476,24 @@ void main()
 	{
 		float line_gain = max(u_bezel_glow_strength.x, 0.0);
 		float monitor_gain = u_monitor_bezel_reflection.x >= 0.0 ? u_monitor_bezel_reflection.x : line_gain;
+		// NOT shape_wide_source. That reshape was added to this branch to imitate the wide glow
+		// pyramid's per-tap curve, on the reasoning that the bezel samples the raw glow buffer
+		// instead of the pyramid's output. But it lands on top of shape_glow, which the reflection
+		// already goes through, and on THIS chain both are expansive (glow_wide_curve 1.6,
+		// glow_tail_curve 1.44), so they multiplied each other. Measured on a Space Duel bonus stage,
+		// whose box is a long stroke a few pixels inside the tube edge - the ideal case for this
+		// effect - the light arriving at the bezel is about 0.035 and the pair took it to 0.0009: an
+		// 18x cut on top of shape_glow's own, which no setting of the strength knob could pay back.
+		// The monochrome shader never had the wide reshape, which is why the same effect works there.
 		vec3 edge_light = line_gain > 0.0 && u_glow_enable.x > 0.0
-			? shape_wide_source(bezel_bloom_source(emit_uv)) : vec3_splat(0.0);
-		bezel = shape_glow(edge_light) * (band * line_gain) + shaped_monitor * (band * monitor_gain);
+			? bezel_bloom_source(emit_uv) : vec3_splat(0.0);
+		// shape_glow does not belong here either: a reflection is linear in the light that falls on
+		// it, and with glow_tail_curve 1.44 that curve costs another 2.2x at this level. Restoring
+		// only the pre-regression form (shape_glow kept) measured 1/255 at the top of the strength
+		// range on the Space Duel box - still not a reflection. bezel_glow_strength is now a plain
+		// reflectance against a source that is the SCATTER buffer (analytic_glow 0.12), not the
+		// emitted image, so the useful range is well above 1; hence the wider cap.
+		bezel = edge_light * (band * line_gain) + shaped_monitor * (band * monitor_gain);
 	}
 
 	// Stabilize beam-derived optical light in absolute nits when HDR Beam Peak changes. Apply this
