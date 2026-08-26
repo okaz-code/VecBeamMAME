@@ -140,7 +140,7 @@ static INPUT_PORTS_START(vectrex)
 	PORT_START("BEAMSPEED")
 	PORT_ADJUSTER(6, "Stroke speed norm")    // stroke-mode inverse-speed normalizer (x = (1/speed) * adj*90000)
 	PORT_START("BRIGHT")
-	PORT_ADJUSTER(50, "Brightness knob")     // master beam brightness, like the real front-panel knob: 50 = normal (x1), 100 = x2 intensity
+	PORT_ADJUSTER(50, "Brightness knob")     // master beam brightness, like the knob on the back of the real console: 50 = normal (x1), 100 = x2 intensity
 	PORT_START("SPOTKILL")
 	PORT_CONFNAME(0x01, 0x01, "Spot killer (deflection protect)")   // cut the beam when deflection stops, modelling the real Vectrex CRT burn-in protection
 	PORT_CONFSETTING(0x00, DEF_STR(Off))
