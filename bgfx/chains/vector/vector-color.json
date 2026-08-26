@@ -163,8 +163,6 @@
 		{"type":"float","name":"beam_window_scale","text":"Beam Time Window Rate (x real time)","default":2.0,"min":0.25,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_flash_ms","text":"Beam Strike Flash (ms)","default":0.0,"min":0.0,"max":40.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_flash_gain","text":"Beam Strike Flash Gain (x)","default":2.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"beam_hot_ms","text":"Beam Hot Spot (ms)","default":0.0,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"beam_hot_gain","text":"Beam Hot Spot Gain (x)","default":2.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 
 		// ---- Flicker, HV droop and beam jitter ----
 		{"type":"float","name":"flicker_thresh_ms","text":"Cyclic Flicker Threshold (draw ms)","default":24.0,"min":0.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
