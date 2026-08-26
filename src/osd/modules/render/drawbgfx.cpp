@@ -4893,6 +4893,7 @@ int renderer_bgfx::draw(int update)
 			m_vec_window_log_deposited = 0;
 			m_vec_window_log_total = 0;
 			m_vec_window_log_glow = 0;
+			m_vec_window_log_hot = 0;
 		}
 
 		// A windowed present deposits a DIFFERENT slice of the same source list every time, so the
@@ -4933,6 +4934,10 @@ int renderer_bgfx::draw(int update)
 		// any more: rays were its only consumer and they are no longer windowed.
 		int aux_count = 0;
 		int aux_point_count = 0;
+		// Lines inside this present's HOT SPOT - the newest beam_hot_ms of the window, drawn a second
+		// time into the no-persist FBO so the place the beam has just left is brighter than the rest
+		// of the slice. Always <= visible_count (the hot range is clamped into the window).
+		int hot_count = 0;
 		const float pt_thresh = m_line_analytic
 				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
 		// Cyclic per-vector flicker (real AVG/DVG only, see render_vector_stats::timed): reproduces the
@@ -5040,6 +5045,29 @@ int renderer_bgfx::draw(int update)
 		double window_lo = 0.0, window_hi = 0.0;
 		bool window_active = false;
 		float window_aux_ramp = 1.0f;
+		// Hot spot (beam_hot_ms / beam_hot_gain). The window's leading edge is where the beam is right
+		// now; the phosphor there is still being driven, and on a real tube that spot outshines the
+		// rest of the pass. The pool cannot express this on its own: its age advances one present at a
+		// time, so the whole slice a present deposits shares one age (that quantised version is
+		// beam_flash_ms). Resolving the sub-present position needs the per-segment t0, which only the
+		// geometry side has - hence a second draw of the newest segments into a post-pool buffer.
+		//
+		// It must be a post-pool buffer. Boosting the body deposit instead would burn the extra
+		// brightness into the pool, which holds a PEAK, not an integral: it would survive in the
+		// afterimage, and after one pass every segment would have been boosted once, i.e. a flat gain.
+		const float hot_ms = window_on
+				? std::max(0.0f, m_chains->slider_value(0, "beam_hot_ms", 0.0f)) : 0.0f;
+		const float hot_gain = (hot_ms > 0.0f) ? m_chains->slider_value(0, "beam_hot_gain", 1.0f) : 1.0f;
+		// Only the analytic path has the separate post-pool buffers; without one there is nowhere to
+		// put light that must not persist, so the feature simply stays off there.
+		const bool hot_on = (hot_ms > 0.0f) && (hot_gain > 1.0f)
+				&& m_line_analytic && bgfx::isValid(m_vec_np_fb);
+		// The extra light, as a multiple of the beam colour: the body already draws the segment once,
+		// so the second draw carries the DIFFERENCE and the two sum to hot_gain x beam.
+		const float hot_extra = hot_on ? (hot_gain - 1.0f) : 0.0f;
+		double hot_lo = 0.0;
+		double hot_w = 0.0;
+		bool hot_active = false;
 		if (window_on)
 		{
 			const double now = window().machine().time().as_double();
@@ -5047,14 +5075,15 @@ int renderer_bgfx::draw(int update)
 			{
 				// Report what the pass that just ended actually got (see m_vec_window_log_presents).
 				if (m_vec_window_log_presents != 0)
-					osd_printf_verbose("BEAMWIN span=%.4f presents=%d deposited=%d total=%d glow=%d\n",
+					osd_printf_verbose("BEAMWIN span=%.4f presents=%d deposited=%d total=%d glow=%d hot=%d\n",
 							m_vec_window_log_span * 1000.0, m_vec_window_log_presents,
 							m_vec_window_log_deposited, m_vec_window_log_total,
-							m_vec_window_log_glow);
+							m_vec_window_log_glow, m_vec_window_log_hot);
 				m_vec_window_log_presents = 0;
 				m_vec_window_log_deposited = 0;
 				m_vec_window_log_total = 0;
 				m_vec_window_log_glow = 0;
+				m_vec_window_log_hot = 0;
 				m_vec_window_generation = vstats.list_generation;
 				m_vec_window_base_time = now;
 			}
@@ -5084,9 +5113,20 @@ int renderer_bgfx::draw(int update)
 			// too much scatter, worst exactly when a pass splits, which is every pass on Asteroids'
 			// high-score screen. Scaling them by this keeps scatter in step with the light it scatters.
 			window_aux_ramp = float(std::clamp((window_hi - vstats.sweep_t0) / window_span, 0.0, 1.0));
+			// The hot range ends at the window's leading edge and is clamped INTO the window, so it can
+			// only ever contain segments this present is depositing anyway ("what was updated in this
+			// frame"). beam_hot_ms is real time, and the window walks the sweep at window_scale times
+			// real time, so the sweep-time span it covers is scaled to match - otherwise the hot spot
+			// would change length whenever beam_window_scale moved. Set larger than the window and it
+			// saturates at the whole slice, which is beam_flash_ms's behaviour.
+			hot_lo = std::max(window_lo, window_hi - double(hot_ms) * 0.001 * window_scale);
+			hot_w = window_hi - hot_lo;
+			hot_active = hot_on && window_active && (hot_w > 0.0);
 		}
 		// Handed to the chain passes that sample the aux buffers; see m_vec_aux_ramp.
 		m_vec_aux_ramp = window_aux_ramp;
+		// Read by the chain-uniform injection far below (out of this block's scope, like m_vec_aux_ramp).
+		m_vec_hot_active = hot_active;
 		// The counting scan and the write loop further down MUST reach the same include/exclude
 		// decision for every primitive - the count sizes the transient vertex buffer the write loop
 		// fills - so the test lives here once instead of being duplicated at both sites.
@@ -5100,6 +5140,12 @@ int renderer_bgfx::draw(int update)
 			if (!window_on || !(p.t0 >= 0.0))
 				return false;
 			return !(window_active && p.t0 >= window_lo && p.t0 < window_hi);
+		};
+		// Same two-site rule as the window test: the counting scan sizes the hot buffer that the write
+		// loop fills, so both must reach the same answer for every primitive. Untimed segments hold no
+		// position in the sweep (t0 < 0 < hot_lo) and are never hot.
+		const auto beam_hot_includes = [&] (const render_primitive &p) {
+			return hot_active && p.t0 >= hot_lo && p.t0 < window_hi;
 		};
 		// This frame's OWN stats, gathered for free in the scan loop below (no extra traversal),
 		// cached for use as next present's first_t0/last_t1/raw_count.
@@ -5162,6 +5208,8 @@ int renderer_bgfx::draw(int update)
 					}
 					if (!flicker_excluded && !window_excluded)
 						visible_count++;
+					if (!flicker_excluded && beam_hot_includes(*scan))
+						hot_count++;
 				}
 				else if (scan->type == render_primitive::QUAD && PRIMFLAG_GET_VECTORBUF(scan->flags))
 				{
@@ -5197,6 +5245,9 @@ int renderer_bgfx::draw(int update)
 				// how the glow exemption is verified without a picture: if it tracks deposited instead,
 				// the glow is following the window slice again and bloom will blink.
 				m_vec_window_log_glow = aux_count - untimed_vector_count;
+				// Hot segments over the pass. hot <= deposited always (the hot range is clamped into
+				// the window); the ratio should come out near beam_hot_ms x scale / window width.
+				m_vec_window_log_hot += hot_count;
 			}
 			const float screen_w = screen_max_x - screen_min_x;
 			m_vec_res_w = (screen_w > 1.0f)
@@ -5930,6 +5981,14 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer np_tvb = {};
 			int np_verts = 0;
 			bool np_alloc = false;
+			// Hot spot: body geometry for the newest segments, drawn into the SAME no-persist FBO (its
+			// own transient buffer, because the dots' NP_VPL slot is one dot, not one body line). That
+			// FBO already has every property this needs - post-pool, additive, outside the glow
+			// cascade - and is already wired into all three vector chains, so no new target, sampler
+			// or chain input is involved.
+			bgfx::TransientVertexBuffer hot_tvb = {};
+			int hot_verts = 0;
+			bool hot_alloc = false;
 			// Starburst rays: own buffer sized by POINT_COUNT x m_ray_vpl, not visible_count - see the
 			// m_ray_vpl comment in drawbgfx.h. Modern chains submit it to m_vec_optical_fb;
 			// legacy chains keep submitting it to m_vec_glow_fb.
@@ -5979,13 +6038,27 @@ int renderer_bgfx::draw(int update)
 						}
 						// Best-effort separate no-persist buffer (one dot slot per primitive). If it
 						// cannot be allocated, the core still draws and short-dwell dots stay in it.
-						if (deposit_aux && np_on)
+						// The hot spot shares this FBO and moves every present, so with it on the FBO is
+						// cleared and refilled every present - which means the dots have to be redrawn
+						// every present too, not kept from the source pass as deposit_aux would have it.
+						if ((deposit_aux || hot_on) && np_on)
 						{
 							const uint32_t npneeded = uint32_t(aux_count) * NP_VPL;
 							if (npneeded == bgfx::getAvailTransientVertexBuffer(npneeded, line_decl))
 							{
 								bgfx::allocTransientVertexBuffer(&np_tvb, npneeded, line_decl);
 								np_alloc = (np_tvb.data != nullptr);
+							}
+						}
+						// Best-effort hot-spot buffer: one body line per hot segment. If it cannot be
+						// allocated the picture is simply this present's slice without the highlight.
+						if (hot_on && hot_count > 0)
+						{
+							const uint32_t hneeded = uint32_t(hot_count) * verts_per_line;
+							if (hneeded == bgfx::getAvailTransientVertexBuffer(hneeded, line_decl))
+							{
+								bgfx::allocTransientVertexBuffer(&hot_tvb, hneeded, line_decl);
+								hot_alloc = (hot_tvb.data != nullptr);
 							}
 						}
 						// Ray buffer: sized by the aux point count (dwell dots only), not visible_count.
@@ -6136,6 +6209,38 @@ int renderer_bgfx::draw(int update)
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
 											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
 									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, 1.0f);
+									// Hot spot: the same segment again, at hot_extra x its colour, into the
+									// no-persist buffer. Only the body output is wanted (every other pointer
+									// null) - this is the beam itself, not scatter, so it must not feed glow
+									// or halation a second time. The scale goes through prim->color rather
+									// than the finished vertices because the vertex colour is packed 8-bit;
+									// everything above 1.0 lives in the other attributes, so it has to be
+									// applied before put_analytic_line computes them. That also means the
+									// extra light passes through the same overload/dwell shaping as the beam
+									// - not a linear scale of the output when overdrive is engaged.
+									if (hot_alloc && beam_hot_includes(*vprim))
+									{
+										// Ramp the extra light down across the range instead of switching it
+										// off at hot_lo. A hard edge puts a brightness step in the middle of
+										// whatever the beam was drawing, and because the range's trailing
+										// edge sits at a fixed offset from the window it reads as the WINDOW
+										// boundary rather than as a beam. The ramp is also the physical
+										// shape: a segment struck 0.9 ms ago is further into its flash decay
+										// than one struck 0.1 ms ago. Linear, matching phos_flash's ramp in
+										// age. It halves the average extra light, so a given gain reads
+										// dimmer than it did with the step.
+										const float hot_f = float(std::clamp((vprim->t0 - hot_lo) / hot_w, 0.0, 1.0));
+										const render_color hot_saved = vprim->color;
+										vprim->color.r *= hot_extra * hot_f;
+										vprim->color.g *= hot_extra * hot_f;
+										vprim->color.b *= hot_extra * hot_f;
+										put_analytic_line(vprim,
+												reinterpret_cast<AnalyticLineVertex*>(hot_tvb.data) + hot_verts,
+												nullptr, nullptr, nullptr, nullptr,
+												scap, ecap, rscap, recap, sps, dsc, 1.0f);
+										hot_verts += verts_per_line;
+										vprim->color = hot_saved;
+									}
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -6494,7 +6599,11 @@ int renderer_bgfx::draw(int update)
 			// made short-dwell stars/dots exist for just the first host present of a 41/60 Hz source frame,
 			// producing a regular blink unrelated to the flicker model. An allocation failure likewise
 			// leaves the last complete source image intact rather than blacking the dots out.
-			if ((np_alloc || empty_vector_source) && bgfx::isValid(m_vec_np_fb))
+			// hot_on, not hot_alloc: once the window walks past the end of the sweep there is nothing
+			// hot to draw, and skipping the view then would leave the PREVIOUS present's highlight in
+			// the FBO to be added again - a bright arc frozen over the beam-idle gap at the end of
+			// every pass. The view has to run to clear it even when it draws nothing.
+			if ((np_alloc || hot_alloc || hot_on || empty_vector_source) && bgfx::isValid(m_vec_np_fb))
 			{
 				const uint16_t np_view = uint16_t(s_current_view);
 				s_current_view++;
@@ -6507,10 +6616,10 @@ int renderer_bgfx::draw(int update)
 				bx::mtxOrtho(npproj, 0.0f, float(s_width[window_index]), float(s_height[window_index]),
 					0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);
 				bgfx::setViewTransform(np_view, nullptr, npproj);
-				if (np_verts > 0)
-				{
-					bgfx::setVertexBuffer(0, &np_tvb);
-					bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
+				// Two draws can share this view and this effect - the short-dwell dots and the hot
+				// spot. bgfx consumes uniform values at submit, so the setup runs again before each.
+				bgfx_effect* line_eff = (m_line_effect != nullptr) ? m_line_effect : m_gui_effect[BLENDMODE_ADD];
+				const auto set_np_uniforms = [&] () {
 					bgfx_uniform* inv = line_eff->uniform("u_inv_view_dims");
 					if (inv)
 					{
@@ -6529,10 +6638,24 @@ int renderer_bgfx::draw(int update)
 						lp->upload();
 					}
 					set_halo_quad_edge(line_eff);
+				};
+				bool np_submitted = false;
+				if (np_verts > 0)
+				{
+					bgfx::setVertexBuffer(0, &np_tvb);
+					set_np_uniforms();
 					line_eff->submit(np_view);
+					np_submitted = true;
 				}
-				else
-					bgfx::touch(np_view);   // no caps / junction dots: just clear the FBO (no stale ghost)
+				if (hot_verts > 0)
+				{
+					bgfx::setVertexBuffer(0, &hot_tvb, 0, uint32_t(hot_verts));
+					set_np_uniforms();
+					line_eff->submit(np_view);
+					np_submitted = true;
+				}
+				if (!np_submitted)
+					bgfx::touch(np_view);   // nothing to add: just clear the FBO (no stale ghost)
 			}
 		}
 		if (deposit_vector_source && vector_perf_geometry_end)
@@ -6784,8 +6907,24 @@ int renderer_bgfx::draw(int update)
 				// per-entry default of 1 covers them. Names absent from a chain are simply not found.
 				const float aux_ramp_vals[4] = { m_vec_aux_ramp, 0.0f, 0.0f, 0.0f };
 				for (const char *const entry : { "Glow Accum Narrow", "wide_glow_ds0", "add_mglow",
-						"Glow Combine", "Phosphor Apply" })
+						"Glow Combine" })
 					m_chains->inject_entry_uniform(0, entry, "u_aux_ramp", aux_ramp_vals, 4);
+				// In the compose pass u_aux_ramp scales exactly one thing: the no-persist FBO. With the
+				// hot spot on, that FBO no longer holds a whole pass at full strength - it holds this
+				// present's newest slice, already in step with the body - so the ramp would fade the
+				// highlight in over each pass and it is set aside. The short-dwell dots sharing the FBO
+				// go back to full strength, which is what they wanted before the ramp moved from their
+				// vertices to the sampler (see the aux_scale note in put_analytic_line).
+				const float np_ramp_vals[4] = { m_vec_hot_active ? 1.0f : m_vec_aux_ramp, 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_aux_ramp", np_ramp_vals, 4);
+				// The chains bind u_np_gain to the cap_no_persist slider, which is Off by default on the
+				// colour chain - that would leave the hot spot drawn but never added. Injected here as
+				// the max of the two so the same FBO serves both, and injected EVERY present (not only
+				// while hot) because a runtime override, once set, outlives the condition that set it.
+				const float np_gain_vals[4] = {
+					std::max(m_chains->slider_value(0, "cap_no_persist", 0.0f),
+							m_vec_hot_active ? 1.0f : 0.0f), 0.0f, 0.0f, 0.0f };
+				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_np_gain", np_gain_vals, 4);
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_ambient_output_scale", ambient_scale_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_ambient_output_scale", ambient_scale_vals, 4);
 
@@ -6830,11 +6969,24 @@ int renderer_bgfx::draw(int update)
 				// in the afterimage. Modelled by shrinking the effective half-life / total by
 				// (1 + k * stored-peak) per pixel (k = phosphor_energy_decay). k = 0 = off (uniform
 				// decay, unchanged). Shared by both phosphor passes so re-excite and display agree.
+				// .zw = strike flash (see phos_flash in the compose shaders): for beam_flash_ms after a
+				// pixel is excited it emits beam_flash_gain times the decay curve - the fast initial
+				// component that keeps the spot the beam has just crossed brighter than the rest of the
+				// pass. Only under the beam time window: there one present deposits one slice of the
+				// sweep, so "age 0" names that slice. Without the window every present redeposits the
+				// whole pass, every lit pixel is age 0, and the flash would just be a flat gain - so it
+				// is forced off rather than left to look broken. The gain must NOT be applied to the
+				// deposit instead: the pool is a peak holder, so a boosted deposit burns into the
+				// afterimage and, once the pass has been walked, has boosted every segment equally.
+				const float flash_ms = m_vec_window_mode
+					? std::max(0.0f, m_chains->slider_value(0, "beam_flash_ms", 0.0f)) : 0.0f;
 				const float phos2_vals[4] = {
 					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f),
 				// .y = hold_ms: the afterglow holds full brightness this long before the decay curve
 				// starts (default ~one present closes the moving-bright-line seams; 0 = old behaviour)
-				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f), 0.0f, 0.0f };
+				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f),
+				flash_ms,
+				(flash_ms > 0.0f) ? m_chains->slider_value(0, "beam_flash_gain", 1.0f) : 1.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
 				// Per-channel (RGB) phosphor decay: each colour phosphor has its own half-life (blue
