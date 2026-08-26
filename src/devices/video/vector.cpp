@@ -609,9 +609,11 @@ private:
 			const int start = m_owner.machine().options().vector_playback_start();
 			if (start > 0 && !m_frame_index.empty())
 			{
-				m_pending_position = std::min<u64>(u64(start), m_frame_index.size() - 1U);
+				// The option counts frames the way the overlay and the goto tool do, from 1, so a
+				// number read off the overlay can be pasted straight into the command line.
+				m_pending_position = std::min<u64>(u64(start) - 1U, m_frame_index.size() - 1U);
 				osd_printf_info("MVEC: starting playback at frame %llu\n",
-					(unsigned long long)m_pending_position);
+					(unsigned long long)(m_pending_position + 1U));
 			}
 		}
 		if (m_recorded_frame_period <= 0)
