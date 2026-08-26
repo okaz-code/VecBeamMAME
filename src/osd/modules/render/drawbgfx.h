@@ -660,7 +660,6 @@ private:
 	// frame_id gave a 34 ms sweep only 24 ms worth of window and permanently clipped its tail.
 	uint32_t m_vec_window_generation = ~uint32_t(0);
 	bool m_vec_window_mode = false;        // beam_window active this present (read by the later chain gate)
-	bool m_vec_hot_active = false;         // beam_hot_ms drawing this present (read by the chain-uniform injection)
 	// Hysteresis state for the sweep-versus-window-width test in draw(): engage above 1.25x the
 	// window width, disengage below 1.0x, so a title whose spans straddle the threshold does not
 	// flip the phosphor between per-present and vector_phosphor_rate cadence every pass.
@@ -683,7 +682,6 @@ private:
 	int m_vec_window_log_deposited = 0;
 	int m_vec_window_log_total = 0;
 	int m_vec_window_log_glow = 0;
-	int m_vec_window_log_hot = 0;
 	double m_vec_window_log_span = 0.0;
 
 	// Bezel edge glow (render_vector_stats::edge_energy): exact on-window CRT screen rectangle in
