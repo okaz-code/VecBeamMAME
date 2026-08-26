@@ -22,6 +22,7 @@ uniform vec4 u_aux_ramp;
 
 uniform vec4 u_phos;
 uniform vec4 u_phos2;
+                                  // z = strike flash ms (0 = off), w = flash gain
 uniform vec4 u_phos_rgb;
 uniform vec4 u_np_gain;
 uniform vec4 u_line_channel_gain;
@@ -129,6 +130,23 @@ vec3 color_transform(vec3 cin)
 		+ u_primary_basis_b.xyz * cin.b, vec3_splat(0.0));
 }
 
+// Strike flash (u_phos2.z = flash_ms, .w = gain): for the first flash_ms after a pixel is excited
+// it emits ABOVE the decay curve - the fast initial component that makes the spot the beam has
+// just crossed the brightest thing on the tube. Multiplies the pool emission (and the current
+// excitation it is floored to), never the no-persist add: that buffer carries no age, is already a
+// drawn-this-present route, and boosting it would count the same light twice.
+//
+// Beam-window only - the renderer injects 0 for .z otherwise. Without the window every present
+// re-deposits the whole pass, so every pixel sits at age 0 and the "flash" degenerates into a flat
+// gain on everything. Age advances one present at a time, so a flash_ms below the present interval
+// means exactly "the slice deposited this present"; that is the intended reading of small values,
+// not a rounding failure. Larger values reach back over earlier presents, linearly.
+float phos_flash(float age)
+{
+	if (u_phos2.z <= 0.0) return 1.0;
+	return 1.0 + max(0.0, u_phos2.w - 1.0) * clamp(1.0 - age / u_phos2.z, 0.0, 1.0);
+}
+
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
@@ -148,6 +166,7 @@ void main()
 		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 
 	lit = max(lit, fresh);
+	lit *= phos_flash(pool.a);
 	lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
 	vec3 composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
 
