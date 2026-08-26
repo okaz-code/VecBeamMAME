@@ -226,7 +226,7 @@
 		{"type":"float","name":"mglow_min_distance","text":"Monitor Glow Min Distance (screen)","default":0.3,"min":0.0,"max":0.75,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"mglow_coverage_start","text":"Monitor Glow Coverage Start","default":0.65,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"mglow_coverage_full","text":"Monitor Glow Coverage Full","default":0.85,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.05,"min":0.0,"max":0.5,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"bezel_glow_strength","text":"Bezel Reflection Glow","default":0.05,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"monitor_bezel_reflection","text":"Monitor Glow Bezel Reflection","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_long_reflection","text":"Bezel Long-Line Reflection","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bezel_short_reflection","text":"Bezel Short-Line Reflection","default":0.1,"min":0.0,"max":1.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},

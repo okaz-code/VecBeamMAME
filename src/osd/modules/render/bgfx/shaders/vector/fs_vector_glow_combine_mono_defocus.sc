@@ -19,6 +19,19 @@ SAMPLER2D(s_bezel_length, 5);
 // reshape - scaling after a power curve is not the same scaling. 1 outside the window path.
 uniform vec4 u_aux_ramp;
 #define AUX_TEX2D(_sampler, _uv) (texture2D(_sampler, _uv) * u_aux_ramp.x)
+// Bezel reflection reads the glow buffer WITHOUT u_aux_ramp - deliberately, and unlike every other
+// consumer of that texture. The ramp scales whole-pass aux content down to the fraction of the sweep
+// the body has deposited so far, so a halo never outshines the line it belongs to. The bezel is a
+// different quantity: it is diffuse room-side light from the whole tube face, and the face is
+// showing the whole pass, because the phosphor pool retains it between windowed presents. Ramping it
+// made the bezel collapse at the start of every pass and recover over it - a pulse with no physical
+// counterpart, and a severe one, because the ramp lands ahead of two expansive power curves
+// (0.32 -> 0.16 after shape_wide_source -> 0.07 after shape_glow).
+//
+// s_bezel_length must be sampled the same way. long_light is min()'d against the source, so a ramped
+// classification against an unramped source would clamp the long term and report ordinary long
+// strokes as short.
+#define BEZEL_TEX2D(_sampler, _uv) texture2D(_sampler, _uv)
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_glow_enable;
@@ -143,7 +156,7 @@ vec2 bezel_source_step(vec2 axis)
 }
 vec3 apply_bezel_length_gain(vec2 uv,vec3 light)
 {
-	vec3 long_light=min(max(AUX_TEX2D(s_bezel_length,uv).rgb,vec3_splat(0.0)),light);
+	vec3 long_light=min(max(BEZEL_TEX2D(s_bezel_length,uv).rgb,vec3_splat(0.0)),light);
 	vec3 short_light=max(light-long_light,vec3_splat(0.0));
 	return short_light*max(u_bezel_short_reflection.x,0.0)+long_light*max(u_bezel_long_reflection.x,0.0);
 }
@@ -151,14 +164,14 @@ vec3 bezel_bloom_source(vec2 edge_uv,vec2 reach_uv)
 {
 	// Sample raw analytic light so bezel reflection strength and reach do not
 	// inherit the visible Glow Wide field.
-	vec2 best_uv=edge_uv;vec3 source=apply_bezel_length_gain(best_uv,AUX_TEX2D(s_bezel_source,best_uv).rgb);float best_peak=max(source.r,max(source.g,source.b));
-	vec2 candidate_uv=edge_uv+reach_uv*0.125;vec3 candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);float peak=max(candidate.r,max(candidate.g,candidate.b));
+	vec2 best_uv=edge_uv;vec3 source=apply_bezel_length_gain(best_uv,BEZEL_TEX2D(s_bezel_source,best_uv).rgb);float best_peak=max(source.r,max(source.g,source.b));
+	vec2 candidate_uv=edge_uv+reach_uv*0.125;vec3 candidate=apply_bezel_length_gain(candidate_uv,BEZEL_TEX2D(s_bezel_source,candidate_uv).rgb);float peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv*0.25;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv*0.25;candidate=apply_bezel_length_gain(candidate_uv,BEZEL_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv*0.5;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv*0.5;candidate=apply_bezel_length_gain(candidate_uv,BEZEL_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
-	candidate_uv=edge_uv+reach_uv;candidate=apply_bezel_length_gain(candidate_uv,AUX_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
+	candidate_uv=edge_uv+reach_uv;candidate=apply_bezel_length_gain(candidate_uv,BEZEL_TEX2D(s_bezel_source,candidate_uv).rgb);peak=max(candidate.r,max(candidate.g,candidate.b));
 	if(peak>best_peak){best_uv=candidate_uv;source=candidate;best_peak=peak;}
 	return source*GLOW_BRIGHTNESS_GAIN;
 }
