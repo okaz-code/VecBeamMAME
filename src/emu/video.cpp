@@ -32,6 +32,22 @@
 #include <bit>
 #include <cstdio>
 
+// -vector_beam_window unless -vector_quality named a preset and the option was left alone. A preset
+// is a starting point, so anything given explicitly outranks it.
+static bool beam_window_wanted(running_machine &machine)
+{
+	float render_scale = 0.0f, output_scale = 0.0f;
+	bool preset_window = false;
+	if (machine.options().vector_quality_preset(render_scale, output_scale, preset_window))
+	{
+		auto const entry = machine.options().get_entry(OPTION_VECTOR_BEAM_WINDOW);
+		if (entry && (entry->priority() <= OPTION_PRIORITY_DEFAULT))
+			return preset_window;
+	}
+	return machine.options().vector_beam_window();
+}
+
+
 
 //**************************************************************************
 //  DEBUGGING
@@ -195,7 +211,7 @@ video_manager::video_manager(running_machine &machine)
 		const auto rate_entry = machine.options().get_entry(OPTION_VECTOR_PRESENT_RATE);
 		const bool rate_is_default = !rate_entry || rate_entry->priority() <= OPTION_PRIORITY_DEFAULT;
 		if (configured_present_rate == 0 && rate_is_default
-			&& machine.options().vector_beam_window())
+			&& beam_window_wanted(machine))
 		{
 			configured_present_rate = -1;   // auto
 			present_rate_from_window = true;
@@ -708,23 +724,24 @@ inline bool video_manager::vector_present_active() const
 	// The UI is rendered by frame_update and nothing else. Handing OSD updates to the presentation
 	// timer while it has something on screen decouples the two: the container is rebuilt once per
 	// emulated frame, the timer presents several times in between, and whichever presents land
-	// outside the rebuilt window show a list without it. Measured on a Vectrex overlay at 160 Hz,
-	// the untagged textured quad count alternated between 1 and 232 frame to frame - the menu
-	// appearing and vanishing. So while a MENU is up, frame_update presents, exactly as it does with
-	// no timer at all: nothing is lost, because the beam window has no work to do behind a menu.
+	// outside the rebuilt window show a list without it.
 	//
-	// This used to test the UI container for content instead, which is not the same thing and cost
-	// far more than it bought. The frame counter (F11) and any popmessage fill that container while
-	// leaving the vector image fully visible, so the high-rate present stopped while the beam window
-	// stayed engaged - one present per pass, one slice deposited, the rest of the sweep never drawn.
-	// Measured on a Vectrex overlay with a popmessage up: every one of 297 passes deposited 221 of
-	// 511 vectors. 57% of the image missing for as long as anything at all was on screen, on any
-	// title, which is what "vectors disappear when F11 is pressed" was.
+	// This is NOT a reason to stand the timer down. Two attempts did - first whenever the UI
+	// container held anything, then whenever a menu was open - and both cost far more than they
+	// bought: with the timer off the beam time window still engages, so a pass receives one present
+	// instead of three, the window deposits the single slice that present covers, and the rest of the
+	// sweep is never drawn. Measured on a Vectrex overlay at 165 Hz with a popmessage up, every one
+	// of 297 passes deposited 221 of 511 vectors. 57% of the image gone for as long as anything was
+	// on screen - the frame counter, a popmessage, the menu - on any title, and only with the window
+	// on, which is why a machine that runs without it never showed it.
+	//
+	// The UI is drawn from the same primitive list every present, so it holds still on its own: the
+	// message region measured a standard deviation of 0.000 across 221 frames with the timer left
+	// running. Whatever the quad-count alternation behind the original change was, it was not this.
 	return m_vector_present_timer
 		&& (machine().phase() == machine_phase::RUNNING)
 		&& !machine().paused()
 		&& !m_fastforward
-		&& !machine().ui().is_menu_active()
 		&& effective_throttle();
 }
 

@@ -1565,6 +1565,24 @@ int renderer_bgfx::create()
 		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
 		m_output_scale = std::clamp(m_module().options().bgfx_output_scale(), 0.25f, 1.0f);
 		m_vec_render_scale = std::clamp(m_module().options().bgfx_render_scale(), 0.1f, 1.0f);
+		// -vector_quality names all three of these at once. A preset is a starting point, so it only
+		// fills in the parts that were left alone: an explicit scale on the command line outranks it.
+		{
+			float preset_render = 0.0f, preset_output = 0.0f;
+			bool preset_window = false;
+			if (window().machine().options().vector_quality_preset(preset_render, preset_output, preset_window))
+			{
+				auto const untouched = [this] (const char *name)
+				{
+					auto const entry = m_module().options().get_entry(name);
+					return !entry || (entry->priority() <= OPTION_PRIORITY_DEFAULT);
+				};
+				if (untouched(OSDOPTION_BGFX_OUTPUT_SCALE))
+					m_output_scale = std::clamp(preset_output, 0.25f, 1.0f);
+				if (untouched(OSDOPTION_BGFX_RENDER_SCALE))
+					m_vec_render_scale = std::clamp(preset_render, 0.1f, 1.0f);
+			}
+		}
 		m_vec_effective_scale = std::min(m_vec_render_scale, m_output_scale);
 		osd_printf_verbose("BGFX: analytic vector render scale %.2f, output limit %.2f, supersample %u (effective raster scale %.2f)\n",
 			m_vec_render_scale, m_output_scale, unsigned(m_vec_supersample), m_vec_effective_scale * float(m_vec_supersample));

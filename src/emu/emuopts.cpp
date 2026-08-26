@@ -144,10 +144,12 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_OVERSCAN_Y,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_BLANK_LEAK,                          "0.0",       core_options::option_type::FLOAT,      "set vector blanked-beam leak level (0 = off), faintly draws blanked retrace/move paths" },
 	{ OPTION_VECTOR_BEAM_WINDOW ";beamwin",              "1",         core_options::option_type::BOOLEAN,    "deposit only the slice of the beam sweep each present covers, letting the phosphor hold the rest; turns the vector presentation timer on by itself" },
-	{ OPTION_VECTOR_WINDOW_DROOP,                        "0.0",       core_options::option_type::FLOAT,      "Major Havoc window sample-and-hold droop, percent of screen height per second (0 = off, ideal hold)" },
-	{ OPTION_VECTOR_WINDOW_MEMORY,                       "0.0",       core_options::option_type::FLOAT,      "Major Havoc window hold-capacitor dielectric absorption, 0..1 fraction pulled toward earlier samples (0 = off)" },
-	{ OPTION_VECTOR_WINDOW_JITTER,                       "0.0",       core_options::option_type::FLOAT,      "Major Havoc window per-frame sample scatter, percent of screen height (0 = off); constant within a frame" },
-	{ OPTION_VECTOR_WINDOW_BIAS,                         "0.0",       core_options::option_type::FLOAT,      "Major Havoc window systematic offset (charge injection / comparator offset), percent of screen height" },
+	{ OPTION_VECTOR_QUALITY ";vecq",                     nullptr,     core_options::option_type::STRING,     "vector rendering effort preset: high, medium or low - sets render scale, output scale and the beam time window together (unset = leave each as configured)" },
+	{ OPTION_VECTOR_WINDOW_SIM,                          "1",         core_options::option_type::BOOLEAN,    "Major Havoc window sample-and-hold imperfections (droop, dielectric absorption, scatter, offset); -novector_window_sim zeroes all four at once" },
+	{ OPTION_VECTOR_WINDOW_DROOP,                        "5.0",       core_options::option_type::FLOAT,      "Major Havoc window sample-and-hold droop, percent of screen height per second (0 = off, ideal hold)" },
+	{ OPTION_VECTOR_WINDOW_MEMORY,                       "0.005",       core_options::option_type::FLOAT,      "Major Havoc window hold-capacitor dielectric absorption, 0..1 fraction pulled toward earlier samples (0 = off)" },
+	{ OPTION_VECTOR_WINDOW_JITTER,                       "1.0",       core_options::option_type::FLOAT,      "Major Havoc window per-frame sample scatter, percent of screen height (0 = off); constant within a frame" },
+	{ OPTION_VECTOR_WINDOW_BIAS,                         "0.5",       core_options::option_type::FLOAT,      "Major Havoc window systematic offset (charge injection / comparator offset), percent of screen height" },
 	{ OPTION_VECTOR_EVENT_DUMP,                          nullptr,     core_options::option_type::PATH,       "debug: write timed beam events to this CSV file" },
 	{ OPTION_VECTOR_RECORD,                              nullptr,     core_options::option_type::PATH,       "record final vector beam events to an MVEC stream" },
 	{ OPTION_VECTOR_PLAYBACK,                            nullptr,     core_options::option_type::PATH,       "play back final vector beam events from an MVEC stream" },
@@ -435,6 +437,40 @@ namespace
 		if (peg_priority && !entry.expired())
 			entry.lock()->set_priority(OPTION_PRIORITY_MAXIMUM);
 	}
+}
+
+
+//-------------------------------------------------
+//  vector_quality_preset - the three settings
+//  -vector_quality stands for
+//-------------------------------------------------
+
+bool emu_options::vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window) const
+{
+	const char *const name = vector_quality();
+	if (!name || !*name)
+		return false;
+	// The scales are what actually costs: the beam time window is a presentation choice on top, and it
+	// is the first thing to go on a machine that cannot afford it.
+	if (!core_stricmp(name, "high"))
+	{
+		render_scale = 1.0f; output_scale = 1.0f; beam_window = true;
+	}
+	else if (!core_stricmp(name, "medium") || !core_stricmp(name, "middle"))
+	{
+		render_scale = 0.75f; output_scale = 0.75f; beam_window = true;
+	}
+	else if (!core_stricmp(name, "low"))
+	{
+		render_scale = 0.5f; output_scale = 0.5f; beam_window = false;
+	}
+	else
+	{
+		osd_printf_warning("Unknown -%s '%s'; expected high, medium or low. Ignoring.\n",
+				OPTION_VECTOR_QUALITY, name);
+		return false;
+	}
+	return true;
 }
 
 
