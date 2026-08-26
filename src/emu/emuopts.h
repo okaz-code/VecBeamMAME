@@ -124,6 +124,8 @@
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
+#define OPTION_VECTOR_QUALITY       "vector_quality"
+#define OPTION_VECTOR_WINDOW_SIM    "vector_window_sim"
 #define OPTION_VECTOR_WINDOW_DROOP  "vector_window_droop"
 #define OPTION_VECTOR_WINDOW_MEMORY "vector_window_memory"
 #define OPTION_VECTOR_WINDOW_JITTER "vector_window_jitter"
@@ -426,6 +428,12 @@ public:
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
 	bool vector_beam_window() const { return bool_value(OPTION_VECTOR_BEAM_WINDOW); }
+	const char *vector_quality() const { return value(OPTION_VECTOR_QUALITY); }
+	// Fills the three settings -vector_quality stands for and returns true, or returns false when no
+	// preset is named. Callers apply a value only where the underlying option is still at its default,
+	// so naming a preset and then overriding one of its parts on the command line does what it reads like.
+	bool vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window) const;
+	bool vector_window_sim() const { return bool_value(OPTION_VECTOR_WINDOW_SIM); }
 	float vector_window_droop() const { return float_value(OPTION_VECTOR_WINDOW_DROOP); }
 	float vector_window_memory() const { return float_value(OPTION_VECTOR_WINDOW_MEMORY); }
 	float vector_window_jitter() const { return float_value(OPTION_VECTOR_WINDOW_JITTER); }

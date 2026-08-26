@@ -1045,10 +1045,13 @@ void vector_options::init(emu_options &options)
 	s_overscan_x = options.vector_overscan_x();
 	s_overscan_y = options.vector_overscan_y();
 	s_blank_leak = options.vector_blank_leak();
-	s_window_droop = options.vector_window_droop();
-	s_window_memory = options.vector_window_memory();
-	s_window_jitter = options.vector_window_jitter();
-	s_window_bias = options.vector_window_bias();
+	// One switch for the whole sample-and-hold model, so it can be taken out of the picture without
+	// having to remember which four numbers describe it and what each of them means at zero.
+	const bool window_sim = options.vector_window_sim();
+	s_window_droop = window_sim ? options.vector_window_droop() : 0.0f;
+	s_window_memory = window_sim ? options.vector_window_memory() : 0.0f;
+	s_window_jitter = window_sim ? options.vector_window_jitter() : 0.0f;
+	s_window_bias = window_sim ? options.vector_window_bias() : 0.0f;
 }
 
 // device type definition
