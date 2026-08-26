@@ -6830,11 +6830,24 @@ int renderer_bgfx::draw(int update)
 				// in the afterimage. Modelled by shrinking the effective half-life / total by
 				// (1 + k * stored-peak) per pixel (k = phosphor_energy_decay). k = 0 = off (uniform
 				// decay, unchanged). Shared by both phosphor passes so re-excite and display agree.
+				// .zw = strike flash (see phos_flash in the compose shaders): for beam_flash_ms after a
+				// pixel is excited it emits beam_flash_gain times the decay curve - the fast initial
+				// component that keeps the spot the beam has just crossed brighter than the rest of the
+				// pass. Only under the beam time window: there one present deposits one slice of the
+				// sweep, so "age 0" names that slice. Without the window every present redeposits the
+				// whole pass, every lit pixel is age 0, and the flash would just be a flat gain - so it
+				// is forced off rather than left to look broken. The gain must NOT be applied to the
+				// deposit instead: the pool is a peak holder, so a boosted deposit burns into the
+				// afterimage and, once the pass has been walked, has boosted every segment equally.
+				const float flash_ms = m_vec_window_mode
+					? std::max(0.0f, m_chains->slider_value(0, "beam_flash_ms", 0.0f)) : 0.0f;
 				const float phos2_vals[4] = {
 					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f),
 				// .y = hold_ms: the afterglow holds full brightness this long before the decay curve
 				// starts (default ~one present closes the moving-bright-line seams; 0 = old behaviour)
-				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f), 0.0f, 0.0f };
+				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f),
+				flash_ms,
+				(flash_ms > 0.0f) ? m_chains->slider_value(0, "beam_flash_gain", 1.0f) : 1.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
 				// Per-channel (RGB) phosphor decay: each colour phosphor has its own half-life (blue
