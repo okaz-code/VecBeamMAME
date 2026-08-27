@@ -46,7 +46,7 @@ English: [README.md](README.md)
 | [追加パラメータ一覧](docs/vecbeammame/added-parameters.ja.md) | 実行中に変えるスライダー全 224 本。`bgfx/chains/vector/*.json` から生成 |
 | [起動時オプション](docs/vecbeammame/startup-options.ja.md) | `vbmame.ini` に書くもの。ini の作り方から |
 | [HDR 設定ガイド](docs/vecbeammame/hdr-settings.ja.md) | HDR 出力の仕組みとモニタに合わせた設定 |
-| [ベクターチェイン解説](bgfx/chains/vector/README.md) | 同梱チェインの構成 |
+| [ベクターチェイン解説](bgfx/chains/vector/README.ja.md) | 同梱チェインの構成 |
 | [FAQ](docs/vecbeammame/faq.ja.md) | よくある質問 |
 
 同梱ツール: [MVEC ビューア](tools/mvec-viewer/)（ビーム事象ストリームの可視化）、
