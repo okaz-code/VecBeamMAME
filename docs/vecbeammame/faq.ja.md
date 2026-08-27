@@ -45,6 +45,38 @@ VecBeamMAME を使っていて出てくる疑問と、その答え。
 → [追加パラメータ一覧](added-parameters.ja.md) の冒頭が
 「マクロ（Advanced Off でも見える）」の節です。
 
+## ゲームによってベクターの時間情報があったり無かったりしますか？
+
+**あります。** VecBeamMAME の中核は「ビームがいつ・どれだけの時間をかけてその線を描いたか」
+という時間情報で、これを出せるハードウェアと出せないハードウェアがあります。
+
+| ベクター生成回路 | 代表ゲーム | 時間情報 |
+|---|---|---|
+| **Atari AVG / DVG** | STAR WARS、EMPIRE STRIKES BACK、TEMPEST、MAJOR HAVOC、BATTLEZONE、RED BARON、ASTEROIDS、ASTEROIDS DELUXE、LUNAR LANDER、GRAVITAR、SPACE DUEL、BLACK WIDOW、QUANTUM、TOMCAT、**OMEGA RACE**（Bally だが Atari の DVG を使用） | **あり**（1 セグメントごとの実掃引時間） |
+| **Vectrex** | Vectrex 全ソフト | **あり**（Vectrex 独自のモデル） |
+| Cinematronics CCPU | RIP OFF、SOLAR QUEST、STAR CASTLE、WARRIOR、ARMOR ATTACK、BARRIER、SUNDANCE、SPACE WARS、SPEED FREAK、STAR HAWK、TAIL GUNNER、WAR OF THE WORLDS、BOXING BUGS、DEMON | **なし相当**（時刻はあるが `t0 == t1` で掃引時間が無い） |
+| Sega G80 vector | TAC/SCAN、STAR TREK、ZEKTOR、SPACE FURY、ELIMINATOR | **なし** |
+| その他 | AZTARAC、COSMIC CHASM、VERTIGO | **なし** |
+
+### 時間情報があると何が変わるか
+
+| 機能 | 時間情報あり | なし |
+|---|---|---|
+| **エネルギーモデル**（速度・滞留 → 明るさ） | ビームが遅く動いた線ほど、長く留まった点ほど明るい | **効かない。** 明るさはゲームが出した intensity そのまま |
+| **Z 立ち上がり応答**（`z_rise_tau`） | 滞留の短いドットは Z が上がりきる前に終わるので暗く・細くなる | 効かない（全部同じ明るさのドット） |
+| **ビーム時間窓**（`beam_window`） | 1 present あたり掃引の一部だけを堆積し、残りは残光に任せる = 実機のフリッカ | **窓が engage しない。** 常に 1 フレーム分がまとめて出る |
+| **ビーム打点フラッシュ**（`beam_flash_ms`） | 直前に打たれたスライスだけが明るい | 効かない（窓が前提のため） |
+| **周期フリッカ**（`flicker_*`） | 掃引時刻でバケットに分けて、混み合ったフレームの一部を落とす | 効かない |
+| **クリップ窓のサンプル&ホールド**（`vector_window_sim`） | MAJOR HAVOC / BATTLEZONE の窓回路の非理想性を再現 | 対象ハードが Atari AVG のみなので常に有効 |
+| **MVEC 記録** | 掃引時間つきで記録され、再生時も同じ時間構造で再現される | 時刻のない事象列として記録される |
+
+つまり時間情報が無いハードウェアでは、**残光・グロー・ハレーション・色・幾何などの「表示側」の
+再現はそのまま効きますが、「ビームの動きから明るさを導く」層と「1 掃引を時間で切る」層が丸ごと
+外れます。** 素の MAME より綺麗にはなりますが、STAR WARS や Vectrex で見えているものとは別物です。
+
+なお時間情報の有無はゲームごとに固定で、設定で増やすことはできません。ハードウェアが出していない
+情報だからです。
+
 ## どのチェインが使われますか？
 
 同梱チェインは4本で、**カラー機／モノクロ機／Vectrex はそれぞれ対応するチェインを自動で選びます。**
