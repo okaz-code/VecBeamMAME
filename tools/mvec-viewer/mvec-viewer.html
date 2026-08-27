@@ -1,0 +1,1791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Mvec Viewer</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Mvec Viewer" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Mvec Viewer&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  /* 2px / 7% のトラックは実質見えなかったので、太さとコントラストを上げる */
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 34%, transparent),
+      color-mix(in srgb, var(--foreground) 34%, transparent)
+    )
+    center / 100% 6px no-repeat;
+  border-radius: var(--radius-full);
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 2px solid light-dark(rgb(255 255 255), rgb(13 13 13));
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 2px solid light-dark(rgb(255 255 255), rgb(13 13 13));
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;mvec-viewer-root&quot;&gt;
+  &lt;div class=&quot;viz-controls mvec-toolbar&quot;&gt;
+    &lt;label class=&quot;form-label&quot;&gt;MVECファイル
+      &lt;input id=&quot;mvec-file&quot; class=&quot;form-control&quot; type=&quot;file&quot; accept=&quot;.mvec,application/octet-stream&quot;&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-label&quot;&gt;表示方向
+      &lt;select id=&quot;mvec-rotation&quot; class=&quot;form-select&quot;&gt;
+        &lt;option value=&quot;0&quot;&gt;0°（記録座標）&lt;/option&gt;
+        &lt;option value=&quot;90&quot;&gt;90°&lt;/option&gt;
+        &lt;option value=&quot;180&quot;&gt;180°&lt;/option&gt;
+        &lt;option value=&quot;270&quot;&gt;270°&lt;/option&gt;
+      &lt;/select&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-check&quot;&gt;
+      &lt;input id=&quot;mvec-blank&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot;&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;blank移動を表示&lt;/span&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-check form-switch&quot; data-tooltip=&quot;MAMEのvector_overscan_x/y 0.5相当で、記録された画面外ベクターを表示します&quot;&gt;
+      &lt;input id=&quot;mvec-overscan&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot;&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;オーバースキャン表示（0.5）&lt;/span&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-check form-switch&quot;&gt;
+      &lt;input id=&quot;mvec-reference-mode&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot; disabled&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;参照モード&lt;/span&gt;
+    &lt;/label&gt;
+  &lt;/div&gt;
+
+  &lt;div id=&quot;mvec-status&quot; class=&quot;text-small text-muted&quot; role=&quot;status&quot;&gt;MVECファイルを選択してください。&lt;/div&gt;
+
+  &lt;div class=&quot;viz-controls mvec-transport&quot;&gt;
+    &lt;button id=&quot;mvec-first&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;|&amp;lt;&lt;/button&gt;
+    &lt;button id=&quot;mvec-prev&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;前&lt;/button&gt;
+    &lt;button id=&quot;mvec-play&quot; class=&quot;btn btn-primary&quot; type=&quot;button&quot; disabled&gt;再生&lt;/button&gt;
+    &lt;button id=&quot;mvec-next&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;次&lt;/button&gt;
+    &lt;button id=&quot;mvec-last&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;&amp;gt;|&lt;/button&gt;
+    &lt;label class=&quot;form-label mvec-frame-field&quot;&gt;データのフレーム
+      &lt;input id=&quot;mvec-frame-number&quot; class=&quot;form-control&quot; type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot; disabled&gt;
+    &lt;/label&gt;
+    &lt;output id=&quot;mvec-frame-count&quot; class=&quot;mvec-count&quot;&gt;データ 0 / 0&lt;/output&gt;
+    &lt;span class=&quot;mvec-zoom-group&quot;&gt;
+      &lt;output id=&quot;mvec-zoom&quot; class=&quot;mvec-count&quot;&gt;拡大 1x&lt;/output&gt;
+      &lt;button id=&quot;mvec-zoom-out&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;縮小（ホイール下 / -キー）&quot;&gt;−&lt;/button&gt;
+      &lt;button id=&quot;mvec-zoom-in&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;拡大（ホイール上 / +キー）&quot;&gt;＋&lt;/button&gt;
+      &lt;button id=&quot;mvec-zoom-reset&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;全体表示に戻す（ダブルクリック / 0キー）&quot;&gt;全体&lt;/button&gt;
+    &lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-frame-range&quot;&gt;フレーム位置&lt;/label&gt;
+  &lt;input id=&quot;mvec-frame-range&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;1&quot; max=&quot;1&quot; value=&quot;1&quot; disabled&gt;
+
+  &lt;div id=&quot;mvec-workspace&quot; class=&quot;mvec-workspace&quot;&gt;
+    &lt;div class=&quot;mvec-stage&quot;&gt;
+      &lt;canvas id=&quot;mvec-canvas&quot; role=&quot;img&quot; aria-label=&quot;選択したMVECフレームのベクター表示&quot;&gt;&lt;/canvas&gt;
+    &lt;/div&gt;
+
+    &lt;section id=&quot;mvec-reference-panel&quot; class=&quot;mvec-reference&quot; hidden aria-label=&quot;フレーム内ベクターデータ&quot;&gt;
+      &lt;div class=&quot;viz-controls mvec-reference-controls&quot;&gt;
+        &lt;button id=&quot;mvec-vector-prev&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;前の行&lt;/button&gt;
+        &lt;button id=&quot;mvec-vector-next&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;次の行&lt;/button&gt;
+        &lt;label class=&quot;form-label mvec-vector-field&quot;&gt;ベクター行
+          &lt;input id=&quot;mvec-vector-number&quot; class=&quot;form-control&quot; type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot;&gt;
+        &lt;/label&gt;
+        &lt;output id=&quot;mvec-vector-count&quot; class=&quot;mvec-count&quot;&gt;行 0 / 0&lt;/output&gt;
+      &lt;/div&gt;
+      &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-vector-range&quot;&gt;描画する最終行&lt;/label&gt;
+      &lt;input id=&quot;mvec-vector-range&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;1&quot; max=&quot;1&quot; value=&quot;1&quot;&gt;
+      &lt;div id=&quot;mvec-row-window&quot; class=&quot;text-small text-muted&quot;&gt;表示行 —&lt;/div&gt;
+      &lt;div class=&quot;mvec-table-wrap&quot;&gt;
+        &lt;table class=&quot;mvec-table&quot;&gt;
+          &lt;thead&gt;&lt;tr&gt;&lt;th&gt;行&lt;/th&gt;&lt;th&gt;種別&lt;/th&gt;&lt;th&gt;x0&lt;/th&gt;&lt;th&gt;y0&lt;/th&gt;&lt;th&gt;x1&lt;/th&gt;&lt;th&gt;y1&lt;/th&gt;&lt;th&gt;RGB&lt;/th&gt;&lt;th&gt;強度&lt;/th&gt;&lt;th&gt;energy&lt;/th&gt;&lt;th&gt;t0&lt;/th&gt;&lt;th&gt;t1&lt;/th&gt;&lt;th&gt;caps&lt;/th&gt;&lt;th&gt;scale&lt;/th&gt;&lt;th&gt;ramp µs&lt;/th&gt;&lt;th&gt;mid&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+          &lt;tbody id=&quot;mvec-vector-rows&quot;&gt;&lt;/tbody&gt;
+        &lt;/table&gt;
+      &lt;/div&gt;
+    &lt;/section&gt;
+  &lt;/div&gt;
+
+
+
+  &lt;div id=&quot;mvec-frame-meta&quot; class=&quot;text-small text-muted&quot;&gt;記録フレームID —・ベクター —&lt;/div&gt;
+  &lt;div id=&quot;mvec-selection&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;ベクターをクリックすると詳細を表示します。&lt;/div&gt;
+
+&lt;/div&gt;
+
+&lt;style&gt;
+  #mvec-viewer-root { width: 100%; }
+  #mvec-viewer-root .mvec-toolbar { margin-bottom: 8px; }
+  #mvec-viewer-root .mvec-workspace { width: 100%; }
+  #mvec-viewer-root .mvec-workspace.reference-active {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  #mvec-viewer-root .mvec-stage {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 8px 0;
+    background: #000;
+    overflow: hidden;
+  }
+  #mvec-viewer-root canvas { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+  #mvec-viewer-root .mvec-zoom-group { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  #mvec-viewer-root .mvec-zoom-group .mvec-count { min-width: 92px; }
+  #mvec-viewer-root .mvec-transport { margin-top: 8px; }
+  #mvec-viewer-root .mvec-frame-field { max-width: 150px; }
+  #mvec-viewer-root .mvec-vector-field { max-width: 150px; }
+  #mvec-viewer-root .mvec-count { min-width: 130px; font-variant-numeric: tabular-nums; }
+  #mvec-viewer-root .mvec-range-label { margin-top: 8px; }
+  #mvec-viewer-root .mvec-frame-meta,
+  #mvec-viewer-root .mvec-selection { margin-top: 6px; font-variant-numeric: tabular-nums; }
+  #mvec-viewer-root .mvec-reference { min-width: 0; margin: 8px 0; }
+  #mvec-viewer-root .mvec-reference-controls { margin-bottom: 6px; }
+  #mvec-viewer-root .mvec-table-wrap { margin-top: 6px; overflow-x: auto; }
+  #mvec-viewer-root .mvec-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--font-size-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #mvec-viewer-root .mvec-table th,
+  #mvec-viewer-root .mvec-table td { padding: 4px 7px; border-bottom: 1px solid var(--border); text-align: right; }
+  #mvec-viewer-root .mvec-table th { color: var(--muted-foreground); font-weight: 500; }
+  #mvec-viewer-root .mvec-table th:nth-child(2),
+  #mvec-viewer-root .mvec-table td:nth-child(2) { text-align: left; }
+  #mvec-viewer-root .mvec-table tbody tr { cursor: pointer; }
+  #mvec-viewer-root .mvec-table tbody tr:hover { background: var(--accent); color: var(--accent-foreground); }
+  #mvec-viewer-root .mvec-table tbody tr[aria-selected=&quot;true&quot;] { background: var(--primary); color: var(--primary-foreground); }
+  @media (max-width: 520px) {
+    #mvec-viewer-root .mvec-stage { aspect-ratio: 4 / 3; }
+  }
+  @media (max-width: 680px) {
+    #mvec-viewer-root .mvec-workspace.reference-active { display: block; }
+  }
+&lt;/style&gt;
+
+&lt;script&gt;
+(() =&gt; {
+  &#x27;use strict&#x27;;
+  const root = document.getElementById(&#x27;mvec-viewer-root&#x27;);
+  const el = id =&gt; root.querySelector(&#x27;#&#x27; + id);
+  const fileInput = el(&#x27;mvec-file&#x27;);
+  const rotation = el(&#x27;mvec-rotation&#x27;);
+  const showBlank = el(&#x27;mvec-blank&#x27;);
+  const showOverscan = el(&#x27;mvec-overscan&#x27;);
+  const status = el(&#x27;mvec-status&#x27;);
+  const canvas = el(&#x27;mvec-canvas&#x27;);
+  const ctx = canvas.getContext(&#x27;2d&#x27;, { alpha: false });
+  const first = el(&#x27;mvec-first&#x27;);
+  const prev = el(&#x27;mvec-prev&#x27;);
+  const play = el(&#x27;mvec-play&#x27;);
+  const next = el(&#x27;mvec-next&#x27;);
+  const last = el(&#x27;mvec-last&#x27;);
+  const number = el(&#x27;mvec-frame-number&#x27;);
+  const count = el(&#x27;mvec-frame-count&#x27;);
+  const range = el(&#x27;mvec-frame-range&#x27;);
+  const meta = el(&#x27;mvec-frame-meta&#x27;);
+  const selection = el(&#x27;mvec-selection&#x27;);
+  const workspace = el(&#x27;mvec-workspace&#x27;);
+  const referenceMode = el(&#x27;mvec-reference-mode&#x27;);
+  const referencePanel = el(&#x27;mvec-reference-panel&#x27;);
+  const vectorPrev = el(&#x27;mvec-vector-prev&#x27;);
+  const vectorNext = el(&#x27;mvec-vector-next&#x27;);
+  const vectorNumber = el(&#x27;mvec-vector-number&#x27;);
+  const vectorCount = el(&#x27;mvec-vector-count&#x27;);
+  const vectorRange = el(&#x27;mvec-vector-range&#x27;);
+  const rowWindow = el(&#x27;mvec-row-window&#x27;);
+  const vectorRows = el(&#x27;mvec-vector-rows&#x27;);
+  const zoomLabel = el(&#x27;mvec-zoom&#x27;);
+  const zoomIn = el(&#x27;mvec-zoom-in&#x27;);
+  const zoomOut = el(&#x27;mvec-zoom-out&#x27;);
+  const zoomReset = el(&#x27;mvec-zoom-reset&#x27;);
+  const transport = [first, prev, play, next, last, number, range];
+  const ROW_WINDOW_SIZE = 80;
+
+  const state = {
+    bytes: null,
+    view: null,
+    frames: [],
+    cache: new Map(),
+    current: 0,
+    selected: -1,
+    playing: false,
+    lastTick: 0,
+    system: &#x27;&#x27;,
+    device: &#x27;&#x27;,
+    fileName: &#x27;&#x27;,
+    drawRect: null,
+    drawPoints: null,
+    zoom: 1,          // 1 = 全体表示
+    panX: 0,          // CSS px（キャンバス中心からのずれ）
+    panY: 0,
+    drag: null,
+    dragMoved: false
+  };
+
+  const CRC_TABLE = (() =&gt; {
+    const table = new Uint32Array(256);
+    for (let n = 0; n &lt; 256; n++) {
+      let c = n;
+      for (let k = 0; k &lt; 8; k++) c = (c &amp; 1) ? (0xedb88320 ^ (c &gt;&gt;&gt; 1)) : (c &gt;&gt;&gt; 1);
+      table[n] = c &gt;&gt;&gt; 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes, offset, length) {
+    let c = 0xffffffff;
+    const end = offset + length;
+    for (let i = offset; i &lt; end; i++) c = CRC_TABLE[(c ^ bytes[i]) &amp; 0xff] ^ (c &gt;&gt;&gt; 8);
+    return (c ^ 0xffffffff) &gt;&gt;&gt; 0;
+  }
+
+  function requireBytes(pos, size, limit, label) {
+    if (size &lt; 0 || pos &lt; 0 || pos + size &gt; limit) throw new Error(label + &#x27;が途中で切れています。&#x27;);
+  }
+
+  function parseMvec(buffer, name) {
+    const bytes = new Uint8Array(buffer);
+    const view = new DataView(buffer);
+    let pos = 0;
+    requireBytes(0, 16, bytes.length, &#x27;MVECヘッダー&#x27;);
+    const expected = [77, 65, 77, 69, 86, 69, 67, 0];
+    for (let i = 0; i &lt; expected.length; i++) {
+      if (bytes[i] !== expected[i]) throw new Error(&#x27;MVEC v1ファイルではありません。&#x27;);
+    }
+    pos = 8;
+    const major = view.getUint16(pos, true); pos += 2;
+    const minor = view.getUint16(pos, true); pos += 2;
+    const endian = view.getUint32(pos, true); pos += 4;
+    if (major !== 1 || minor &gt; 1 || endian !== 0x12345678) throw new Error(`未対応のMVEC形式です（${major}.${minor}）。`);
+
+    const decoder = new TextDecoder(&#x27;utf-8&#x27;);
+    function readString() {
+      requireBytes(pos, 2, bytes.length, &#x27;MVEC文字列&#x27;);
+      const length = view.getUint16(pos, true); pos += 2;
+      requireBytes(pos, length, bytes.length, &#x27;MVEC文字列&#x27;);
+      const value = decoder.decode(bytes.subarray(pos, pos + length));
+      pos += length;
+      return value;
+    }
+
+    const systemName = readString();
+    const deviceName = readString();
+    // v1.1 appends the recorded frame period in attoseconds (vector.cpp write_header/read_header).
+    // 0 or missing means the recorder did not know it; playback then infers it.
+    let framePeriodAs = 0;
+    if (minor &gt;= 1) {
+      requireBytes(pos, 8, bytes.length, &#x27;MVECフレーム周期&#x27;);
+      framePeriodAs = Number(view.getBigInt64(pos, true)); pos += 8;
+    }
+    const frames = [];
+    let lastContent = -1;
+    while (pos &lt; bytes.length) {
+      requireBytes(pos, 12, bytes.length, &#x27;フレームチャンク&#x27;);
+      const magic = view.getUint32(pos, true); pos += 4;
+      if (magic !== 0x4d415246) throw new Error(`フレーム${frames.length + 1}のFRAMマーカーが不正です。`);
+      const payloadSize = view.getUint32(pos, true); pos += 4;
+      const payload = pos;
+      requireBytes(payload, payloadSize + 4, bytes.length, `フレーム${frames.length + 1}`);
+      if (payloadSize &lt; 36) throw new Error(`フレーム${frames.length + 1}のペイロードが短すぎます。`);
+      const storedCrc = view.getUint32(payload + payloadSize, true);
+      const actualCrc = crc32(bytes, payload, payloadSize);
+      if (storedCrc !== actualCrc) throw new Error(`フレーム${frames.length + 1}のCRCが一致しません。`);
+
+      const id = view.getBigUint64(payload, true);
+      const flags = view.getUint32(payload + 8, true);
+      const stale = (flags &amp; 1) !== 0;
+      const pointCount = view.getUint32(payload + 32, true);
+      const expectedSize = 36 + pointCount * 66;
+      if (expectedSize !== payloadSize) throw new Error(`フレーム${frames.length + 1}のベクター数とサイズが一致しません。`);
+      if (stale &amp;&amp; pointCount !== 0) throw new Error(`staleフレーム${frames.length + 1}にベクターが格納されています。`);
+      if (!stale) lastContent = frames.length;
+
+      frames.push({
+        payload,
+        payloadSize,
+        id,
+        stale,
+        timed: (flags &amp; 2) !== 0,
+        generation: view.getUint32(payload + 12, true),
+        vis: {
+          minX: view.getInt32(payload + 16, true),
+          maxX: view.getInt32(payload + 20, true),
+          minY: view.getInt32(payload + 24, true),
+          maxY: view.getInt32(payload + 28, true)
+        },
+        storedCount: pointCount,
+        contentFrame: stale ? lastContent : frames.length
+      });
+      pos = payload + payloadSize + 4;
+    }
+    if (!frames.length) throw new Error(&#x27;フレームが記録されていません。&#x27;);
+
+    state.bytes = bytes;
+    state.view = view;
+    state.frames = frames;
+    state.cache.clear();
+    state.current = 0;
+    state.selected = -1;
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    state.drag = null;
+    state.dragMoved = false;
+    referenceMode.checked = false;
+    referenceMode.disabled = false;
+    referencePanel.hidden = true;
+    workspace.classList.remove(&#x27;reference-active&#x27;);
+    state.system = systemName;
+    state.device = deviceName;
+    state.fileName = name;
+    state.version = `${major}.${minor}`;
+    state.framePeriodAs = framePeriodAs;
+    state.frameHz = framePeriodAs &gt; 0 ? 1e18 / framePeriodAs : 0;
+  }
+
+  function decodeContent(frameIndex) {
+    const frame = state.frames[frameIndex];
+    const sourceIndex = frame.contentFrame;
+    if (sourceIndex &lt; 0) return [];
+    if (state.cache.has(sourceIndex)) return state.cache.get(sourceIndex);
+    const source = state.frames[sourceIndex];
+    const view = state.view;
+    let pos = source.payload + 36;
+    const points = new Array(source.storedCount);
+    for (let i = 0; i &lt; points.length; i++) {
+      const x0 = view.getInt32(pos, true); pos += 4;
+      const y0 = view.getInt32(pos, true); pos += 4;
+      const x = view.getInt32(pos, true); pos += 4;
+      const y = view.getInt32(pos, true); pos += 4;
+      const color = view.getUint32(pos, true); pos += 4;
+      const intensity = view.getUint8(pos); pos += 1;
+      const energy = view.getFloat32(pos, true); pos += 4;
+      const t0s = view.getInt32(pos, true); pos += 4;
+      const t0a = view.getBigInt64(pos, true); pos += 8;
+      const t1s = view.getInt32(pos, true); pos += 4;
+      const t1a = view.getBigInt64(pos, true); pos += 8;
+      const caps = view.getUint32(pos, true); pos += 4;
+      const scale = view.getInt32(pos, true); pos += 4;
+      const rampUs = view.getFloat64(pos, true); pos += 8;
+      const midchange = view.getUint8(pos) !== 0; pos += 1;
+      points[i] = {
+        x0, y0, x, y, color, intensity, energy, caps, scale, rampUs, midchange,
+        t0: Number(t0s) + Number(t0a) / 1e18,
+        t1: Number(t1s) + Number(t1a) / 1e18
+      };
+    }
+    state.cache.set(sourceIndex, points);
+    if (state.cache.size &gt; 12) state.cache.delete(state.cache.keys().next().value);
+    return points;
+  }
+
+  function oriented(nx, ny) {
+    switch (rotation.value) {
+      case &#x27;90&#x27;: return [1 - ny, nx];
+      case &#x27;180&#x27;: return [1 - nx, 1 - ny];
+      case &#x27;270&#x27;: return [ny, 1 - nx];
+      default: return [nx, ny];
+    }
+  }
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(rect.width * dpr));
+    const h = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    return { w, h, dpr };
+  }
+
+  function render() {
+    const { w, h, dpr } = resizeCanvas();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = &#x27;source-over&#x27;;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = &#x27;#000&#x27;;
+    ctx.fillRect(0, 0, w, h);
+    state.drawPoints = null;
+    state.drawRect = null;
+    if (!state.frames.length) return;
+
+    const frame = state.frames[state.current];
+    const points = decodeContent(state.current);
+    const rotated = rotation.value === &#x27;90&#x27; || rotation.value === &#x27;270&#x27;;
+    const visW = Math.max(1, frame.vis.maxX - frame.vis.minX + 1);
+    const visH = Math.max(1, frame.vis.maxY - frame.vis.minY + 1);
+    const aspect = rotated ? visH / visW : visW / visH;
+    const pad = 18 * dpr;
+    let drawW = Math.max(1, w - pad * 2);
+    let drawH = drawW / aspect;
+    if (drawH &gt; h - pad * 2) {
+      drawH = Math.max(1, h - pad * 2);
+      drawW = drawH * aspect;
+    }
+    // 拡大とドラッグ移動。zoom は全体表示を 1 とする倍率、pan は CSS px なのでマウス移動量と 1:1。
+    drawW *= state.zoom;
+    drawH *= state.zoom;
+    const panLimitX = Math.max(0, (drawW - w) * 0.5) / dpr + 48;
+    const panLimitY = Math.max(0, (drawH - h) * 0.5) / dpr + 48;
+    state.panX = Math.min(panLimitX, Math.max(-panLimitX, state.panX));
+    state.panY = Math.min(panLimitY, Math.max(-panLimitY, state.panY));
+    const ox = (w - drawW) * 0.5 + state.panX * dpr;
+    const oy = (h - drawH) * 0.5 + state.panY * dpr;
+    state.drawRect = { ox, oy, drawW, drawH };
+
+    function map(x, y) {
+      let nx = (x - frame.vis.minX) / (65536 * visW);
+      let ny = (y - frame.vis.minY) / (65536 * visH);
+      if (showOverscan.checked) {
+        // Match MAME vector_overscan_x/y 0.5: shrink about the screen centre so
+        // raw coordinates from -0.5 through 1.5 become visible in the output.
+        nx = (nx - 0.5) * 0.5 + 0.5;
+        ny = (ny - 0.5) * 0.5 + 0.5;
+      }
+      const [rx, ry] = oriented(nx, ny);
+      return [ox + rx * drawW, oy + ry * drawH];
+    }
+
+    ctx.strokeStyle = &#x27;rgba(255,255,255,0.22)&#x27;;
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(ox, oy, drawW, drawH);
+    if (showOverscan.checked) {
+      // The recorded visible area occupies the centre half at overscan 0.5.
+      ctx.save();
+      ctx.setLineDash([5 * dpr, 4 * dpr]);
+      ctx.strokeStyle = &#x27;rgba(255,255,255,0.34)&#x27;;
+      ctx.strokeRect(ox + drawW * 0.25, oy + drawH * 0.25, drawW * 0.5, drawH * 0.5);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ox, oy, drawW, drawH);
+    ctx.clip();
+    ctx.globalCompositeOperation = &#x27;lighter&#x27;;
+    ctx.lineCap = &#x27;round&#x27;;
+    const mapped = new Array(points.length);
+    const drawLimit = referenceMode.checked &amp;&amp; state.selected &gt;= 0
+      ? Math.min(state.selected, points.length - 1) : points.length - 1;
+
+    for (let i = 0; i &lt; points.length; i++) {
+      const p = points[i];
+      const a = map(p.x0, p.y0);
+      const b = map(p.x, p.y);
+      mapped[i] = [a[0], a[1], b[0], b[1]];
+      if (i &gt; drawLimit) continue;
+      if (p.intensity === 0) {
+        if (!showBlank.checked) continue;
+        ctx.globalCompositeOperation = &#x27;source-over&#x27;;
+        ctx.strokeStyle = &#x27;rgba(120,120,120,0.22)&#x27;;
+        ctx.lineWidth = Math.max(1, dpr);
+      } else {
+        const r = (p.color &gt;&gt;&gt; 16) &amp; 255;
+        const g = (p.color &gt;&gt;&gt; 8) &amp; 255;
+        const bcol = p.color &amp; 255;
+        const alpha = Math.max(0.04, Math.min(1, p.intensity / 255));
+        ctx.globalCompositeOperation = &#x27;lighter&#x27;;
+        ctx.strokeStyle = `rgba(${r},${g},${bcol},${alpha})`;
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = Math.max(1.1 * dpr, 0.0018 * Math.min(drawW, drawH));
+      }
+      const isPoint = p.x0 === p.x &amp;&amp; p.y0 === p.y;
+      if (isPoint) {
+        const radius = p.intensity === 0 ? 1.2 * dpr : Math.max(1.6 * dpr, ctx.lineWidth * 0.9);
+        ctx.beginPath();
+        ctx.arc(b[0], b[1], radius, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.stroke();
+      }
+    }
+
+    if (state.selected &gt;= 0 &amp;&amp; state.selected &lt; points.length) {
+      const m = mapped[state.selected];
+      ctx.globalCompositeOperation = &#x27;source-over&#x27;;
+      ctx.strokeStyle = &#x27;#ffd23f&#x27;;
+      ctx.fillStyle = &#x27;#ffd23f&#x27;;
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(m[0], m[1]);
+      ctx.lineTo(m[2], m[3]);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(m[2], m[3], 4 * dpr, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+    state.drawPoints = mapped;
+  }
+
+  function vectorDetail(index) {
+    const points = decodeContent(state.current);
+    if (index &lt; 0 || index &gt;= points.length) {
+      selection.textContent = &#x27;ベクターをクリックすると詳細を表示します。&#x27;;
+      return;
+    }
+    const p = points[index];
+    const hex = &#x27;#&#x27; + (p.color &amp; 0xffffff).toString(16).padStart(6, &#x27;0&#x27;).toUpperCase();
+    const kind = p.x0 === p.x &amp;&amp; p.y0 === p.y ? &#x27;点&#x27; : (p.intensity === 0 ? &#x27;blank移動&#x27; : &#x27;線&#x27;);
+    const frame = state.frames[state.current];
+    const duration = frame.timed &amp;&amp; Number.isFinite(p.t0) &amp;&amp; Number.isFinite(p.t1) &amp;&amp; p.t0 &lt; 1e8
+      ? Math.max(0, (p.t1 - p.t0) * 1e6) : NaN;
+    selection.textContent = `ベクター ${index + 1} / ${points.length}・${kind}・RGB ${hex}・強度 ${p.intensity}・energy ${p.energy.toFixed(4)}・描画時間 ${Number.isFinite(duration) ? duration.toFixed(3) + &#x27; µs&#x27; : &#x27;—&#x27;}・caps 0x${p.caps.toString(16)}`;
+  }
+
+  function vectorKind(point) {
+    return point.x0 === point.x &amp;&amp; point.y0 === point.y ? &#x27;点&#x27; : (point.intensity === 0 ? &#x27;blank&#x27; : &#x27;線&#x27;);
+  }
+
+  function vectorTime(value) {
+    return Number.isFinite(value) &amp;&amp; value &lt; 1e8 ? value.toFixed(6) : &#x27;—&#x27;;
+  }
+
+  function renderReferenceRows(points) {
+    vectorRows.replaceChildren();
+    const total = points.length;
+    const hasRows = total &gt; 0;
+    vectorPrev.disabled = !hasRows || state.selected &lt;= 0;
+    vectorNext.disabled = !hasRows || state.selected &gt;= total - 1;
+    vectorNumber.disabled = !hasRows;
+    vectorRange.disabled = !hasRows;
+    vectorNumber.max = String(Math.max(1, total));
+    vectorRange.max = String(Math.max(1, total));
+    if (!hasRows) {
+      state.selected = -1;
+      vectorNumber.value = &#x27;1&#x27;;
+      vectorRange.value = &#x27;1&#x27;;
+      vectorCount.textContent = &#x27;行 0 / 0&#x27;;
+      rowWindow.textContent = &#x27;表示行 —&#x27;;
+      return;
+    }
+
+    state.selected = Math.max(0, Math.min(total - 1, state.selected));
+    vectorNumber.value = String(state.selected + 1);
+    vectorRange.value = String(state.selected + 1);
+    vectorCount.textContent = &#x27;行 &#x27; + (state.selected + 1) + &#x27; / &#x27; + total;
+
+    const maxStart = Math.max(0, total - ROW_WINDOW_SIZE);
+    const start = Math.max(0, Math.min(maxStart, state.selected - Math.floor(ROW_WINDOW_SIZE / 2)));
+    const end = Math.min(total, start + ROW_WINDOW_SIZE);
+    rowWindow.textContent = &#x27;表示行 &#x27; + (start + 1) + &#x27;–&#x27; + end + &#x27; / &#x27; + total + &#x27;（選択行を中心に最大&#x27; + ROW_WINDOW_SIZE + &#x27;行）&#x27;;
+
+    const fragment = document.createDocumentFragment();
+    for (let i = start; i &lt; end; i++) {
+      const p = points[i];
+      const hex = &#x27;#&#x27; + (p.color &amp; 0xffffff).toString(16).padStart(6, &#x27;0&#x27;).toUpperCase();
+      const values = [
+        i + 1, vectorKind(p), p.x0, p.y0, p.x, p.y, hex, p.intensity,
+        p.energy.toFixed(4), vectorTime(p.t0), vectorTime(p.t1),
+        &#x27;0x&#x27; + p.caps.toString(16), p.scale &lt; 0 ? &#x27;—&#x27; : p.scale,
+        p.rampUs &lt; 0 ? &#x27;—&#x27; : p.rampUs.toFixed(3), p.midchange ? &#x27;yes&#x27; : &#x27;&#x27;
+      ];
+      const row = document.createElement(&#x27;tr&#x27;);
+      row.setAttribute(&#x27;aria-selected&#x27;, i === state.selected ? &#x27;true&#x27; : &#x27;false&#x27;);
+      row.setAttribute(&#x27;aria-label&#x27;, &#x27;ベクター行 &#x27; + (i + 1));
+      for (const value of values) {
+        const cell = document.createElement(&#x27;td&#x27;);
+        cell.textContent = String(value);
+        row.appendChild(cell);
+      }
+      row.addEventListener(&#x27;click&#x27;, () =&gt; selectVector(i));
+      fragment.appendChild(row);
+    }
+    vectorRows.appendChild(fragment);
+  }
+
+  function selectVector(index) {
+    const points = decodeContent(state.current);
+    if (!points.length) {
+      state.selected = -1;
+      renderReferenceRows(points);
+      vectorDetail(-1);
+      render();
+      return;
+    }
+    setPlaying(false);
+    state.selected = Math.max(0, Math.min(points.length - 1, index));
+    renderReferenceRows(points);
+    vectorDetail(state.selected);
+    render();
+  }
+  function updateFrame(index) {
+    if (!state.frames.length) return;
+    state.current = Math.max(0, Math.min(state.frames.length - 1, index));
+    state.selected = referenceMode.checked ? 0 : -1;
+    const human = state.current + 1;
+    const frame = state.frames[state.current];
+    const points = decodeContent(state.current);
+    number.value = String(human);
+    range.value = String(human);
+    count.textContent = `データ ${human} / ${state.frames.length}`;
+    const sourceText = frame.stale &amp;&amp; frame.contentFrame &gt;= 0 ? `・stale（内容はデータ ${frame.contentFrame + 1}）` : &#x27;&#x27;;
+    meta.textContent = `記録フレームID ${frame.id.toString()}・generation ${frame.generation}・ベクター ${points.length}${sourceText}`;
+    if (referenceMode.checked) {
+      renderReferenceRows(points);
+      vectorDetail(state.selected);
+    } else {
+      vectorDetail(-1);
+    }
+    render();
+  }
+
+  function setPlaying(value) {
+    state.playing = Boolean(value &amp;&amp; state.frames.length);
+    play.textContent = state.playing ? &#x27;停止&#x27; : &#x27;再生&#x27;;
+    play.setAttribute(&#x27;aria-pressed&#x27;, state.playing ? &#x27;true&#x27; : &#x27;false&#x27;);
+    state.lastTick = 0;
+    if (state.playing) requestAnimationFrame(tick);
+  }
+
+  function tick(time) {
+    if (!state.playing) return;
+    if (!state.lastTick) state.lastTick = time;
+    if (time - state.lastTick &gt;= 1000 / 60) {
+      state.lastTick = time;
+      if (state.current &gt;= state.frames.length - 1) setPlaying(false);
+      else updateFrame(state.current + 1);
+    }
+    if (state.playing) requestAnimationFrame(tick);
+  }
+
+  async function loadFile(file) {
+    setPlaying(false);
+    status.textContent = `${file.name} を読み込み、全フレームのCRCを確認しています…`;
+    try {
+      const buffer = await file.arrayBuffer();
+      parseMvec(buffer, file.name);
+      const total = state.frames.length;
+      transport.forEach(control =&gt; control.disabled = false);
+      number.max = String(total);
+      range.max = String(total);
+      status.textContent = `${file.name}・MVEC ${state.version}・system ${state.system}・device ${state.device}・${total}フレーム${state.frameHz ? `・${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;}（CRC正常）`;
+      updateFrame(0);
+      updateZoomUi();
+    } catch (error) {
+      state.frames = [];
+      transport.forEach(control =&gt; control.disabled = true);
+      referenceMode.checked = false;
+      referenceMode.disabled = true;
+      referencePanel.hidden = true;
+      workspace.classList.remove(&#x27;reference-active&#x27;);
+      vectorRows.replaceChildren();
+      count.textContent = &#x27;データ 0 / 0&#x27;;
+      meta.textContent = &#x27;記録フレームID —・ベクター —&#x27;;
+      status.textContent = `読み込みエラー: ${error instanceof Error ? error.message : String(error)}`;
+      render();
+    }
+  }
+
+  function distanceToSegment(px, py, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const den = dx * dx + dy * dy;
+    const t = den &gt; 0 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / den)) : 0;
+    return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+  }
+
+  referenceMode.addEventListener(&#x27;change&#x27;, () =&gt; {
+    setPlaying(false);
+    referencePanel.hidden = !referenceMode.checked;
+    workspace.classList.toggle(&#x27;reference-active&#x27;, referenceMode.checked);
+    play.disabled = referenceMode.checked;
+    if (referenceMode.checked) selectVector(state.selected &gt;= 0 ? state.selected : 0);
+    else {
+      state.selected = -1;
+      vectorDetail(-1);
+      render();
+    }
+  });
+  vectorPrev.addEventListener(&#x27;click&#x27;, () =&gt; selectVector(state.selected - 1));
+  vectorNext.addEventListener(&#x27;click&#x27;, () =&gt; selectVector(state.selected + 1));
+  vectorRange.addEventListener(&#x27;input&#x27;, () =&gt; selectVector(Number(vectorRange.value) - 1));
+  vectorNumber.addEventListener(&#x27;change&#x27;, () =&gt; selectVector(Number(vectorNumber.value) - 1));
+  vectorNumber.addEventListener(&#x27;keydown&#x27;, event =&gt; {
+    if (event.key === &#x27;Enter&#x27;) selectVector(Number(vectorNumber.value) - 1);
+  });
+  fileInput.addEventListener(&#x27;change&#x27;, () =&gt; { if (fileInput.files &amp;&amp; fileInput.files[0]) loadFile(fileInput.files[0]); });
+  rotation.addEventListener(&#x27;change&#x27;, render);
+  showBlank.addEventListener(&#x27;change&#x27;, render);
+  showOverscan.addEventListener(&#x27;change&#x27;, render);
+  first.addEventListener(&#x27;click&#x27;, () =&gt; updateFrame(0));
+  prev.addEventListener(&#x27;click&#x27;, () =&gt; updateFrame(state.current - 1));
+  next.addEventListener(&#x27;click&#x27;, () =&gt; updateFrame(state.current + 1));
+  last.addEventListener(&#x27;click&#x27;, () =&gt; updateFrame(state.frames.length - 1));
+  play.addEventListener(&#x27;click&#x27;, () =&gt; setPlaying(!state.playing));
+  range.addEventListener(&#x27;input&#x27;, () =&gt; updateFrame(Number(range.value) - 1));
+  number.addEventListener(&#x27;change&#x27;, () =&gt; updateFrame(Number(number.value) - 1));
+  number.addEventListener(&#x27;keydown&#x27;, event =&gt; { if (event.key === &#x27;Enter&#x27;) updateFrame(Number(number.value) - 1); });
+  canvas.addEventListener(&#x27;click&#x27;, event =&gt; {
+    if (state.dragMoved) { state.dragMoved = false; return; }   // ドラッグ終了のクリックは選択に使わない
+    if (!state.drawPoints) return;
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const px = (event.clientX - rect.left) * sx;
+    const py = (event.clientY - rect.top) * sy;
+    let best = -1, bestDistance = 10 * Math.max(sx, sy);
+    const visiblePoints = decodeContent(state.current);
+    for (let i = 0; i &lt; state.drawPoints.length; i++) {
+      if (!showBlank.checked &amp;&amp; visiblePoints[i].intensity === 0) continue;
+      const p = state.drawPoints[i];
+      const d = distanceToSegment(px, py, p[0], p[1], p[2], p[3]);
+      if (d &lt; bestDistance) { bestDistance = d; best = i; }
+    }
+    if (referenceMode.checked) { if (best &gt;= 0) selectVector(best); }
+    else {
+      state.selected = best;
+      vectorDetail(best);
+      render();
+    }
+  });
+  // ---- 表示の拡大 / ドラッグ移動（参照モードでも同じキャンバスなのでそのまま使える） ----
+  const ZOOM_MIN = 1, ZOOM_MAX = 40;
+  function updateZoomUi() {
+    const has = state.frames.length &gt; 0;
+    zoomIn.disabled = !has || state.zoom &gt;= ZOOM_MAX - 1e-6;
+    zoomOut.disabled = !has || state.zoom &lt;= ZOOM_MIN + 1e-6;
+    zoomReset.disabled = !has || (state.zoom === 1 &amp;&amp; state.panX === 0 &amp;&amp; state.panY === 0);
+    zoomLabel.textContent = `拡大 ${state.zoom &lt; 10 ? state.zoom.toFixed(1).replace(/\.0$/, &#x27;&#x27;) : Math.round(state.zoom)}x`;
+    canvas.style.cursor = state.drag ? &#x27;grabbing&#x27; : (state.zoom &gt; 1 ? &#x27;grab&#x27; : &#x27;crosshair&#x27;);
+  }
+  function setZoom(zoom, anchorX, anchorY) {
+    if (!state.frames.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+    // カーソル位置を固定したまま倍率を変える: pan&#x27; = c - (c - pan) * (z&#x27;/z)
+    const cx = (anchorX === undefined ? rect.width * 0.5 : anchorX) - rect.width * 0.5;
+    const cy = (anchorY === undefined ? rect.height * 0.5 : anchorY) - rect.height * 0.5;
+    const k = next / state.zoom;
+    state.panX = cx - (cx - state.panX) * k;
+    state.panY = cy - (cy - state.panY) * k;
+    state.zoom = next;
+    if (next === ZOOM_MIN) { state.panX = 0; state.panY = 0; }
+    updateZoomUi();
+    render();
+  }
+  function resetView() {
+    state.zoom = 1; state.panX = 0; state.panY = 0;
+    updateZoomUi();
+    render();
+  }
+  canvas.addEventListener(&#x27;wheel&#x27;, event =&gt; {
+    if (!state.frames.length) return;
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    setZoom(state.zoom * Math.exp(-event.deltaY * 0.0018), event.clientX - rect.left, event.clientY - rect.top);
+  }, { passive: false });
+  canvas.addEventListener(&#x27;pointerdown&#x27;, event =&gt; {
+    state.dragMoved = false;
+    if (!state.frames.length || event.button !== 0 || state.zoom &lt;= 1) return;   // 全体表示中はクリック選択を邪魔しない
+    state.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: 0 };
+    if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+    updateZoomUi();
+  });
+  canvas.addEventListener(&#x27;pointermove&#x27;, event =&gt; {
+    if (!state.drag || state.drag.id !== event.pointerId) return;
+    const dx = event.clientX - state.drag.x;
+    const dy = event.clientY - state.drag.y;
+    state.drag.x = event.clientX;
+    state.drag.y = event.clientY;
+    state.drag.moved += Math.abs(dx) + Math.abs(dy);
+    state.panX += dx;
+    state.panY += dy;
+    render();
+  });
+  function endDrag(event) {
+    if (!state.drag || state.drag.id !== event.pointerId) return;
+    state.dragMoved = state.drag.moved &gt; 3;
+    state.drag = null;
+    if (canvas.releasePointerCapture &amp;&amp; canvas.hasPointerCapture &amp;&amp; canvas.hasPointerCapture(event.pointerId))
+      canvas.releasePointerCapture(event.pointerId);
+    updateZoomUi();
+  }
+  canvas.addEventListener(&#x27;pointerup&#x27;, endDrag);
+  canvas.addEventListener(&#x27;pointercancel&#x27;, endDrag);
+  canvas.addEventListener(&#x27;dblclick&#x27;, event =&gt; { event.preventDefault(); resetView(); });
+  zoomIn.addEventListener(&#x27;click&#x27;, () =&gt; setZoom(state.zoom * 1.6));
+  zoomOut.addEventListener(&#x27;click&#x27;, () =&gt; setZoom(state.zoom / 1.6));
+  zoomReset.addEventListener(&#x27;click&#x27;, resetView);
+  window.addEventListener(&#x27;resize&#x27;, render);
+  document.addEventListener(&#x27;keydown&#x27;, event =&gt; {
+    if (!state.frames.length || event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+    if (event.key === &#x27;+&#x27; || event.key === &#x27;;&#x27; || event.key === &#x27;=&#x27;) { event.preventDefault(); setZoom(state.zoom * 1.6); return; }
+    if (event.key === &#x27;-&#x27;) { event.preventDefault(); setZoom(state.zoom / 1.6); return; }
+    if (event.key === &#x27;0&#x27;) { event.preventDefault(); resetView(); return; }
+    if (referenceMode.checked &amp;&amp; event.key === &#x27;ArrowUp&#x27;) { event.preventDefault(); selectVector(state.selected - 1); }
+    else if (referenceMode.checked &amp;&amp; event.key === &#x27;ArrowDown&#x27;) { event.preventDefault(); selectVector(state.selected + 1); }
+    else if (event.key === &#x27;ArrowLeft&#x27;) { event.preventDefault(); updateFrame(state.current - 1); }
+    else if (event.key === &#x27;ArrowRight&#x27;) { event.preventDefault(); updateFrame(state.current + 1); }
+    else if (event.key === &#x27; &#x27; &amp;&amp; !referenceMode.checked) { event.preventDefault(); setPlaying(!state.playing); }
+  });
+  updateZoomUi();
+  render();
+})();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

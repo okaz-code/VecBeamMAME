@@ -1,0 +1,334 @@
+{
+ "_comment": "Section order and membership for tools/dump-chain-sliders.py. Slider names not listed here land in the trailing \"unclassified\" section of the generated document, which is how a newly added slider announces itself. Editing this file is how you place it.",
+ "sections": [
+  {
+   "title": "マクロ（Advanced Off でも見える）",
+   "sliders": [
+    "macro_exposure",
+    "bright_threshold",
+    "macro_overload",
+    "macro_bloom",
+    "macro_beam_width",
+    "macro_point_size",
+    "macro_point_bright",
+    "macro_defocus",
+    "macro_persistence",
+    "macro_monitor_sim",
+    "macro_bezel",
+    "macro_beam_sim",
+    "macro_halation",
+    "advanced_sliders"
+   ]
+  },
+  {
+   "title": "Phosphor persistence and decay（蛍光体の残光と減衰）",
+   "sliders": [
+    "phosphor_half_ms",
+    "phosphor_hold_ms",
+    "phosphor_curve",
+    "phosphor_total_ms",
+    "phosphor_hit_reset",
+    "phosphor_weak_hit_composite",
+    "phosphor_rgb_combination",
+    "phosphor_rgb_combination_width",
+    "phosphor_energy_decay",
+    "phosphor_rgb_decay",
+    "phosphor_color"
+   ]
+  },
+  {
+   "title": "Brightness transfer（輝度トランスファ）",
+   "sliders": [
+    "bright_sigmoid",
+    "bright_sigmoid_center"
+   ]
+  },
+  {
+   "title": "Beam width（ビーム幅）",
+   "sliders": [
+    "beam_width_min",
+    "beam_width_max",
+    "width_curve",
+    "core_flat",
+    "width_knee",
+    "width_sigmoid",
+    "width_sigmoid_center",
+    "beam_width_overmax",
+    "width_over_curve",
+    "halo_quad_extent"
+   ]
+  },
+  {
+   "title": "Points and dots（点・ドット）",
+   "sliders": [
+    "line_point_threshold",
+    "point_width_scale",
+    "point_brightness_scale",
+    "point_roundness",
+    "vertex_dwell",
+    "cap_no_persist",
+    "dot_no_persist_dwell",
+    "z_rise_tau",
+    "isolated_dot_min_size"
+   ]
+  },
+  {
+   "title": "Focus and defocus（フォーカス／ボケ）",
+   "sliders": [
+    "defocus",
+    "edge_defocus",
+    "edge_defocus_curve"
+   ]
+  },
+  {
+   "title": "Line ends（線端＝ブランキング遷移）",
+   "sliders": [
+    "line_cap_width",
+    "line_cap_overload_add",
+    "line_cap_overload_curve",
+    "line_cap_transition",
+    "line_cap_curve",
+    "line_cap_mode",
+    "cap_ramp_only"
+   ]
+  },
+  {
+   "title": "Beam energy model（ビームエネルギーモデル）",
+   "sliders": [
+    "energy_model",
+    "energy_infl",
+    "energy_speed_norm",
+    "energy_curve",
+    "energy_line_max",
+    "energy_dot_ref",
+    "energy_dot_curve",
+    "energy_dot_max",
+    "energy_stroke_agg",
+    "energy_dwell_cap",
+    "energy_obj_lift",
+    "energy_obj_knee",
+    "energy_obj_sharp",
+    "energy_obj_max",
+    "energy_obj_star"
+   ]
+  },
+  {
+   "title": "Overload and overdrive（過大入力とオーバードライブ）",
+   "sliders": [
+    "overload_threshold",
+    "overload_ramp",
+    "intensity_overdrive",
+    "intensity_overdrive_curve",
+    "mask_overdrive_flare",
+    "overload_dot_gain",
+    "overload_max",
+    "overdrive_core",
+    "overload_bloom",
+    "overload_width_add",
+    "overload_width_steepness",
+    "overload_width_center",
+    "overlap_white_strength",
+    "overlap_white_count",
+    "overlap_white_brightness",
+    "overlap_white_spread",
+    "overload_display_compression",
+    "phosphor_overdrive",
+    "overdrive_knee",
+    "overdrive_sat_curve",
+    "overdrive_color",
+    "overload_width_bloom_link"
+   ]
+  },
+  {
+   "title": "Glow and bloom（グロー／ブルーム）",
+   "sliders": [
+    "analytic_glow",
+    "analytic_glow_width",
+    "glow_narrow",
+    "overload_core_gain",
+    "glow_wide",
+    "glow_wide_reach",
+    "glow_wide_pivot",
+    "glow_wide_curve",
+    "glow_wide_smooth",
+    "overload_glow_gain",
+    "overload_glow_width",
+    "glow_tail_curve",
+    "glow_fbo_scale",
+    "glow_black_toe"
+   ]
+  },
+  {
+   "title": "Halation and starburst（ハレーション／スターバースト）",
+   "sliders": [
+    "halation_gain",
+    "ring_over_gain",
+    "ring_gain",
+    "ring_fill",
+    "ring_radius",
+    "ring_width",
+    "ring_min_dwell",
+    "ring_threshold",
+    "ray_gain",
+    "ray_var",
+    "ray_count",
+    "ray_length",
+    "ray_length_rand",
+    "ray_count_rand",
+    "ray_width",
+    "ray_angle"
+   ]
+  },
+  {
+   "title": "Edge glow (beam past the visible area)（画面外へ振れたビームの発光）",
+   "sliders": [
+    "edge_glow",
+    "edge_glow_threshold",
+    "edge_glow_sensitivity",
+    "edge_glow_width",
+    "edge_glow_length",
+    "edge_glow_persist"
+   ]
+  },
+  {
+   "title": "Convergence（コンバージェンス）",
+   "sliders": [
+    "convergence_global_gain",
+    "convergence_global_coverage",
+    "converge_red",
+    "converge_green",
+    "converge_blue",
+    "radial_converge_red",
+    "radial_converge_green",
+    "radial_converge_blue"
+   ]
+  },
+  {
+   "title": "Beam time window（ビーム時間窓＝1プレゼントあたりの掃引スライス）",
+   "sliders": [
+    "beam_window",
+    "beam_window_scale",
+    "beam_flash_ms",
+    "beam_flash_gain"
+   ]
+  },
+  {
+   "title": "Flicker, HV droop and beam jitter（フリッカ・HV垂下・ビームジッタ）",
+   "sliders": [
+    "flicker_thresh_ms",
+    "flicker_buckets",
+    "flicker_period_ms",
+    "flicker_red_depth",
+    "flicker_green_depth",
+    "flicker_blue_depth",
+    "hv_droop",
+    "hv_droop_dim",
+    "hv_droop_onset",
+    "hv_droop_ref",
+    "beam_jitter",
+    "beam_jitter_hz",
+    "beam_jitter_saturation_start",
+    "beam_jitter_saturation_range",
+    "beam_jitter_saturation_curve"
+   ]
+  },
+  {
+   "title": "Color adjustment（色調整）",
+   "sliders": [
+    "primary_color_mode",
+    "primary_red_hue",
+    "primary_red_saturation",
+    "primary_red_brightness",
+    "primary_green_hue",
+    "primary_green_saturation",
+    "primary_green_brightness",
+    "primary_blue_hue",
+    "primary_blue_saturation",
+    "primary_blue_brightness",
+    "chroma_a",
+    "chroma_b",
+    "chroma_c",
+    "chroma_y_gain"
+   ]
+  },
+  {
+   "title": "Vector geometry（ベクター幾何）",
+   "sliders": [
+    "vector_linearity_x",
+    "vector_linearity_y",
+    "vector_pincushion_x_quad",
+    "vector_image_scale"
+   ]
+  },
+  {
+   "title": "Shadow mask（シャドウマスク）",
+   "sliders": [
+    "shadow_mask_strength",
+    "shadow_mask_scale",
+    "shadow_mask_brightboost",
+    "masked_core_peak",
+    "core_overlap_max",
+    "ambient_mask"
+   ]
+  },
+  {
+   "title": "Tube, ambient and bezel（管面・環境光・ベゼル）",
+   "sliders": [
+    "tube_distortion",
+    "tube_round_corner",
+    "tube_vignetting",
+    "tube_face_scale",
+    "ambient_color",
+    "ambient_level",
+    "mglow_coefficient",
+    "mglow_brightness",
+    "mglow_center_edge_diff",
+    "mglow_rgb_bands",
+    "mglow_rgb_band_count",
+    "mglow_min_distance",
+    "mglow_coverage_start",
+    "mglow_coverage_full",
+    "bezel_glow_strength",
+    "monitor_bezel_reflection",
+    "bezel_long_reflection",
+    "bezel_short_reflection",
+    "bezel_long_threshold",
+    "bezel_glow_width",
+    "bezel_glow_curve",
+    "room_ambient"
+   ]
+  },
+  {
+   "title": "Printed overlay（印刷オーバーレイ＝Vectrex）",
+   "sliders": [
+    "overlay_white_transmission",
+    "overlay_white_diffusion",
+    "overlay_diffusion_radius",
+    "overlay_diffusion_shape",
+    "overlay_white_reflectance",
+    "overlay_color_density",
+    "overlay_color_glow",
+    "overlay_color_dark_level",
+    "overlay_color_highlight_bleach",
+    "overlay_color_highlight_knee",
+    "overlay_color_highlight_curve",
+    "overlay_ambient_light"
+   ]
+  },
+  {
+   "title": "HDR / SDR presentation（HDR／SDR 提示）",
+   "sliders": [
+    "beam_peak_nits",
+    "hdr_glow_stability",
+    "hdr_rolloff_knee",
+    "hdr_rolloff_max",
+    "hdr_sat_protect",
+    "sdr_beam_level",
+    "bright_normal_cap",
+    "sdr_rolloff_knee",
+    "sdr_rolloff_ceiling",
+    "sdr_shadow_curve"
+   ]
+  }
+ ]
+}
