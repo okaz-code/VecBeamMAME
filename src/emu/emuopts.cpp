@@ -148,7 +148,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_WINDOW_SIM,                          "1",         core_options::option_type::BOOLEAN,    "clip-window sample-and-hold imperfections for the hardware that has the circuit (Major Havoc, Battlezone): droop, dielectric absorption, scatter, offset; -novector_window_sim zeroes all four at once" },
 	{ OPTION_VECTOR_WINDOW_DROOP,                        "5.0",       core_options::option_type::FLOAT,      "clip-window sample-and-hold droop, percent of screen height per second (0 = off, ideal hold)" },
 	{ OPTION_VECTOR_WINDOW_MEMORY,                       "0.005",       core_options::option_type::FLOAT,      "clip-window hold-capacitor dielectric absorption, 0..1 fraction pulled toward earlier samples (0 = off)" },
-	{ OPTION_VECTOR_WINDOW_JITTER,                       "1.0",       core_options::option_type::FLOAT,      "clip-window per-sample scatter, percent of screen height (0 = off); constant until that edge is latched again" },
+	{ OPTION_VECTOR_WINDOW_JITTER,                       "0.0",       core_options::option_type::FLOAT,      "clip-window per-sample scatter, percent of screen height (0 = off); constant until that edge is latched again" },
 	{ OPTION_VECTOR_WINDOW_BIAS,                         "0.5",       core_options::option_type::FLOAT,      "clip-window systematic offset (charge injection / comparator offset), percent of screen height" },
 	{ OPTION_VECTOR_EVENT_DUMP,                          nullptr,     core_options::option_type::PATH,       "debug: write timed beam events to this CSV file" },
 	{ OPTION_VECTOR_RECORD,                              nullptr,     core_options::option_type::PATH,       "record final vector beam events to an MVEC stream" },
