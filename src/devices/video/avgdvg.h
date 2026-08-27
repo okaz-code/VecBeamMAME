@@ -43,6 +43,7 @@ protected:
 		int intensity;
 		int arg1; int arg2;
 		int status;
+		u8 clip_latched;    // VGCLIP: which edges the hardware re-sampled here (window_edge bits)
 		float beam_energy;  // normalized (0..1) raw beam energy, or < 0 when the device has none
 		attotime t0, t1;    // absolute machine time the beam spent drawing this event (never = untimed)
 	};
@@ -77,24 +78,34 @@ protected:
 	void vg_flush();
 	void vg_flush_list_end();
 	void vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy = -1.0f);
-	void vg_add_clip(int xmin, int ymin, int xmax, int ymax);
+	void vg_add_clip(int xmin, int ymin, int xmax, int ymax, u8 latched = 0);
 
 	required_device<vector_device> m_vector;
 	required_address_space m_memspace;
 	offs_t m_membase;
 
-	// Window (Major Havoc ymin clip) sample-and-hold model. The hardware latches the CURRENT beam Y
-	// into a 1000pF mylar cap through an LF13201 analog switch, buffers it with a TL082 follower and
-	// compares the live Y against it (LM819) for the rest of the frame - so the trim line is not a
-	// fixed voltage but a held sample, and it wanders as the cap droops. window_ymin() reproduces
-	// that; with the options at 0 it returns the latched value unchanged (ideal hold = stock).
-	bool m_window_hold_model = false;                    // only the variant that has the circuit
-	bool m_window_sampled = false;
-	attotime m_window_sample_time = attotime::never;
-	int m_window_hold_bias = 0;                          // dielectric-absorption term, device units
-	int m_window_da_mem = 0;                             // relaxed memory of earlier held values
+	// Clip-window sample-and-hold model. The hardware latches the CURRENT beam position into a
+	// 1000pF mylar cap through an LF13201 analog switch, buffers it with a JFET-input follower and
+	// compares the live position against it - so a window edge is not a fixed voltage but a held
+	// sample, and it wanders as the cap droops. window_clip() reproduces that; with the options at 0
+	// it returns the latched value unchanged (ideal hold = stock).
+	//
+	// Major Havoc holds ONE edge (ymin; the other three are constants in its vg_add_clip call) with
+	// TL082 + LM819. Battlezone runs the same circuit twice: HST latches (xmax, ymin) and LST latches
+	// (xmin, ymax), each at the instant its own switch opens, so all four edges are held - same
+	// analog switch and the same 1000pF cap, TL084 + LM319 around it. Each edge therefore needs its
+	// own sample time, bias and dielectric memory: Battlezone re-latches ymin part-way through the
+	// frame while the other three hold for the whole of it, so they droop by different amounts.
+	enum : u8 { WINDOW_XMIN = 1, WINDOW_YMIN = 2, WINDOW_XMAX = 4, WINDOW_YMAX = 8 };
+	static constexpr int WINDOW_EDGES = 4;               // index order: xmin, ymin, xmax, ymax
+	u8 m_window_hold_edges = 0;                          // which edges this variant holds; 0 = no circuit
+	bool m_window_sampled[WINDOW_EDGES] = { false, false, false, false };
+	attotime m_window_sample_time[WINDOW_EDGES] = { attotime::never, attotime::never, attotime::never, attotime::never };
+	int m_window_hold_bias[WINDOW_EDGES] = { 0, 0, 0, 0 };   // offset decided when the switch opened
+	int m_window_da_mem[WINDOW_EDGES] = { 0, 0, 0, 0 };      // relaxed memory of earlier held values
 
-	int window_ymin(int ymin, const attotime &when) const;
+	int window_clip(int edge, int value, const attotime &when) const;
+	void window_latch(int edge, int value, const attotime &when);
 	double window_percent_unit() const;                  // 1% of screen height in clip units
 
 	int m_xmin, m_ymin;
