@@ -101,6 +101,31 @@ All contributors need to either add a standard header for license info (on new f
 
 See more specific [C++ Coding Guidelines](https://docs.mamedev.org/contributing/cxx.html) on our documentation web site.
 
+## Use of AI
+
+This fork's code and documentation were written with AI coding agents.  It is
+not something to hide, so it is stated here.
+
+**The ideas and the judgement are human; the code and the tests are the AI's.**
+
+- **Human** — what to build, what the physical model should be, how it compares
+  against real hardware (Amplifone, WG6100, a Vectrex), and whether to keep it
+  or throw it away
+- **AI** — the code that implements it, the measurements and scripts that check
+  it, and the writing
+
+Whether a model is right is settled by looking at real hardware, not by taking
+the AI's explanation at face value.  Features have been built, looked at, and
+removed again.
+
+Commits with AI involvement carry a `Co-Authored-By:` trailer, so `git log`
+shows the extent of it.  Responsibility for the code and the documentation
+rests with this repository's author.
+
+Upstreaming to MAME is not intended.  VecBeamMAME is an experimental fork; a
+contribution to MAME proper would need to be written again to that project's
+standards.
+
 ## License
 
 VecBeamMAME is a fork of MAME and is distributed under the same terms.  The files
