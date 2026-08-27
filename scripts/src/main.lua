@@ -41,6 +41,17 @@ end
 
 	configuration {  }
 
+	-- VecBeamMAME ships as its own executable so it can sit next to a stock MAME: the project name
+	-- stays "mame" (the whole driver tree under src/mame and every linkProjects_mame_mame hook is
+	-- keyed to it), only the file that comes out is renamed. Matched with CONFIGNAME in
+	-- src/mame/mame.cpp, which is what decides vbmame.ini rather than mame.ini. Other subtargets
+	-- (mametiny and friends) keep their upstream names.
+	if _target == "mame" and _subtarget == "mame" then
+		configuration { "not android*" }
+			targetname "vbmame"
+		configuration {  }
+	end
+
 	addprojectflags()
 	flags {
 		"NoManifest",
