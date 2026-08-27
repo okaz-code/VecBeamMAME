@@ -5,9 +5,10 @@ The chain files are the only place a slider's name, label, default, range, step,
 Advanced flag exist, so the table is generated from them rather than transcribed. A hand-written
 list went stale twice; this one cannot.
 
-Section order and membership come from tools/chain-slider-sections.json. A slider that is not
-listed there lands in a trailing "unclassified" section, which is how a newly added slider
-announces itself - move it into the map to place it.
+Section order and membership come from tools/chain-slider-sections.json, and the one-line
+description of each slider from tools/chain-slider-notes.json. A slider that is not listed in the
+section map lands in a trailing "unclassified" section, which is how a newly added slider announces
+itself - move it into the map to place it, and give it a line in the notes file.
 
     python3 tools/dump-chain-sliders.py > docs/vecbeammame/added-parameters.ja.md
 """
@@ -93,11 +94,15 @@ def main():
                         help="directory holding the vector chain JSON files")
     parser.add_argument("--sections", default=os.path.join(here, "chain-slider-sections.json"),
                         help="section order and membership")
+    parser.add_argument("--notes", default=os.path.join(here, "chain-slider-notes.json"),
+                        help="one-line description per slider")
     args = parser.parse_args()
 
     sliders, macros = collect(args.chains)
     with open(args.sections, encoding="utf-8") as handle:
         sections = json.load(handle)["sections"]
+    with open(args.notes, encoding="utf-8") as handle:
+        notes = json.load(handle)["notes"]
 
     placed = set()
     out = []
@@ -116,7 +121,8 @@ def main():
                "[startup-options.ja.md](startup-options.ja.md) を参照してください。")
     out.append("")
     out.append("凡例: 値の列は `既定値 [下限, 上限] /刻み`。"
-               "チェインによって違う場合はチェインごとに並べています。")
+               "チェインによって違う場合はチェインごとに並べています。"
+               "説明は 1 行の要約です。")
     out.append("")
 
     def emit(title, names):
@@ -125,12 +131,12 @@ def main():
             return
         out.append(f"## {title}")
         out.append("")
-        out.append("| 内部名 | 表示名 | 値 | チェイン | 駆動マクロ |")
-        out.append("|---|---|---|---|---|")
+        out.append("| 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |")
+        out.append("|---|---|---|---|---|---|")
         for name in rows:
             per_chain = sliders[name]
             text = next(iter(per_chain.values())).get("text", name)
-            out.append(f"| `{name}` | {text} | {value_column(per_chain)} "
+            out.append(f"| `{name}` | {text} | {notes.get(name, '—')} | {value_column(per_chain)} "
                        f"| {'/'.join(per_chain)} | {macro_column(name, macros)} |")
             placed.add(name)
         out.append("")
