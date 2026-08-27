@@ -73,23 +73,52 @@ double avgdvg_device_base::window_percent_unit() const
 	return 0.01 * double(std::max(1, m_vector->screen().visible_area().height())) * 65536.0;
 }
 
-int avgdvg_device_base::window_ymin(int ymin, const attotime &when) const
+int avgdvg_device_base::window_clip(int edge, int value, const attotime &when) const
 {
-	if (!m_window_hold_model || !m_window_sampled)
-		return ymin;
-	// m_window_hold_bias is fixed for the whole frame (it is decided when the cap is latched), so a
-	// text line is trimmed at ONE height - that is what real boards look like. The droop term below is
-	// the only part that varies WITHIN a frame; since the beam draws in time order it tilts the trim
-	// line along the drawing order, so keep it small (a realistic hold droops ~1-2 lines per frame).
-	s64 y = s64(ymin) + s64(m_window_hold_bias);
+	if (!m_window_sampled[edge])
+		return value;
+	// The bias is fixed from the moment the cap is latched, so everything drawn under one sample is
+	// trimmed at ONE height - that is what real boards look like. The droop term below is the only
+	// part that varies WITHIN a hold; since the beam draws in time order it tilts the edge along the
+	// drawing order, so keep it small (a realistic hold droops ~1-2 lines per frame). It is signed
+	// and applied the same way to every edge: one leakage direction moves the whole window, which is
+	// what a common leak does - it does not squeeze it.
+	s64 v = s64(value) + s64(m_window_hold_bias[edge]);
 	const float droop = vector_options::s_window_droop;
-	if (droop != 0.0f && !when.is_never() && !m_window_sample_time.is_never())
+	if (droop != 0.0f && !when.is_never() && !m_window_sample_time[edge].is_never())
 	{
-		const double dt = (when - m_window_sample_time).as_double();
+		const double dt = (when - m_window_sample_time[edge]).as_double();
 		if (dt > 0.0)
-			y += s64(double(droop) * window_percent_unit() * dt);
+			v += s64(double(droop) * window_percent_unit() * dt);
 	}
-	return int(std::clamp<s64>(y, -0x5000000, 0x5000000));
+	return int(std::clamp<s64>(v, -0x5000000, 0x5000000));
+}
+
+// Everything an opening switch decides. All of it is CONSTANT until that edge is latched again,
+// because the cap holds: the edge stays straight and only its position changes from sample to sample.
+void avgdvg_device_base::window_latch(int edge, int value, const attotime &when)
+{
+	const double unit = window_percent_unit();
+	// (1) mylar dielectric absorption: the cap is pulled back toward what it held on earlier
+	//     samples, so the error depends on what was drawn before.
+	const float da = std::clamp(vector_options::s_window_memory, 0.0f, 1.0f);
+	double bias = (m_window_sampled[edge] && da > 0.0f)
+			? double(da) * double(m_window_da_mem[edge] - value) : 0.0;
+	m_window_da_mem[edge] = m_window_sampled[edge]
+			? m_window_da_mem[edge] + int(0.35 * double(value - m_window_da_mem[edge])) : value;
+	// (2) systematic offset: charge injection as the analog switch turns off, plus the comparator's
+	//     input offset. Always the same sign, so the edge sits slightly inside/outside.
+	bias += double(vector_options::s_window_bias) * unit;
+	// (3) per-sample scatter: the strobe lands on a slightly different point of the analog ramp each
+	//     time and the injected charge varies with the level, so the LATCHED value itself differs
+	//     sample to sample. This is what makes a scrolling line get cut deeper on one frame and come
+	//     partly back on the next.
+	const float jitter = vector_options::s_window_jitter;
+	if (jitter != 0.0f)
+		bias += ((double(machine().rand() & 0xffff) / 32767.5) - 1.0) * double(jitter) * unit;
+	m_window_hold_bias[edge] = int(bias);
+	m_window_sample_time[edge] = when;
+	m_window_sampled[edge] = true;
 }
 
 void avgdvg_device_base::vg_flush()
@@ -120,40 +149,47 @@ void avgdvg_device_base::vg_flush()
 		{
 			int xe = m_vectbuf[i].x;
 			int ye = m_vectbuf[i].y;
-			// The ymin edge is a held analog sample, so it is re-evaluated for every vector at that
-			// vector's own draw time. cy0 itself keeps the latched value.
-			const int wy0 = window_ymin(cy0, m_vectbuf[i].t0);
+			// A held edge is an analog sample, so it is re-evaluated for every vector at that
+			// vector's own draw time. cx0..cy1 themselves keep the latched values. Edges this
+			// variant does not hold return unchanged, so the ideal-hold path costs one branch.
+			const attotime &vt = m_vectbuf[i].t0;
+			int wx0 = window_clip(0, cx0, vt), wy0 = window_clip(1, cy0, vt);
+			int wx1 = window_clip(2, cx1, vt), wy1 = window_clip(3, cy1, vt);
+			// Drift can in principle cross a pair over; keep the window non-empty rather than
+			// letting the tests below fall through with a reversed rectangle.
+			if (wx1 < wx0) wx1 = wx0;
+			if (wy1 < wy0) wy1 = wy0;
 			int x0 = m_flush_xs, y0 = m_flush_ys, x1 = xe, y1 = ye;
 			const int ox0 = x0, oy0 = y0, ox1 = x1, oy1 = y1;   // pre-clip endpoints, for the t0/t1 rescale below
 
 			m_flush_xs = xe;
 			m_flush_ys = ye;
 
-			if ((x0 < cx0 && x1 < cx0) || (x0 > cx1 && x1 > cx1))
+			if ((x0 < wx0 && x1 < wx0) || (x0 > wx1 && x1 > wx1))
 				continue;
 
-			if (x0 < cx0)
+			if (x0 < wx0)
 			{
-				y0 += s64(cx0 - x0) * s64(y1 - y0) / (x1 - x0);
-				x0 = cx0;
+				y0 += s64(wx0 - x0) * s64(y1 - y0) / (x1 - x0);
+				x0 = wx0;
 			}
-			else if (x0 > cx1)
+			else if (x0 > wx1)
 			{
-				y0 += s64(cx1 - x0) * s64(y1 - y0) / (x1 - x0);
-				x0 = cx1;
+				y0 += s64(wx1 - x0) * s64(y1 - y0) / (x1 - x0);
+				x0 = wx1;
 			}
-			if (x1 < cx0)
+			if (x1 < wx0)
 			{
-				y1 += s64(cx0 - x1) * s64(y1 - y0) / (x1 - x0);
-				x1 = cx0;
+				y1 += s64(wx0 - x1) * s64(y1 - y0) / (x1 - x0);
+				x1 = wx0;
 			}
-			else if (x1 > cx1)
+			else if (x1 > wx1)
 			{
-				y1 += s64(cx1 - x1) * s64(y1 - y0) / (x1 - x0);
-				x1 = cx1;
+				y1 += s64(wx1 - x1) * s64(y1 - y0) / (x1 - x0);
+				x1 = wx1;
 			}
 
-			if ((y0 < wy0 && y1 < wy0) || (y0 > cy1 && y1 > cy1))
+			if ((y0 < wy0 && y1 < wy0) || (y0 > wy1 && y1 > wy1))
 				continue;
 
 			if (y0 < wy0)
@@ -161,20 +197,20 @@ void avgdvg_device_base::vg_flush()
 				x0 += s64(wy0 - y0) * s64(x1 - x0) / (y1 - y0);
 				y0 = wy0;
 			}
-			else if (y0 > cy1)
+			else if (y0 > wy1)
 			{
-				x0 += s64(cy1 - y0) * s64(x1 - x0) / (y1 - y0);
-				y0 = cy1;
+				x0 += s64(wy1 - y0) * s64(x1 - x0) / (y1 - y0);
+				y0 = wy1;
 			}
 			if (y1 < wy0)
 			{
 				x1 += s64(wy0 - y1) * s64(x1 - x0) / (y1 - y0);
 				y1 = wy0;
 			}
-			else if (y1 > cy1)
+			else if (y1 > wy1)
 			{
-				x1 += s64(cy1 - y1) * s64(x1 - x0) / (y1 - y0);
-				y1 = cy1;
+				x1 += s64(wy1 - y1) * s64(x1 - x0) / (y1 - y0);
+				y1 = wy1;
 			}
 
 			// Rescale t0/t1 to match how much of the ORIGINAL (pre-clip) length survived clipping,
@@ -209,36 +245,34 @@ void avgdvg_device_base::vg_flush()
 			cx1 = m_vectbuf[i].arg1;
 			cy1 = m_vectbuf[i].arg2;
 			using std::swap;
+			u8 rec_mask = m_vectbuf[i].clip_latched;
+			auto const swap_mask = [&rec_mask] (u8 lo, u8 hi) {
+				const u8 both = u8(lo | hi);
+				if ((rec_mask & both) != both && (rec_mask & both) != 0)
+					rec_mask = u8((rec_mask & ~both) | ((rec_mask & lo) ? hi : lo));
+			};
 			if (cx0 > cx1)
-				swap(cx0, cx1);
-			if (cy0 > cy1)
-				swap(cy0, cy1);
-			if (m_window_hold_model)
 			{
-				// Everything decided at the instant the switch opens. All of it is CONSTANT for the
-				// rest of the frame, because the cap is latched once per list: the trim line stays
-				// straight and only its height changes from frame to frame.
-				const double unit = window_percent_unit();
-				// (1) mylar dielectric absorption: the cap is pulled back toward what it held on
-				//     earlier frames, so the error depends on what was drawn before.
-				const float da = std::clamp(vector_options::s_window_memory, 0.0f, 1.0f);
-				double bias = (m_window_sampled && da > 0.0f)
-						? double(da) * double(m_window_da_mem - cy0) : 0.0;
-				m_window_da_mem = m_window_sampled
-						? m_window_da_mem + int(0.35 * double(cy0 - m_window_da_mem)) : cy0;
-				// (2) systematic offset: charge injection as the LF13201 turns off, plus the LM819's
-				//     input offset. Always the same sign, so the trim sits slightly inside/outside.
-				bias += double(vector_options::s_window_bias) * unit;
-				// (3) per-frame scatter: the strobe lands on a slightly different point of the analog
-				//     Y ramp each frame and the injected charge varies with the level, so the LATCHED
-				//     value itself differs frame to frame. This is what makes a scrolling line get
-				//     cut deeper on one frame and come partly back on the next.
-				const float jitter = vector_options::s_window_jitter;
-				if (jitter != 0.0f)
-					bias += ((double(machine().rand() & 0xffff) / 32767.5) - 1.0) * double(jitter) * unit;
-				m_window_hold_bias = int(bias);
-				m_window_sample_time = m_vectbuf[i].t0;
-				m_window_sampled = true;
+				swap(cx0, cx1);
+				swap_mask(WINDOW_XMIN, WINDOW_XMAX);
+			}
+			if (cy0 > cy1)
+			{
+				swap(cy0, cy1);
+				swap_mask(WINDOW_YMIN, WINDOW_YMAX);
+			}
+			m_vectbuf[i].clip_latched = rec_mask;
+			// The mask says which switch opened for THIS record; the values are the sorted
+			// rectangle, so the mask was swapped with them above - otherwise an edge would inherit
+			// the other one's hold.
+			const u8 latched = u8(m_vectbuf[i].clip_latched) & m_window_hold_edges;
+			if (latched)
+			{
+				const attotime &when = m_vectbuf[i].t0;
+				if (latched & WINDOW_XMIN) window_latch(0, cx0, when);
+				if (latched & WINDOW_YMIN) window_latch(1, cy0, when);
+				if (latched & WINDOW_XMAX) window_latch(2, cx1, when);
+				if (latched & WINDOW_YMAX) window_latch(3, cy1, when);
 			}
 		}
 	}
@@ -268,11 +302,15 @@ void avgdvg_device_base::vg_flush_reset()
 	m_flush_xs = 0;
 	m_flush_ys = 0;
 	m_flush_primed = false;
-	// The window is re-latched once per list (mhavoc's m_lst gate), so drop the previous sample.
-	// m_window_da_mem deliberately survives: dielectric absorption is a memory ACROSS frames.
-	m_window_sampled = false;
-	m_window_sample_time = attotime::never;
-	m_window_hold_bias = 0;
+	// The window is re-latched at least once per list (mhavoc's m_lst gate, Battlezone's HST/LST),
+	// so drop the previous samples. m_window_da_mem deliberately survives: dielectric absorption is
+	// a memory ACROSS frames.
+	for (int e = 0; e < WINDOW_EDGES; e++)
+	{
+		m_window_sampled[e] = false;
+		m_window_sample_time[e] = attotime::never;
+		m_window_hold_bias[e] = 0;
+	}
 }
 
 void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensity, float beam_energy)
@@ -304,7 +342,7 @@ void avgdvg_device_base::vg_add_point_buf(int x, int y, rgb_t color, int intensi
 	}
 }
 
-void avgdvg_device_base::vg_add_clip(int xmin, int ymin, int xmax, int ymax)
+void avgdvg_device_base::vg_add_clip(int xmin, int ymin, int xmax, int ymax, u8 latched)
 {
 	if (m_nvect < MAXVECT)
 	{
@@ -313,6 +351,9 @@ void avgdvg_device_base::vg_add_clip(int xmin, int ymin, int xmax, int ymax)
 		m_vectbuf[m_nvect].y = ymin;
 		m_vectbuf[m_nvect].arg1 = xmax;
 		m_vectbuf[m_nvect].arg2 = ymax;
+		// Which edges the opening switch just sampled onto their hold caps. Zero for hardware that
+		// has no such circuit, which leaves the window an exact digital rectangle as before.
+		m_vectbuf[m_nvect].clip_latched = latched;
 		m_vectbuf[m_nvect].t0 = attotime::never;
 		m_vectbuf[m_nvect].t1 = attotime::never;
 		m_nvect++;
@@ -897,7 +938,7 @@ int avg_mhavoc_device::handler_1() //  mhavoc_latch1
 	// Major Havoc just has ymin clipping
 
 	if (!m_lst)
-		vg_add_clip(0, m_ypos, m_xmax << 16, m_ymax << 16);
+		vg_add_clip(0, m_ypos, m_xmax << 16, m_ymax << 16, WINDOW_YMIN);
 	m_lst = 1;
 
 	return avg_device::handler_1(); //avg_latch1()
@@ -1271,20 +1312,27 @@ int avg_bzone_device::handler_1() // bzone_latch1
 	 * turned off.
 	 */
 
+	// Each switch samples BOTH axes at the instant it opens, onto its own hold caps, so the two
+	// pairs have independent hold times - measured on Battlezone, HST is re-latched part-way
+	// through the frame while LST holds for the whole of it.
+	u8 latched = 0;
+
 	if (!m_hst)
 	{
 		m_clipx_max = m_xpos;
 		m_clipy_min = m_ypos;
+		latched |= WINDOW_XMAX | WINDOW_YMIN;
 	}
 
 	if (!m_lst)
 	{
 		m_clipx_min = m_xpos;
 		m_clipy_max = m_ypos;
+		latched |= WINDOW_XMIN | WINDOW_YMAX;
 	}
 
 	if (!m_lst || !m_hst)
-		vg_add_clip(m_clipx_min, m_clipy_min, m_clipx_max, m_clipy_max);
+		vg_add_clip(m_clipx_min, m_clipy_min, m_clipx_max, m_clipy_max, latched);
 	m_lst = m_hst = 1;
 
 	return avg_device::handler_1(); // avg_latch1()
@@ -1678,9 +1726,9 @@ avg_mhavoc_device::avg_mhavoc_device(const machine_config &mconfig, const char *
 	m_colorram(*this, "colorram"),
 	m_bank_region(*this, DEVICE_SELF)
 {
-	// Only Major Havoc has the Y-window sample-and-hold (LF13201 + C42 + TL082 + LM819); Battlezone's
-	// clip window is latched differently, so its behaviour must not change.
-	m_window_hold_model = true;
+	// Y-window sample-and-hold: LF13201 analog switch + C42 1000pF mylar + TL082 follower + LM819.
+	// Only ymin is held here; the other three edges of the clip call are constants.
+	m_window_hold_edges = WINDOW_YMIN;
 }
 
 avg_starwars_device::avg_starwars_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock) :
@@ -1697,6 +1745,10 @@ avg_quantum_device::avg_quantum_device(const machine_config &mconfig, const char
 avg_bzone_device::avg_bzone_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock) :
 	avg_device(mconfig, AVG_BZONE, tag, owner, clock)
 {
+	// The same circuit as Major Havoc's, run twice: same LF13201 analog switch and the same 1000pF
+	// hold cap, with TL084 followers and an LM319 instead of TL082/LM819. Both switches sample both
+	// axes, so all four edges of the clip window are held values rather than numbers.
+	m_window_hold_edges = WINDOW_XMIN | WINDOW_YMIN | WINDOW_XMAX | WINDOW_YMAX;
 }
 
 
