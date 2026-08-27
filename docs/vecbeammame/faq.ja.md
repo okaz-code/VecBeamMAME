@@ -48,15 +48,26 @@ VecBeamMAME を使っていて出てくる疑問と、その答え。
 ## ゲームによってベクターの時間情報があったり無かったりしますか？
 
 **あります。** VecBeamMAME の中核は「ビームがいつ・どれだけの時間をかけてその線を描いたか」
-という時間情報で、これを出せるハードウェアと出せないハードウェアがあります。
+という時間情報です。
 
-| ベクター生成回路 | 代表ゲーム | 時間情報 |
+**これは実機の話ではなく、MAME 側のエミュレーションの話です。** 実機のベクターモニタは
+どの基板であれビームが時間をかけて線を描いているので、時間情報は物理的には必ず存在します。
+違うのは、**その基板のベクター生成回路のタイミングが MAME で実装されているかどうか**です。
+下の表の「なし」は「その基板には時間が無い」ではなく、**「今の MAME はまだそれを出していない」**
+という意味です。
+
+| ベクター生成回路 | 代表ゲーム | MAME が出す時間情報 |
 |---|---|---|
 | **Atari AVG / DVG** | STAR WARS、EMPIRE STRIKES BACK、TEMPEST、MAJOR HAVOC、BATTLEZONE、RED BARON、ASTEROIDS、ASTEROIDS DELUXE、LUNAR LANDER、GRAVITAR、SPACE DUEL、BLACK WIDOW、QUANTUM、TOMCAT、**OMEGA RACE**（Bally だが Atari の DVG を使用） | **あり**（1 セグメントごとの実掃引時間） |
 | **Vectrex** | Vectrex 全ソフト | **あり**（Vectrex 独自のモデル） |
-| Cinematronics CCPU | RIP OFF、SOLAR QUEST、STAR CASTLE、WARRIOR、ARMOR ATTACK、BARRIER、SUNDANCE、SPACE WARS、SPEED FREAK、STAR HAWK、TAIL GUNNER、WAR OF THE WORLDS、BOXING BUGS、DEMON | **なし相当**（時刻はあるが `t0 == t1` で掃引時間が無い） |
-| Sega G80 vector | TAC/SCAN、STAR TREK、ZEKTOR、SPACE FURY、ELIMINATOR | **なし** |
-| その他 | AZTARAC、COSMIC CHASM、VERTIGO | **なし** |
+| Cinematronics CCPU | RIP OFF、SOLAR QUEST、STAR CASTLE、WARRIOR、ARMOR ATTACK、BARRIER、SUNDANCE、SPACE WARS、SPEED FREAK、STAR HAWK、TAIL GUNNER、WAR OF THE WORLDS、BOXING BUGS、DEMON | **なし相当**（時刻は入るが `t0 == t1`、掃引時間が未実装） |
+| Sega G80 vector | TAC/SCAN、STAR TREK、ZEKTOR、SPACE FURY、ELIMINATOR | **なし**（未実装） |
+| その他 | AZTARAC、COSMIC CHASM、VERTIGO | **なし**（未実装） |
+
+Atari AVG / DVG の時間情報は、ベクター生成回路のステートマシンをサイクル単位で回して
+1 セグメントごとの掃引時間を出しています（`src/devices/video/avgdvg.cpp`）。
+つまり**やれば出せる**もので、他の基板で出ていないのは、そのタイミングモデルがまだ
+書かれていないというだけです。
 
 ### 時間情報があると何が変わるか
 
@@ -70,12 +81,13 @@ VecBeamMAME を使っていて出てくる疑問と、その答え。
 | **クリップ窓のサンプル&ホールド**（`vector_window_sim`） | MAJOR HAVOC / BATTLEZONE の窓回路の非理想性を再現 | 対象ハードが Atari AVG のみなので常に有効 |
 | **MVEC 記録** | 掃引時間つきで記録され、再生時も同じ時間構造で再現される | 時刻のない事象列として記録される |
 
-つまり時間情報が無いハードウェアでは、**残光・グロー・ハレーション・色・幾何などの「表示側」の
+つまり時間情報が届かない機種では、**残光・グロー・ハレーション・色・幾何などの「表示側」の
 再現はそのまま効きますが、「ビームの動きから明るさを導く」層と「1 掃引を時間で切る」層が丸ごと
 外れます。** 素の MAME より綺麗にはなりますが、STAR WARS や Vectrex で見えているものとは別物です。
 
-なお時間情報の有無はゲームごとに固定で、設定で増やすことはできません。ハードウェアが出していない
-情報だからです。
+**設定では増やせません。** レンダラは受け取った情報でできることをするだけなので、増やすとしたら
+ベクター生成回路側のエミュレーションを書く作業になります。逆に言えば、対応する基板が増えれば
+そのゲームでも同じ再現が効くようになります。
 
 ## どのチェインが使われますか？
 
