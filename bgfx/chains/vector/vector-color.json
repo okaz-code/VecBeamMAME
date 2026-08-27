@@ -24,6 +24,7 @@
 		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
 		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"},{"slider":"bright_normal_cap","mode":"curve","curve":[[1.0,0.8],[1.11,0.8],[2.0,1.0]]}]},
+		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.9,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"macro_overload","text":"[M] Overload Amount","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"overload_threshold","mode":"curve","curve":[[0.0,4.0],[0.5,1.4],[1.0,1.0],[2.0,0.9]]},
 		             {"slider":"intensity_overdrive","mode":"curve","curve":[[0.0,0.0],[1.0,1.0],[2.0,1.6]]},
@@ -71,7 +72,6 @@
 		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Brightness transfer ----
-		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.9,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":-2.0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
