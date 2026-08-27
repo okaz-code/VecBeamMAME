@@ -22,7 +22,7 @@
 		//      持っていた値」なので、既定 1.0 / On では現状の校正値と完全に一致する。scale と enable は
 		//      係数として合成されるので、詳細1本を2本のマクロで駆動できる（Edge Defocus は [M] Defocus
 		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
-		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"}]},
+		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"},{"slider":"bright_normal_cap","mode":"curve","curve":[[1.0,0.95],[1.11,0.95],[2.0,1.0]]}]},
 		{"type":"float","name":"macro_halation","text":"[M] Halation Amount","default":1.0,"min":0.0,"max":5.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"ring_gain","mode":"scale"},{"slider":"ring_fill","mode":"scale"},{"slider":"halation_gain","mode":"scale"},{"slider":"ray_gain","mode":"scale"}]},
 		{"type":"float","name":"macro_bloom","text":"[M] Bloom Strength","default":1.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"glow_wide","mode":"scale"},{"slider":"glow_narrow","mode":"scale"},{"slider":"analytic_glow","mode":"scale"}]},
 		{"type":"float","name":"macro_beam_width","text":"[M] Beam Width","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"beam_width_min","mode":"scale"},{"slider":"beam_width_max","mode":"scale"},{"slider":"overload_width_add","mode":"scale"}]},
