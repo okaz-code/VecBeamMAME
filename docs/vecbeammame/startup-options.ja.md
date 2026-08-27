@@ -188,7 +188,7 @@ BGFX: beam time window active - sweep 29.90 ms over 12.50 ms windows (2.4 per sw
 |---|---|
 | 型 / 既定 | bool / **`1`(オン)** |
 
-**Major Havoc のサンプル&ホールド窓モデル全体のマスタスイッチ。** 下の4本を
+**クリップ窓のサンプル&ホールドモデル全体のマスタスイッチ。** 下の4本を
 まとめて扱うためのもので、`-novector_window_sim` で **4本すべてを 0 にする**
 (個別の指定値は無視される)。
 
@@ -201,14 +201,19 @@ BGFX: beam time window active - sweep 29.90 ms over 12.50 ms windows (2.4 per sw
 |---|---|---|
 | `vector_window_droop` | float | `5.0` |
 | `vector_window_memory` | float | `0.005` |
-| `vector_window_jitter` | float | `1.0` |
+| `vector_window_jitter` | float | `0.0`(オフ) |
 | `vector_window_bias` | float | `0.5` |
 
-**Major Havoc 専用。** このゲームはスクロール領域の上端(`ymin` クリップ)をサンプル&ホールド回路で
-保持しており、その回路の非理想性を再現する 4 本。詳細は [[../mhavoc-window-hold-model]]。
+**この回路を持つ機種だけに効く。** Major Havoc はスクロール領域の上端(`ymin` クリップ)の1辺、
+Battlezone はクリップ矩形の4辺すべてを、アナログスイッチとホールドコンデンサで保持している
+(同じ LF13201 と同じ 1000pF)。その回路の非理想性を再現する 4 本。
 
-**既定値は 0 ではない**(以前は 4 本とも `0.0` = オフだった)。実機に寄せた値が既定に
-入っているので、**素の状態で窓の非理想性は既に効いている。** 外すには
+**`window_jitter` だけ既定 0（オフ）。** これはラッチ値そのもののばらつきで、**フレーム間で
+位置が動く唯一の項目**。Major Havoc の1辺なら実機どおりだが、Battlezone では矩形の4辺すべてが
+動いて「枠が呼吸する」ように見えるので、opt-in にしてある。
+
+残る3本(垂下・誘電吸収・オフセット)は実機に寄せた値が既定に入っている。これらは
+**フレーム間では動かない**(位置が一定量ずれる／描画順に沿って傾く)。外すには
 `-novector_window_sim`、個別に消すならその項目に `0` を渡す。
 
 | オプション | モデル | 単位 | オフの値 |
@@ -560,10 +565,13 @@ vector_overscan_y         0.95
 vector_blank_leak         0.05
 ```
 
-### 5-5. Major Havoc の窓回路
+### 5-5. クリップ窓の回路（Major Havoc / Battlezone）
+
+`jitter` は既定オフなので、フレーム間の揺れが欲しいときだけ入れる。
+Battlezone は矩形の4辺すべてが動くので、同じ値でも Major Havoc より大きく見える。
 
 ```ini
-# starwars.ini ではなく mhavoc.ini に書く
+# starwars.ini ではなく mhavoc.ini / bzone.ini に書く
 vector_window_droop       2.0
 vector_window_memory      0.15
 vector_window_jitter      0.3
