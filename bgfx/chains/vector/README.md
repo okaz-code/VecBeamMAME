@@ -1,5 +1,7 @@
 # VecBeamMAME vector chains
 
+日本語: [README.ja.md](README.ja.md)
+
 The calibrated chains are the standard VecBeamMAME vector display configurations:
 
 - `vector-color`
