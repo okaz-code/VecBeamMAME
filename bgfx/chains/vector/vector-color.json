@@ -23,7 +23,7 @@
 		//      係数として合成されるので、詳細1本を2本のマクロで駆動できる（Edge Defocus は [M] Defocus
 		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
 		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
-		  "targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"}]},
+		  "targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"},{"slider":"bright_normal_cap","mode":"curve","curve":[[1.0,0.8],[1.11,0.8],[2.0,1.0]]}]},
 		{"type":"float","name":"macro_overload","text":"[M] Overload Amount","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"overload_threshold","mode":"curve","curve":[[0.0,4.0],[0.5,1.4],[1.0,1.0],[2.0,0.9]]},
 		             {"slider":"intensity_overdrive","mode":"curve","curve":[[0.0,0.0],[1.0,1.0],[2.0,1.6]]},
