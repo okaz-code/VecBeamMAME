@@ -20,6 +20,7 @@
 		//      係数として合成されるので、詳細1本を2本のマクロで駆動できる（Edge Defocus は [M] Defocus
 		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
 		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"},{"slider":"bright_normal_cap","mode":"curve","curve":[[1.0,0.6],[1.39,0.6],[2.0,1.0]]}]},
+		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.5,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"macro_halation","text":"[M] Halation Amount","default":0.0,"min":0.0,"max":5.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"ring_gain","mode":"scale"},{"slider":"ring_fill","mode":"scale"},{"slider":"halation_gain","mode":"scale"},{"slider":"phosphor_overdrive","mode":"scale"},{"slider":"ray_gain","mode":"scale"}]},
 		{"type":"float","name":"macro_bloom","text":"[M] Bloom Strength","default":1.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"glow_wide","mode":"scale"},{"slider":"glow_narrow","mode":"scale"},{"slider":"analytic_glow","mode":"scale"}]},
 		{"type":"float","name":"macro_beam_width","text":"[M] Beam Width","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","targets":[{"slider":"beam_width_min","mode":"scale"},{"slider":"beam_width_max","mode":"scale"}]},
@@ -44,7 +45,6 @@
 		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[0.9,0.9,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Brightness transfer ----
-		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.5,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":0.0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
