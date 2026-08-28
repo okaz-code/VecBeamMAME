@@ -1,5 +1,7 @@
 # Startup Options Reference
 
+日本語: [startup-options.ja.md](startup-options.ja.md)
+
 For: VecBeamMAME (based on MAME 0.289)
 
 **The full reference for the 27 startup options VecBeamMAME adds** that stock

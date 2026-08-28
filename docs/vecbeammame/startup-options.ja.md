@@ -1,5 +1,7 @@
 # 起動時オプション リファレンス
 
+English: [startup-options.md](startup-options.md)
+
 対象: VecBeamMAME（MAME 0.289 ベース）
 
 **素の MAME 0.289 に無く、VecBeamMAME が追加した起動時オプション 27 個**の全リファレンス。
