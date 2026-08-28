@@ -53,28 +53,39 @@ properly is its own difficult job.
 
 → The first section of [Added parameters](added-parameters.md) is the macros.
 
-## Why does `beam_width_min` in the ini do nothing?
+## Why does `beam_width_min` do nothing, in the ini or in the Tab menu?
 
-**Some of stock MAME's "CORE VECTOR OPTIONS" have no effect in VecBeamMAME**,
-because the drawing has been replaced by the chain's analytic line renderer.
+**The width options among stock MAME's "CORE VECTOR OPTIONS" have no effect while
+a bgfx vector chain is in use**, because the drawing has been replaced by the
+chain's analytic line renderer.  Writing them in the ini and dragging them in
+Tab -> Slider Controls both change nothing.
 
-| ini option | Status | Use instead |
+| ini option | Name in the Tab menu | Use instead |
 |---|---|---|
-| `beam_width_min` / `beam_width_max` | **Inert** | The **chain sliders** of the same names, `Beam Width Minimum` / `Beam Width Maximum`, or `[M] Beam Width` |
-| `beam_dot_size` | **Inert** | `Point Width Scale`, or `[M] Point Size` |
-| `beam_intensity_weight` | **Inert** | `Brightness Threshold (T)` and `Brightness Sigmoid` |
-| `flicker` | 0 in the shipped ini | `[M] Beam/Supply Sim` and the chain's `Cyclic Flicker *` |
+| `beam_width_min` / `beam_width_max` | Beam Width Minimum / Beam Width Maximum | The **chain sliders** of the same names (shown with Advanced on), or `[M] Beam Width` |
+| `beam_dot_size` | Beam Dot Size | `Point Width Scale`, or `[M] Point Size` |
+| `beam_intensity_weight` | Beam Intensity Weight | `Brightness Threshold (T)` and `Brightness Sigmoid` |
+| `flicker` | Vector Flicker | `[M] Beam/Supply Sim` and the chain's `Cyclic Flicker *` (see below) |
 
-**`beam_width_min` is the same name in the ini and on a slider, but they are not
-the same thing.**  The ini one only sets the line width on the render primitive,
-which the analytic renderer never reads; beam width comes from the chain
-slider's value.  That is why a value written in the ini looks ignored.
+**The confusing part is that the names are identical.**  Open Tab -> Slider
+Controls and `Beam Width Minimum` / `Beam Width Maximum` appear in two places.
+They are different things.
+
+- The **upper** ones - `Vector Flicker` through `Beam Intensity Weight`, right
+  after the screen position and size adjusters - are stock MAME's.  **Moving
+  them does nothing.**
+- The **lower** ones, among the bgfx chain sliders, are the ones that work.
+  **Use those.**
+
+Stock MAME's values only set the line width on the render primitive, which the
+analytic renderer never reads; beam width comes from the chain slider's value.
 
 The shipped `ini/presets/vector.ini` and `vector-mono.ini` still carry these
-lines, but the three width ones do nothing, as above.
+lines.  That is deliberate: without a bgfx vector chain - running `-video`
+on something other than bgfx, for instance - they work as they always did.
 
-`flicker` alone does have an effect - the vector device drops each vector's
-intensity at random.  But that is a different thing from the chain's cyclic
+`flicker` works in any configuration (the vector device drops each vector's
+intensity at random).  But that is a different thing from the chain's cyclic
 flicker, which reproduces a real machine carrying vectors it could not finish
 into the next frame, and with both active they apply twice.  **The shipped ini
 presets therefore set `flicker 0.00`.**  Leave it there.
