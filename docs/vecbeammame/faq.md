@@ -4,7 +4,7 @@
 
 Questions that come up while using VecBeamMAME, and their answers.
 The slider list is in [Added parameters](added-parameters.md), what goes in the
-ini in [Startup options](startup-options.ja.md) (Japanese for now), and HDR in
+ini in [Startup options](startup-options.md), and HDR in
 [HDR settings](hdr-settings.md).
 
 ---
@@ -179,7 +179,7 @@ Check these in order.
 The monitor's limits cannot be exceeded.
 
 → [HDR settings](hdr-settings.md); the options themselves are in
-[Startup options](startup-options.ja.md).
+[Startup options](startup-options.md).
 
 ## Something looks wrong
 
