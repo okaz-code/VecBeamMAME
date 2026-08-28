@@ -316,9 +316,6 @@ intermediate representation upstream of the renderer, so **running the same MVEC
 through different renderer settings leaves the renderer as the only
 difference.**
 
-The format is specified in [[../mvec-format-v1]], the capture procedure in
-[[../mvec-comparison-capture-procedure]].
-
 ### `vector_record`
 
 | | |
@@ -614,9 +611,9 @@ bgfx_vec_supersample      1
 Turning `vector_beam_window` off stops the present loop, cutting vector CPU to
 between a half and a quarter.
 
-Measured numbers on low-end machines - what the bottleneck is differs by machine
-- are in [[../low-end-performance-results]], and how to read the logs is in
-[[../bgfx-perf-log-reading]].
+Which of these is the bottleneck differs by machine, so decide what to lower by
+measuring.  `-bgfx_debug` logs a `BGFX PERF` line once a second, which is enough
+to tell whether the CPU or the GPU side is the one holding things up.
 
 ### 5-3. Recording a comparison video
 
