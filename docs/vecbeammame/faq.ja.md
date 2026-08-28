@@ -47,6 +47,30 @@ VecBeamMAME を使っていて出てくる疑問と、その答え。
 → [追加パラメータ一覧](added-parameters.ja.md) の冒頭が
 「マクロ（Advanced Off でも見える）」の節です。
 
+## ini に `beam_width_min` を書いても効きません
+
+**素の MAME にある「CORE VECTOR OPTIONS」の一部は、VecBeamMAME では効きません。**
+描画がチェイン側の解析ライン方式に置き換わっているためです。
+
+| ini オプション | 状態 | 代わりに使うもの |
+|---|---|---|
+| `beam_width_min` / `beam_width_max` | **無効** | 同名の**チェインスライダー** `Beam Width Minimum` / `Beam Width Maximum`、または `[M] Beam Width` |
+| `beam_dot_size` | **無効** | `Point Width Scale`、または `[M] Point Size` |
+| `beam_intensity_weight` | **無効** | `Brightness Threshold (T)` と `Brightness Sigmoid` |
+| `flicker` | 同梱 ini で 0 | `[M] Beam/Supply Sim` とチェイン側の `Cyclic Flicker *` |
+
+**`beam_width_min` は ini とスライダーで同じ名前ですが別物です。** ini のほうは
+`render_primitive` の線幅に入るだけで、解析ライン描画はそれを読まず、チェインスライダーの
+値からビーム幅を決めます。ini に書いた値が無視されているように見えるのはこのためです。
+
+同梱の `ini/presets/vector.ini` と `vector-mono.ini` にはこれらの行が残っていますが、
+幅系の 3 本は上記のとおり効きません。
+
+`flicker` だけは実際に効きます（ベクターデバイス側で 1 本ごとに強度をランダムに落とす）。
+ただしこれは、実機の「1 掃引で描き切れず次フレームへ持ち越す」挙動を再現したチェイン側の
+周期フリッカとは別物で、両方効くと二重にかかります。**そのため同梱の ini プリセットでは
+`flicker 0.00` にしてあります。** そのままにしてください。
+
 ## ゲームによってベクターの時間情報があったり無かったりしますか？
 
 **あります。** VecBeamMAME の中核は「ビームがいつ・どれだけの時間をかけてその線を描いたか」
