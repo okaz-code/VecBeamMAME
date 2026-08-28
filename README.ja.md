@@ -33,8 +33,10 @@ English: [README.md](README.md)
 2. **ベクター CRT 表示のシミュレーション** — その信号が実表示装置でどう見えるかを物理原則で近似。
    ビーム速度→エネルギー、蛍光体残光と蓄積、フォーカス/デフォーカス、Overload の見た目、Glow/Halo、
    画面外照射など。
-3. **光学レンダリングと経験的調整** — 実機ごとの正確な計測が難しい最終ルックを、写真/動画/キャプチャ
-   比較や主観比較で追い込む部分。
+3. **光学レンダリングと経験的調整** — 実機ごとの正確な計測が難しい最終ルックを追い込む部分。
+   **合わせる相手は実機**で、実際に並べて見比べて決めています。写真や動画は参考程度にしか
+   使いません（カメラは CRT の高輝度を大きく誇張するため）。実機側のキャプチャは撮れないので
+   使っていません。
 
 > 表示経路全体を「完全なハードウェアエミュレーション」と称するのは避けています。同時に「ただの Bloom
 > シェーダ」と矮小化するのも、時間情報とビームメタデータの追加を無視するため不適切です。
@@ -43,7 +45,7 @@ English: [README.md](README.md)
 
 | | |
 |---|---|
-| [追加パラメータ一覧](docs/vecbeammame/added-parameters.ja.md) | 実行中に変えるスライダー全 224 本。`bgfx/chains/vector/*.json` から生成 |
+| [追加パラメータ一覧](docs/vecbeammame/added-parameters.ja.md) | 実行中に変えるスライダーの一覧。`bgfx/chains/vector/*.json` から生成 |
 | [起動時オプション](docs/vecbeammame/startup-options.ja.md) | `vbmame.ini` に書くもの。ini の作り方から |
 | [HDR 設定ガイド](docs/vecbeammame/hdr-settings.ja.md) | HDR 出力の仕組みとモニタに合わせた設定 |
 | [ベクターチェイン解説](bgfx/chains/vector/README.ja.md) | 同梱チェインの構成 |
