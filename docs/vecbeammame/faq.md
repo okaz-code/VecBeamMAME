@@ -124,7 +124,7 @@ it only because nobody has written that timing model yet.
 | **Beam time window** (`beam_window`) | One present deposits part of the sweep and the rest is left to the phosphor: the flicker a real machine has | **Does not engage.** A whole frame arrives at once |
 | **Strike flash** (`beam_flash_ms`) | Only the slice just deposited is lifted | Inactive - it is gated on the window |
 | **Cyclic flicker** (`flicker_*`) | Vectors are bucketed by sweep time and a busy frame drops some | Inactive |
-| **Clip-window sample-and-hold** (`vector_window_sim`) | Reproduces the MAJOR HAVOC / BATTLEZONE window circuit's imperfections | The hardware that has the circuit is Atari AVG only, so this always applies |
+| **Clip-window sample-and-hold** | Reproduces the MAJOR HAVOC / BATTLEZONE window circuit's imperfections | The hardware that has the circuit is Atari AVG only, so this always applies |
 | **MVEC recording** | Recorded with sweep timing, and replayed with the same time structure | Recorded as an event list with no timing |
 
 So on a machine where the timing does not arrive, **the display side -

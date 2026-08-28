@@ -246,15 +246,21 @@ sliders are the adjustment while running.
 
 | | |
 |---|---|
-| Type / default | bool / **`1` (on)** |
+| Type / default | bool / **`0` (off)** |
 
-**Master switch for the whole sample-and-hold model of the clip window.**  It
-exists to handle the four options below together: `-novector_window_sim`
-**forces all four to 0**, whatever they were individually set to.
+**The switch for the clip window's wobble.**  It decides whether the latched
+edge lands somewhere slightly different each frame (`vector_window_jitter`).
+That is the only one of the four that is ever seen as movement; the other three
+- droop, dielectric absorption, offset - are **always on**.
 
-One switch, so that you can remove the model without remembering each one's
-"off" value.  Use it to compare against an ideal hold - no droop, no memory, no
-scatter, no offset.
+**Off by default.**  On Major Havoc only the bottom trim line moves, which is
+what the real machine does; on Battlezone all four edges of the rectangle are
+held values, so the same amount reads as the whole frame breathing.  Hence
+opt-in.
+
+```
+vbmame mhavoc -vector_window_sim
+```
 
 ### `vector_window_droop` / `vector_window_memory` / `vector_window_jitter` / `vector_window_bias`
 
@@ -262,7 +268,7 @@ scatter, no offset.
 |---|---|---|
 | `vector_window_droop` | float | `5.0` |
 | `vector_window_memory` | float | `0.005` |
-| `vector_window_jitter` | float | `0.0` (off) |
+| `vector_window_jitter` | float | `1.0` (but needs `vector_window_sim`) |
 | `vector_window_bias` | float | `0.5` |
 
 **These only affect machines that have this circuit.**  Major Havoc holds one
@@ -271,16 +277,15 @@ all four edges of the clip rectangle, in both cases with an analog switch and a
 hold capacitor (the same LF13201, the same 1000pF).  These four options
 reproduce that circuit's non-ideal behaviour.
 
-**Only `window_jitter` defaults to 0 (off).**  It is scatter in the latched
-value itself, and **the only one of the four that moves between frames**.  On
-Major Havoc's single edge it matches the real machine, but on Battlezone all
-four edges of the rectangle move and the frame appears to breathe, so it is
-opt-in.
+**Only `window_jitter` needs a switch.**  It is scatter in the latched value
+itself, **the only one of the four that moves between frames** and so the thing
+seen as the window wobbling.  It carries the real circuit's value of `1.0`, but
+counts as 0 while `vector_window_sim` is off (see above).
 
 The other three - droop, dielectric absorption, offset - default to values
-close to the real circuit.  They **do not move between frames**: they shift the
-position by a fixed amount, or lean along the drawing order.  Remove them all
-with `-novector_window_sim`, or individually by passing that option `0`.
+close to the real circuit and are **always on**.  They **do not move between
+frames**: they shift the position by a fixed amount, or lean along the drawing
+order, so they are never seen as wobble.  Remove one by passing it `0`.
 
 | Option | What it models | Unit | Off value |
 |---|---|---|---|
@@ -674,15 +679,16 @@ vector_blank_leak         0.05
 
 ### 5-5. The clip window circuit (Major Havoc / Battlezone)
 
-`jitter` is off by default; add it only when you want the between-frame
-movement.  All four edges of Battlezone's rectangle move, so the same value
-shows up more strongly there than on Major Havoc.
+The wobble (`jitter`) needs `vector_window_sim`.  Its default of `1.0` is the
+figure for Major Havoc's single edge, so on Battlezone, where all four move,
+it settles down if you bring it lower.
 
 ```ini
 # put this in mhavoc.ini / bzone.ini, not starwars.ini
+vector_window_sim         1
+vector_window_jitter      1.0      # around 0.3 to start with on bzone
 vector_window_droop       2.0
 vector_window_memory      0.15
-vector_window_jitter      0.3
 vector_window_bias        -0.2
 ```
 
