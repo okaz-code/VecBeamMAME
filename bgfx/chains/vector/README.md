@@ -171,20 +171,5 @@ estimates their source rate from the absolute beam-event timestamps.  If a
 legacy file has no usable timing information, playback falls back to the
 current vector screen rate and reports the fallback in the log.
 
-## Removed parameters
-
-Parameters whose code path was unreachable at the chain defaults were deleted
-along with their logic.  The smoked-glass optics model, the cubic and corner
-tube-distortion terms, three of the four pincushion coefficients, the bezel
-inside lobe, the phosphor diagnostic views, the P22 phosphor-gamut blend, the
-HDR diagnostics overlay, the T-junction cap suppression and the untimed
-scan-order variation are all gone; `Vector Pincushion X (Quad)`
-(`vector_pincushion_x_quad`) is the pincushion control that remains.
-
-Convergence (`converge_*`, `radial_converge_*`, `convergence_global_*`) and
-`Vector Linearity X/Y` (`vector_linearity_x` / `vector_linearity_y`) were kept
-for real-hardware alignment; they are advanced-only and cost nothing at their
-zero defaults.
-
-With glass gone, the `wide_glow_ds0..ds3` downsample passes skip on
-`Glow Wide` (`glow_wide`) alone.
+The bundled [MVEC viewer](../../../tools/mvec-viewer/) opens in a browser and
+visualises a recorded beam event stream.
