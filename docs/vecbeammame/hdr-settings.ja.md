@@ -1,5 +1,7 @@
 # HDR 設定ガイド
 
+English: [hdr-settings.md](hdr-settings.md)
+
 VecBeamMAME の HDR 出力の仕組みと、モニタのピーク輝度に合わせた設定方法をまとめる。ベクターCRTは黒地に細く非常に明るい線を描くため HDR と相性がよく、背景を真っ黒に保ったままビームだけがディスプレイのピーク輝度を使える。
 
 関連: [追加パラメータ一覧](added-parameters.ja.md)（HDR / SDR presentation の節）、[起動時オプション](startup-options.ja.md)

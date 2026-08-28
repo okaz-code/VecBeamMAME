@@ -1,5 +1,7 @@
 # VecBeamMAME FAQ
 
+English: [faq.md](faq.md)
+
 VecBeamMAME を使っていて出てくる疑問と、その答え。
 パラメータの一覧は [追加パラメータ一覧](added-parameters.ja.md)、ini に書くオプションは [起動時オプション](startup-options.ja.md)、HDR まわりは [HDR 設定ガイド](hdr-settings.ja.md)。
 
