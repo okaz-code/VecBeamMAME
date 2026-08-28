@@ -68,6 +68,21 @@ self-contained HTML - open them in a browser.
 
 ---
 
+## Support
+
+**Please do not ask the upstream MAME developers about anything specific to
+VecBeamMAME.**  They do not maintain this fork, cannot help with it, and a
+fork's bug reports are noise on their tracker.
+
+Use this repository's Issues instead.  How the picture looks depends heavily on
+the display, so include your OS, GPU, renderer, display type, whether HDR is
+on, the game, and the command line you used.
+
+If the same thing happens on stock MAME 0.289, it belongs upstream rather than
+here.
+
+---
+
 ## Upstream MAME
 
 ## What is MAME?
