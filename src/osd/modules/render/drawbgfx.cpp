@@ -1565,12 +1565,14 @@ int renderer_bgfx::create()
 		m_vec_supersample = uint16_t(ss < 1 ? 1 : (ss > 2 ? 2 : ss));
 		m_output_scale = std::clamp(m_module().options().bgfx_output_scale(), 0.25f, 1.0f);
 		m_vec_render_scale = std::clamp(m_module().options().bgfx_render_scale(), 0.1f, 1.0f);
-		// -vector_quality names all three of these at once. A preset is a starting point, so it only
-		// fills in the parts that were left alone: an explicit scale on the command line outranks it.
+		// -vector_quality names these two along with the window and the present rate, which the core
+		// side applies. A preset is a starting point, so it only fills in the parts that were left
+		// alone: an explicit scale on the command line outranks it.
 		{
 			float preset_render = 0.0f, preset_output = 0.0f;
 			bool preset_window = false;
-			if (window().machine().options().vector_quality_preset(preset_render, preset_output, preset_window))
+			int preset_present_rate = 0;
+			if (window().machine().options().vector_quality_preset(preset_render, preset_output, preset_window, preset_present_rate))
 			{
 				auto const untouched = [this] (const char *name)
 				{

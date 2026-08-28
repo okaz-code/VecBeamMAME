@@ -108,36 +108,55 @@ cfg に保存されたチェイン選択を読まず、また cfg へ書き戻�
 | 型 / 既定 | string / **未設定(何も変えない)** |
 | 値 | `high` / `medium`(別名 `middle`) / `low` |
 
-**描画負荷を決める3つの設定をまとめて指定するプリセット。** 個別に
-`bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` を覚えていなくても、
-機体の余力に合わせて1語で選べる。
+**描画負荷を決める4つの設定をまとめて指定するプリセット。** 個別に
+`bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` / `vector_present_rate`
+を覚えていなくても、機体の余力に合わせて1語で選べる。
 
-| 値 | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` |
-|---|---|---|---|
-| `high` | `1.0` | `1.0` | オン |
-| `medium` | `0.75` | `0.75` | オン |
-| `low` | `0.5` | `0.5` | **オフ** |
+| 値 | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` |
+|---|---|---|---|---|
+| `high` | `1.0` | `1.0` | オン | `auto` |
+| `medium` | `0.75` | `0.75` | オン | **`60`** |
+| `low` | `0.5` | `0.5` | **オフ** | `0`(present ループ自体が回らない) |
 
 実際に効くのは解像度スケールの2本で、ビーム窓はその上に乗る演出。**余力が無い機体で
 最初に落とすのが窓**なので `low` だけ窓を切る。
 
-**プリセットは出発点なので、明示指定に負ける。** 上表の3項目のうち、**まだ誰も触って
+**present レートを含めているのは、60 Hz を超えるモニタ対策。** 窓がオンだと present レートは
+`auto`(モニタのリフレッシュ)に昇格するので、144 Hz のパネルでは蛍光体・モニタチェインが
+毎秒 144 回走る。しかも唯一の上限装置である `vector_phosphor_rate` は、窓がオンのときは
+効かない(present ごとに掃引の別スライスを運んでいるため、前の出力を再提示できない)。
+そこで `medium` はモニタ任せにせず 60 に固定する。
+
+`low` を `0` のままにしてあるのは意図的で、**窓がオフなら昇格が起きず present タイマーが
+そもそも生成されない**(レンダラとして一番安い状態)。ここにレートを書くと、今は存在しない
+ループを新設することになり、かえって重くなる。
+
+**プリセットは出発点なので、明示指定に負ける。** 上表の4項目のうち、**まだ誰も触って
 いないもの(優先度 0 = 組み込みの既定値のまま)だけ**を埋める。ini(101 以上)でも
 コマンドライン(151)でも、一度書かれた値はそのまま残る
 (→ [1-2](#1-2-ini-の探索場所と優先順位))。つまり
-`-vector_quality low -vector_beam_window 1` は「解像度は半分、窓はオン」になり、
-`vbmame.ini` に `bgfx_render_scale 1.0` と書いてあれば `low` でも解像度は下がらない。
+`-vector_quality low -vector_beam_window` は「解像度は半分、窓はオン」になり
+(このとき窓が働くよう present レートは `auto` へ昇格する)、`vbmame.ini` に
+`bgfx_render_scale 1.0` と書いてあれば `low` でも解像度は下がらない。
+`-vector_quality medium -vector_present_rate 120` なら 120 Hz がそのまま通る。
+
+起動時のログでどれが効いたか分かる。
+
+```
+Vector presentation timer enabled at 60 Hz (from -vector_quality)
+Vector presentation timer enabled at auto, initial 60 Hz (requested by vector_beam_window)
+```
 
 `high` / `medium` / `low` 以外を渡すと警告を出して**プリセットごと無視**する
-(3項目とも設定どおりのまま)。
+(4項目とも設定どおりのまま)。
 
 ```
 Unknown -vector_quality 'ultra'; expected high, medium or low. Ignoring.
 ```
 
-なお `vector_quality` 自体は `src/emu` のオプションだが、埋める対象のうち2つは
+なお `vector_quality` 自体は `src/emu` のオプションだが、埋める4項目のうち2つは
 BGFX 側(→ [4](#4-bgfx-レンダラ-オプションvecbeam-追加分))なので、**BGFX 以外の
-レンダラでは窓の指定だけが効く。**
+レンダラでは窓と present レートの指定だけが効く。**
 
 ### `vector_overscan_x` / `vector_overscan_y`
 
@@ -255,6 +274,12 @@ Battlezone はクリップ矩形の4辺すべてを、アナログスイッチ�
 
 高リフレッシュのモニタで蛍光体の減衰を滑らかに見せる目的と、`vector_beam_window` の
 土台としての目的がある。
+
+**このレートに比例して増えるのは蛍光体・合成・モニタチェイン(GPU 側)だけ。** ベクター
+プリミティブの構築と補助経路(glow / halation / no-persist / 星芒)はソースフレーム単位で
+作られ、present だけのリフレッシュでは使い回されるので増えない。それでも 144 Hz は 60 Hz の
+2.4 倍の合成コストなので、余力の無い機体では `-vector_quality medium`(60 に固定)か、
+このオプションを直接 50〜60 に指定する。
 
 ### `vector_phosphor_rate` / 別名 `vecphosphor`
 
@@ -537,7 +562,7 @@ bgfx_hdr_paper_white      200
 ```
 
 `render_scale` / `output_scale` を `0.5` にし、ビーム窓を切る。効き方が足りない / 効きすぎる
-ときに `medium`(`0.75` + 窓あり)と `high`(`1.0` + 窓あり)を試す。
+ときに `medium`(`0.75` + 窓あり + present 60 Hz 固定)と `high`(`1.0` + 窓あり + present `auto`)を試す。
 
 個別に書くなら:
 

@@ -118,40 +118,63 @@ So:
 | Type / default | string / **unset (changes nothing)** |
 | Values | `high` / `medium` (alias `middle`) / `low` |
 
-**A preset that sets the three options governing drawing cost together.**  It
+**A preset that sets the four options governing drawing cost together.**  It
 lets you pick a load in one word, without having to remember
-`bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` individually.
+`bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` /
+`vector_present_rate` individually.
 
-| Value | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` |
-|---|---|---|---|
-| `high` | `1.0` | `1.0` | on |
-| `medium` | `0.75` | `0.75` | on |
-| `low` | `0.5` | `0.5` | **off** |
+| Value | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` |
+|---|---|---|---|---|
+| `high` | `1.0` | `1.0` | on | `auto` |
+| `medium` | `0.75` | `0.75` | on | **`60`** |
+| `low` | `0.5` | `0.5` | **off** | `0` (no present loop at all) |
 
 What actually costs is the two resolution scales; the beam window rides on top
 of them.  **The window is the first thing to drop on a machine without room to
 spare**, so only `low` turns it off.
 
+**The present rate is in there for monitors above 60 Hz.**  With the window on
+the rate is promoted to `auto`, the monitor's refresh, so a 144 Hz panel runs
+the phosphor and monitor chain 144 times a second - and the one cap for that,
+`vector_phosphor_rate`, cannot help while the window is on, because every
+present carries a different slice of the sweep and the previous output cannot
+be re-presented.  So `medium` pins the rate at 60 instead of letting the
+monitor decide how much work to ask for.
+
+`low` is left at `0` deliberately: **with the window off nothing promotes the
+rate and the present timer is never created at all**, which is the cheapest the
+renderer gets.  Naming a rate there would build back a loop that currently does
+not exist, and make `low` slower.
+
 **A preset is a starting point, so anything explicit beats it.**  It fills in
-**only those of the three that nobody has touched** (priority 0, still the
+**only those of the four that nobody has touched** (priority 0, still the
 built-in default).  A value written anywhere - an ini (101 and up) or the
 command line (151) - stays as written (see
 [1-2](#1-2-where-ini-files-are-looked-for-and-what-wins)).  So
-`-vector_quality low -vector_beam_window 1` means "half resolution, window on",
-and with `bgfx_render_scale 1.0` in `vbmame.ini` even `low` will not lower the
-resolution.
+`-vector_quality low -vector_beam_window` means "half resolution, window on"
+(and the present rate is promoted to `auto` so the window has slices to work
+with), and with `bgfx_render_scale 1.0` in `vbmame.ini` even `low` will not
+lower the resolution.  `-vector_quality medium -vector_present_rate 120` gets
+120 Hz.
+
+The startup log says which one applied.
+
+```
+Vector presentation timer enabled at 60 Hz (from -vector_quality)
+Vector presentation timer enabled at auto, initial 60 Hz (requested by vector_beam_window)
+```
 
 Anything other than `high` / `medium` / `low` warns and **the whole preset is
-ignored** (all three stay as configured).
+ignored** (all four stay as configured).
 
 ```
 Unknown -vector_quality 'ultra'; expected high, medium or low. Ignoring.
 ```
 
-`vector_quality` is itself an `src/emu` option, but two of the three things it
+`vector_quality` is itself an `src/emu` option, but two of the four things it
 fills in are on the BGFX side (see
 [4](#4-bgfx-renderer-options-added-by-vecbeam)), so **on renderers other than
-BGFX only the window part has any effect.**
+BGFX only the window and the present rate have any effect.**
 
 ### `vector_overscan_x` / `vector_overscan_y`
 
@@ -285,6 +308,13 @@ specify a value explicitly if you need something else.
 
 Its purposes are to make phosphor decay look smooth on a high-refresh monitor,
 and to act as the foundation for `vector_beam_window`.
+
+**What scales with this rate is the phosphor, composite and monitor chain - the
+GPU side - and nothing else.**  The vector primitives and the auxiliary passes
+(glow / halation / no-persist / rays) are built per source frame and reused on a
+presentation-only refresh.  Even so, 144 Hz is 2.4x the compositing work of
+60 Hz, so on a machine without room to spare use `-vector_quality medium`
+(which pins it at 60) or set this option to 50-60 directly.
 
 ### `vector_phosphor_rate` / alias `vecphosphor`
 
@@ -597,8 +627,8 @@ Try one word first:
 ```
 
 That sets `render_scale` and `output_scale` to `0.5` and turns the beam window
-off.  If it does too little or too much, try `medium` (`0.75`, window on) and
-`high` (`1.0`, window on).
+off.  If it does too little or too much, try `medium` (`0.75`, window on,
+present pinned at 60 Hz) and `high` (`1.0`, window on, present `auto`).
 
 Written out individually:
 

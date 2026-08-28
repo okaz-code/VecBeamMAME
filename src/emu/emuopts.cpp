@@ -441,28 +441,35 @@ namespace
 
 
 //-------------------------------------------------
-//  vector_quality_preset - the three settings
+//  vector_quality_preset - the four settings
 //  -vector_quality stands for
 //-------------------------------------------------
 
-bool emu_options::vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window) const
+bool emu_options::vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate) const
 {
 	const char *const name = vector_quality();
 	if (!name || !*name)
 		return false;
 	// The scales are what actually costs: the beam time window is a presentation choice on top, and it
 	// is the first thing to go on a machine that cannot afford it.
+	//
+	// The present rate matters because the window promotes it to auto, and auto on a 144 Hz panel runs
+	// the phosphor and monitor chain 144 times a second - the one cap for that, vector_phosphor_rate,
+	// cannot help while the window is on, since every present carries a different slice of the sweep.
+	// So medium pins the rate at 60 rather than letting the monitor decide how much work to ask for.
+	// low leaves it at 0: with the window off nothing promotes it, and the present loop does not run
+	// at all, which is the cheapest the renderer gets. Naming a rate there would build that loop back.
 	if (!core_stricmp(name, "high"))
 	{
-		render_scale = 1.0f; output_scale = 1.0f; beam_window = true;
+		render_scale = 1.0f; output_scale = 1.0f; beam_window = true; present_rate = -1;
 	}
 	else if (!core_stricmp(name, "medium") || !core_stricmp(name, "middle"))
 	{
-		render_scale = 0.75f; output_scale = 0.75f; beam_window = true;
+		render_scale = 0.75f; output_scale = 0.75f; beam_window = true; present_rate = 60;
 	}
 	else if (!core_stricmp(name, "low"))
 	{
-		render_scale = 0.5f; output_scale = 0.5f; beam_window = false;
+		render_scale = 0.5f; output_scale = 0.5f; beam_window = false; present_rate = 0;
 	}
 	else
 	{
