@@ -28,6 +28,11 @@ Rather than simply drawing lines, it aims to reproduce differences like these:
 - A parked beam (a dwell dot) and beam excursions off the visible area both
   contribute light.
 
+Faults found along the way that **apply to stock MAME 0.289 as well** are fixed
+here too: the AVI recording buffer size, `bgfx_screen_chains` overwriting cfg,
+and the Vectrex open bus, light pen and 3-D Imager sync.  The
+[FAQ](docs/vecbeammame/faq.md) has the details.
+
 ## The three-layer model
 
 The reproduction is deliberately split into three layers, to keep clear what is
