@@ -922,8 +922,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   const ROW_WINDOW_SIZE = 80;
 
   const state = {
-    bytes: null,
-    view: null,
+    file: null,          // 全体を ArrayBuffer に載せない。2GB を超えるとブラウザが読めないため
+    payloads: new Map(), // フレーム番号 -&gt; そのフレームのペイロード（必要になった分だけ）
     frames: [],
     cache: new Map(),
     current: 0,
@@ -959,62 +959,76 @@ html&gt;body{padding:0}&lt;/style&gt;
     return (c ^ 0xffffffff) &gt;&gt;&gt; 0;
   }
 
-  function requireBytes(pos, size, limit, label) {
-    if (size &lt; 0 || pos &lt; 0 || pos + size &gt; limit) throw new Error(label + &#x27;が途中で切れています。&#x27;);
-  }
+  // 走査窓。フレームのペイロードは最大 36 + 20000*66 = 約 1.3MB なので、16MB あれば
+  // どのフレームも窓に収まる。ファイル全体を一度に読まないのは、2GB を超える録画
+  // （starwars / mhavoc）で ArrayBuffer の上限に当たり NotReadableError になるため。
+  const SCAN_WINDOW = 1 &lt;&lt; 24;
 
-  function parseMvec(buffer, name) {
-    const bytes = new Uint8Array(buffer);
-    const view = new DataView(buffer);
+  async function parseMvec(file, name, progress) {
+    let winStart = 0;
+    let bytes = new Uint8Array(await file.slice(0, Math.min(SCAN_WINDOW, file.size)).arrayBuffer());
+    let view = new DataView(bytes.buffer);
+    const rel = abs =&gt; abs - winStart;
+    async function need(abs, size, label) {
+      if (size &lt; 0 || abs &lt; 0 || abs + size &gt; file.size) throw new Error(label + &#x27;が途中で切れています。&#x27;);
+      if (abs &gt;= winStart &amp;&amp; abs + size &lt;= winStart + bytes.length) return;
+      if (size &gt; SCAN_WINDOW) throw new Error(label + &#x27;が大きすぎます。&#x27;);
+      winStart = abs;
+      const buf = await file.slice(abs, Math.min(abs + SCAN_WINDOW, file.size)).arrayBuffer();
+      bytes = new Uint8Array(buf);
+      view = new DataView(buf);
+    }
     let pos = 0;
-    requireBytes(0, 16, bytes.length, &#x27;MVECヘッダー&#x27;);
+    await need(0, 16, &#x27;MVECヘッダー&#x27;);
     const expected = [77, 65, 77, 69, 86, 69, 67, 0];
     for (let i = 0; i &lt; expected.length; i++) {
       if (bytes[i] !== expected[i]) throw new Error(&#x27;MVEC v1ファイルではありません。&#x27;);
     }
     pos = 8;
-    const major = view.getUint16(pos, true); pos += 2;
-    const minor = view.getUint16(pos, true); pos += 2;
-    const endian = view.getUint32(pos, true); pos += 4;
+    const major = view.getUint16(rel(pos), true); pos += 2;
+    const minor = view.getUint16(rel(pos), true); pos += 2;
+    const endian = view.getUint32(rel(pos), true); pos += 4;
     if (major !== 1 || minor &gt; 1 || endian !== 0x12345678) throw new Error(`未対応のMVEC形式です（${major}.${minor}）。`);
 
     const decoder = new TextDecoder(&#x27;utf-8&#x27;);
-    function readString() {
-      requireBytes(pos, 2, bytes.length, &#x27;MVEC文字列&#x27;);
-      const length = view.getUint16(pos, true); pos += 2;
-      requireBytes(pos, length, bytes.length, &#x27;MVEC文字列&#x27;);
-      const value = decoder.decode(bytes.subarray(pos, pos + length));
+    async function readString() {
+      await need(pos, 2, &#x27;MVEC文字列&#x27;);
+      const length = view.getUint16(rel(pos), true); pos += 2;
+      await need(pos, length, &#x27;MVEC文字列&#x27;);
+      const value = decoder.decode(bytes.subarray(rel(pos), rel(pos) + length));
       pos += length;
       return value;
     }
 
-    const systemName = readString();
-    const deviceName = readString();
+    const systemName = await readString();
+    const deviceName = await readString();
     // v1.1 appends the recorded frame period in attoseconds (vector.cpp write_header/read_header).
     // 0 or missing means the recorder did not know it; playback then infers it.
     let framePeriodAs = 0;
     if (minor &gt;= 1) {
-      requireBytes(pos, 8, bytes.length, &#x27;MVECフレーム周期&#x27;);
-      framePeriodAs = Number(view.getBigInt64(pos, true)); pos += 8;
+      await need(pos, 8, &#x27;MVECフレーム周期&#x27;);
+      framePeriodAs = Number(view.getBigInt64(rel(pos), true)); pos += 8;
     }
     const frames = [];
     let lastContent = -1;
-    while (pos &lt; bytes.length) {
-      requireBytes(pos, 12, bytes.length, &#x27;フレームチャンク&#x27;);
-      const magic = view.getUint32(pos, true); pos += 4;
+    while (pos &lt; file.size) {
+      await need(pos, 8, &#x27;フレームチャンク&#x27;);
+      const magic = view.getUint32(rel(pos), true);
       if (magic !== 0x4d415246) throw new Error(`フレーム${frames.length + 1}のFRAMマーカーが不正です。`);
-      const payloadSize = view.getUint32(pos, true); pos += 4;
-      const payload = pos;
-      requireBytes(payload, payloadSize + 4, bytes.length, `フレーム${frames.length + 1}`);
+      const payloadSize = view.getUint32(rel(pos) + 4, true);
+      const payload = pos + 8;
       if (payloadSize &lt; 36) throw new Error(`フレーム${frames.length + 1}のペイロードが短すぎます。`);
-      const storedCrc = view.getUint32(payload + payloadSize, true);
-      const actualCrc = crc32(bytes, payload, payloadSize);
+      // ここで窓がずれることがあるので、これより前の rel() の結果は使い回さない
+      await need(payload, payloadSize + 4, `フレーム${frames.length + 1}`);
+      const storedCrc = view.getUint32(rel(payload) + payloadSize, true);
+      const actualCrc = crc32(bytes, rel(payload), payloadSize);
       if (storedCrc !== actualCrc) throw new Error(`フレーム${frames.length + 1}のCRCが一致しません。`);
 
-      const id = view.getBigUint64(payload, true);
-      const flags = view.getUint32(payload + 8, true);
+      const id = view.getBigUint64(rel(payload), true);
+      const flags = view.getUint32(rel(payload) + 8, true);
       const stale = (flags &amp; 1) !== 0;
-      const pointCount = view.getUint32(payload + 32, true);
+      const pointCount = view.getUint32(rel(payload) + 32, true);
+      if (progress &amp;&amp; (frames.length &amp; 511) === 0) progress(pos, file.size);
       const expectedSize = 36 + pointCount * 66;
       if (expectedSize !== payloadSize) throw new Error(`フレーム${frames.length + 1}のベクター数とサイズが一致しません。`);
       if (stale &amp;&amp; pointCount !== 0) throw new Error(`staleフレーム${frames.length + 1}にベクターが格納されています。`);
@@ -1026,12 +1040,12 @@ html&gt;body{padding:0}&lt;/style&gt;
         id,
         stale,
         timed: (flags &amp; 2) !== 0,
-        generation: view.getUint32(payload + 12, true),
+        generation: view.getUint32(rel(payload) + 12, true),
         vis: {
-          minX: view.getInt32(payload + 16, true),
-          maxX: view.getInt32(payload + 20, true),
-          minY: view.getInt32(payload + 24, true),
-          maxY: view.getInt32(payload + 28, true)
+          minX: view.getInt32(rel(payload) + 16, true),
+          maxX: view.getInt32(rel(payload) + 20, true),
+          minY: view.getInt32(rel(payload) + 24, true),
+          maxY: view.getInt32(rel(payload) + 28, true)
         },
         storedCount: pointCount,
         contentFrame: stale ? lastContent : frames.length
@@ -1040,8 +1054,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     }
     if (!frames.length) throw new Error(&#x27;フレームが記録されていません。&#x27;);
 
-    state.bytes = bytes;
-    state.view = view;
+    state.file = file;
+    state.payloads.clear();
     state.frames = frames;
     state.cache.clear();
     state.current = 0;
@@ -1063,14 +1077,26 @@ html&gt;body{padding:0}&lt;/style&gt;
     state.frameHz = framePeriodAs &gt; 0 ? 1e18 / framePeriodAs : 0;
   }
 
+  // 表示に必要なフレームのペイロードだけを読み出す。ファイル全体は保持しない。
+  async function ensureContent(sourceIndex) {
+    if (sourceIndex &lt; 0) return;
+    if (state.cache.has(sourceIndex) || state.payloads.has(sourceIndex)) return;
+    const source = state.frames[sourceIndex];
+    const buffer = await state.file.slice(source.payload, source.payload + source.payloadSize).arrayBuffer();
+    state.payloads.set(sourceIndex, buffer);
+    if (state.payloads.size &gt; 12) state.payloads.delete(state.payloads.keys().next().value);
+  }
+
   function decodeContent(frameIndex) {
     const frame = state.frames[frameIndex];
     const sourceIndex = frame.contentFrame;
     if (sourceIndex &lt; 0) return [];
     if (state.cache.has(sourceIndex)) return state.cache.get(sourceIndex);
     const source = state.frames[sourceIndex];
-    const view = state.view;
-    let pos = source.payload + 36;
+    const payload = state.payloads.get(sourceIndex);
+    if (!payload) return [];              // ensureContent がまだ読んでいない
+    const view = new DataView(payload);
+    let pos = 36;                         // ペイロード先頭からの相対
     const points = new Array(source.storedCount);
     for (let i = 0; i &lt; points.length; i++) {
       const x0 = view.getInt32(pos, true); pos += 4;
@@ -1331,9 +1357,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     vectorDetail(state.selected);
     render();
   }
-  function updateFrame(index) {
+  async function updateFrame(index) {
     if (!state.frames.length) return;
     state.current = Math.max(0, Math.min(state.frames.length - 1, index));
+    await ensureContent(state.frames[state.current].contentFrame);
     state.selected = referenceMode.checked ? 0 : -1;
     const human = state.current + 1;
     const frame = state.frames[state.current];
@@ -1375,14 +1402,15 @@ html&gt;body{padding:0}&lt;/style&gt;
     setPlaying(false);
     status.textContent = `${file.name} を読み込み、全フレームのCRCを確認しています…`;
     try {
-      const buffer = await file.arrayBuffer();
-      parseMvec(buffer, file.name);
+      await parseMvec(file, file.name, (done, size) =&gt; {
+        status.textContent = `${file.name} を読み込み、全フレームのCRCを確認しています… ${Math.floor(done / size * 100)}%`;
+      });
       const total = state.frames.length;
       transport.forEach(control =&gt; control.disabled = false);
       number.max = String(total);
       range.max = String(total);
       status.textContent = `${file.name}・MVEC ${state.version}・system ${state.system}・device ${state.device}・${total}フレーム${state.frameHz ? `・${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;}（CRC正常）`;
-      updateFrame(0);
+      await updateFrame(0);
       updateZoomUi();
     } catch (error) {
       state.frames = [];
