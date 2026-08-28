@@ -12,16 +12,54 @@ optical scatter.
 It builds as `vbmame` and reads `vbmame.ini`, so it can sit alongside a stock
 MAME installation.
 
-> The project documentation is currently Japanese only.  An English translation
-> is planned; until then, see [README.ja.md](README.ja.md) and the documents
-> below.
+## What this is
+
+A vector primitive normally reaches a renderer as little more than `X / Y / Z
+(intensity) / colour`.  VecBeamMAME carries **beam timing and beam metadata**
+alongside it, and approximates how a real vector CRT responds to beam movement,
+beam energy, phosphor excitation, redraw, focus and optical scatter.
+
+Rather than simply drawing lines, it aims to reproduce differences like these:
+
+- A short line drawn slowly is brighter than a long line drawn fast.
+- Redrawing the same place before the phosphor has decayed is brighter than a
+  single pass (accumulation).
+- A high-energy vector is wider and less sharply focused.
+- A parked beam (a dwell dot) and beam excursions off the visible area both
+  contribute light.
+
+## The three-layer model
+
+The reproduction is deliberately split into three layers, to keep clear what is
+*emulation* (faithful), what is *simulation* (physical approximation) and what
+is *empirical tuning* (matching an appearance).
+
+1. **Emulation of the vector generator** — the timing and signals the hardware
+   produced: AVG/DVG/Vectrex vector timing, start and end times, draw time,
+   visible time, blanked travel time, Z/intensity timing, scale-dependent travel
+   time, known overload conditions.  This is a record of what the original
+   circuit put out, and belongs on the faithful side.
+2. **Simulation of the vector CRT** — how those signals look on a real display,
+   approximated from physical principles: beam speed to energy, phosphor
+   persistence and accumulation, focus and defocus, the appearance of overload,
+   glow and halo, off-screen excursions.
+3. **Optical rendering and empirical tuning** — the final look, which is hard to
+   measure per machine.  **It is matched against the real monitors**, side by
+   side.  Photographs and video are consulted only loosely, because a camera
+   greatly exaggerates a CRT's highlights.
+
+> Calling the whole display path "complete hardware emulation" would be wrong.
+> So would dismissing it as "just a bloom shader", since that ignores the beam
+> timing and metadata it adds.
+
+## Documentation
 
 | | |
 |---|---|
-| [Added parameters](docs/vecbeammame/added-parameters.ja.md) | Every runtime slider, generated from `bgfx/chains/vector/*.json` (ja) |
-| [Startup options](docs/vecbeammame/startup-options.ja.md) | What goes in `vbmame.ini`, starting with how to create one (ja) |
-| [HDR settings](docs/vecbeammame/hdr-settings.ja.md) | How the HDR path works and how to match it to a display (ja) |
-| [FAQ](docs/vecbeammame/faq.ja.md) | Frequently asked questions (ja) |
+| [Added parameters](docs/vecbeammame/added-parameters.md) | The runtime sliders, generated from `bgfx/chains/vector/*.json` |
+| [Startup options](docs/vecbeammame/startup-options.ja.md) | What goes in `vbmame.ini`, starting with how to create one (Japanese; English translation pending) |
+| [HDR settings](docs/vecbeammame/hdr-settings.md) | How the HDR path works and how to match it to a display |
+| [FAQ](docs/vecbeammame/faq.md) | Frequently asked questions |
 | [Vector chain guide](bgfx/chains/vector/README.md) | The bundled BGFX chains |
 
 Bundled tools: [MVEC viewer](tools/mvec-viewer/) (beam event stream inspection)

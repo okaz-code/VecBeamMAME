@@ -6,11 +6,12 @@ Advanced flag exist, so the table is generated from them rather than transcribed
 list went stale twice; this one cannot.
 
 Section order and membership come from tools/chain-slider-sections.json, and the one-line
-description of each slider from tools/chain-slider-notes.json. A slider that is not listed in the
-section map lands in a trailing "unclassified" section, which is how a newly added slider announces
-itself - move it into the map to place it, and give it a line in the notes file.
+description of each slider from tools/chain-slider-notes.<lang>.json. A slider that is not listed in
+the section map lands in a trailing "unclassified" section, which is how a newly added slider
+announces itself - move it into the map to place it, and give it a line in both notes files.
 
-    python3 tools/dump-chain-sliders.py > docs/vecbeammame/added-parameters.ja.md
+    python3 tools/dump-chain-sliders.py --lang ja > docs/vecbeammame/added-parameters.ja.md
+    python3 tools/dump-chain-sliders.py --lang en > docs/vecbeammame/added-parameters.md
 """
 
 import argparse
@@ -23,6 +24,7 @@ CHAINS = (("vector-color.json", "color"),
           ("vector-vectrex.json", "vectrex"))
 
 MODE_JA = {"scale": "倍率", "curve": "折れ線", "enable": "0/1"}
+MODE_EN = {"scale": "scale", "curve": "curve", "enable": "on/off"}
 
 
 def read_chain(path):
@@ -61,11 +63,12 @@ def value_column(per_chain):
     return "<br>".join(f"{label}: {text}" for label, text in texts.items())
 
 
-def macro_column(name, macros):
+def macro_column(name, macros, ja=True):
     """Which macros drive this slider, and how. Empty for a slider nothing drives."""
     parts = []
     for macro_name, mode in sorted(macros.get(name, [])):
-        parts.append(f"{MODE_JA.get(mode, mode)}: {macro_name}")
+        label = MODE_JA.get(mode, mode) if ja else MODE_EN.get(mode, mode)
+        parts.append(f"{label}: {macro_name}")
     return "<br>".join(parts) if parts else "—"
 
 
@@ -94,36 +97,66 @@ def main():
                         help="directory holding the vector chain JSON files")
     parser.add_argument("--sections", default=os.path.join(here, "chain-slider-sections.json"),
                         help="section order and membership")
-    parser.add_argument("--notes", default=os.path.join(here, "chain-slider-notes.json"),
-                        help="one-line description per slider")
+    parser.add_argument("--lang", choices=("ja", "en"), default="ja",
+                        help="which language to emit")
+    parser.add_argument("--notes", default=None,
+                        help="one-line description per slider (default: chain-slider-notes.<lang>.json)")
     args = parser.parse_args()
 
+    ja = args.lang == "ja"
+    notes_path = args.notes or os.path.join(here, f"chain-slider-notes.{args.lang}.json")
     sliders, macros = collect(args.chains)
     with open(args.sections, encoding="utf-8") as handle:
         sections = json.load(handle)["sections"]
-    with open(args.notes, encoding="utf-8") as handle:
+    with open(notes_path, encoding="utf-8") as handle:
         notes = json.load(handle)["notes"]
 
     placed = set()
     out = []
-    out.append("# 追加パラメータ一覧")
-    out.append("")
-    out.append("**このファイルは `tools/dump-chain-sliders.py` が "
-               "`bgfx/chains/vector/*.json` から生成しています。手で編集しないでください。**")
-    out.append("")
-    out.append("スライダーは MAME のスライダーメニュー（既定では `Tab` → Sliders）から操作し、"
-               "変更した値はゲームごとに `cfg/<game>.cfg` に保存されます。")
-    out.append("**[M] が付くものはマクロ**で、複数のパラメータをまとめて動かします。"
-               "マクロ以外は `Advanced Parameters` を On にすると出てきます"
-               "（`Brightness Threshold (T)` だけは例外で、常に表示されます）。")
-    out.append("")
-    out.append("起動時オプション（`-vector_*` など、ini ファイルに書くもの）は "
-               "[startup-options.ja.md](startup-options.ja.md) を参照してください。")
-    out.append("")
-    out.append("凡例: 値の列は `既定値 [下限, 上限] /刻み`。"
-               "チェインによって違う場合はチェインごとに並べています。"
-               "説明は 1 行の要約です。")
-    out.append("")
+    if ja:
+        out += [
+            "# 追加パラメータ一覧",
+            "",
+            "English: [added-parameters.md](added-parameters.md)",
+            "",
+            "**このファイルは `tools/dump-chain-sliders.py` が "
+            "`bgfx/chains/vector/*.json` から生成しています。手で編集しないでください。**",
+            "",
+            "スライダーは MAME のスライダーメニュー（既定では `Tab` → Sliders）から操作し、"
+            "変更した値はゲームごとに `cfg/<game>.cfg` に保存されます。",
+            "**[M] が付くものはマクロ**で、複数のパラメータをまとめて動かします。"
+            "マクロ以外は `Advanced Parameters` を On にすると出てきます"
+            "（`Brightness Threshold (T)` だけは例外で、常に表示されます）。",
+            "",
+            "起動時オプション（`-vector_*` など、ini ファイルに書くもの）は "
+            "[startup-options.ja.md](startup-options.ja.md) を参照してください。",
+            "",
+            "凡例: 値の列は `既定値 [下限, 上限] /刻み`。"
+            "チェインによって違う場合はチェインごとに並べています。説明は 1 行の要約です。",
+            "",
+        ]
+    else:
+        out += [
+            "# Added parameters",
+            "",
+            "日本語: [added-parameters.ja.md](added-parameters.ja.md)",
+            "",
+            "**This file is generated by `tools/dump-chain-sliders.py` from "
+            "`bgfx/chains/vector/*.json`.  Do not edit it by hand.**",
+            "",
+            "The sliders are reached from MAME's slider menu (`Tab` then Sliders by default), and a "
+            "value you change is saved per game in `cfg/<game>.cfg`.",
+            "**Anything prefixed `[M]` is a macro** and moves several parameters together.  "
+            "Everything else appears once `Advanced Parameters` is On - with one exception, "
+            "`Brightness Threshold (T)`, which is always shown.",
+            "",
+            "Startup options (`-vector_*` and the rest, the ones that go in the ini file) are in "
+            "[startup-options.ja.md](startup-options.ja.md).",
+            "",
+            "Legend: the value column is `default [min, max] /step`.  Where the chains differ, each "
+            "is listed.  The description is a one-line summary.",
+            "",
+        ]
 
     def emit(title, names):
         rows = [n for n in names if n in sliders]
@@ -131,22 +164,25 @@ def main():
             return
         out.append(f"## {title}")
         out.append("")
-        out.append("| 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |")
+        out.append("| 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |" if ja else
+                   "| Name | Label | Description | Value | Chains | Driven by |")
         out.append("|---|---|---|---|---|---|")
         for name in rows:
             per_chain = sliders[name]
             text = next(iter(per_chain.values())).get("text", name)
             out.append(f"| `{name}` | {text} | {notes.get(name, '—')} | {value_column(per_chain)} "
-                       f"| {'/'.join(per_chain)} | {macro_column(name, macros)} |")
+                       f"| {'/'.join(per_chain)} | {macro_column(name, macros, ja)} |")
             placed.add(name)
         out.append("")
 
     for section in sections:
-        emit(section["title"], section["sliders"])
+        emit(section["title"] if ja else section.get("title_en", section["title"]),
+             section["sliders"])
 
     leftover = sorted(set(sliders) - placed)
     if leftover:
-        emit("未分類（`tools/chain-slider-sections.json` に未登録）", leftover)
+        emit("未分類（`tools/chain-slider-sections.json` に未登録）" if ja else
+             "Unclassified (not listed in `tools/chain-slider-sections.json`)", leftover)
 
     print("\n".join(out))
 

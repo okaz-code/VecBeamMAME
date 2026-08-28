@@ -1,5 +1,5 @@
 {
- "_comment": "Section order and membership for tools/dump-chain-sliders.py. Slider names not listed here land in the trailing \"unclassified\" section of the generated document, which is how a newly added slider announces itself. Editing this file is how you place it.",
+ "_comment": "Section order and membership for tools/dump-chain-sliders.py. Slider names not listed here land in the trailing \"unclassified\" section of the generated document, which is how a newly added slider announces itself. Editing this file is how you place it. \"title\" is the Japanese heading, \"title_en\" the English one; dump-chain-sliders.py picks by --lang.",
  "sections": [
   {
    "title": "マクロ（Advanced Off でも見える）",
@@ -18,7 +18,8 @@
     "macro_beam_sim",
     "macro_halation",
     "advanced_sliders"
-   ]
+   ],
+   "title_en": "Macros (visible with Advanced off)"
   },
   {
    "title": "Phosphor persistence and decay（蛍光体の残光と減衰）",
@@ -34,14 +35,16 @@
     "phosphor_energy_decay",
     "phosphor_rgb_decay",
     "phosphor_color"
-   ]
+   ],
+   "title_en": "Phosphor persistence and decay"
   },
   {
    "title": "Brightness transfer（輝度トランスファ）",
    "sliders": [
     "bright_sigmoid",
     "bright_sigmoid_center"
-   ]
+   ],
+   "title_en": "Brightness transfer"
   },
   {
    "title": "Beam width（ビーム幅）",
@@ -56,7 +59,8 @@
     "beam_width_overmax",
     "width_over_curve",
     "halo_quad_extent"
-   ]
+   ],
+   "title_en": "Beam width"
   },
   {
    "title": "Points and dots（点・ドット）",
@@ -70,7 +74,8 @@
     "dot_no_persist_dwell",
     "z_rise_tau",
     "isolated_dot_min_size"
-   ]
+   ],
+   "title_en": "Points and dots"
   },
   {
    "title": "Focus and defocus（フォーカス／ボケ）",
@@ -78,7 +83,8 @@
     "defocus",
     "edge_defocus",
     "edge_defocus_curve"
-   ]
+   ],
+   "title_en": "Focus and defocus"
   },
   {
    "title": "Line ends（線端＝ブランキング遷移）",
@@ -90,7 +96,8 @@
     "line_cap_curve",
     "line_cap_mode",
     "cap_ramp_only"
-   ]
+   ],
+   "title_en": "Line ends"
   },
   {
    "title": "Beam energy model（ビームエネルギーモデル）",
@@ -110,7 +117,8 @@
     "energy_obj_sharp",
     "energy_obj_max",
     "energy_obj_star"
-   ]
+   ],
+   "title_en": "Beam energy model"
   },
   {
    "title": "Overload and overdrive（過大入力とオーバードライブ）",
@@ -137,7 +145,8 @@
     "overdrive_sat_curve",
     "overdrive_color",
     "overload_width_bloom_link"
-   ]
+   ],
+   "title_en": "Overload and overdrive"
   },
   {
    "title": "Glow and bloom（グロー／ブルーム）",
@@ -156,7 +165,8 @@
     "glow_tail_curve",
     "glow_fbo_scale",
     "glow_black_toe"
-   ]
+   ],
+   "title_en": "Glow and bloom"
   },
   {
    "title": "Halation and starburst（ハレーション／スターバースト）",
@@ -177,7 +187,8 @@
     "ray_count_rand",
     "ray_width",
     "ray_angle"
-   ]
+   ],
+   "title_en": "Halation and starburst"
   },
   {
    "title": "Edge glow (beam past the visible area)（画面外へ振れたビームの発光）",
@@ -188,7 +199,8 @@
     "edge_glow_width",
     "edge_glow_length",
     "edge_glow_persist"
-   ]
+   ],
+   "title_en": "Edge glow (beam past the visible area)"
   },
   {
    "title": "Convergence（コンバージェンス）",
@@ -201,7 +213,8 @@
     "radial_converge_red",
     "radial_converge_green",
     "radial_converge_blue"
-   ]
+   ],
+   "title_en": "Convergence"
   },
   {
    "title": "Beam time window（ビーム時間窓＝1プレゼントあたりの掃引スライス）",
@@ -210,7 +223,8 @@
     "beam_window_scale",
     "beam_flash_ms",
     "beam_flash_gain"
-   ]
+   ],
+   "title_en": "Beam time window"
   },
   {
    "title": "Flicker, HV droop and beam jitter（フリッカ・HV垂下・ビームジッタ）",
@@ -230,7 +244,8 @@
     "beam_jitter_saturation_start",
     "beam_jitter_saturation_range",
     "beam_jitter_saturation_curve"
-   ]
+   ],
+   "title_en": "Flicker, HV droop and beam jitter"
   },
   {
    "title": "Color adjustment（色調整）",
@@ -249,7 +264,8 @@
     "chroma_b",
     "chroma_c",
     "chroma_y_gain"
-   ]
+   ],
+   "title_en": "Color adjustment"
   },
   {
    "title": "Vector geometry（ベクター幾何）",
@@ -258,7 +274,8 @@
     "vector_linearity_y",
     "vector_pincushion_x_quad",
     "vector_image_scale"
-   ]
+   ],
+   "title_en": "Vector geometry"
   },
   {
    "title": "Shadow mask（シャドウマスク）",
@@ -269,7 +286,8 @@
     "masked_core_peak",
     "core_overlap_max",
     "ambient_mask"
-   ]
+   ],
+   "title_en": "Shadow mask"
   },
   {
    "title": "Tube, ambient and bezel（管面・環境光・ベゼル）",
@@ -296,7 +314,8 @@
     "bezel_glow_width",
     "bezel_glow_curve",
     "room_ambient"
-   ]
+   ],
+   "title_en": "Tube, ambient and bezel"
   },
   {
    "title": "Printed overlay（印刷オーバーレイ＝Vectrex）",
@@ -313,7 +332,8 @@
     "overlay_color_highlight_knee",
     "overlay_color_highlight_curve",
     "overlay_ambient_light"
-   ]
+   ],
+   "title_en": "Printed overlay"
   },
   {
    "title": "HDR / SDR presentation（HDR／SDR 提示）",
@@ -328,7 +348,8 @@
     "sdr_rolloff_knee",
     "sdr_rolloff_ceiling",
     "sdr_shadow_curve"
-   ]
+   ],
+   "title_en": "HDR / SDR presentation"
   }
  ]
 }

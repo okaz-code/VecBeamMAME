@@ -1,5 +1,7 @@
 # 追加パラメータ一覧
 
+English: [added-parameters.md](added-parameters.md)
+
 **このファイルは `tools/dump-chain-sliders.py` が `bgfx/chains/vector/*.json` から生成しています。手で編集しないでください。**
 
 スライダーは MAME のスライダーメニュー（既定では `Tab` → Sliders）から操作し、変更した値はゲームごとに `cfg/<game>.cfg` に保存されます。
