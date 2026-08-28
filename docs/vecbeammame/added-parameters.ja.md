@@ -16,7 +16,7 @@ English: [added-parameters.md](added-parameters.md)
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
 | `macro_exposure` | [M] Beam Brightness | ビームの明るさの総量。HDR では `beam_peak_nits`(ビーム核のピーク輝度 nits)、 SDR では `sdr_beam_level` を同じ倍率で動かすので、HDR / SDR どちらで見ていても 同じ操作で同じ方向に効く。 | 1 [0.25, 3] /0.05 | color/mono/vectrex | — |
-| `bright_threshold` | Brightness Threshold (T) | 輝度が飽和する点。ここより上のドライブは幅に回る。color の既定 0.9 は「ほとんど飽和させない」、mono/vectrex の 0.5 は「半分から幅に回す」。 | color: 0.9 [0.05, 1] /0.01<br>mono: 0.5 [0.05, 1] /0.01<br>vectrex: 0.5 [0.05, 1] /0.01 | color/mono/vectrex | — |
+| `bright_threshold` | Brightness Threshold (T) | 輝度が飽和する点。ここより上のドライブは幅に回る。color の既定 0.9 は「ほとんど飽和させない」、mono/vectrex の 0.5 は「半分から幅に回す」。 | color: 0.7 [0.05, 1] /0.01<br>mono: 0.5 [0.05, 1] /0.01<br>vectrex: 0.5 [0.05, 1] /0.01 | color/mono/vectrex | — |
 | `macro_overload` | [M] Overload Amount | Z 軸を振り切った描画(爆発・弾)の「焼き付き感」の量。折れ線で 3 本を同時に動かす: `overload_threshold`(どのエネルギーから過大とみなすか。 | 1 [0, 2] /0.05 | color | — |
 | `macro_bloom` | [M] Bloom Strength | グロー 3 系統（`glow_wide` / `glow_narrow` / `analytic_glow`）の一括倍率。1.0 が出荷値。 | 1 [0, 3] /0.05 | color/mono/vectrex | — |
 | `macro_beam_width` | [M] Beam Width | 線の太さ。`beam_width_min` / `beam_width_max`(暗い線・明るい線それぞれの幅)と `overload_width_add`(過大時の追加幅)を同じ倍率で動かす。 | 1 [0.25, 3] /0.05 | color/mono/vectrex | — |
@@ -57,8 +57,8 @@ English: [added-parameters.md](added-parameters.md)
 
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
-| `beam_width_min` | Beam Width Minimum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 3.9 [0.1, 24] /0.05<br>mono: 2 [0.1, 24] /0.05<br>vectrex: 0.15 [0.1, 24] /0.05 | color/mono/vectrex | 倍率: [M] Beam Width |
-| `beam_width_max` | Beam Width Maximum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 4.2 [0.1, 24] /0.1<br>mono: 2 [0.1, 24] /0.1<br>vectrex: 0.8 [0.1, 24] /0.1 | color/mono/vectrex | 倍率: [M] Beam Width |
+| `beam_width_min` | Beam Width Minimum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 3.7 [0.1, 24] /0.05<br>mono: 2 [0.1, 24] /0.05<br>vectrex: 0.15 [0.1, 24] /0.05 | color/mono/vectrex | 倍率: [M] Beam Width |
+| `beam_width_max` | Beam Width Maximum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 4 [0.1, 24] /0.1<br>mono: 2 [0.1, 24] /0.1<br>vectrex: 0.8 [0.1, 24] /0.1 | color/mono/vectrex | 倍率: [M] Beam Width |
 | `width_curve` | Width Curve | エネルギー → 幅の応答の曲げ。1 超 = 中間域が細く最大への到達が遅い、 1 未満 = 中間域が太い、1.0 = 線形。 | color: 2 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
 | `core_flat` | Line Core Flatness | 幅とボケの結合を切る。通常 sigma = width/3.2 でボケが幅に連動するため、 幅を持ち上げられた(オーバードライブされた)ビームが1 本の広い柔らかい塊になってしまう。 | color: 0.4 [0, 0.98] /0.05<br>mono: 0.5 [0, 0.98] /0.05<br>vectrex: 0.5 [0, 0.98] /0.05 | color/mono/vectrex | — |
 | `width_knee` | Width at Threshold | しきい値 T の時点で到達している幅の割合。T までは緩く、T を超えると急に太る。 | 0.8 [0, 1] /0.01 | mono/vectrex | — |
@@ -108,8 +108,8 @@ English: [added-parameters.md](added-parameters.md)
 |---|---|---|---|---|---|
 | `energy_model` | Energy Model (speed/dwell) | 0 = オフ。`n` は表示輝度そのもの(素の挙動)。1 = 速度 / 滞留からの導出を有効化。 | 1 [0, 1] /1 | color/mono/vectrex | — |
 | `energy_infl` | Energy Influence (no-current src) | 導出モデルの効きの強さ。0 = 表示輝度のみ、1 = 完全にモデル任せ。「電流情報を持たないソース」(AVG/DVG など、Z の値しか無いもの)向け。 | color: 1 [0, 1] /0.05<br>mono: 0.6 [0, 1] /0.05<br>vectrex: 0.6 [0, 1] /0.05 | color/mono/vectrex | — |
-| `energy_speed_norm` | Energy Speed Norm (scr/ms) | 速度の正規化基準(画面幅 / ms)。ビームが速いほど 1 点あたりの滞留が短く暗くなる、 その換算係数。 | color: 6 [0.05, 12] /0.05<br>mono: 0.6 [0.05, 12] /0.05<br>vectrex: 0.6 [0.05, 12] /0.05 | color/mono/vectrex | — |
-| `energy_curve` | Energy Curve | 速度 → エネルギーの曲げ。1.0 = 線形。 | color: 1.05 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
+| `energy_speed_norm` | Energy Speed Norm (scr/ms) | 速度の正規化基準(画面幅 / ms)。ビームが速いほど 1 点あたりの滞留が短く暗くなる、 その換算係数。 | color: 3 [0.05, 12] /0.05<br>mono: 0.6 [0.05, 12] /0.05<br>vectrex: 0.6 [0.05, 12] /0.05 | color/mono/vectrex | — |
+| `energy_curve` | Energy Curve | 速度 → エネルギーの曲げ。1.0 = 線形。 | color: 2.5 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
 | `energy_line_max` | Energy Line Max / Density Cap | 線のエネルギー上限(蛍光体の面積あたり飽和)。color の 1.2 は「ほぼ飽和させない」、 mono/vectrex の 4 は余裕を持たせた設定。 | color: 1.2 [1, 8] /0.1<br>mono: 4 [1, 8] /0.1<br>vectrex: 4 [1, 8] /0.1 | color/mono/vectrex | — |
 | `energy_dot_ref` | Energy Dot Ref (us) | 停留ドットの滞留正規化基準(µs)。既定 30µs。これ以下は `I × dt` が線形に効く。 | 30 [2, 300] /1 | color/mono/vectrex | — |
 | `energy_dot_curve` | Energy Dot Curve | 停留飽和の指数。既定 1.6(線形の 1.0 より滞留を強く効かせる)。 | 1.6 [0.2, 4] /0.05 | color/mono/vectrex | — |
