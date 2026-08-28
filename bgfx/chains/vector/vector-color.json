@@ -60,7 +60,7 @@
 
 		// ---- Phosphor persistence and decay ----
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":16.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":12.0,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":14.0,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_curve","text":"Phosphor Decay Curve","default":5.0,"min":0.4,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_total_ms","text":"Phosphor Total (ms)","default":100.0,"min":20.0,"max":1500.0,"step":10.0,"format":"%4.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_hit_reset","text":"Phosphor Hit Reset Floor","default":0.02,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
@@ -68,7 +68,7 @@
 		{"type":"float","name":"phosphor_rgb_combination","text":"Phosphor RGB Combination Brightness","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_rgb_combination_width","text":"Phosphor RGB Combination Width","default":0.15,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_energy_decay","text":"Phosphor Energy Decay (bright faster)","default":4.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"color","name":"phosphor_rgb_decay","text":"Phosphor RGB Decay (halflife x)","default":[1.0,1.05,0.95],"max":[3.0,3.0,3.0],"min":[0.2,0.2,0.2],"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"color","name":"phosphor_rgb_decay","text":"Phosphor RGB Decay (halflife x)","default":[1.15,1.05,0.95],"max":[3.0,3.0,3.0],"min":[0.2,0.2,0.2],"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Brightness transfer ----
@@ -76,8 +76,8 @@
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Beam width ----
-		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":2.8,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":3.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.9,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":4.2,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"width_curve","text":"Width Curve","default":2.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"core_flat","text":"Line Core Flatness","default":0.4,"min":0.0,"max":0.98,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
@@ -125,7 +125,7 @@
 		{"type":"float","name":"overload_max","text":"Overdrive Max (x peak)","default":3.0,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"overdrive_core","text":"Overdrive to Core","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_bloom","text":"Overload Defocus (blur)","default":0.2,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_width_add","text":"Overload Core Width Add (px)","default":7.0,"min":0.0,"max":12.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_width_add","text":"Overload Core Width Add (px)","default":5.0,"min":0.0,"max":12.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_width_steepness","text":"Overload Width Steepness","default":6.0,"min":1.0,"max":20.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_width_center","text":"Overload Width Center","default":0.2,"min":0.05,"max":0.99,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlap_white_strength","text":"Overlap White Strength","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -139,10 +139,10 @@
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Radius (all vectors)","default":20.0,"min":1.0,"max":80.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_narrow","text":"Glow Narrow Strength","default":0.004,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_core_gain","text":"Overload Hot Core Gain","default":0.015,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.0024,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.003,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_wide_reach","text":"Glow Wide Reach","default":8.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_wide_pivot","text":"Glow Wide Pivot (source level)","default":1.0,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide_curve","text":"Glow Wide Curve (above pivot up)","default":1.6,"min":0.5,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide_curve","text":"Glow Wide Curve (above pivot up)","default":0.8,"min":0.5,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"int_enum","name":"glow_wide_smooth","text":"Glow Wide Downsample","default":1,"min":0,"max":2,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Box (legacy)","Tent (smoother)","Tent + deep blur"]},
 		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":1.06,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":16.0,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
@@ -186,11 +186,11 @@
 		// ---- Color adjustment ----
 		{"type":"intenum","name":"primary_color_mode","text":"Color Adjustment Mode","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["CIE xy/Y (Advanced)","Direct Primary"]},
 		{"type":"float","name":"primary_red_hue","text":"Red Hue Shift (deg)","default":1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_red_saturation","text":"Red Saturation","default":0.85,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_red_saturation","text":"Red Saturation","default":0.95,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"primary_red_brightness","text":"Red Brightness","default":1.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"primary_green_hue","text":"Green Hue Shift (deg)","default":0.0,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.8,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_green_brightness","text":"Green Brightness","default":1.0,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_green_brightness","text":"Green Brightness","default":0.6,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"primary_blue_hue","text":"Blue Hue Shift (Violet +)","default":1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"primary_blue_saturation","text":"Blue Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"primary_blue_brightness","text":"Blue Brightness","default":1.2,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},

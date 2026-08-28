@@ -62,7 +62,7 @@
 		// ---- Points and dots ----
 		{"type":"float","name":"line_point_threshold","text":"Line/Point Threshold (px)","default":2.0,"min":0.0,"max":8.0,"step":0.5,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":0.6,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"point_brightness_scale","text":"Point Brightness Scale","default":1.5,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"point_brightness_scale","text":"Point Brightness Scale","default":2.25,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_roundness","text":"Point Roundness","default":0.4,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"cap_no_persist","text":"Short-Dwell Dots: No Persistence","default":1,"max":1,"min":0,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
@@ -108,10 +108,10 @@
 		{"type":"color","name":"overdrive_color","text":"Overdrive Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Glow and bloom ----
-		{"type":"float","name":"analytic_glow","text":"Glow Source (per-line)","default":0.038,"min":0.0,"max":1.0,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"analytic_glow","text":"Glow Source (per-line)","default":0.034,"min":0.0,"max":1.0,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":15.0,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.002,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.00014,"min":0.0,"max":0.02,"step":0.00001,"format":"%1.5f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.00013,"min":0.0,"max":0.02,"step":0.00001,"format":"%1.5f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":0.6,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_black_toe","text":"Glow Black Toe","default":0.002,"min":0.0,"max":0.05,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.5,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},

@@ -35,7 +35,7 @@ English: [added-parameters.md](added-parameters.md)
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
 | `phosphor_half_ms` | Phosphor Half-life (ms) | 残光が半分の明るさになるまでの時間。残光の体感的な長さを決める主役。色チェインの既定 16ms は AVG のカラー管、mono の 24ms は P4 系、 Vectrex の 16ms は実測に合わせた値。 | 16 [1, 300] /1 | color/mono/vectrex | 倍率: [M] Phosphor Persistence |
-| `phosphor_hold_ms` | Phosphor Hold (ms, full brightness) | 減衰を始めるまでフル輝度で保持する時間。半減期を短く較正すると(トレイルらしい見え方になる)、1 present 分の間隔だけで 残光が 27% 程度まで落ちてしまい、ゆっくり動く明るい線の連続位置の間に | color: 12 [0, 80] /1<br>mono: 16 [0, 80] /1<br>vectrex: 16 [0, 80] /1 | color/mono/vectrex | — |
+| `phosphor_hold_ms` | Phosphor Hold (ms, full brightness) | 減衰を始めるまでフル輝度で保持する時間。半減期を短く較正すると(トレイルらしい見え方になる)、1 present 分の間隔だけで 残光が 27% 程度まで落ちてしまい、ゆっくり動く明るい線の連続位置の間に | color: 14 [0, 80] /1<br>mono: 16 [0, 80] /1<br>vectrex: 16 [0, 80] /1 | color/mono/vectrex | — |
 | `phosphor_curve` | Phosphor Decay Curve | 減衰カーブの形(ヒル指数 p)。大きいほど「しばらく明るく、その後急に落ちる」。 | color: 5 [0.4, 8] /0.05<br>mono: 3 [0.4, 4] /0.05<br>vectrex: 3 [0.4, 4] /0.05 | color/mono/vectrex | — |
 | `phosphor_total_ms` | Phosphor Total (ms) | 完全に 0 になるまでの時間。半減期との比が実質的なカーブの伸びを決める。mono の既定 800ms は長残光管の想定。 | color: 100 [20, 1500] /10<br>mono: 800 [20, 1500] /10<br>vectrex: 500 [20, 1500] /10 | color/mono/vectrex | 倍率: [M] Phosphor Persistence |
 | `phosphor_hit_reset` | Phosphor Hit Reset Floor | 蛍光体を再励起と見なす下限。これ以上の新しい光で age が 0 に戻る。 | 0.02 [0, 0.5] /0.005 | color | — |
@@ -43,22 +43,22 @@ English: [added-parameters.md](added-parameters.md)
 | `phosphor_rgb_combination` | Phosphor RGB Combination Brightness | RGB が同じ場所で光ったときの合成の明るさ。0 でピーク正規化、1 で物理加算。 | 1 [0, 2] /0.05 | color | — |
 | `phosphor_rgb_combination_width` | Phosphor RGB Combination Width | RGB 合成時に線が太って見える量。 | 0.15 [0, 1] /0.01 | color | — |
 | `phosphor_energy_decay` | Phosphor Energy Decay (bright faster) | 2 相減衰。通常分(≤1)は基本半減期で、過大分(>1)はこの係数の倍だけ速く減衰し、 和を取る。 | color: 4 [0, 4] /0.05<br>mono: 3 [0, 4] /0.05<br>vectrex: 0 [0, 4] /0.05 | color/mono/vectrex | — |
-| `phosphor_rgb_decay` | Phosphor RGB Decay (halflife x) | 蛍光体の残光時間を RGB 別に変える倍率。青は短く緑は長い、を表現する。 | [1.0, 1.05, 0.95] [[0.2, 0.2, 0.2], [3.0, 3.0, 3.0]] /0.05 | color | — |
-| `phosphor_color` | Phosphor Color  | 蛍光体の発光色。mono の `[0.9, 0.9, 1]` はやや青い P4、 Vectrex の `[0.5, 0.7, 1]` は実機の青緑寄りの管。 | color: [1.0, 1.0, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>mono: [0.9, 0.9, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>vectrex: [0.5, 0.7, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01 | color/mono/vectrex | — |
+| `phosphor_rgb_decay` | Phosphor RGB Decay (halflife x) | 蛍光体の残光時間を RGB 別に変える倍率。青は短く緑は長い、を表現する。 | [1.15, 1.05, 0.95] [[0.2, 0.2, 0.2], [3.0, 3.0, 3.0]] /0.05 | color | — |
+| `phosphor_color` | Phosphor Color  | 蛍光体の発光色。mono の `[0.9, 0.9, 1]` はやや青い P4、 Vectrex の `[0.5, 0.7, 1]` は実機の青緑寄りの管。 | color: [1.0, 1.0, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>mono: [0.9, 0.9, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>vectrex: [0.3, 0.6, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01 | color/mono/vectrex | — |
 
 ## Brightness transfer（輝度トランスファ）
 
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
-| `bright_sigmoid` | Brightness Sigmoid | べき乗カーブの上にさらに掛けるS字整形。正 = コントラストが強く(パキッと)、 負 = 緩く(なめらかに)、0 = オフ。 | color: -2 [-4, 4] /0.1<br>mono: 0 [-4, 4] /0.1<br>vectrex: -3 [-4, 4] /0.1 | color/mono/vectrex | — |
+| `bright_sigmoid` | Brightness Sigmoid | べき乗カーブの上にさらに掛けるS字整形。正 = コントラストが強く(パキッと)、 負 = 緩く(なめらかに)、0 = オフ。 | color: -2 [-4, 4] /0.1<br>mono: 0 [-4, 4] /0.1<br>vectrex: 0.4 [-4, 4] /0.1 | color/mono/vectrex | — |
 | `bright_sigmoid_center` | Brightness Sigmoid Center | S 字の変曲点。vectrex の 0.8 は「明るい側でだけ効かせる」設定。 | color: 0.4 [0.05, 0.95] /0.01<br>mono: 0.4 [0.05, 0.95] /0.01<br>vectrex: 0.8 [0.05, 0.95] /0.01 | color/mono/vectrex | — |
 
 ## Beam width（ビーム幅）
 
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
-| `beam_width_min` | Beam Width Minimum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 2.8 [0.1, 24] /0.05<br>mono: 2 [0.1, 24] /0.05<br>vectrex: 0.1 [0.1, 24] /0.05 | color/mono/vectrex | 倍率: [M] Beam Width |
-| `beam_width_max` | Beam Width Maximum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 3 [0.1, 24] /0.1<br>mono: 2 [0.1, 24] /0.1<br>vectrex: 0.5 [0.1, 24] /0.1 | color/mono/vectrex | 倍率: [M] Beam Width |
+| `beam_width_min` | Beam Width Minimum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 3.9 [0.1, 24] /0.05<br>mono: 2 [0.1, 24] /0.05<br>vectrex: 0.15 [0.1, 24] /0.05 | color/mono/vectrex | 倍率: [M] Beam Width |
+| `beam_width_max` | Beam Width Maximum | 暗い線と明るい線それぞれの幅(px 相当)。エネルギーがこの 2 値の間を動く。 | color: 4.2 [0.1, 24] /0.1<br>mono: 2 [0.1, 24] /0.1<br>vectrex: 0.8 [0.1, 24] /0.1 | color/mono/vectrex | 倍率: [M] Beam Width |
 | `width_curve` | Width Curve | エネルギー → 幅の応答の曲げ。1 超 = 中間域が細く最大への到達が遅い、 1 未満 = 中間域が太い、1.0 = 線形。 | color: 2 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
 | `core_flat` | Line Core Flatness | 幅とボケの結合を切る。通常 sigma = width/3.2 でボケが幅に連動するため、 幅を持ち上げられた(オーバードライブされた)ビームが1 本の広い柔らかい塊になってしまう。 | color: 0.4 [0, 0.98] /0.05<br>mono: 0.5 [0, 0.98] /0.05<br>vectrex: 0.5 [0, 0.98] /0.05 | color/mono/vectrex | — |
 | `width_knee` | Width at Threshold | しきい値 T の時点で到達している幅の割合。T までは緩く、T を超えると急に太る。 | 0.8 [0, 1] /0.01 | mono/vectrex | — |
@@ -73,14 +73,14 @@ English: [added-parameters.md](added-parameters.md)
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
 | `line_point_threshold` | Line/Point Threshold (px) | これより短い線分を「点」として扱う境界(px)。単位はレイアウト / 向きの変換後で、 元の線分の実長を保った座標系。 | 2 [0, 8] /0.5 | color/mono/vectrex | — |
-| `point_width_scale` | Point Width Scale | 点の幅倍率。color の 1.8 は「点を線より太く見せる」較正、mono の 0.6 は逆に細く。 | color: 1.8 [0.05, 4] /0.05<br>mono: 0.6 [0.05, 4] /0.05<br>vectrex: 1 [0.05, 4] /0.05 | color/mono/vectrex | 倍率: [M] Point Size |
-| `point_brightness_scale` | Point Brightness Scale | 点の輝度倍率。点は面積が小さいので同じ輝度では埋もれる。それを補う。 | color: 2 [0, 4] /0.05<br>mono: 1.5 [0, 4] /0.05<br>vectrex: 1.5 [0, 4] /0.05 | color/mono/vectrex | 倍率: [M] Point Brightness |
+| `point_width_scale` | Point Width Scale | 点の幅倍率。color の 1.8 は「点を線より太く見せる」較正、mono の 0.6 は逆に細く。 | color: 1.8 [0.05, 4] /0.05<br>mono: 0.6 [0.05, 4] /0.05<br>vectrex: 1.3 [0.05, 4] /0.05 | color/mono/vectrex | 倍率: [M] Point Size |
+| `point_brightness_scale` | Point Brightness Scale | 点の輝度倍率。点は面積が小さいので同じ輝度では埋もれる。それを補う。 | color: 2 [0, 4] /0.05<br>mono: 2.25 [0, 4] /0.05<br>vectrex: 2.25 [0, 4] /0.05 | color/mono/vectrex | 倍率: [M] Point Brightness |
 | `point_roundness` | Point Roundness | 点の丸み。0 = 線と同じ断面、1 = 完全な円。 | color: 0.25 [0, 1] /0.05<br>mono: 0.4 [0, 1] /0.05<br>vectrex: 0.4 [0, 1] /0.05 | color/mono/vectrex | — |
 | `vertex_dwell` | Vertex Dwell (corner dots) | 線の折れ点でビームが減速することによる頂点の明るさ。実機では角が明るく見える。color の既定 0.5、mono/vectrex は 0(それぞれ別の機構で扱う)。 | color: 0.5 [0, 1] /0.05<br>mono: 0 [0, 1] /0.05<br>vectrex: 0 [0, 1] /0.05 | color/mono/vectrex | — |
 | `cap_no_persist` | Short-Dwell Dots: No Persistence | 1 のとき、短滞留のジャンクションドットを残光プールに入れず、専用の no-persist FBO に描く。 | color: 0 [0, 1] /1<br>mono: 1 [0, 1] /1<br>vectrex: 1 [0, 1] /1 | color/mono/vectrex | — |
 | `dot_no_persist_dwell` | Dot No-Persist Dwell (us) | 上の判定に使う滞留時間の閾値(µs)。これ未満の滞留を「残光なし」に回す。 | color: 10 [0, 60] /1<br>mono: 20 [0, 60] /1<br>vectrex: 0 [0, 60] /1 | color/mono/vectrex | — |
 | `z_rise_tau` | Z Rise Time (us) | Z 軸増幅器の立ち上がり時間。滞留が短い描画は Z が上がりきる前に終わるので暗い。 | color: 0.2 [0, 20] /0.01<br>mono: 0 [0, 20] /0.01<br>vectrex: 10 [0, 20] /0.01 | color/mono/vectrex | — |
-| `isolated_dot_min_size` | Isolated Dwell Dot Minimum (px) | 孤立した滞留ドットの最小サイズ（px）。小さすぎる点が消えるのを防ぐ。 | 3 [0, 16] /0.1 | vectrex | 倍率: [M] Point Size |
+| `isolated_dot_min_size` | Isolated Dwell Dot Minimum (px) | 孤立した滞留ドットの最小サイズ（px）。小さすぎる点が消えるのを防ぐ。 | 3.9 [0, 16] /0.1 | vectrex | 倍率: [M] Point Size |
 
 ## Focus and defocus（フォーカス／ボケ）
 
@@ -135,7 +135,7 @@ English: [added-parameters.md](added-parameters.md)
 | `overload_max` | Overdrive Max (x peak) | オーバードライブの上限(ピークの倍数)。既定 3。 | 3 [0, 8] /0.1 | color/mono/vectrex | — |
 | `overdrive_core` | Overdrive to Core | 過大分を「フレアだけ」に出すか「核そのもの」にも出すか。0 = フレアのみ(従来挙動)。 | color: 0.5 [0, 1] /0.05<br>mono: 1 [0, 1] /0.05<br>vectrex: 0 [0, 1] /0.05 | color/mono/vectrex | — |
 | `overload_bloom` | Overload Defocus (blur) | 過大時の追加ボケ。[M] Defocus の倍率下。 | color: 0.2 [0, 4] /0.05<br>mono: 0.7 [0, 4] /0.05<br>vectrex: 0.3 [0, 4] /0.05 | color/mono/vectrex | 倍率: [M] Defocus |
-| `overload_width_add` | Overload Core Width Add (px) | オーバーロード時に芯へ足す幅（px）。 | color: 7 [0, 12] /0.1<br>vectrex: 1 [0, 12] /0.1 | color/vectrex | 倍率: [M] Beam Width |
+| `overload_width_add` | Overload Core Width Add (px) | オーバーロード時に芯へ足す幅（px）。 | color: 5 [0, 12] /0.1<br>vectrex: 1.7 [0, 12] /0.1 | color/vectrex | 倍率: [M] Beam Width |
 | `overload_width_steepness` | Overload Width Steepness | オーバーロード幅の立ち上がりの鋭さ。 | 6 [1, 20] /0.5 | color/vectrex | — |
 | `overload_width_center` | Overload Width Center | オーバーロード幅の立ち上がりの中心。 | color: 0.2 [0.05, 0.99] /0.01<br>vectrex: 0.65 [0.05, 0.99] /0.01 | color/vectrex | — |
 | `overlap_white_strength` | Overlap White Strength | 線が重なった場所が白熱する強さ。1 本の高輝度ではなく複数本の重なりにだけ効く。 | 1 [0, 1] /0.05 | color | — |
@@ -153,14 +153,14 @@ English: [added-parameters.md](added-parameters.md)
 
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
-| `analytic_glow` | Glow Source Strength (all vectors) | 解析線由来のグロー強度。全ベクターにかかる(過大かどうかを問わない)。このチェインで最も効く 1 本。 | color: 0.095 [0, 1] /0.005<br>mono: 0.038 [0, 1] /0.001<br>vectrex: 0.065 [0, 1] /0.005 | color/mono/vectrex | 倍率: [M] Bloom Strength |
+| `analytic_glow` | Glow Source Strength (all vectors) | 解析線由来のグロー強度。全ベクターにかかる(過大かどうかを問わない)。このチェインで最も効く 1 本。 | color: 0.095 [0, 1] /0.005<br>mono: 0.034 [0, 1] /0.001<br>vectrex: 0.065 [0, 1] /0.005 | color/mono/vectrex | 倍率: [M] Bloom Strength |
 | `analytic_glow_width` | Glow Source Radius (all vectors) | その半径(px)。mono の上限が 160 と広いのは長残光管の拡散を表現するため。 | color: 20 [1, 80] /1<br>mono: 15 [1, 160] /1<br>vectrex: 15 [1, 160] /1 | color/mono/vectrex | — |
 | `glow_narrow` | Glow Narrow Strength | 狭いブルーム段の強度。既定が 0.003〜0.005 と極小なのは、 ブルームが加算で効くため少量で十分だから。 | color: 0.004 [0, 0.2] /0.001<br>mono: 0.002 [0, 0.2] /0.001<br>vectrex: 0.004 [0, 0.2] /0.001 | color/mono/vectrex | 倍率: [M] Bloom Strength |
 | `overload_core_gain` | Overload Hot Core Gain | オーバーロード時の白熱コアの強さ。直接発光として芯に足される分。 | 0.015 [0, 0.5] /0.005 | color | — |
-| `glow_wide` | Glow Wide (low-res) | 広いブルーム段。低解像度ターゲットで計算するので安い。既定は mono で 0.00018 と極小。 | color: 0.0024 [0, 0.02] /0.0001<br>mono: 0.00014 [0, 0.02] /1e-05<br>vectrex: 0.0002 [0, 0.02] /0.0001 | color/mono/vectrex | 倍率: [M] Bloom Strength |
+| `glow_wide` | Glow Wide (low-res) | 広いブルーム段。低解像度ターゲットで計算するので安い。既定は mono で 0.00018 と極小。 | color: 0.003 [0, 0.02] /0.0001<br>mono: 0.00013 [0, 0.02] /1e-05<br>vectrex: 0.0002 [0, 0.02] /0.0001 | color/mono/vectrex | 倍率: [M] Bloom Strength |
 | `glow_wide_reach` | Glow Wide Reach | 広域グローの届く距離。ピラミッドを何段まで使うか。 | 8 [0, 16] /0.25 | color | — |
 | `glow_wide_pivot` | Glow Wide Pivot (source level) | 広域グロー整形の基準レベル。このレベルは動かず、上下だけが曲がる。 | 1 [0.05, 4] /0.05 | color | — |
-| `glow_wide_curve` | Glow Wide Curve (above pivot up) | 広域グローの整形カーブ。1 より大きいと暗いグローを潰し、明るいところだけ残す。 | 1.6 [0.5, 3] /0.05 | color | — |
+| `glow_wide_curve` | Glow Wide Curve (above pivot up) | 広域グローの整形カーブ。1 より大きいと暗いグローを潰し、明るいところだけ残す。 | 0.8 [0.5, 3] /0.05 | color | — |
 | `glow_wide_smooth` | Glow Wide Downsample | 広域グローのダウンサンプル時のなめらかさ。 | 1 [0, 2] /1 | color | — |
 | `overload_glow_gain` | Overload Glow (bloom) | オーバーロード時に追加されるグローの量。 | 1.06 [0, 2] /0.02 | color | 折れ線: [M] Overload Amount |
 | `overload_glow_width` | Overload Glow Width (px) | オーバーロード時のグローの広がり（px）。 | 16 [4, 200] /2 | color | — |
@@ -248,11 +248,11 @@ English: [added-parameters.md](added-parameters.md)
 |---|---|---|---|---|---|
 | `primary_color_mode` | Color Adjustment Mode | 0 = 色度座標(`chroma_*`)で指定、1 = HSB(`primary_*`)で指定。 | 1 [0, 1] /1 | color | — |
 | `primary_red_hue` | Red Hue Shift (deg) | 赤の色相シフト(度)・彩度・明度。既定彩度 0.85 = sRGB より浅い。実機の赤蛍光体は sRGB 原色ほど飽和していない。 | 1 [-60, 60] /1 | color | — |
-| `primary_red_saturation` | Red Saturation | 赤の色相シフト(度)・彩度・明度。既定彩度 0.85 = sRGB より浅い。実機の赤蛍光体は sRGB 原色ほど飽和していない。 | 0.85 [0, 2] /0.01 | color | — |
+| `primary_red_saturation` | Red Saturation | 赤の色相シフト(度)・彩度・明度。既定彩度 0.85 = sRGB より浅い。実機の赤蛍光体は sRGB 原色ほど飽和していない。 | 0.95 [0, 2] /0.01 | color | — |
 | `primary_red_brightness` | Red Brightness | 赤の色相シフト(度)・彩度・明度。既定彩度 0.85 = sRGB より浅い。実機の赤蛍光体は sRGB 原色ほど飽和していない。 | 1 [0, 2] /0.01 | color | — |
 | `primary_green_hue` | Green Hue Shift (deg) | 緑。既定彩度 0.8。 | 0 [-60, 60] /1 | color | — |
-| `primary_green_saturation` | Green Saturation | 緑。既定彩度 0.8。 | 0.8 [0, 2] /0.01 | color | — |
-| `primary_green_brightness` | Green Brightness | 緑。既定彩度 0.8。 | 1 [0, 2] /0.01 | color | — |
+| `primary_green_saturation` | Green Saturation | 緑。既定彩度 0.8。 | 0.9 [0, 2] /0.01 | color | — |
+| `primary_green_brightness` | Green Brightness | 緑。既定彩度 0.8。 | 0.6 [0, 2] /0.01 | color | — |
 | `primary_blue_hue` | Blue Hue Shift (Violet +) | 青。表示名が `Blue Hue Shift (Violet +)` で正方向が紫寄り。 | 1 [-60, 60] /1 | color | — |
 | `primary_blue_saturation` | Blue Saturation | 青。表示名が `Blue Hue Shift (Violet +)` で正方向が紫寄り。 | 0.9 [0, 2] /0.01 | color | — |
 | `primary_blue_brightness` | Blue Brightness | 青。表示名が `Blue Hue Shift (Violet +)` で正方向が紫寄り。 | 1.2 [0, 2] /0.01 | color | — |
@@ -313,13 +313,13 @@ English: [added-parameters.md](added-parameters.md)
 | 内部名 | 表示名 | 説明 | 値 | チェイン | 駆動マクロ |
 |---|---|---|---|---|---|
 | `overlay_white_transmission` | Overlay White Transmission | 白地部分の透過率。既定 0.65 = 実測値。 | 0.65 [0, 1] /0.01 | vectrex | — |
-| `overlay_white_diffusion` | Overlay Resin Diffusion Strength | 白地の樹脂による拡散の強さ。ビームがオーバーレイを通ると滲む。 | 0.5 [0, 1] /0.01 | vectrex | — |
+| `overlay_white_diffusion` | Overlay Resin Diffusion Strength | 白地の樹脂による拡散の強さ。ビームがオーバーレイを通ると滲む。 | 0.1 [0, 1] /0.01 | vectrex | — |
 | `overlay_diffusion_radius` | Overlay Resin Diffusion Radius (px) | その拡散半径(px)。 | 12 [0, 16] /0.25 | vectrex | — |
 | `overlay_diffusion_shape` | Overlay Resin Diffusion Curve | 拡散の形。既定 0.4 は「近くに集中して裾が短い」。 | 0.4 [0.2, 6] /0.05 | vectrex | — |
 | `overlay_white_reflectance` | Overlay White Reflectance | 白地の反射率。室内光を反射してオーバーレイ自体が明るく見える成分。 | 0.25 [0, 1] /0.01 | vectrex | — |
-| `overlay_color_density` | Overlay Color Optical Density | 色樹脂の光学濃度。大きいほど濃い色になり、通る光が減る。既定 1.75。 | 1.75 [0, 6] /0.05 | vectrex | — |
+| `overlay_color_density` | Overlay Color Optical Density | 色樹脂の光学濃度。大きいほど濃い色になり、通る光が減る。既定 1.75。 | 3 [0, 6] /0.05 | vectrex | — |
 | `overlay_color_glow` | Overlay Rear Resin Scatter | 裏面の樹脂による散乱。色樹脂の裏側でも光が散る。既定 1.1。 | 1.1 [0, 2] /0.05 | vectrex | — |
-| `overlay_color_dark_level` | Overlay Resin Dark Level | 色樹脂の暗部レベル。真っ黒にならない床。 | 0.08 [0, 1.6] /0.005 | vectrex | — |
+| `overlay_color_dark_level` | Overlay Resin Dark Level | 色樹脂の暗部レベル。真っ黒にならない床。 | 0.15 [0, 1.6] /0.005 | vectrex | — |
 | `overlay_color_highlight_bleach` | Overlay Highlight Color Release | 明るい部分で色が抜ける。強い光が色樹脂を通ると飽和して白く見える現象。`bleach` が抜ける量(既定 0 = オフ)、`knee` が始まる輝度、`curve` がその曲げ。 | 0 [0, 1] /0.01 | vectrex | — |
 | `overlay_color_highlight_knee` | Overlay Highlight Release Knee | 明るい部分で色が抜ける。強い光が色樹脂を通ると飽和して白く見える現象。`bleach` が抜ける量(既定 0 = オフ)、`knee` が始まる輝度、`curve` がその曲げ。 | 0.15 [0, 0.95] /0.01 | vectrex | — |
 | `overlay_color_highlight_curve` | Overlay Highlight Release Curve | 明るい部分で色が抜ける。強い光が色樹脂を通ると飽和して白く見える現象。`bleach` が抜ける量(既定 0 = オフ)、`knee` が始まる輝度、`curve` がその曲げ。 | 0.55 [0.2, 3] /0.05 | vectrex | — |
