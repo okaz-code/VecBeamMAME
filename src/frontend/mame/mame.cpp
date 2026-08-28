@@ -439,13 +439,14 @@ std::vector<std::reference_wrapper<const std::string>> mame_machine_manager::mis
 // bare_vcs_revision degrades to "unknown" there - the number has to survive that.
 #define VECBEAM_VERSION         "0.1.0"
 
-const char * emulator_info::get_bare_build_version() { return bare_build_version; }
+// The accessor is what the user is shown - the version of the thing they are running. The raw
+// bare_build_version symbol stays MAME's own number, and is what the compatibility tags written
+// into the UI's caches use, where it means "the MAME this behaves like".
+const char * emulator_info::get_bare_build_version() { return VECBEAM_VERSION; }
 
 const char * emulator_info::get_build_version()
 {
 	// Both numbers, because a report has to say which MAME this is as well as which fork build.
-	// get_bare_build_version() above stays MAME's alone: the UI writes it into the audit cache as
-	// a compatibility tag, so it means "the MAME this behaves like" and not "the build you ran".
 	static std::string const composed =
 			std::string(bare_build_version) + " / VecBeam " VECBEAM_VERSION " (" + bare_vcs_revision + ")";
 	return composed.c_str();

@@ -44,10 +44,13 @@ menu_about::menu_about(mame_ui_manager &mui, render_target &target)
 					_("about-header", "%1$s %2$s (%3$s%4$sP%5$s)"),
 #endif
 					emulator_info::get_appname(),
-					bare_build_version,
+					emulator_info::get_bare_build_version(),
 					(sizeof(int) == sizeof(void *)) ? "I" : "",
 					(sizeof(long) == sizeof(void *)) ? "L" : (sizeof(long long) == sizeof(void *)) ? "LL" : "",
 					sizeof(void *) * 8),
+			// Which MAME this is built on belongs here rather than in the header line: it is the
+			// first thing a report needs after the fork's own version.
+			util::string_format("Based on MAME %1$s", bare_build_version),
 			util::string_format(_("about-header", "Revision: %1$s"), bare_vcs_revision) }
 {
 	set_process_flags(PROCESS_CUSTOM_NAV);
