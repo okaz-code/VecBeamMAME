@@ -219,14 +219,19 @@ BGFX: beam time window active - sweep 29.90 ms over 12.50 ms windows (2.4 per sw
 
 | | |
 |---|---|
-| 型 / 既定 | bool / **`1`(オン)** |
+| 型 / 既定 | bool / **`0`(オフ)** |
 
-**クリップ窓のサンプル&ホールドモデル全体のマスタスイッチ。** 下の4本を
-まとめて扱うためのもので、`-novector_window_sim` で **4本すべてを 0 にする**
-(個別の指定値は無視される)。
+**クリップ窓の「揺らぎ」のスイッチ。** ラッチされた辺の位置がフレームごとに少しずつ
+違う場所に落ちる現象(`vector_window_jitter`)を出すかどうかを決める。窓が揺れて見える
+のはこの項目だけで、残る3本(垂下・誘電吸収・オフセット)は**常に有効**。
 
-4本それぞれの「オフ」の値を覚えていなくてもモデルを外せるようにするための1本。
-理想的なホールド(垂下なし・記憶なし・散らばりなし・オフセットなし)と比較したいときに使う。
+**既定はオフ。** Major Havoc は下端の1辺が動くだけなので実機どおりに見えるが、
+Battlezone は矩形の4辺すべてが保持値なので、同じ量でも「枠が呼吸する」ように見える。
+そのため opt-in にしてある。
+
+```
+vbmame mhavoc -vector_window_sim
+```
 
 ### `vector_window_droop` / `vector_window_memory` / `vector_window_jitter` / `vector_window_bias`
 
@@ -234,20 +239,20 @@ BGFX: beam time window active - sweep 29.90 ms over 12.50 ms windows (2.4 per sw
 |---|---|---|
 | `vector_window_droop` | float | `5.0` |
 | `vector_window_memory` | float | `0.005` |
-| `vector_window_jitter` | float | `0.0`(オフ) |
+| `vector_window_jitter` | float | `1.0`(ただし `vector_window_sim` が必要) |
 | `vector_window_bias` | float | `0.5` |
 
 **この回路を持つ機種だけに効く。** Major Havoc はスクロール領域の上端(`ymin` クリップ)の1辺、
 Battlezone はクリップ矩形の4辺すべてを、アナログスイッチとホールドコンデンサで保持している
 (同じ LF13201 と同じ 1000pF)。その回路の非理想性を再現する 4 本。
 
-**`window_jitter` だけ既定 0（オフ）。** これはラッチ値そのもののばらつきで、**フレーム間で
-位置が動く唯一の項目**。Major Havoc の1辺なら実機どおりだが、Battlezone では矩形の4辺すべてが
-動いて「枠が呼吸する」ように見えるので、opt-in にしてある。
+**`window_jitter` だけスイッチが要る。** これはラッチ値そのもののばらつきで、**フレーム間で
+位置が動く唯一の項目**＝窓が揺れて見える正体。値は実機に寄せた `1.0` が入っているが、
+`vector_window_sim` がオフのあいだは 0 として扱われる(→ 上記)。
 
-残る3本(垂下・誘電吸収・オフセット)は実機に寄せた値が既定に入っている。これらは
-**フレーム間では動かない**(位置が一定量ずれる／描画順に沿って傾く)。外すには
-`-novector_window_sim`、個別に消すならその項目に `0` を渡す。
+残る3本(垂下・誘電吸収・オフセット)は実機に寄せた値が既定に入っていて、**常に有効**。これらは
+**フレーム間では動かない**(位置が一定量ずれる／描画順に沿って傾く)ので、揺れとしては見えない。
+外すならその項目に `0` を渡す。
 
 | オプション | モデル | 単位 | オフの値 |
 |---|---|---|---|
@@ -604,14 +609,15 @@ vector_blank_leak         0.05
 
 ### 5-5. クリップ窓の回路（Major Havoc / Battlezone）
 
-`jitter` は既定オフなので、フレーム間の揺れが欲しいときだけ入れる。
-Battlezone は矩形の4辺すべてが動くので、同じ値でも Major Havoc より大きく見える。
+揺れ（`jitter`）を出すには `vector_window_sim` が要る。既定値の `1.0` は Major Havoc の
+1 辺に合わせた値なので、4 辺すべてが動く Battlezone では下げたほうが落ち着く。
 
 ```ini
 # starwars.ini ではなく mhavoc.ini / bzone.ini に書く
+vector_window_sim         1
+vector_window_jitter      1.0      # bzone なら 0.3 前後から
 vector_window_droop       2.0
 vector_window_memory      0.15
-vector_window_jitter      0.3
 vector_window_bias        -0.2
 ```
 
