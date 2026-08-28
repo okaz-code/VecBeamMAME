@@ -8,7 +8,7 @@ HDR well: the background stays black while the beam alone uses the display's
 peak.
 
 See also: [Added parameters](added-parameters.md) (the HDR / SDR presentation
-section) and [Startup options](startup-options.ja.md).
+section) and [Startup options](startup-options.md).
 
 ---
 

@@ -57,7 +57,7 @@ is *empirical tuning* (matching an appearance).
 | | |
 |---|---|
 | [Added parameters](docs/vecbeammame/added-parameters.md) | The runtime sliders, generated from `bgfx/chains/vector/*.json` |
-| [Startup options](docs/vecbeammame/startup-options.ja.md) | What goes in `vbmame.ini`, starting with how to create one (Japanese; English translation pending) |
+| [Startup options](docs/vecbeammame/startup-options.md) | What goes in `vbmame.ini`, starting with how to create one |
 | [HDR settings](docs/vecbeammame/hdr-settings.md) | How the HDR path works and how to match it to a display |
 | [FAQ](docs/vecbeammame/faq.md) | Frequently asked questions |
 | [Vector chain guide](bgfx/chains/vector/README.md) | The bundled BGFX chains |

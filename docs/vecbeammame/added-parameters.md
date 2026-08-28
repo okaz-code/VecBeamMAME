@@ -7,7 +7,7 @@
 The sliders are reached from MAME's slider menu (`Tab` then Sliders by default), and a value you change is saved per game in `cfg/<game>.cfg`.
 **Anything prefixed `[M]` is a macro** and moves several parameters together.  Everything else appears once `Advanced Parameters` is On - with one exception, `Brightness Threshold (T)`, which is always shown.
 
-Startup options (`-vector_*` and the rest, the ones that go in the ini file) are in [startup-options.ja.md](startup-options.ja.md).
+Startup options (`-vector_*` and the rest, the ones that go in the ini file) are in [startup-options.md](startup-options.md).
 
 Legend: the value column is `default [min, max] /step`.  Where the chains differ, each is listed.  The description is a one-line summary.
 

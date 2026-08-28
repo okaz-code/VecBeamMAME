@@ -151,7 +151,7 @@ def main():
             "`Brightness Threshold (T)`, which is always shown.",
             "",
             "Startup options (`-vector_*` and the rest, the ones that go in the ini file) are in "
-            "[startup-options.ja.md](startup-options.ja.md).",
+            "[startup-options.md](startup-options.md).",
             "",
             "Legend: the value column is `default [min, max] /step`.  Where the chains differ, each "
             "is listed.  The description is a one-line summary.",
