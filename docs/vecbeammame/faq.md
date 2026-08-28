@@ -233,6 +233,26 @@ turn it off.
 Vector scan is an extreme image, lines or dots on black, and automatic
 brightness correction handles it badly.
 
+## Why does distorting the CRT not distort the vector image with it?
+
+**Because that is correct.**  Vector or raster, **an image on a CRT does not distort while you
+are looking at it straight on.**  However spherical the face of the tube is, the picture drawn on
+it does not bend with it.  Bending is what you see from an angle.
+
+`Tube Quadric Distortion` describes **the shape of the glass**, not the deflection.  It drives
+reflections, highlights, and the rounding of the tube's edge.
+
+**To distort the beam instead**, use `Vector Pincushion X (Quad)` and `Vector Pincushion Y
+(Quad)`, which model non-linearity in the deflection - the equivalent of a real deflection
+circuit being out of adjustment.  Those do bend the picture itself.
+
+### When the artwork does not line up
+
+With `[M] Monitor/Glass Sim` on, the picture is scaled to sit inside the tube face:
+`tube_face_scale` to 0.98 and `vector_image_scale` to 0.94.  **If that puts it out of register
+with an artwork bezel, turn `[M] Monitor/Glass Sim` off.**  (The shadow mask, edge defocus, tube
+vignetting and bezel reflection go with it.)
+
 ## It runs slowly
 
 There are options for running on a slow PC.  One word gets you started:
