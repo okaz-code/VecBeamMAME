@@ -1,3 +1,7 @@
+![VecBeamMAME](docs/vecbeammame/vecbeammame-logo.png)
+
+<sub>このロゴは画像素材ではなく、**このレンダラで再生したビームリスト**です。[生成器](https://github.com/okaz-code/VecBeamMAME-docs/blob/HEAD/tools/make-logo-mvec.py)が MVEC ストリームとして書き出し、`-vector_playback` が 1 本ずつ描いています。ワードマークはビームエネルギーを全開より上まで振ったオーバードライブ状態です。</sub>
+
 # VecBeamMAME（日本語）
 
 English: [README.md](README.md)
