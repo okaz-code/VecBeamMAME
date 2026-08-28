@@ -1,3 +1,7 @@
+![VecBeamMAME](docs/vecbeammame/vecbeammame-logo.png)
+
+<sub>The logo is not artwork: it is a beam list, played back through this renderer.  [The generator](https://github.com/okaz-code/VecBeamMAME-docs/blob/HEAD/tools/make-logo-mvec.py) writes it as an MVEC stream and `-vector_playback` draws it, one vector at a time, with the wordmark overdriven past full beam energy.</sub>
+
 # VecBeamMAME
 
 **日本語の説明は [README.ja.md](README.ja.md) にあります。**
