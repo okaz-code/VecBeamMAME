@@ -282,8 +282,6 @@ Battlezone はクリップ矩形の4辺すべてを、アナログスイッチ�
 記録は 1 フレーム = エミュレート 1 フレームで、レンダラより上流の中間表現なので、
 **同じ MVEC を別のレンダラ設定に流せば差分はレンダラだけになる。**
 
-形式仕様は [[../mvec-format-v1]]、撮影手順は [[../mvec-comparison-capture-procedure]]。
-
 ### `vector_record`
 
 | | |
@@ -551,8 +549,8 @@ bgfx_vec_supersample      1
 
 `vector_beam_window` を切ると present ループが止まり、ベクター CPU が 2〜4 分の 1 になる。
 
-低スペック機での実測値(どこが律速かは機体によって違う)は
-[[../low-end-performance-results]]、ログの読み方は [[../bgfx-perf-log-reading]] を参照。
+どこが律速かは機体によって違うので、どれを下げるかは実測で決める。`-bgfx_debug` を付けると
+1 秒ごとに `BGFX PERF` 行がログに出るので、CPU 側と GPU 側のどちらで詰まっているかの当たりがつく。
 
 ### 5-3. 比較動画の撮影
 
