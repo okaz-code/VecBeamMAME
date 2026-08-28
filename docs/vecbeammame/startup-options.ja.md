@@ -31,11 +31,14 @@ vbmame -createconfig
 ### 1-0b. 効かない素の MAME オプション
 
 `beam_width_min` / `beam_width_max` / `beam_dot_size` / `beam_intensity_weight` は
-**VecBeamMAME では効きません。** ビーム幅を決めるのはチェインスライダー（同名だが別物）です。
+**bgfx ベクターチェイン使用時は効きません。** ini に書いても、Tab → Slider Controls の
+同名スライダー（一覧の上のほうにある素の MAME 側）を動かしても変わりません。ビーム幅は
+下のほうに並ぶ**チェインスライダー**の値で決まります。そちらを触ってください。
+
 `flicker` は効きますが、チェイン側の周期フリッカと二重になるため、同梱の ini プリセットでは
 `flicker 0.00` にしてあります。そのままにしてください。
 
-詳しくは [FAQ](faq.ja.md) の「ini に `beam_width_min` を書いても効きません」を参照。
+詳しくは [FAQ](faq.ja.md) の「ini や Tab メニューの `beam_width_min` が効きません」を参照。
 
 ### 1-1. 書式
 
