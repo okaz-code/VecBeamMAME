@@ -24,7 +24,7 @@
 		//      で倍率、[M] Monitor/Glass Sim で 0/1 のゲート）。curve は [マクロ値, 対象値] の折れ線 ----
 		{"type":"float","name":"macro_exposure","text":"[M] Beam Brightness","default":1.0,"min":0.25,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"beam_peak_nits","mode":"scale"},{"slider":"sdr_beam_level","mode":"scale"},{"slider":"bright_normal_cap","mode":"curve","curve":[[1.0,0.8],[1.11,0.8],[2.0,1.0]]}]},
-		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.9,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"bright_threshold","text":"Brightness Threshold (T)","default":0.7,"min":0.05,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"macro_overload","text":"[M] Overload Amount","default":1.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"overload_threshold","mode":"curve","curve":[[0.0,4.0],[0.5,1.4],[1.0,1.0],[2.0,0.9]]},
 		             {"slider":"intensity_overdrive","mode":"curve","curve":[[0.0,0.0],[1.0,1.0],[2.0,1.6]]},
@@ -76,8 +76,8 @@
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Beam width ----
-		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.9,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":4.2,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.7,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_width_max","text":"Beam Width Maximum","default":4.0,"min":0.1,"max":24.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"width_curve","text":"Width Curve","default":2.0,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"core_flat","text":"Line Core Flatness","default":0.4,"min":0.0,"max":0.98,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 
@@ -107,8 +107,8 @@
 		// ---- Beam energy model ----
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"energy_infl","text":"Energy Influence (no-current src)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"energy_speed_norm","text":"Energy Speed Norm (scr/ms)","default":6.0,"min":0.05,"max":12.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"energy_curve","text":"Energy Curve","default":1.05,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"energy_speed_norm","text":"Energy Speed Norm (scr/ms)","default":3.0,"min":0.05,"max":12.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"energy_curve","text":"Energy Curve","default":2.5,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_line_max","text":"Energy Line Max / Density Cap","default":1.2,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_dot_ref","text":"Energy Dot Ref (us)","default":30.0,"min":2.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_dot_curve","text":"Energy Dot Curve","default":1.6,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
