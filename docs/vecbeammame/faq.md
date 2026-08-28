@@ -137,6 +137,49 @@ stock MAME, but it is not what STAR WARS or a Vectrex looks like here.
 gaining it means writing the vector generator's emulation.  Which also means
 that if more boards get one, the same reproduction starts working there too.
 
+## Does this fix any bugs in MAME itself?
+
+**Yes.**  Working on the display turned up faults that apply to stock MAME 0.289
+as well, and those are fixed here.  All of them are small enough to report
+upstream individually.
+
+### Bugs in 0.289
+
+**The size of the AVI readback buffer** - while recording, the readback buffer
+took its width from the new dimensions but **its height from the old ones**.
+Both the texture being read back and the destination bitmap use the new
+dimensions, so a window that had grown overflowed the heap by
+`(new_h - old_h) x new_w x 4` bytes.  It is currently unreachable - the two are
+always equal by the time it is called - but what guarantees that is a non-local,
+undocumented condition, so it was fixed.
+
+**`bgfx_screen_chains` overwriting cfg** - the loading side lets a chain given
+on the command line take precedence over cfg, but the saving side had no
+matching check, so **a temporary override was burned into cfg.**  Run
+`-bgfx_screen_chains vector-monochrome` once for a test and that machine starts
+in monochrome from then on.  The check now lives in one place and both sides
+share it.
+
+### Vectrex hardware behaviour
+
+**Open bus** - reads from unconnected addresses return what is left on the data
+bus, not a fixed value.  On real hardware Mine Storm's out-of-range vector
+drawing bug clears in one iteration and is invisible; returning `0` or `$FF`
+amplified it into a freeze lasting seconds.  Unconnected is now the default,
+and writes latch as the residual value too, since the CPU drives the bus when
+it writes.
+
+**The light pen crosshair** - a crosshair was drawn with no pen plugged in.
+
+**3-D Imager eye and colour wheel sync** - `psg_port_w` re-armed the eye timer
+on every PWM edge with the right eye hardcoded (param 2), clobbering the
+one-shot that switches to the left eye half a rotation later.  The index timer
+the game synchronises to was also left at its 1 Hz startup value and never
+tracked the motor.  The result is swapped colours, or a picture stuck on one
+eye.  The index pulse is now re-armed to the real rotation frequency, phase
+preserved, and the eye switch and colour segments are derived from it.  **The
+same code is still in 0.289's source.**
+
 ## Which chain is used?
 
 Four chains ship, and **colour, monochrome and Vectrex machines each select the
