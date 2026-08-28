@@ -38,7 +38,8 @@ static bool beam_window_wanted(running_machine &machine)
 {
 	float render_scale = 0.0f, output_scale = 0.0f;
 	bool preset_window = false;
-	if (machine.options().vector_quality_preset(render_scale, output_scale, preset_window))
+	int preset_present_rate = 0;
+	if (machine.options().vector_quality_preset(render_scale, output_scale, preset_window, preset_present_rate))
 	{
 		auto const entry = machine.options().get_entry(OPTION_VECTOR_BEAM_WINDOW);
 		if (entry && (entry->priority() <= OPTION_PRIORITY_DEFAULT))
@@ -202,14 +203,32 @@ video_manager::video_manager(running_machine &machine)
 	else
 	{
 		int configured_present_rate = machine.options().vector_present_rate();
+		const auto rate_entry = machine.options().get_entry(OPTION_VECTOR_PRESENT_RATE);
+		const bool rate_is_default = !rate_entry || rate_entry->priority() <= OPTION_PRIORITY_DEFAULT;
+
+		// -vector_quality names a present rate too, since the rate decides how many times a second the
+		// phosphor and monitor chain runs. Like the rest of the preset it only fills a rate that was
+		// left alone.
+		bool present_rate_from_preset = false;
+		if (rate_is_default)
+		{
+			float preset_render = 0.0f, preset_output = 0.0f;
+			bool preset_window = false;
+			int preset_rate = 0;
+			if (machine.options().vector_quality_preset(preset_render, preset_output, preset_window, preset_rate))
+			{
+				configured_present_rate = preset_rate;
+				present_rate_from_preset = true;
+			}
+		}
+
 		// The beam time window deposits one presentation interval's worth of the sweep per present,
 		// so it has no slices to work with unless the host-rate present loop is running. Asking for
 		// the window is therefore also asking for that loop: at vector_present_rate 0 (the default)
 		// the window would otherwise be silently inert, which is the whole feature gone. An explicit
-		// rate - including an explicit 0 - is left exactly as the user set it.
+		// rate - including an explicit 0 - is left exactly as the user set it. This still fires for
+		// -vector_quality low with the window asked for by hand, which is the same bargain.
 		bool present_rate_from_window = false;
-		const auto rate_entry = machine.options().get_entry(OPTION_VECTOR_PRESENT_RATE);
-		const bool rate_is_default = !rate_entry || rate_entry->priority() <= OPTION_PRIORITY_DEFAULT;
 		if (configured_present_rate == 0 && rate_is_default
 			&& beam_window_wanted(machine))
 		{
@@ -229,9 +248,12 @@ video_manager::video_manager(running_machine &machine)
 			// Reported at info level, like the HDR peak: the presentation rate decides how finely a
 			// beam sweep can be sliced for display, so it belongs with the other numbers the user
 			// should see without having to ask for -verbose.
+			const char *const rate_source = present_rate_from_window
+				? " (requested by vector_beam_window)"
+				: (present_rate_from_preset ? " (from -vector_quality)" : "");
 			osd_printf_info("Vector presentation timer enabled at %s%u Hz%s\n",
 				m_vector_present_auto ? "auto, initial " : "", m_vector_present_rate,
-				present_rate_from_window ? " (requested by vector_beam_window)" : "");
+				rate_source);
 		}
 	}
 }
