@@ -215,7 +215,7 @@ BGFX: beam time window active - sweep 29.90 ms over 12.50 ms windows (2.4 per sw
 チェイン側にも `beam_window` / `beam_window_scale` スライダーがあり、**両方オンでないと働かない**
 (起動時のマスタスイッチがこのオプション、実行中の調整がスライダー)。
 
-### `vector_window_sim`
+### `vector_window_scatter`
 
 | | |
 |---|---|
@@ -230,7 +230,7 @@ Battlezone は矩形の4辺すべてが保持値なので、同じ量でも「�
 そのため opt-in にしてある。
 
 ```
-vbmame mhavoc -vector_window_sim
+vbmame mhavoc -vector_window_scatter
 ```
 
 ### `vector_window_droop` / `vector_window_memory` / `vector_window_jitter` / `vector_window_bias`
@@ -239,7 +239,7 @@ vbmame mhavoc -vector_window_sim
 |---|---|---|
 | `vector_window_droop` | float | `5.0` |
 | `vector_window_memory` | float | `0.005` |
-| `vector_window_jitter` | float | `1.0`(ただし `vector_window_sim` が必要) |
+| `vector_window_jitter` | float | `1.0`(ただし `vector_window_scatter` が必要) |
 | `vector_window_bias` | float | `0.5` |
 
 **この回路を持つ機種だけに効く。** Major Havoc はスクロール領域の上端(`ymin` クリップ)の1辺、
@@ -248,7 +248,7 @@ Battlezone はクリップ矩形の4辺すべてを、アナログスイッチ�
 
 **`window_jitter` だけスイッチが要る。** これはラッチ値そのもののばらつきで、**フレーム間で
 位置が動く唯一の項目**＝窓が揺れて見える正体。値は実機に寄せた `1.0` が入っているが、
-`vector_window_sim` がオフのあいだは 0 として扱われる(→ 上記)。
+`vector_window_scatter` がオフのあいだは 0 として扱われる(→ 上記)。
 
 残る3本(垂下・誘電吸収・オフセット)は実機に寄せた値が既定に入っていて、**常に有効**。これらは
 **フレーム間では動かない**(位置が一定量ずれる／描画順に沿って傾く)ので、揺れとしては見えない。
@@ -609,12 +609,12 @@ vector_blank_leak         0.05
 
 ### 5-5. クリップ窓の回路（Major Havoc / Battlezone）
 
-揺れ（`jitter`）を出すには `vector_window_sim` が要る。既定値の `1.0` は Major Havoc の
+揺れ（`jitter`）を出すには `vector_window_scatter` が要る。既定値の `1.0` は Major Havoc の
 1 辺に合わせた値なので、4 辺すべてが動く Battlezone では下げたほうが落ち着く。
 
 ```ini
 # starwars.ini ではなく mhavoc.ini / bzone.ini に書く
-vector_window_sim         1
+vector_window_scatter         1
 vector_window_jitter      1.0      # bzone なら 0.3 前後から
 vector_window_droop       2.0
 vector_window_memory      0.15

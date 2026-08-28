@@ -1048,14 +1048,14 @@ void vector_options::init(emu_options &options)
 	s_overscan_y = options.vector_overscan_y();
 	s_blank_leak = options.vector_blank_leak();
 	// The scatter is the only one of the four that moves between frames, so it is the one that reads
-	// as the window wobbling, and -vector_window_sim is its switch. The other three shift the window
+	// as the window wobbling, and -vector_window_scatter is its switch. The other three shift the window
 	// by a fixed amount or lean it along the drawing order; they do not move, so they are always in
 	// and carry the calibrated values. Scatter is off by default because Battlezone holds all four
 	// edges of the rectangle and 1% of screen height on each of them looks like the frame breathing,
 	// which is a different thing from Major Havoc's single trim line moving.
 	s_window_droop = options.vector_window_droop();
 	s_window_memory = options.vector_window_memory();
-	s_window_jitter = options.vector_window_sim() ? options.vector_window_jitter() : 0.0f;
+	s_window_jitter = options.vector_window_scatter() ? options.vector_window_jitter() : 0.0f;
 	s_window_bias = options.vector_window_bias();
 }
 

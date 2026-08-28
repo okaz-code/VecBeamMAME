@@ -125,7 +125,7 @@
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
 #define OPTION_VECTOR_QUALITY       "vector_quality"
-#define OPTION_VECTOR_WINDOW_SIM    "vector_window_sim"
+#define OPTION_VECTOR_WINDOW_SCATTER    "vector_window_scatter"
 #define OPTION_VECTOR_WINDOW_DROOP  "vector_window_droop"
 #define OPTION_VECTOR_WINDOW_MEMORY "vector_window_memory"
 #define OPTION_VECTOR_WINDOW_JITTER "vector_window_jitter"
@@ -434,7 +434,7 @@ public:
 	// so naming a preset and then overriding one of its parts on the command line does what it reads like.
 	// present_rate follows vector_present_rate's own convention: -1 is auto, 0 is off, otherwise Hz.
 	bool vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate) const;
-	bool vector_window_sim() const { return bool_value(OPTION_VECTOR_WINDOW_SIM); }
+	bool vector_window_scatter() const { return bool_value(OPTION_VECTOR_WINDOW_SCATTER); }
 	float vector_window_droop() const { return float_value(OPTION_VECTOR_WINDOW_DROOP); }
 	float vector_window_memory() const { return float_value(OPTION_VECTOR_WINDOW_MEMORY); }
 	float vector_window_jitter() const { return float_value(OPTION_VECTOR_WINDOW_JITTER); }
