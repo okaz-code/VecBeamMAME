@@ -19,6 +19,7 @@
 #include "drivenum.h"
 #include "fileio.h"
 #include "main.h"
+#include "mame.h"     // bare_build_version - the MAME number the cache tag is keyed on
 #include "uiinput.h"
 
 #include "util/corestr.h"
@@ -240,7 +241,8 @@ void menu_audit::save_available_machines()
 	if (!file.open(std::string(emulator_info::get_configname()) + "_avail.ini"))
 	{
 		// generate header
-		file.printf("#\n%s%s\n#\n\n", UI_VERSION_TAG, emulator_info::get_bare_build_version());
+		// The MAME number, not the fork's: this tag says which MAME the cached audit is valid for.
+		file.printf("#\n%s%s\n#\n\n", UI_VERSION_TAG, bare_build_version);
 
 		// generate available list
 		for (ui_system_info const &info : m_availablesorted)
