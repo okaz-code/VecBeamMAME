@@ -241,14 +241,14 @@ There are options for running on a slow PC.  One word gets you started:
 -vector_quality low
 ```
 
-`low` / `medium` / `high` set internal resolution, output resolution and the
-beam time window together.
+`low` / `medium` / `high` set internal resolution, output resolution, the beam
+time window and the present rate together.
 
-| | Internal | Output | Beam time window |
-|---|---|---|---|
-| `high` | 1.0 | 1.0 | on |
-| `medium` | 0.75 | 0.75 | on |
-| `low` | 0.5 | 0.5 | **off** |
+| | Internal | Output | Beam time window | Present rate |
+|---|---|---|---|---|
+| `high` | 1.0 | 1.0 | on | the monitor's refresh |
+| `medium` | 0.75 | 0.75 | on | **pinned at 60 Hz** |
+| `low` | 0.5 | 0.5 | **off** | none (no present loop at all) |
 
 On the slowest Windows PC here, a **Surface Pro 4** (Intel HD 520), settings
 equivalent to `-vector_quality low` hold 41-42 presents per second and 100%
@@ -268,6 +268,17 @@ where the time is.  0.5 to 0.4 works out at roughly 30% less.
 Games whose driver refresh rate is around 60 Hz (GRAVITAR, TEMPEST, BATTLEZONE
 and so on) ask for 1.5 times the frames STAR WARS does at 41 Hz, so the same
 settings may not fit.
+
+**Watch out for monitors above 60 Hz.**  With the beam time window on, the
+present rate follows the monitor's refresh, so a 144 Hz panel runs the phosphor,
+composite and monitor chain 144 times a second - 2.4x what 60 Hz costs.  On a
+fast machine that buys picture quality; on a slow one it is just load.  That is
+why `-vector_quality medium` pins the present rate at 60, and if you want to
+stay on `high` while capping it, pass `-vector_present_rate 60` directly.
+
+Only the compositing side scales this way.  Building the vectors, and the
+auxiliary passes behind glow and the rest, happen per source frame and do not
+follow the refresh rate.
 
 ## Why is there no Mac binary?
 
