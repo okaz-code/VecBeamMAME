@@ -460,7 +460,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f,
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float end_gain_start = 1.0f, float end_gain_finish = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f,
 			// Gain for the SCATTERED-LIGHT outputs only (overdrive flare, analytic glow, halation ring,
 			// starburst rays). Under the beam time window those routes are not windowed - they have no
 			// persistence of their own - so they would show a whole pass's scatter while the body shows

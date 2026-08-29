@@ -53,6 +53,11 @@ struct AnalyticLineVertex
 	float m_end_finish;     // finish-end width profile amount (0..1)
 	float m_end_core;       // flat-core half-width at a fully active endpoint
 	float m_end_transition; // distance over which endpoint width returns to the body width
+	// Terminus dwell gain: 1 = no boost. The beam sitting still while Z transitions at a stroke
+	// terminus deposits energy there, which the width profile alone cannot express (it keeps the
+	// body's peak brightness by design). See vertex-dwell-energy-plan.md.
+	float m_end_gain_start;
+	float m_end_gain_finish;
 
 	static void init()
 	{
@@ -62,6 +67,7 @@ struct AnalyticLineVertex
 			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord2, 4, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord3, 2, bgfx::AttribType::Float)
 			.end();
 	}
 

@@ -1,5 +1,5 @@
-$input a_position, a_color0, a_texcoord0, a_texcoord1, a_texcoord2
-$output v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
+$input a_position, a_color0, a_texcoord0, a_texcoord1, a_texcoord2, a_texcoord3
+$output v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3, v_texcoord4
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -33,4 +33,7 @@ void main()
 	// Per-line endpoint-width profile: start amount, finish amount, fully-active flat-core
 	// half-width, and transition distance. It remains constant across each line quad.
 	v_texcoord3 = a_texcoord2;
+	// Terminus dwell gain (start, finish). 1 = no boost; above 1 the fragment raises the deposit
+	// near that end, weighted by the same endpoint profile the width uses.
+	v_texcoord4 = a_texcoord3;
 }
