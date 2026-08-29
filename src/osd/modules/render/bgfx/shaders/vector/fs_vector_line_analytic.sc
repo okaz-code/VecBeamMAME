@@ -1,4 +1,4 @@
-$input v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3
+$input v_color0, v_texcoord1, v_texcoord0, v_texcoord2, v_texcoord3, v_texcoord4
 
 // license:BSD-3-Clause
 // copyright-holders:okaz-code
@@ -204,6 +204,19 @@ void main()
 		perp = sharpen(perp, u_line_params.y);
 		float endpoint_zone = clamp(max(max(start_round_zone, finish_round_zone), max(start_join_zone, finish_join_zone)), 0.0, 1.0);
 		fade = perp * mix(axial, 1.0, endpoint_zone);
+		// Terminus dwell energy. The beam sits at a stroke terminus while Z transitions, so it
+		// deposits there in addition to sweeping the body. The width profile above cannot express
+		// that - by design it keeps the body's peak brightness - so the extra energy is added here
+		// as amplitude, falling off with the beam's own sigma rather than the (much longer) width
+		// transition: the beam is stationary at a point, not spread along the taper.
+		float gain_start  = max(v_texcoord4.x, 1.0) - 1.0;
+		float gain_finish = max(v_texcoord4.y, 1.0) - 1.0;
+		if (gain_start > 0.0 || gain_finish > 0.0)
+		{
+			float wa = exp(-a * a * inv_2s2);
+			float wb = exp(-b * b * inv_2s2);
+			fade *= 1.0 + gain_start * wa + gain_finish * wb;
+		}
 	}
 
 	// Float intensity multiplier. Core/overload geometry carries z >= 0 (x1 and above); very faint

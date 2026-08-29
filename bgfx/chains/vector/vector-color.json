@@ -86,6 +86,7 @@
 		{"type":"float","name":"point_width_scale","text":"Point Width Scale","default":1.8,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_brightness_scale","text":"Point Brightness Scale","default":2.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"point_roundness","text":"Point Roundness","default":0.25,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"vertex_dwell_energy","text":"Vertex Dwell Energy (x)","default":0.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"cap_no_persist","text":"Short-Dwell Dots: No Persistence","default":0,"max":1,"min":0,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"dot_no_persist_dwell","text":"Dot No-Persist Dwell (us)","default":10.0,"min":0.0,"max":60.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},

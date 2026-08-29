@@ -3095,7 +3095,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	return true;
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float stroke_px_per_ms, float dwell_scale, float aux_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float end_gain_start, float end_gain_finish, float stroke_px_per_ms, float dwell_scale, float aux_scale)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -3619,6 +3619,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_end_start = rounded_start > 0.5f ? -(1.0f + end_start) : end_start;
 		vertex[i].m_end_finish = rounded_finish > 0.5f ? -(1.0f + end_finish) : end_finish;
 		vertex[i].m_end_core = end_core; vertex[i].m_end_transition = end_transition;
+		vertex[i].m_end_gain_start = end_gain_start; vertex[i].m_end_gain_finish = end_gain_finish;
 	};
 
 	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
@@ -3634,6 +3635,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
 			tgt[i].m_end_core = wc; tgt[i].m_end_transition = 0.0f;
+			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f;
 		};
 		dv(base + 0, cx - p, cy - p, -p, -p);
 		dv(base + 1, cx + p, cy - p,  p, -p);
@@ -3651,6 +3653,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[base + i].m_a = 0.0f; tgt[base + i].m_b = 0.0f; tgt[base + i].m_d = 0.0f; tgt[base + i].m_sigma = -1.0f;
 			tgt[base + i].m_end_start = 0.0f; tgt[base + i].m_end_finish = 0.0f;
 			tgt[base + i].m_end_core = 0.0f; tgt[base + i].m_end_transition = 0.0f;
+			tgt[base + i].m_end_gain_start = 1.0f; tgt[base + i].m_end_gain_finish = 1.0f;
 		}
 	};
 
@@ -3667,6 +3670,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_a = a; tgt[i].m_b = radius; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
 			tgt[i].m_end_core = 0.0f; tgt[i].m_end_transition = 0.0f;
+			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f;
 		};
 		rv(base + 0, cx - p, cy - p, -p, -p);
 		rv(base + 1, cx + p, cy - p,  p, -p);
@@ -3947,6 +3951,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 							ray_vertex[i].m_a = a; ray_vertex[i].m_b = a - slen; ray_vertex[i].m_d = d; ray_vertex[i].m_sigma = ssig;
 							ray_vertex[i].m_end_start = 0.0f; ray_vertex[i].m_end_finish = 0.0f;
 							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = -1.0f;   // halo quad
+							ray_vertex[i].m_end_gain_start = 1.0f; ray_vertex[i].m_end_gain_finish = 1.0f;
 						};
 						rvv(rbase + 0, sx0 + rnx * rpad, sy0 + rny * rpad, a0,  rpad);
 						rvv(rbase + 1, sx1 + rnx * rpad, sy1 + rny * rpad, a1,  rpad);
@@ -4043,6 +4048,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// full strength that far past the line end and then drop it in one step - a hard rectangular
 			// edge around every primitive.
 			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;
+			glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
 		gv(m_glow_off_glow + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
@@ -4066,6 +4072,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
 				glow_vertex[i].m_end_core = wcore; glow_vertex[i].m_end_transition = 0.0f;
+				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
 			};
 			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
 			fv(m_glow_off_flare + 1, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
@@ -4088,6 +4095,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
 				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;   // halo quad
+				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
 			ov(m_glow_off_oglow + 1, osx1 + nx * opad, osy1 + ny * opad, oa1, oa1 - seg_len,  opad);
@@ -5378,13 +5386,23 @@ int renderer_bgfx::draw(int update)
 			// (prim->cap_flags bit0 = stroke start / RAMP-on, bit1 = stroke end / RAMP-off), overriding the
 			// geometric vertex_dwell caps. Internal joints get no cap. 0 = off (geometric/uniform caps).
 			const float cap_ramp_only = m_line_analytic ? m_chains->slider_value(0, "cap_ramp_only", 0.0f) : 0.0f;
+			// Terminus dwell energy: the beam stands still at a stroke terminus while Z transitions,
+			// and that shows as a bright dot, not as a wider line. The width profile deliberately keeps
+			// the body's peak brightness, so this is the only path for it. Scaled by how long the beam
+			// waited relative to the stroke it just drew, which the recorded timing gives directly.
+			const float vertex_dwell_energy = m_line_analytic
+				? m_chains->slider_value(0, "vertex_dwell_energy", 0.0f) : 0.0f;
 			const int cap_mode = m_line_analytic ? int(std::lround(m_vs.line_cap_mode)) : 0;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> round_terminus;
+			// Blanked gap either side of each endpoint, as a multiple of the stroke's own sweep time.
+			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_dwell;
 			if (deposit_vector_source && m_line_analytic)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
 				round_terminus.reserve(size_t(vector_count) * 2);
+				if (vertex_dwell_energy > 0.0f)
+					vtx_dwell.reserve(size_t(vector_count) * 2);
 				const render_primitive *pv = nullptr;
 				float pdx = 0.0f, pdy = 0.0f;
 				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
@@ -5398,8 +5416,24 @@ int renderer_bgfx::draw(int update)
 					const float ndx = ddx / len, ndy = ddy / len;
 					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
 					round_terminus.emplace(p, std::make_pair(1.0f, 1.0f));
+					if (vertex_dwell_energy > 0.0f)
+						vtx_dwell.emplace(p, std::make_pair(0.0f, 0.0f));
 					if (pv != nullptr)
 					{
+						// Time the beam spent between the two strokes, as a multiple of this stroke's own
+						// sweep. A continuous joint gives 0 and gets no boost; a blanked terminus gives
+						// whatever the hardware actually waited. Capped so a jump between distant objects
+						// cannot run away. Needs the source to supply timing; without it there is no dwell
+						// to model and the term stays off.
+						if (vertex_dwell_energy > 0.0f
+							&& p->t0 >= 0.0 && p->t1 > p->t0 && pv->t1 >= 0.0)
+						{
+							const double span = p->t1 - p->t0;
+							const float ratio = (span > 1e-12)
+								? float(std::clamp((p->t0 - pv->t1) / span, 0.0, 4.0)) : 0.0f;
+							vtx_dwell[pv].second = ratio;
+							vtx_dwell[p].first   = ratio;
+						}
 						const float gx = p->bounds.x0 - pv->bounds.x1;
 						const float gy = p->bounds.y0 - pv->bounds.y1;
 						if (gx * gx + gy * gy < 0.25f)  // shared vertex (within 0.5 px)
@@ -6027,6 +6061,7 @@ int renderer_bgfx::draw(int update)
 										bv[n].m_d=d; bv[n].m_sigma=-falloff;
 										bv[n].m_end_start=0.0f; bv[n].m_end_finish=0.0f;
 										bv[n].m_end_core=0.0f; bv[n].m_end_transition=0.0f;
+										bv[n].m_end_gain_start = 1.0f; bv[n].m_end_gain_finish = 1.0f;
 									};
 									cvtx(0,bloom.x-pad,bloom.y-pad,-pad,-pad); cvtx(1,bloom.x+pad,bloom.y-pad,pad,-pad);
 									cvtx(2,bloom.x+pad,bloom.y+pad,pad,pad);   cvtx(3,bloom.x-pad,bloom.y-pad,-pad,-pad);
@@ -6137,7 +6172,18 @@ int renderer_bgfx::draw(int update)
 									// the draw call's explicit vertex count leaves out.
 									AnalyticLineVertex *const body_ptr = reinterpret_cast<AnalyticLineVertex*>(tvb.data)
 											+ (vp_aux_only ? body_scratch_at : uint32_t(vertices));
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, sps, dsc, 1.0f);
+									// Terminus dwell -> extra energy at that end (0 boost when the beam did not pause).
+									float gcap_s = 1.0f, gcap_e = 1.0f;
+									if (vertex_dwell_energy > 0.0f)
+									{
+										auto dit = vtx_dwell.find(vprim);
+										if (dit != vtx_dwell.end())
+										{
+											gcap_s = 1.0f + vertex_dwell_energy * dit->second.first;
+											gcap_e = 1.0f + vertex_dwell_energy * dit->second.second;
+										}
+									}
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, gcap_s, gcap_e, sps, dsc, 1.0f);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -6338,6 +6384,7 @@ int renderer_bgfx::draw(int update)
 							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
 							ev[i].m_end_start = 0.0f; ev[i].m_end_finish = 0.0f;
 							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = -1.0f;   // halo quad
+							ev[i].m_end_gain_start = 1.0f; ev[i].m_end_gain_finish = 1.0f;
 						};
 						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
 						const float sx1 = ex1 + edx * epad, sy1 = ey1 + edy * epad;
