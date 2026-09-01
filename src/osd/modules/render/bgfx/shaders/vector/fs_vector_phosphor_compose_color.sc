@@ -157,7 +157,7 @@ float phos_flash(float age)
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
-	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb * max(u_fresh_gain.x, 0.0);
+	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
 	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
 	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
 		fresh *= u_phos_peak.x / raw_fresh_peak;
@@ -173,6 +173,12 @@ void main()
 		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 
 	lit = max(lit, fresh);
+	// Fresh-excitation gain, applied in the pool's own scale rather than to the raw s_cur sample -
+	// the two are not commensurate (measured about 5:1 on asteroid, and more before the roll-off), so
+	// a gain on s_cur has to exceed that ratio before max() even notices it. age == 0 means the pixel
+	// was excited THIS present, which is exactly the newest hit and nothing else.
+	if (u_fresh_gain.x > 1.0 && pool.a <= 0.0)
+		lit *= u_fresh_gain.x;
 	lit *= phos_flash(pool.a);
 	lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
 	vec3 composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
