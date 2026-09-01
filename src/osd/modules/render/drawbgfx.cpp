@@ -4631,9 +4631,13 @@ int renderer_bgfx::draw(int update)
 			const uint64_t cf = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
 				BGFX_TEXTURE_RT;
 			bgfx::TextureHandle tc = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
+			// Dwell allowance field: how far above one swept beam this pixel is permitted to go,
+			// because the beam stopped here rather than merely crossing. One channel, half float -
+			// the phosphor pool reads it to raise masked_core_peak locally.
+			bgfx::TextureHandle tw = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::R16F, cf);
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
-			bgfx::TextureHandle at[2] = { tc, td };
-			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
+			bgfx::TextureHandle at[3] = { tc, tw, td };
+			m_vec_fb = bgfx::createFrameBuffer(3, at, true);
 			bgfx::TextureHandle gc[4] = {
 				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
 				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
@@ -6259,6 +6263,15 @@ int renderer_bgfx::draw(int update)
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
+				// MRT 1 of the CORE framebuffer is the dwell allowance field, not the glow buffer's
+				// Long-classified light. The glow pass leaves this at zero (see set_glow_uniforms).
+				bgfx_uniform* cd = line_eff->uniform("u_core_dwell");
+				if (cd)
+				{
+					float vals[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+					cd->set(vals, sizeof(float) * 4);
+					cd->upload();
+				}
 				set_halo_quad_edge(line_eff);
 				if (m_vs.core_overlap_max > 0.5f)
 				{
@@ -6449,6 +6462,13 @@ int renderer_bgfx::draw(int update)
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
+					bgfx_uniform* cd = line_eff->uniform("u_core_dwell");
+					if (cd)
+					{
+						float vals[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+						cd->set(vals, sizeof(float) * 4);
+						cd->upload();
+					}
 					set_halo_quad_edge(line_eff);
 				};
 				bool glow_submitted = false;
@@ -6636,6 +6656,10 @@ int renderer_bgfx::draw(int update)
 				render_w, render_h,
 				m_vec_fb_w, m_vec_fb_h,
 				content_w, content_h);
+			// Expose the core FBO's dwell allowance attachment as "dwell0" for the phosphor passes.
+			bgfx::TextureHandle dwell_tex = bgfx::getTexture(m_vec_fb, 1);
+			if (bgfx::isValid(dwell_tex))
+				m_chains->inject_vector_dwell(dwell_tex, m_vec_fb_w, m_vec_fb_h);
 			// Expose the analytic-glow FBO as "glow0" for the chain's post-mask glow composite pass.
 			if (bgfx::isValid(m_vec_glow_fb))
 			{

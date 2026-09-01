@@ -1064,6 +1064,13 @@ void chain_manager::inject_vector_np(bgfx::TextureHandle color_tex, uint16_t vec
 	m_textures.add_provider("npglow0", std::move(prov));
 }
 
+void chain_manager::inject_vector_dwell(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
+{
+	m_textures.remove_provider("dwell0");
+	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
+	m_textures.add_provider("dwell0", std::move(prov));
+}
+
 uint32_t chain_manager::count_screens(render_primitive* prim)
 {
 	uint32_t screen_count = 0;

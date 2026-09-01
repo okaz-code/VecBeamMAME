@@ -467,6 +467,19 @@ public:
 			visarea = entry.visarea;
 		}
 		copy_cached(dest, capacity, count, stale);
+		// Machine-readable marker for external capture: emitted once per settled frame while paused,
+		// so a script can wait for the frame it asked for instead of guessing at a sleep.
+		if (m_tool_paused && m_play_position >= 0 && m_play_position != m_announced_paused_position)
+		{
+			m_announced_paused_position = m_play_position;
+			osd_printf_info("MVEC: paused at frame %llu/%llu\n",
+				(unsigned long long)(u64(m_play_position) + 1U),
+				(unsigned long long)m_frame_index.size());
+		}
+		else if (!m_tool_paused)
+		{
+			m_announced_paused_position = -1;
+		}
 		if (m_tool_overlay)
 			show_tool_message(m_tool_paused ? "Paused" : "Playing");
 		return true;
@@ -614,6 +627,14 @@ private:
 				m_pending_position = std::min<u64>(u64(start) - 1U, m_frame_index.size() - 1U);
 				osd_printf_info("MVEC: starting playback at frame %llu\n",
 					(unsigned long long)(m_pending_position + 1U));
+			}
+			// -vector_playback_pause holds that frame instead of running on from it. An external
+			// capture tool needs a still image and a marker saying which frame it is looking at;
+			// without this the only way to stop on a frame is the keyboard, which no script can drive.
+			if (m_owner.machine().options().vector_playback_pause())
+			{
+				m_tool_paused = true;
+				osd_printf_info("MVEC: starting paused\n");
 			}
 		}
 		if (m_recorded_frame_period <= 0)
@@ -1011,6 +1032,7 @@ private:
 	s64 m_play_position = -1;
 	u64 m_pending_position = INVALID_POSITION;
 	bool m_tool_paused = false;
+	s64 m_announced_paused_position = -1;
 	bool m_playback_advanced = false;
 	bool m_audio_sync_valid = true;
 	bool m_audio_paused = false;
