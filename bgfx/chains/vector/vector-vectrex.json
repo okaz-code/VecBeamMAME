@@ -77,7 +77,7 @@
 		{"type":"float","name":"vertex_dwell_drive_onset","text":"Vertex Dwell Drive Onset (0 = overload)","default":0.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"vertex_dwell","text":"Vertex Dwell (corner dots)","default":0.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"cap_no_persist","text":"Short-Dwell Dots: No Persistence","default":1,"max":1,"min":0,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
-		{"type":"float","name":"fresh_hit_gain","text":"Fresh Excitation Gain (newest hit)","default":1.0,"min":0.5,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"fresh_hit_gain","text":"Fresh Excitation Gain (newest hit)","default":1.0,"min":1.0,"max":24.0,"step":0.25,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"dot_no_persist_dwell","text":"Dot No-Persist Dwell (us)","default":0.0,"min":0.0,"max":60.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"z_rise_tau","text":"Z Rise Time (us)","default":10.0,"min":0.0,"max":20.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 

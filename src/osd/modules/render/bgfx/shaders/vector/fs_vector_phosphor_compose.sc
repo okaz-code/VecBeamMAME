@@ -122,7 +122,13 @@ void main()
 	// the error could only show as live content displayed at a DECAYED level - taking max with the
 	// current frame makes that entire failure class invisible by construction. In the normal case
 	// (pixel re-excited this present) pool == cur and this is exactly the previous output.
-	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb * max(u_fresh_gain.x, 0.0));
+	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
+	// Fresh-excitation gain, applied in the pool's own scale rather than to the raw s_cur sample -
+	// the two are not commensurate (measured about 5:1 on asteroid, and more before the roll-off), so
+	// a gain on s_cur has to exceed that ratio before max() even notices it. age == 0 means the pixel
+	// was excited THIS present, which is exactly the newest hit and nothing else.
+	if (u_fresh_gain.x > 1.0 && pool.a <= 0.0)
+		lit *= u_fresh_gain.x;
 	lit *= phos_flash(pool.a);
 
 	lit += AUX_TEX2D(s_np, v_texcoord0).rgb * u_np_gain.x;
