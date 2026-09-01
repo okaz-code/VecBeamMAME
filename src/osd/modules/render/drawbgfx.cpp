@@ -2531,6 +2531,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overload_max", &renderer_bgfx::vec_slider_cache::overload_max, 0.0f },
 	{ "overload_ramp", &renderer_bgfx::vec_slider_cache::overload_ramp, 0.0f },
 	{ "overload_threshold", &renderer_bgfx::vec_slider_cache::overload_threshold, 1.0f },
+	{ "vertex_dwell_drive_curve", &renderer_bgfx::vec_slider_cache::vertex_dwell_drive_curve, 0.0f },
 	{ "overload_width_add", &renderer_bgfx::vec_slider_cache::overload_width_add, -1.0f },
 	{ "overload_width_bloom_link", &renderer_bgfx::vec_slider_cache::overload_width_bloom_link, 1.0f },
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
@@ -3599,6 +3600,25 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float end_core = std::max(0.0f,
 		wcore + 0.5f * width * (end_width_scale - 1.0f) + end_overload_core);
 	const float end_transition = std::max(0.0f, m_vs.line_cap_transition) * vec_res_scale();
+	// Drive-weighted terminus dwell. The dwell ratio says how long the beam waited; it says nothing
+	// about how much current was flowing while it waited, and the deposit scales with both. Left flat,
+	// a dim line's terminus is lifted by exactly the same factor as an overloaded one, which is what
+	// makes vertex_dwell_energy heavy-handed on ordinary geometry. Gate it on the same normalised
+	// drive the overload path uses, so the term concentrates where the beam is actually being driven
+	// hard. Curve 0 gives pow(x, 0) = 1 and is therefore exactly the ungated behaviour.
+	float dwell_gain_start = end_gain_start;
+	float dwell_gain_finish = end_gain_finish;
+	if (m_vs.vertex_dwell_drive_curve > 0.0f)
+	{
+		// Clamped at the threshold on purpose: this attenuates the term BELOW overload and leaves it
+		// untouched above, so an existing vertex_dwell_energy keeps meaning the same thing where it was
+		// tuned. Letting the gate amplify past 1 measured barely more selective (ratio 7.8 against 6.0)
+		// while lifting the whole picture, which is the opposite of the point.
+		const float x = n / std::max(m_vs.overload_threshold, 1e-4f);
+		const float gate = powf(std::clamp(x, 0.0f, 1.0f), m_vs.vertex_dwell_drive_curve);
+		dwell_gain_start = 1.0f + (end_gain_start - 1.0f) * gate;
+		dwell_gain_finish = 1.0f + (end_gain_finish - 1.0f) * gate;
+	}
 	const float end_start = std::clamp(start_cap, 0.0f, 1.0f);
 	const float end_finish = std::clamp(end_cap, 0.0f, 1.0f);
 	const float rounded_start = std::clamp(round_start, 0.0f, 1.0f);
@@ -3619,7 +3639,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_end_start = rounded_start > 0.5f ? -(1.0f + end_start) : end_start;
 		vertex[i].m_end_finish = rounded_finish > 0.5f ? -(1.0f + end_finish) : end_finish;
 		vertex[i].m_end_core = end_core; vertex[i].m_end_transition = end_transition;
-		vertex[i].m_end_gain_start = end_gain_start; vertex[i].m_end_gain_finish = end_gain_finish;
+		vertex[i].m_end_gain_start = dwell_gain_start; vertex[i].m_end_gain_finish = dwell_gain_finish;
 	};
 
 	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
