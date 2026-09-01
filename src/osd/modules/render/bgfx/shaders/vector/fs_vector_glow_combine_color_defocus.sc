@@ -387,8 +387,11 @@ void main()
 	// A beam that STOPPED here is allowed past that ceiling: this is the same locally raised limit the
 	// phosphor pool and its compose apply, and all three have to agree or the last one wins and flattens
 	// the terminus again. Spatial overlap keeps the flat ceiling; only dwell lifts it.
+	// base_uv, not emit_uv: the light this limit acts on was sampled from s_base at base_uv, and the
+	// dwell field shares that buffer's space. Reading it at emit_uv put the allowance a pincushion's
+	// worth away from the terminus it belongs to, which is a measurable miss on a 1-2 pixel feature.
 	float core_limit = u_masked_core_peak.x
-		* (1.0 + clamp(texture2D(s_dwell, emit_uv).r, 0.0, max(0.0, u_dwell_peak.x - 1.0)));
+		* (1.0 + clamp(texture2D(s_dwell, base_uv).r, 0.0, max(0.0, u_dwell_peak.x - 1.0)));
 	float core_peak = max(base.r, max(base.g, base.b));
 	if (core_limit > 0.0 && core_peak > core_limit)
 		base *= core_limit / core_peak;
