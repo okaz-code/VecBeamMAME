@@ -380,6 +380,7 @@ public:
 		float overload_max = 0.0f;
 		float overload_ramp = 0.0f;
 		float overload_threshold = 1.0f;
+		float vertex_dwell_drive_curve = 0.0f;
 		float overload_width_add = -1.0f;
 		float overload_width_bloom_link = 1.0f;
 		float overload_width_center = 0.65f;
