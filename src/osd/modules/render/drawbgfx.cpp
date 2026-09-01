@@ -2532,6 +2532,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overload_ramp", &renderer_bgfx::vec_slider_cache::overload_ramp, 0.0f },
 	{ "overload_threshold", &renderer_bgfx::vec_slider_cache::overload_threshold, 1.0f },
 	{ "vertex_dwell_drive_curve", &renderer_bgfx::vec_slider_cache::vertex_dwell_drive_curve, 0.0f },
+	{ "vertex_dwell_drive_onset", &renderer_bgfx::vec_slider_cache::vertex_dwell_drive_onset, 0.0f },
 	{ "overload_width_add", &renderer_bgfx::vec_slider_cache::overload_width_add, -1.0f },
 	{ "overload_width_bloom_link", &renderer_bgfx::vec_slider_cache::overload_width_bloom_link, 1.0f },
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
@@ -3614,7 +3615,13 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// untouched above, so an existing vertex_dwell_energy keeps meaning the same thing where it was
 		// tuned. Letting the gate amplify past 1 measured barely more selective (ratio 7.8 against 6.0)
 		// while lifting the whole picture, which is the opposite of the point.
-		const float x = n / std::max(m_vs.overload_threshold, 1e-4f);
+		// Its own onset, because overload_threshold is not always where the two populations separate.
+		// On starwars the overloaded text at frame 1400 sits at drive 0.99 and the explosion ring at
+		// 1.26 - both at or above an overload_threshold of 1.0, so borrowing that value cannot tell
+		// them apart. 0 keeps the old behaviour of following the overload threshold.
+		const float onset = (m_vs.vertex_dwell_drive_onset > 0.0f)
+			? m_vs.vertex_dwell_drive_onset : m_vs.overload_threshold;
+		const float x = n / std::max(onset, 1e-4f);
 		const float gate = powf(std::clamp(x, 0.0f, 1.0f), m_vs.vertex_dwell_drive_curve);
 		dwell_gain_start = 1.0f + (end_gain_start - 1.0f) * gate;
 		dwell_gain_finish = 1.0f + (end_gain_finish - 1.0f) * gate;
