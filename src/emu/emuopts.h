@@ -136,6 +136,8 @@
 #define OPTION_VECTOR_PLAYBACK_END  "vector_playback_end"
 #define OPTION_VECTOR_PLAYBACK_START "vector_playback_start"
 #define OPTION_VECTOR_PLAYBACK_PAUSE "vector_playback_pause"
+#define OPTION_VECTOR_PLAYBACK_ADVANCE "vector_playback_advance"
+#define OPTION_VECTOR_PLAYBACK_DECAY "vector_playback_decay"
 #define OPTION_VECTOR_PLAYBACK_OVERLAY "vector_playback_overlay"
 #define OPTION_VECTOR_PRESENT_RATE  "vector_present_rate"
 #define OPTION_VECTOR_PHOSPHOR_RATE "vector_phosphor_rate"
@@ -447,6 +449,8 @@ public:
 	int vector_playback_end() const { return int_value(OPTION_VECTOR_PLAYBACK_END); }
 	int vector_playback_start() const { return int_value(OPTION_VECTOR_PLAYBACK_START); }
 	bool vector_playback_pause() const { return bool_value(OPTION_VECTOR_PLAYBACK_PAUSE); }
+	int vector_playback_advance() const { return int_value(OPTION_VECTOR_PLAYBACK_ADVANCE); }
+	int vector_playback_decay() const { return int_value(OPTION_VECTOR_PLAYBACK_DECAY); }
 	bool vector_playback_overlay() const { return bool_value(OPTION_VECTOR_PLAYBACK_OVERLAY); }
 	int vector_present_rate() const;
 	int vector_phosphor_rate() const { return int_value(OPTION_VECTOR_PHOSPHOR_RATE); }

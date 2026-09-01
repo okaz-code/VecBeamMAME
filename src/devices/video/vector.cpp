@@ -421,6 +421,36 @@ public:
 			show_tool_message("Ready");
 		}
 
+		// Pure-decay hold. Nothing is drawn and the position does not move, but the frame counts as
+		// advanced so the renderer bills one recorded frame period of display time against the pool.
+		if (m_decay_running && m_decay_left > 0)
+		{
+			--m_decay_left;
+			m_playback_advanced = true;
+			count = 0;
+			stale = false;
+			const frame_index_entry &held = m_frame_index[size_t(std::max<s64>(m_play_position, 0))];
+			timed = held.timed;
+			generation = held.generation;
+			visarea = held.visarea;
+			if (m_decay_left == 0)
+				osd_printf_info("MVEC: decay hold complete at frame %llu\n",
+					(unsigned long long)(u64(m_play_position) + 1U));
+			return true;
+		}
+		// -vector_playback_advance: run on for the requested number of frames, then stop. The serve that
+		// lands on the seek target does not count as an advance, so N really means N frames past it.
+		if (m_advance_finished)
+			m_tool_paused = true;
+		else if (m_advance_left > 0)
+		{
+			m_tool_paused = false;
+			if (!m_advance_seeded)
+				m_advance_seeded = true;
+			else if (--m_advance_left == 0)
+				m_advance_finished = true;
+		}
+
 		u64 target = (m_pending_position != INVALID_POSITION)
 			? m_pending_position
 			: (m_play_position < 0 ? 0U : u64(m_play_position) + (m_tool_paused ? 0U : 1U));
@@ -475,6 +505,8 @@ public:
 			osd_printf_info("MVEC: paused at frame %llu/%llu\n",
 				(unsigned long long)(u64(m_play_position) + 1U),
 				(unsigned long long)m_frame_index.size());
+			if (m_decay_left > 0)
+				m_decay_running = true;
 		}
 		else if (!m_tool_paused)
 		{
@@ -631,10 +663,15 @@ private:
 			// -vector_playback_pause holds that frame instead of running on from it. An external
 			// capture tool needs a still image and a marker saying which frame it is looking at;
 			// without this the only way to stop on a frame is the keyboard, which no script can drive.
-			if (m_owner.machine().options().vector_playback_pause())
+			m_advance_left = std::max(0, m_owner.machine().options().vector_playback_advance());
+			m_decay_left = std::max(0, m_owner.machine().options().vector_playback_decay());
+			if (m_owner.machine().options().vector_playback_pause() || m_advance_left > 0 || m_decay_left > 0)
 			{
 				m_tool_paused = true;
-				osd_printf_info("MVEC: starting paused\n");
+				if (m_advance_left > 0)
+					osd_printf_info("MVEC: playing %d frame(s), then pausing\n", m_advance_left);
+				else
+					osd_printf_info("MVEC: starting paused\n");
 			}
 		}
 		if (m_recorded_frame_period <= 0)
@@ -1033,6 +1070,15 @@ private:
 	u64 m_pending_position = INVALID_POSITION;
 	bool m_tool_paused = false;
 	s64 m_announced_paused_position = -1;
+	// -vector_playback_advance / -vector_playback_decay. The first plays a fixed number of frames
+	// before pausing, so the pool carries the trails the target frame really follows. The second then
+	// runs display time on with an EMPTY source frame, which is the only way to watch the afterglow:
+	// a held frame reports zero elapsed display time by design, so a pause freezes decay outright.
+	int m_advance_left = 0;
+	bool m_advance_seeded = false;   // the start frame has been shown once; advances count from here
+	bool m_advance_finished = false;
+	int m_decay_left = 0;
+	bool m_decay_running = false;
 	bool m_playback_advanced = false;
 	bool m_audio_sync_valid = true;
 	bool m_audio_paused = false;
