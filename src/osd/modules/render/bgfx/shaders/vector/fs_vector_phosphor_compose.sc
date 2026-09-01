@@ -42,6 +42,13 @@ uniform vec4 u_phos;              // y = half_ms (tau), z = curve (p), w = total
 uniform vec4 u_phos2;             // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
                                   // z = strike flash ms (0 = off), w = flash gain
 uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1,1 = uniform
+// Fresh-excitation gain. Halation and glass scatter follow INSTANTANEOUS intensity, and the two
+// sides of this max() are not alike in that respect: the spot being written is deposited in tens of
+// microseconds at full beam current, while the pool residue emits its (lower) light spread over the
+// whole frame. Equal frame-average values therefore do not mean equal spot brightness, and a bullet
+// trail whose head sits inside phosphor_hold_ms reads exactly as bright as the dot behind it.
+// 1.0 = the previous behaviour.
+uniform vec4 u_fresh_gain;
 uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 = off
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
                                   // peak (no decay/np), 2 = pool age map (white = 50 ms), 3 = decayed
@@ -115,7 +122,7 @@ void main()
 	// the error could only show as live content displayed at a DECAYED level - taking max with the
 	// current frame makes that entire failure class invisible by construction. In the normal case
 	// (pixel re-excited this present) pool == cur and this is exactly the previous output.
-	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
+	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb * max(u_fresh_gain.x, 0.0));
 	lit *= phos_flash(pool.a);
 
 	lit += AUX_TEX2D(s_np, v_texcoord0).rgb * u_np_gain.x;
