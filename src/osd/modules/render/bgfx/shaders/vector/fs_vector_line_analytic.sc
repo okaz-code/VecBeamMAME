@@ -30,6 +30,10 @@ uniform vec4 u_line_params;
 // renormalisation therefore arrive from the renderer, which knows the extent it padded them to.
 // .x = pedestal, .y = renormalisation. At extent 3.5 these equal the two constants above.
 uniform vec4 u_halo_quad_edge;
+// x = terminus dwell width, as a fraction of the beam sigma. The swept body's axial profile is the
+// spot convolved with its own motion; a deposit made while the beam is STOPPED is not, so the two
+// need not share a width. 1.0 keeps them equal, which is what this did before the slider existed.
+uniform vec4 u_dwell_shape;
 
 float sharpen(float g, float p)
 {
@@ -213,8 +217,16 @@ void main()
 		float gain_finish = max(v_texcoord4.y, 1.0) - 1.0;
 		if (gain_start > 0.0 || gain_finish > 0.0)
 		{
-			float wa = exp(-a * a * inv_2s2);
-			float wb = exp(-b * b * inv_2s2);
+			// Narrowing this sharpens the radial spokes an explosion ring builds out of stacked
+			// termini: their azimuthal width is exactly this falloff, while the arcs' own width is not.
+			float dwidth = max(u_dwell_shape.x, 0.05);
+			float dsg = sg * dwidth;
+			float inv_2d2 = 1.0 / (2.0 * dsg * dsg);
+			// Narrowing reshapes the deposit, it does not remove energy: the beam sat there just as
+			// long. Compensating by 1/width keeps the integral fixed, so the slider trades width for
+			// peak instead of simply fading the spokes out as it is turned down.
+			float wa = exp(-a * a * inv_2d2) / dwidth;
+			float wb = exp(-b * b * inv_2d2) / dwidth;
 			fade *= 1.0 + gain_start * wa + gain_finish * wb;
 		}
 	}

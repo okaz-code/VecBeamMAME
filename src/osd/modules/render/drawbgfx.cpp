@@ -6286,6 +6286,13 @@ int renderer_bgfx::draw(int update)
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
+				bgfx_uniform* dsh = line_eff->uniform("u_dwell_shape");
+				if (dsh)
+				{
+					float vals[4] = { m_chains->slider_value(0, "vertex_dwell_width", 1.0f), 0.0f, 0.0f, 0.0f };
+					dsh->set(vals, sizeof(float) * 4);
+					dsh->upload();
+				}
 				set_halo_quad_edge(line_eff);
 				if (m_vs.core_overlap_max > 0.5f)
 				{
@@ -6475,6 +6482,13 @@ int renderer_bgfx::draw(int update)
 										  1.0f, 1.0f };
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
+					}
+					bgfx_uniform* dsh = line_eff->uniform("u_dwell_shape");
+					if (dsh)
+					{
+						float vals[4] = { m_chains->slider_value(0, "vertex_dwell_width", 1.0f), 0.0f, 0.0f, 0.0f };
+						dsh->set(vals, sizeof(float) * 4);
+						dsh->upload();
 					}
 					set_halo_quad_edge(line_eff);
 				};
