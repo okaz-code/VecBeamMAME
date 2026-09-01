@@ -9,8 +9,8 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_base, 0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_optical, 2);
-SAMPLER2D(s_bezel_source, 4);
-SAMPLER2D(s_bezel_length, 5);
+SAMPLER2D(s_bezel_source, 3);
+SAMPLER2D(s_bezel_length, 4);
 
 // Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
 // window's deposited fraction. The renderer used to bake this into their vertices, but their

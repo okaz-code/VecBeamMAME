@@ -29,7 +29,6 @@
         0.0
       ]
     },
-    { "name": "u_line_params",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
-    { "name": "u_core_dwell",    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+    { "name": "u_line_params",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]
 }

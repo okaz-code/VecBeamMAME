@@ -45,14 +45,14 @@
       "name": "s_bezel_source",
       "type": "int",
       "values": [
-        4.0
+        3.0
       ]
     },
     {
       "name": "s_bezel_length",
       "type": "int",
       "values": [
-        5.0
+        4.0
       ]
     },
     {

@@ -10,11 +10,10 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_base,  0);
 SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_mask,  2);
-SAMPLER2D(s_bezel_source, 4);
-SAMPLER2D(s_bezel_length, 5);
-SAMPLER2D(s_flare, 6);
-SAMPLER2D(s_overlap, 7);
-SAMPLER2D(s_dwell,  3);  // r = terminus dwell excess, in swept-beam units (see fs_vector_phosphor.sc)
+SAMPLER2D(s_bezel_source, 3);
+SAMPLER2D(s_bezel_length, 4);
+SAMPLER2D(s_flare, 5);
+SAMPLER2D(s_overlap, 6);
 
 // Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
 // window's deposited fraction. The renderer used to bake this into their vertices, but their
@@ -42,7 +41,11 @@ uniform vec4 u_vec_pincushion_x_quad;
 uniform vec4 u_glow_enable;
 uniform vec4 u_masked_flare_gain;
 uniform vec4 u_masked_core_peak;
-uniform vec4 u_dwell_peak;  // x = how far a dwelling terminus may exceed the core peak (1 = off)
+// Direct-emission ceiling, separate from the pool-side masked_core_peak. This one exists to keep
+// bright and dark shadow-mask cells apart, not to model phosphor saturation, so it is the knob that
+// decides whether structure ABOVE one calibrated beam - a stroke terminus where the beam stopped -
+// survives to the screen. 0 = off.
+uniform vec4 u_masked_core_peak_emit;
 uniform vec4 u_overlap_white_strength;
 uniform vec4 u_overlap_white_brightness;
 uniform vec4 u_shadow_mask_strength;
@@ -384,14 +387,7 @@ void main()
 	// allowed into the HDR roll-off after masking, bright and dark mask cells converge and the slot
 	// pattern appears to vanish. Limit only direct phosphor emission here, before the mask, preserving
 	// hue and leaving physically scattered glow unmasked. A limit of 0 disables this correction.
-	// A beam that STOPPED here is allowed past that ceiling: this is the same locally raised limit the
-	// phosphor pool and its compose apply, and all three have to agree or the last one wins and flattens
-	// the terminus again. Spatial overlap keeps the flat ceiling; only dwell lifts it.
-	// base_uv, not emit_uv: the light this limit acts on was sampled from s_base at base_uv, and the
-	// dwell field shares that buffer's space. Reading it at emit_uv put the allowance a pincushion's
-	// worth away from the terminus it belongs to, which is a measurable miss on a 1-2 pixel feature.
-	float core_limit = u_masked_core_peak.x
-		* (1.0 + clamp(texture2D(s_dwell, base_uv).r, 0.0, max(0.0, u_dwell_peak.x - 1.0)));
+	float core_limit = u_masked_core_peak_emit.x;
 	float core_peak = max(base.r, max(base.g, base.b));
 	if (core_limit > 0.0 && core_peak > core_limit)
 		base *= core_limit / core_peak;
