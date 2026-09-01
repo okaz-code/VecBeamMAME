@@ -26,6 +26,7 @@
 		{ "name": "u_phos2",             "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_phos_rgb",          "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
 		{ "name": "u_np_gain",           "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_fresh_gain", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_line_channel_gain", "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
 		{ "name": "u_inv_view_dims",     "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
 	]

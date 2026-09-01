@@ -101,6 +101,7 @@
         0.0
       ]
     },
+    { "name": "u_fresh_gain", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
     {
       "name": "u_line_channel_gain",
       "type": "vec4",

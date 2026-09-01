@@ -24,6 +24,13 @@ uniform vec4 u_phos;
 uniform vec4 u_phos2;
                                   // z = strike flash ms (0 = off), w = flash gain
 uniform vec4 u_phos_rgb;
+// Fresh-excitation gain. Halation and glass scatter follow INSTANTANEOUS intensity, and the two
+// sides of this max() are not alike in that respect: the spot being written is deposited in tens of
+// microseconds at full beam current, while the pool residue emits its (lower) light spread over the
+// whole frame. Equal frame-average values therefore do not mean equal spot brightness, and a bullet
+// trail whose head sits inside phosphor_hold_ms reads exactly as bright as the dot behind it.
+// 1.0 = the previous behaviour.
+uniform vec4 u_fresh_gain;
 uniform vec4 u_np_gain;
 uniform vec4 u_line_channel_gain;
 uniform vec4 u_phos_peak;
@@ -150,7 +157,7 @@ float phos_flash(float age)
 void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
-	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
+	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb * max(u_fresh_gain.x, 0.0);
 	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
 	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
 		fresh *= u_phos_peak.x / raw_fresh_peak;
