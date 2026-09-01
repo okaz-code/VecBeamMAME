@@ -42,6 +42,23 @@
       ]
     },
     {
+      "name": "s_dwell",
+      "type": "int",
+      "values": [
+        3.0
+      ]
+    },
+    {
+      "name": "u_dwell_peak",
+      "type": "vec4",
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
       "name": "u_phos",
       "type": "vec4",
       "values": [

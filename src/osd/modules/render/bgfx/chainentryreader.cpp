@@ -92,7 +92,8 @@ bgfx_chain_entry* chain_entry_reader::read_from_value(
 				if (texture_name != "" && texture_name != "screen" && texture_name != "palette"
 					&& texture_name != "glow" && texture_name != "bezel_length"
 					&& texture_name != "flare" && texture_name != "overlap"
-					&& texture_name != "optical" && texture_name != "npglow")
+					&& texture_name != "optical" && texture_name != "npglow"
+					&& texture_name != "dwell")
 				{
 					if (selection == "")
 					{
