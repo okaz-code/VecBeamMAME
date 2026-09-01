@@ -30,10 +30,6 @@ uniform vec4 u_line_params;
 // renormalisation therefore arrive from the renderer, which knows the extent it padded them to.
 // .x = pedestal, .y = renormalisation. At extent 3.5 these equal the two constants above.
 uniform vec4 u_halo_quad_edge;
-// x > 0.5 while drawing the CORE framebuffer, whose second colour attachment is the dwell
-// allowance field rather than the glow buffer's Long-classified light. One shader serves both
-// targets, so the meaning of MRT 1 has to be selected by the pass that is submitting.
-uniform vec4 u_core_dwell;
 
 float sharpen(float g, float p)
 {
@@ -62,9 +58,6 @@ void main()
 	float inv_2s2 = 1.0 / (2.0 * sg * sg);
 
 	float fade;
-	// Terminus dwell deposited at THIS fragment, as a multiple of one swept beam. Zero everywhere the
-	// beam was only passing through, so an ordinary body fragment contributes nothing to the field.
-	float dwell_excess = 0.0;
 	if (v_texcoord1.w < 0.0)
 	{
 		if (b > 0.5)
@@ -222,8 +215,7 @@ void main()
 		{
 			float wa = exp(-a * a * inv_2s2);
 			float wb = exp(-b * b * inv_2s2);
-			dwell_excess = gain_start * wa + gain_finish * wb;
-			fade *= 1.0 + dwell_excess;
+			fade *= 1.0 + gain_start * wa + gain_finish * wb;
 		}
 	}
 
@@ -253,14 +245,7 @@ void main()
 	gl_FragData[0] = deposit * (1.0 - separated_flare);
 	// The glow FBO binds a second colour attachment containing only the
 	// CPU-classified Long contribution. Other views leave target 1 unbound.
-	// MRT 1 is the glow buffer's Long-classified attachment in the glow pass, and the core buffer's
-	// dwell allowance field in the core pass. The allowance carries only the EXCESS over one swept
-	// beam, so the additive blend accumulates dwell and ignores ordinary body coverage; the phosphor
-	// pass turns it into a locally raised peak limit. See masked_core_peak in fs_vector_phosphor.sc.
-	vec4 long_light = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a) * (1.0 - separated_flare);
-	gl_FragData[1] = (u_core_dwell.x > 0.5)
-		? vec4(dwell_excess, 0.0, 0.0, 0.0)
-		: long_light;
+	gl_FragData[1] = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a) * (1.0 - separated_flare);
 	gl_FragData[2] = deposit * separated_flare;
 	// Overload-overlap statistics, accumulated independently of the visible core's optional MAX
 	// blend. Each vector contributes a bounded h, so even an arbitrarily hot single vector has

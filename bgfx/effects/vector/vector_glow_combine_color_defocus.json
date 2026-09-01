@@ -45,32 +45,30 @@
       "name": "s_bezel_source",
       "type": "int",
       "values": [
-        4.0
+        3.0
       ]
     },
     {
       "name": "s_bezel_length",
       "type": "int",
       "values": [
-        5.0
+        4.0
       ]
     },
     {
       "name": "s_flare",
       "type": "int",
       "values": [
-        6.0
+        5.0
       ]
     },
     {
       "name": "s_overlap",
       "type": "int",
       "values": [
-        7.0
+        6.0
       ]
     },
-		{ "name": "s_dwell",     "type": "int",  "values": [ 3.0 ] },
-		{ "name": "u_dwell_peak", "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
     {
       "name": "u_defocus",
       "type": "vec4",
@@ -131,6 +129,7 @@
         0.0
       ]
     },
+    { "name": "u_masked_core_peak_emit", "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
     {
       "name": "u_overlap_white_strength",
       "type": "vec4",

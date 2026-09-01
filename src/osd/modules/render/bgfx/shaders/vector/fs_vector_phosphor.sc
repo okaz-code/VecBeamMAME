@@ -16,7 +16,6 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_prev, 0);   // pool, previous frame: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
 SAMPLER2D(s_overlap, 2); // packed local light: rgb=density bloom, a=overload white heat
-SAMPLER2D(s_dwell, 3);  // r = terminus dwell excess at this pixel, in swept-beam units (0 = none)
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;   // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
@@ -24,21 +23,9 @@ uniform vec4 u_phos_rgb; // rgb = per-channel half-life multiplier (blue phospho
 uniform vec4 u_phos_reset; // x = meaningful fresh-hit floor; >0 makes every such hit replace old residue
 uniform vec4 u_phos_composite; // x > 0.5: a weaker hit cannot darken brighter surviving phosphor
 uniform vec4 u_phos_peak;  // x = direct-excitation peak limit applied before pool storage; 0 = off
-uniform vec4 u_dwell_peak; // x = how far a dwelling terminus may exceed masked_core_peak (1 = off)
 uniform vec4 u_phos_radiant; // x = RGB combination brightness: 0 peak-normalised, 1 physical additive, >1 emphasis
 uniform vec4 u_overlap_white_strength;
 uniform vec4 u_overlap_white_brightness;
-
-// Locally raised peak limit. masked_core_peak alone says "the visible core never exceeds one
-// calibrated beam", which is right for strokes that merely OVERLAP in space but wrong for a beam
-// that stopped: the drive-side energy model already grants a stationary beam up to energy_dot_max
-// (3.2x) against energy_line_max (1.2x) for a swept one, and the pixel-side ceiling has to agree or
-// the terminus deposit is normalised away before it can be seen. s_dwell carries only the dwell
-// EXCESS, so spatial pile-ups keep the flat ceiling and only genuine dwell lifts it.
-float dwell_limit(float base, float excess, float headroom)
-{
-	return base * (1.0 + clamp(excess, 0.0, max(0.0, headroom - 1.0)));
-}
 
 float phos_S(float age, float tau, float p, float total, float s1)
 {
@@ -84,13 +71,8 @@ void main()
 	// composite left overlap pixels with a larger stored peak, so they remained brighter for the
 	// entire decay. This makes the stored state obey the same calibrated ceiling as the visible core.
 	float raw_cur_peak = max(cur.r, max(cur.g, cur.b));
-	// Chains without masked_core_peak leave u_phos_peak at 0 (cap off) and do not bind s_dwell,
-	// exactly as they already do for s_overlap; skip the fetch there rather than read an unbound unit.
-	float cur_limit = (u_phos_peak.x > 0.0)
-		? dwell_limit(u_phos_peak.x, texture2D(s_dwell, v_texcoord0).r, u_dwell_peak.x)
-		: 0.0;
-	if (cur_limit > 0.0 && raw_cur_peak > cur_limit)
-		cur *= cur_limit / raw_cur_peak;
+	if (u_phos_peak.x > 0.0 && raw_cur_peak > u_phos_peak.x)
+		cur *= u_phos_peak.x / raw_cur_peak;
 	// Store the white-hot colour in the phosphor pool as well as showing its immediate direct flash.
 	// This lets a dense explosion decay from white naturally, while a single overloaded vector has
 	// effective count one and therefore retains its original colour throughout its afterimage.

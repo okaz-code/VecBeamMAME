@@ -96,10 +96,6 @@ public:
 	// feeding them into the glow cascade. Must be called before process_screen_chains() each frame.
 	void inject_vector_np(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
 
-	// Register the core FBO's second attachment as "dwell0" - per-pixel terminus dwell excess, used
-	// by the phosphor passes to raise masked_core_peak only where the beam actually stopped.
-	void inject_vector_dwell(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h);
-
 	// Getters
 	running_machine& machine() const { return m_machine; }
 	const osd_options& options() const { return m_options; }

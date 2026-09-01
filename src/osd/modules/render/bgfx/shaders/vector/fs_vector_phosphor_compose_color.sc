@@ -11,7 +11,6 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 SAMPLER2D(s_cur, 2);   // current excitation frame
-SAMPLER2D(s_dwell, 3); // r = terminus dwell excess at this pixel, in swept-beam units
 
 // Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
 // window's deposited fraction. The renderer used to bake this into their vertices, but their
@@ -28,7 +27,6 @@ uniform vec4 u_phos_rgb;
 uniform vec4 u_np_gain;
 uniform vec4 u_line_channel_gain;
 uniform vec4 u_phos_peak;
-uniform vec4 u_dwell_peak;
 uniform vec4 u_phos_radiant;
 
 uniform vec4 u_source_size;
@@ -153,13 +151,9 @@ void main()
 {
 	vec4 pool = texture2D(s_tex, v_texcoord0);
 	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
-	// Same locally raised ceiling the pool update applies; the two have to agree or the visible
-	// direct flash and its stored afterimage disagree about how bright a dwelling terminus was.
 	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
-	float fresh_limit = u_phos_peak.x * (1.0 + clamp(texture2D(s_dwell, v_texcoord0).r,
-			0.0, max(0.0, u_dwell_peak.x - 1.0)));
-	if (fresh_limit > 0.0 && raw_fresh_peak > fresh_limit)
-		fresh *= fresh_limit / raw_fresh_peak;
+	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
+		fresh *= u_phos_peak.x / raw_fresh_peak;
 	float accel = 1.0 + max(0.0, u_phos2.x);
 	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
