@@ -259,7 +259,7 @@ void main()
 	// pass turns it into a locally raised peak limit. See masked_core_peak in fs_vector_phosphor.sc.
 	vec4 long_light = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a) * (1.0 - separated_flare);
 	gl_FragData[1] = (u_core_dwell.x > 0.5)
-		? vec4(dwell_excess * v_color0.a, 0.0, 0.0, 0.0)
+		? vec4(dwell_excess, 0.0, 0.0, 0.0)
 		: long_light;
 	gl_FragData[2] = deposit * separated_flare;
 	// Overload-overlap statistics, accumulated independently of the visible core's optional MAX
