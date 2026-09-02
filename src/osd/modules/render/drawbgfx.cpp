@@ -2533,6 +2533,10 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overload_threshold", &renderer_bgfx::vec_slider_cache::overload_threshold, 1.0f },
 	{ "vertex_dwell_drive_curve", &renderer_bgfx::vec_slider_cache::vertex_dwell_drive_curve, 0.0f },
 	{ "vertex_dwell_drive_onset", &renderer_bgfx::vec_slider_cache::vertex_dwell_drive_onset, 0.0f },
+	{ "vertex_dwell_ref", &renderer_bgfx::vec_slider_cache::vertex_dwell_ref, 0.0f },
+	{ "vertex_dwell_overlap", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap, 0.0f },
+	{ "vertex_dwell_overlap_radius", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap_radius, 3.0f },
+	{ "vertex_dwell_overlap_ref", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap_ref, 4.0f },
 	{ "overload_width_add", &renderer_bgfx::vec_slider_cache::overload_width_add, -1.0f },
 	{ "overload_width_bloom_link", &renderer_bgfx::vec_slider_cache::overload_width_bloom_link, 1.0f },
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
@@ -5422,14 +5426,29 @@ int renderer_bgfx::draw(int update)
 			const int cap_mode = m_line_analytic ? int(std::lround(m_vs.line_cap_mode)) : 0;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_boost;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> round_terminus;
-			// Blanked gap either side of each endpoint, as a multiple of the stroke's own sweep time.
+			// Blanked gap either side of each endpoint, relative to vertex_dwell_ref (or, at 0, to
+			// the stroke's own sweep time).
 			std::unordered_map<const render_primitive*, std::pair<float, float>> vtx_dwell;
+			// Spatial coincidence weighting for that gap. What actually reads as a bright vertex is
+			// several termini landing on ONE spot - the deposits stack. The gap ratio does not see
+			// that at all, and measures the opposite of it: on starwars frame 7399 the lone termini
+			// average 2.81 while the ones piled four-deep average 1.09, so the explosion centre is
+			// the WEAKEST thing the term boosts and every isolated line end is the strongest. Count
+			// the neighbours within a radius and let the term keep only what is genuinely piled up.
+			const float dwell_overlap = m_line_analytic
+				? std::clamp(m_vs.vertex_dwell_overlap, 0.0f, 1.0f) : 0.0f;
+			struct dwell_terminus { float x, y; const render_primitive *prim; bool is_end; };
+			std::vector<dwell_terminus> dwell_terms;
 			if (deposit_vector_source && m_line_analytic)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
 				round_terminus.reserve(size_t(vector_count) * 2);
 				if (vertex_dwell_energy > 0.0f)
+				{
 					vtx_dwell.reserve(size_t(vector_count) * 2);
+					if (dwell_overlap > 0.0f)
+						dwell_terms.reserve(size_t(vector_count) * 2);
+				}
 				const render_primitive *pv = nullptr;
 				float pdx = 0.0f, pdy = 0.0f;
 				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
@@ -5444,7 +5463,14 @@ int renderer_bgfx::draw(int update)
 					vtx_boost.emplace(p, std::make_pair(1.0f, 1.0f));  // default: both ends are termini
 					round_terminus.emplace(p, std::make_pair(1.0f, 1.0f));
 					if (vertex_dwell_energy > 0.0f)
+					{
 						vtx_dwell.emplace(p, std::make_pair(0.0f, 0.0f));
+						if (dwell_overlap > 0.0f)
+						{
+							dwell_terms.push_back({ p->bounds.x0, p->bounds.y0, p, false });
+							dwell_terms.push_back({ p->bounds.x1, p->bounds.y1, p, true });
+						}
+					}
 					if (pv != nullptr)
 					{
 						// Time the beam spent between the two strokes, as a multiple of this stroke's own
@@ -5455,9 +5481,17 @@ int renderer_bgfx::draw(int update)
 						if (vertex_dwell_energy > 0.0f
 							&& p->t0 >= 0.0 && p->t1 > p->t0 && pv->t1 >= 0.0)
 						{
-							const double span = p->t1 - p->t0;
-							const float ratio = (span > 1e-12)
-								? float(std::clamp((p->t0 - pv->t1) / span, 0.0, 4.0)) : 0.0f;
+							// Dividing the gap by the stroke's OWN sweep makes the weight depend on how
+							// long this particular stroke is, which is not a property of the terminus:
+							// a short stroke has a small denominator, so text gets weighted harder than
+							// the long strokes it sits next to. vertex_dwell_ref replaces that with a
+							// fixed time in microseconds, the same way energy_dot_ref does for dots.
+							// 0 keeps the original self-relative behaviour.
+							const double ref = (m_vs.vertex_dwell_ref > 0.0f)
+								? double(m_vs.vertex_dwell_ref) * 1.0e-6
+								: (p->t1 - p->t0);
+							const float ratio = (ref > 1e-12)
+								? float(std::clamp((p->t0 - pv->t1) / ref, 0.0, 4.0)) : 0.0f;
 							vtx_dwell[pv].second = ratio;
 							vtx_dwell[p].first   = ratio;
 						}
@@ -5475,6 +5509,65 @@ int renderer_bgfx::draw(int update)
 						}
 					}
 					pv = p; pdx = ndx; pdy = ndy;
+				}
+
+				// Coincidence pass. One hash cell per radius, then a 3x3 neighbourhood walk with an
+				// exact distance test - a plain cell count would let two termini a fraction of a pixel
+				// apart fall either side of a cell boundary. Bounded work: the weight saturates at
+				// vertex_dwell_overlap_ref neighbours, so the count stops there and a pathological
+				// frame that dumps every terminus on one spot cannot turn this quadratic.
+				if (dwell_overlap > 0.0f && !dwell_terms.empty())
+				{
+					const float radius = std::max(0.5f, m_vs.vertex_dwell_overlap_radius * vec_res_scale());
+					const float radius2 = radius * radius;
+					const float inv_cell = 1.0f / radius;
+					const int need = std::max(2, int(std::lround(m_vs.vertex_dwell_overlap_ref)));
+					auto key = [](int cx, int cy) {
+						return (uint64_t(uint32_t(cx)) << 32) | uint64_t(uint32_t(cy));
+					};
+					std::unordered_map<uint64_t, std::vector<uint32_t>> cells;
+					cells.reserve(dwell_terms.size());
+					for (uint32_t i = 0; i < uint32_t(dwell_terms.size()); i++)
+					{
+						const dwell_terminus &t = dwell_terms[i];
+						cells[key(int(std::floor(t.x * inv_cell)), int(std::floor(t.y * inv_cell)))].push_back(i);
+					}
+					for (uint32_t i = 0; i < uint32_t(dwell_terms.size()); i++)
+					{
+						const dwell_terminus &t = dwell_terms[i];
+						const int cx = int(std::floor(t.x * inv_cell));
+						const int cy = int(std::floor(t.y * inv_cell));
+						int count = 0;
+						for (int oy = -1; oy <= 1 && count < need; oy++)
+						{
+							for (int ox = -1; ox <= 1 && count < need; ox++)
+							{
+								const auto cell = cells.find(key(cx + ox, cy + oy));
+								if (cell == cells.end())
+									continue;
+								for (const uint32_t j : cell->second)
+								{
+									const float dx2 = dwell_terms[j].x - t.x;
+									const float dy2 = dwell_terms[j].y - t.y;
+									if (dx2 * dx2 + dy2 * dy2 <= radius2 && ++count >= need)
+										break;
+								}
+							}
+						}
+						// count includes this terminus, so a lone one gives 0 and is fully attenuated
+						// at overlap 1. Attenuate only, never amplify: letting a gate lift the piled
+						// case past its own ratio just raises the whole picture, which the drive gate
+						// already measured as the wrong trade.
+						const float piled = std::clamp(float(count - 1) / float(need - 1), 0.0f, 1.0f);
+						const float scale = 1.0f - dwell_overlap + dwell_overlap * piled;
+						const auto entry = vtx_dwell.find(t.prim);
+						if (entry == vtx_dwell.end())
+							continue;
+						if (t.is_end)
+							entry->second.second *= scale;
+						else
+							entry->second.first *= scale;
+					}
 				}
 			}
 
