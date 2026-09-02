@@ -108,6 +108,21 @@ bgfx_target* target_reader::read_from_value(
 			break;
 	}
 
+	// "scale_reference": makes "scale" a fraction of a picture this many pixels wide instead of a
+	// fraction of the window. A blur pyramid wants this - with plain window fractions its level
+	// count is fixed, so the deepest level's texel spans a constant share of the WINDOW and its
+	// reach across the picture therefore grows as the window shrinks, which is exactly what makes
+	// a glow tuned in a window look wrong in fullscreen.
+	uint16_t reference_width = 0;
+	if (value.HasMember("scale_reference"))
+	{
+		if (!READER_CHECK(value["scale_reference"].IsNumber(), "%sValue 'scale_reference' must be a number\n", prefix)) return nullptr;
+		const double requested = value["scale_reference"].GetDouble();
+		if (!READER_CHECK(requested >= 1.0 && requested <= 16384.0, "%sValue 'scale_reference' must be 1..16384\n", prefix)) return nullptr;
+		if (!READER_CHECK(mode == TARGET_STYLE_NATIVE, "%sTarget '%s': 'scale_reference' only applies to native-type targets\n", prefix, target_name)) return nullptr;
+		reference_width = uint16_t(requested);
+	}
+
 	// "attachments": how many colour attachments this target carries (default 1, all one format).
 	uint32_t attachments = 1;
 	if (value.HasMember("attachments"))
@@ -117,7 +132,7 @@ bgfx_target* target_reader::read_from_value(
 		if (!READER_CHECK(requested >= 1 && requested <= 4, "%sValue 'attachments' must be 1..4\n", prefix)) return nullptr;
 		attachments = uint32_t(requested);
 	}
-	return chains.targets().create_target(std::move(target_name), format, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index, attachments);
+	return chains.targets().create_target(std::move(target_name), format, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index, attachments, reference_width);
 }
 
 bool target_reader::validate_parameters(const Value& value, const std::string &prefix)

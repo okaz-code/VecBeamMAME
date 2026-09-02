@@ -238,11 +238,11 @@
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
 		  "_comment": "linear chain output; its presence makes the renderer present this as an HDR chain (PQ/EDR, SDR fallback)" },
-		{ "name": "glow_lo0", "mode": "native", "scale": 0.5,     "doublebuffer": false, "format": "RGBA16F",
+		{ "name": "glow_lo0", "mode": "native", "scale": 0.5, "scale_reference": 1920,     "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "wide local glow: the per-line glow buffer cascaded down to low-res, then upscaled+added. Bounded spread (down to 1/16) = wide but still LOCAL (does not reach the whole screen like the bloom ladder)." },
-		{ "name": "glow_lo1", "mode": "native", "scale": 0.25,    "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo2", "mode": "native", "scale": 0.125,   "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625,  "doublebuffer": false, "format": "RGBA16F" }
+		{ "name": "glow_lo1", "mode": "native", "scale": 0.25, "scale_reference": 1920,    "doublebuffer": false, "format": "RGBA16F" },
+		{ "name": "glow_lo2", "mode": "native", "scale": 0.125, "scale_reference": 1920,   "doublebuffer": false, "format": "RGBA16F" },
+		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625, "scale_reference": 1920,  "doublebuffer": false, "format": "RGBA16F" }
 	],
 
 	"passes": [

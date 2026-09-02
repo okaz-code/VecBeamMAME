@@ -275,16 +275,16 @@
 
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
 		  "_comment": "linear chain output; its presence makes the renderer present this as an HDR chain (PQ/EDR, SDR fallback)" },
-		{ "name": "glow_lo0", "mode": "native", "scale": 0.5,     "doublebuffer": false, "format": "RGBA16F",
+		{ "name": "glow_lo0", "mode": "native", "scale": 0.5, "scale_reference": 1920,     "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "wide local glow: the per-line glow buffer cascaded down to 1/64, then upscaled+added. The deep level supplies an approximately 100px-class far halo while the shared analytic source and narrow glow remain unchanged." },
-		{ "name": "glow_lo1", "mode": "native", "scale": 0.25,    "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo2", "mode": "native", "scale": 0.125,   "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625,  "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "glow_lo4", "mode": "native", "scale": 0.03125, "doublebuffer": false, "format": "RGBA16F",
+		{ "name": "glow_lo1", "mode": "native", "scale": 0.25, "scale_reference": 1920,    "doublebuffer": false, "format": "RGBA16F" },
+		{ "name": "glow_lo2", "mode": "native", "scale": 0.125, "scale_reference": 1920,   "doublebuffer": false, "format": "RGBA16F" },
+		{ "name": "glow_lo3", "mode": "native", "scale": 0.0625, "scale_reference": 1920,  "doublebuffer": false, "format": "RGBA16F" },
+		{ "name": "glow_lo4", "mode": "native", "scale": 0.03125, "scale_reference": 1920, "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "Wide-glow extension only: low-cost intermediate level; does not affect the narrow seed." },
-		{ "name": "glow_lo5", "mode": "native", "scale": 0.015625,"doublebuffer": false, "format": "RGBA16F",
+		{ "name": "glow_lo5", "mode": "native", "scale": 0.015625, "scale_reference": 1920,"doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "Deepest Wide-only level. At 4K this is only about 60x34 pixels, so its fill and memory cost are negligible." },
-		{ "name": "glow_lo5b", "mode": "native", "scale": 0.015625,"doublebuffer": false, "format": "RGBA16F",
+		{ "name": "glow_lo5b", "mode": "native", "scale": 0.015625, "scale_reference": 1920,"doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "Ping-pong scratch for the optional deep-level blur (Glow Wide Downsample = Tent + deep blur). Same 60x34 size, so the two extra passes are ~4k pixels each." }
 	],
 
