@@ -27,7 +27,7 @@ class chain_manager;
 class bgfx_input_pair
 {
 public:
-	bgfx_input_pair(int index, std::string sampler, std::string texture, std::vector<std::string> available_textures, std::string selection, chain_manager& chains, uint32_t screen_index);
+	bgfx_input_pair(int index, std::string sampler, std::string texture, std::vector<std::string> available_textures, std::string selection, chain_manager& chains, uint32_t screen_index, uint32_t attachment = 0);
 	~bgfx_input_pair();
 
 	void bind(bgfx_effect *effect, const int32_t screen) const;
@@ -44,6 +44,7 @@ private:
 	bool needs_sliders();
 
 	int                       m_index;
+	uint32_t                  m_attachment;
 	std::string               m_sampler;
 	std::string               m_texture;
 	std::vector<std::string>  m_available_textures;

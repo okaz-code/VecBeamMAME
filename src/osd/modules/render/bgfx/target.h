@@ -27,8 +27,12 @@ enum
 class bgfx_target : public bgfx_texture_handle_provider
 {
 public:
+	// attachment_count > 1 gives the target that many colour attachments, all of the same format,
+	// sharing one depth buffer. A pass bound to it writes gl_FragData[0..N-1]; an input can sample
+	// any one of them. Needed where a single pass has to update more state than four channels hold -
+	// the vector phosphor pool keeps a peak colour AND a per-channel age, which is six.
 	bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
-		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen);
+		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count = 1);
 	bgfx_target(void *handle, uint16_t width, uint16_t height);
 	virtual ~bgfx_target();
 
@@ -49,6 +53,8 @@ public:
 
 	// bgfx_texture_handle_provider
 	virtual bgfx::TextureHandle texture() const override;
+	virtual bgfx::TextureHandle texture(uint32_t attachment) const override;
+	virtual uint32_t attachments() const override { return m_attachments; }
 	virtual bool is_target() const override { return true; }
 	virtual uint16_t width() const override { return m_width * m_xprescale; }
 	virtual uint16_t width_margin() const override { return 0; }
@@ -62,6 +68,7 @@ private:
 	bgfx::TextureFormat::Enum   m_format;
 	//bool                      m_readback;
 
+	uint32_t                    m_attachments;
 	bgfx::FrameBufferHandle*    m_targets;
 	bgfx::TextureHandle*        m_textures;
 

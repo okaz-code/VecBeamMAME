@@ -108,7 +108,16 @@ bgfx_target* target_reader::read_from_value(
 			break;
 	}
 
-	return chains.targets().create_target(std::move(target_name), format, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index);
+	// "attachments": how many colour attachments this target carries (default 1, all one format).
+	uint32_t attachments = 1;
+	if (value.HasMember("attachments"))
+	{
+		if (!READER_CHECK(value["attachments"].IsNumber(), "%sValue 'attachments' must be a number\n", prefix)) return nullptr;
+		const int requested = int(value["attachments"].GetDouble());
+		if (!READER_CHECK(requested >= 1 && requested <= 4, "%sValue 'attachments' must be 1..4\n", prefix)) return nullptr;
+		attachments = uint32_t(requested);
+	}
+	return chains.targets().create_target(std::move(target_name), format, width, height, xprescale, yprescale, mode, double_buffer, bilinear, scale, screen_index, attachments);
 }
 
 bool target_reader::validate_parameters(const Value& value, const std::string &prefix)
