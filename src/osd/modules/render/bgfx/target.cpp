@@ -10,12 +10,14 @@
 
 #include "target.h"
 
+#include <algorithm>
+
 #include <cstring>
 #include <vector>
 
 bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
 	uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count,
-	uint16_t reference_width)
+	uint16_t reference_width, float content_scale)
 	: m_name(name)
 	, m_format(format)
 	, m_attachments(attachment_count < 1 ? 1 : attachment_count)
@@ -30,6 +32,7 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 	, m_filter(filter)
 	, m_scale(scale)
 	, m_reference_width(reference_width)
+	, m_content_scale(content_scale)
 	, m_screen(screen)
 	, m_current_page(0)
 	, m_initialized(false)
@@ -42,8 +45,12 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 		// A reference width makes the scale a fraction of a fixed-size picture rather than of this
 		// window, so the level keeps the same share of the image whatever the window is doing. Both
 		// axes take the same factor, so the aspect ratio is untouched.
+		// Dividing by the content scale sizes the level against the picture rather than the window,
+		// so pillarboxing no longer widens the halo relative to what is being drawn. Clamped: a
+		// nearly-invisible screen must not ask for a giant target.
+		const float content = std::clamp(m_content_scale, 0.15f, 1.0f);
 		const float size_factor = (m_reference_width > 0)
-			? (m_scale * float(m_reference_width) / float(m_width))
+			? (m_scale * float(m_reference_width) / (content * float(m_width)))
 			: m_scale;
 		const float scaled_w = float(m_width) * size_factor;
 		const float scaled_h = float(m_height) * size_factor;

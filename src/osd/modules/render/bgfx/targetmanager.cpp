@@ -11,6 +11,9 @@
 
 #include "targetmanager.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "bgfxutil.h"
 #include "target.h"
 
@@ -57,7 +60,9 @@ bgfx_target* target_manager::create_target(
 		m_textures.remove_provider(full_name);
 	}
 
-	auto target = std::make_unique<bgfx_target>(std::move(name), format, width, height, xprescale, yprescale, style, double_buffer, filter, scale, screen, attachments, reference_width);
+	const float content = (reference_width > 0 && screen < m_content_scale.size())
+		? m_content_scale[screen] : 1.0f;
+	auto target = std::make_unique<bgfx_target>(std::move(name), format, width, height, xprescale, yprescale, style, double_buffer, filter, scale, screen, attachments, reference_width, content);
 	if (iter != m_targets.end())
 		iter->second = std::move(target);
 	else
@@ -128,7 +133,27 @@ bool target_manager::update_target_sizes(uint32_t screen, uint16_t width, uint16
 	return false;
 }
 
-void target_manager::rebuild_targets(uint32_t screen, uint32_t style, uint16_t user_prescale, uint16_t max_prescale_size)
+bool target_manager::set_content_scale(uint32_t screen, float scale)
+{
+	while (m_content_scale.size() <= screen)
+		m_content_scale.push_back(1.0f);
+
+	const float clamped = std::clamp(scale, 0.15f, 1.0f);
+	// Only a real move is worth a rebuild. Half a percent is well inside what the screen rect
+	// wanders by on its own, and far below anything visible in the glow.
+	if (std::abs(clamped - m_content_scale[screen]) < 0.005f)
+		return false;
+
+	m_content_scale[screen] = clamped;
+	return true;
+}
+
+void target_manager::rebuild_reference_targets(uint32_t screen, uint16_t user_prescale, uint16_t max_prescale_size)
+{
+	rebuild_targets(screen, TARGET_STYLE_NATIVE, user_prescale, max_prescale_size, true);
+}
+
+void target_manager::rebuild_targets(uint32_t screen, uint32_t style, uint16_t user_prescale, uint16_t max_prescale_size, bool reference_only)
 {
 	if (style == TARGET_STYLE_CUSTOM) return;
 
@@ -136,7 +161,10 @@ void target_manager::rebuild_targets(uint32_t screen, uint32_t style, uint16_t u
 	for (const auto &[name, target] : m_targets)
 	{
 		if (target && (target->style() == style) && (target->screen_index() == screen))
-			to_resize.push_back(target.get());
+		{
+			if (!reference_only || target->reference_width() > 0)
+				to_resize.push_back(target.get());
+		}
 	}
 
 	std::vector<osd_dim>& sizes = style == TARGET_STYLE_GUEST ? m_guest_dims : m_native_dims;

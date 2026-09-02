@@ -37,9 +37,13 @@ public:
 	// fractions and its reach across the picture grows as the window shrinks. Sizing the levels
 	// from a fixed reference keeps the reach a constant share of the picture. Aspect is preserved
 	// - height takes the same factor as width.
+	// content_scale: how much of the window the emulated screen actually covers, 0..1. A reference
+	// width alone fixes the level against the WINDOW, but the glow belongs to the picture, so a
+	// pillarboxed screen would still get a wider halo relative to its content. Dividing by this
+	// puts the level back on the content.
 	bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
 		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count = 1,
-		uint16_t reference_width = 0);
+		uint16_t reference_width = 0, float content_scale = 1.0f);
 	bgfx_target(void *handle, uint16_t width, uint16_t height);
 	virtual ~bgfx_target();
 
@@ -55,6 +59,7 @@ public:
 	bool                        filter() const { return m_filter; }
 	float                       scale() const { return m_scale; }
 	uint16_t                    reference_width() const { return m_reference_width; }
+	float                       content_scale() const { return m_content_scale; }
 	uint32_t                    screen_index() const { return m_screen; }
 	uint16_t                    raw_width() const { return m_width; }
 	uint16_t                    raw_height() const { return m_height; }
@@ -90,6 +95,7 @@ private:
 	bool                        m_filter;
 	float                       m_scale;
 	uint16_t                    m_reference_width;
+	float                       m_content_scale;
 
 	int32_t                     m_screen;
 
