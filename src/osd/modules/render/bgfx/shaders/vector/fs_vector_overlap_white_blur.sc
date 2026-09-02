@@ -11,10 +11,17 @@ SAMPLER2D(s_tex, 0);
 uniform vec4 u_tex_size0;
 uniform vec4 u_overlap_blur_direction;
 uniform vec4 u_overlap_white_spread;
+uniform vec4 u_vec_res_scale;
 
 void main()
 {
-	vec2 wtexel = u_overlap_blur_direction.xy * max(u_overlap_white_spread.x, 0.0)
+// Slider values that name a distance are calibrated in pixels at a 1920-wide reference,
+// the same convention as the renderer's vec_res_scale(). Multiplying by it here keeps the
+// distance a constant FRACTION of the picture: without it the value means texels, and a
+// setting tuned in a small window spreads much further once the window grows. The renderer
+// injects the real factor; the effect default of 1.0 leaves any other chain as it was.
+	vec2 wtexel = u_overlap_blur_direction.xy
+		* (max(u_overlap_white_spread.x, 0.0) * max(u_vec_res_scale.x, 0.01))
 		/ max(u_tex_size0.xy, vec2_splat(1.0));
 	float white_heat = texture2D(s_tex, v_texcoord0).a * 0.22702703;
 	white_heat += (texture2D(s_tex, v_texcoord0 + wtexel * 1.38461538).a

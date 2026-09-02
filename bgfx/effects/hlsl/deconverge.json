@@ -33,6 +33,7 @@
 		{ "name": "u_radial_converge_red",   "type": "vec4", "values": [   0.0,   0.0, 0.0, 0.0 ] },
 		{ "name": "u_radial_converge_green", "type": "vec4", "values": [   0.0,   0.0, 0.0, 0.0 ] },
 		{ "name": "u_radial_converge_blue",  "type": "vec4", "values": [   0.0,   0.0, 0.0, 0.0 ] },
-		{ "name": "u_inv_view_dims",         "type": "vec4", "values": [   1.0,   1.0, 0.0, 0.0 ] }
+		{ "name": "u_inv_view_dims",         "type": "vec4", "values": [   1.0,   1.0, 0.0, 0.0 ] },
+		{ "name":"u_vec_res_scale", "type":"vec4", "values":[1.0,0.0,0.0,0.0] }
 	]
 }
