@@ -266,7 +266,7 @@
 		{ "name": "overlap_field0", "mode": "native", "scale": 0.5, "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "Half-resolution direct overlap-white Alpha field." },
 		{ "name": "overlap_field1", "mode": "native", "scale": 0.5, "doublebuffer": false, "format": "RGBA16F" },
-		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RGBA16F",
+		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RG11B10F", "attachments": 2,
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
 
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
@@ -335,7 +335,7 @@
 
 		{ "effect": "vector/vector_phosphor", "name": "Phosphor",
 		  "_comment": "pool update: rgb=peak,a=age. A fresh hit above phosphor_hit_reset replaces the old pixel and resets age even when dimmer than its residue; below the floor, the legacy brighter-than-decayed test prevents gaussian tails from erasing adjacent afterglow. u_phos = (dt_ms, half, curve, total) is injected by the renderer. Reads+writes phos_pool in place (doublebuffered feedback).",
-		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_overlap", "target": "overlap_field0" } ],
+		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_overlap", "target": "overlap_field0" }, { "sampler": "s_prev_age", "target": "phos_pool", "attachment": 1 } ],
 		  "uniforms": [
 			{ "uniform": "u_phos_reset", "slider": "phosphor_hit_reset" },
 			{ "uniform": "u_phos_composite", "slider": "phosphor_weak_hit_composite" },
@@ -346,7 +346,7 @@
 
 		{ "effect": "vector/vector_phosphor_compose_color", "name": "Phosphor Apply",
 		  "_comment": "colour compose: pool emit + converged no-persist caps/dots + phosphor tint + CIE phosphor-to-sRGB conversion in one pass. This preserves the old ordering while removing the full-res npglow_dc target/pass and the following chroma pass. The entry name remains 'Phosphor Apply' for renderer u_phos injection.",
-		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "texture": "npglow" }, { "sampler": "s_cur", "target": "internal" } ],
+		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "texture": "npglow" }, { "sampler": "s_cur", "target": "internal" }, { "sampler": "s_age", "target": "phos_pool", "attachment": 1 } ],
 		  "uniforms": [ { "uniform": "u_np_gain",           "slider": "cap_no_persist" }, { "uniform": "u_fresh_gain", "slider": "fresh_hit_gain" }, { "uniform": "u_phos_peak",         "slider": "masked_core_peak" }, { "uniform": "u_phos_radiant",      "slider": "phosphor_rgb_combination" }, { "uniform": "u_line_channel_gain", "slider": "phosphor_color" }, { "uniform": "u_converge_red",          "slider": "converge_red" }, { "uniform": "u_converge_green",        "slider": "converge_green" }, { "uniform": "u_converge_blue",         "slider": "converge_blue" }, { "uniform": "u_radial_converge_red",   "slider": "radial_converge_red" }, { "uniform": "u_radial_converge_green", "slider": "radial_converge_green" }, { "uniform": "u_radial_converge_blue",  "slider": "radial_converge_blue" }, { "uniform": "u_primary_mode",             "slider": "primary_color_mode" }, { "uniform": "u_primary_red_hue",          "slider": "primary_red_hue" }, { "uniform": "u_primary_red_saturation",   "slider": "primary_red_saturation" }, { "uniform": "u_primary_red_brightness",   "slider": "primary_red_brightness" }, { "uniform": "u_primary_green_hue",        "slider": "primary_green_hue" }, { "uniform": "u_primary_green_saturation", "slider": "primary_green_saturation" }, { "uniform": "u_primary_green_brightness", "slider": "primary_green_brightness" }, { "uniform": "u_primary_blue_hue",         "slider": "primary_blue_hue" }, { "uniform": "u_primary_blue_saturation",  "slider": "primary_blue_saturation" }, { "uniform": "u_primary_blue_brightness",  "slider": "primary_blue_brightness" }, { "uniform": "u_y_gain",   "slider": "chroma_y_gain" }, { "uniform": "u_chroma_a", "slider": "chroma_a" }, { "uniform": "u_chroma_b", "slider": "chroma_b" }, { "uniform": "u_chroma_c", "slider": "chroma_c" } ],
 		  "output": "internal" },
 

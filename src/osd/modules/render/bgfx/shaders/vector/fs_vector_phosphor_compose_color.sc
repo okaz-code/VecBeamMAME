@@ -9,6 +9,7 @@ $input v_color0, v_texcoord0
 #include "common.sh"
 
 SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
+SAMPLER2D(s_age, 3);  // pool attachment 1: rgb = per-channel age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 SAMPLER2D(s_cur, 2);   // current excitation frame
 
@@ -156,7 +157,10 @@ float phos_flash(float age)
 
 void main()
 {
-	vec4 pool = texture2D(s_tex, v_texcoord0);
+	vec3 pool = texture2D(s_tex, v_texcoord0).rgb;
+	// One age per channel, matching the update pass: channels excited at different times
+	// decay from their own excitation instead of sharing the most recent one.
+	vec3 poolAge = texture2D(s_age, v_texcoord0).rgb;
 	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
 	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
 	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
@@ -164,22 +168,22 @@ void main()
 	float accel = 1.0 + max(0.0, u_phos2.x);
 	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
-	vec3 over = max(vec3_splat(0.0), pool.rgb - 1.0);
-	vec3 norm = pool.rgb - over;
-	float ageE = max(0.0, pool.a - u_phos2.y);
+	vec3 over = max(vec3_splat(0.0), pool - 1.0);
+	vec3 norm = pool - over;
+	vec3 ageE = max(vec3_splat(0.0), poolAge - vec3_splat(u_phos2.y));
 	vec3 lit = vec3(
-		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
-		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
-		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
+		phos_two(ageE.r, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
+		phos_two(ageE.g, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
+		phos_two(ageE.b, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 
 	lit = max(lit, fresh);
 	// Fresh-excitation gain, applied in the pool's own scale rather than to the raw s_cur sample -
 	// the two are not commensurate (measured about 5:1 on asteroid, and more before the roll-off), so
 	// a gain on s_cur has to exceed that ratio before max() even notices it. age == 0 means the pixel
 	// was excited THIS present, which is exactly the newest hit and nothing else.
-	if (u_fresh_gain.x > 1.0 && pool.a <= 0.0)
+	if (u_fresh_gain.x > 1.0 && min(poolAge.r, min(poolAge.g, poolAge.b)) <= 0.0)
 		lit *= u_fresh_gain.x;
-	lit *= phos_flash(pool.a);
+	lit *= phos_flash(min(poolAge.r, min(poolAge.g, poolAge.b)));
 	lit += sample_np_converged(v_texcoord0) * u_np_gain.x;
 	vec3 composed = phos_combination_brightness(lit) * u_line_channel_gain.rgb;
 
