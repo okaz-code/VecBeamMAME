@@ -6953,6 +6953,21 @@ int renderer_bgfx::draw(int update)
 					m_chains->inject_entry_uniform(0, entry, "u_convergence_global_color", conv_global_color, 4);
 				}
 
+				// Display-size normalisation for the screen-space passes. Beam geometry already goes
+				// through vec_res_scale() on this side, so a beam width or a glow width means the same
+				// share of the picture at any window size. The chain passes had no equivalent: a slider
+				// feeding a texel offset or a pixel band meant a LARGER share of a small window, which
+				// is why a set of values tuned in a window came apart in fullscreen. Hand them the same
+				// factor. The effects declare it as 1.0, so a chain that does not get this injection
+				// (upstream hlsl.json shares the deconverge pass) is untouched.
+				const float vec_res_vals[4] = { vec_res_scale(), 0.0f, 0.0f, 0.0f };
+				for (const char *entry : { "add_mglow", "Glow Combine", "Deconvergence",
+					"Overlap White Extract", "Overlap White Blur X", "Overlap White Blur Y",
+					"Phosphor", "Phosphor Apply" })
+				{
+					m_chains->inject_entry_uniform(0, entry, "u_vec_res_scale", vec_res_vals, 4);
+				}
+
 				// Ambient is reflected room light, not beam emission. The SDR seed scales the
 				// completed chain by sdr_beam_level, so pre-compensate only ambient here; beam,
 				// optical glow, monitor glow and bezel reflection retain the SDR exposure.

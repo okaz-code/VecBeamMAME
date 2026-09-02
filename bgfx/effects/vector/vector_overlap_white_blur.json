@@ -11,6 +11,7 @@
 		{ "name":"s_tex", "type":"int", "values":[0.0] },
 		{ "name":"u_tex_size0", "type":"vec4", "values":[1.0,1.0,0.0,0.0] },
 		{ "name":"u_overlap_blur_direction", "type":"vec4", "values":[1.0,0.0,0.0,0.0] },
-		{ "name":"u_overlap_white_spread", "type":"vec4", "values":[2.0,0.0,0.0,0.0] }
+		{ "name":"u_overlap_white_spread", "type":"vec4", "values":[2.0,0.0,0.0,0.0] },
+		{ "name":"u_vec_res_scale", "type":"vec4", "values":[1.0,0.0,0.0,0.0] }
 	]
 }

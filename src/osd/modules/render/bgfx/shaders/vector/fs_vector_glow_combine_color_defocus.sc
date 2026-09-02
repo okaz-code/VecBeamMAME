@@ -69,6 +69,7 @@ uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
 uniform vec4 u_vector_render_scale;
+uniform vec4 u_vec_res_scale;
 uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_monitor_bezel_reflection;
 uniform vec4 u_bezel_long_reflection;
@@ -210,7 +211,12 @@ float tube_vignette_at(vec2 q, vec2 aspect, float active)
 
 float bezel_glow_width_px()
 {
-	return max(u_bezel_glow_width.x, 1.0) * clamp(u_vector_render_scale.x, 0.1, 1.0);
+	// u_vector_render_scale follows bgfx_render_scale (internal target vs output); u_vec_res_scale
+	// follows the DISPLAY size against the 1920-wide reference. Both are needed: without the second
+	// one the band is a fixed number of pixels, so it covers a different share of a small window
+	// than of a large one.
+	return max(u_bezel_glow_width.x, 1.0) * clamp(u_vector_render_scale.x, 0.1, 1.0)
+		* max(u_vec_res_scale.x, 0.01);
 }
 
 // The bezel begins at the physical phosphor-face boundary, so its distance is by definition the

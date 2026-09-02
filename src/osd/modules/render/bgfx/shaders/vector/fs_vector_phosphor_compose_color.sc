@@ -44,6 +44,7 @@ uniform vec4 u_converge_blue;
 uniform vec4 u_radial_converge_red;
 uniform vec4 u_radial_converge_green;
 uniform vec4 u_radial_converge_blue;
+uniform vec4 u_vec_res_scale;
 
 uniform vec4 u_primary_mode;
 // The three colour primaries this chain resolves to, precomputed on the CPU by
@@ -110,7 +111,10 @@ vec3 sample_np_converged(vec2 uv)
 		return AUX_TEX2D(s_np, uv).rgb;
 
 	vec2 half_value = vec2_splat(0.5);
-	vec2 inv_source = vec2_splat(1.0) / u_source_size.xy;
+	// Convergence is quoted in pixels at a 1920-wide reference (vec_res_scale in the renderer).
+	// Straight texels would move the guns further apart, relative to the picture, every time the
+	// window shrank.
+	vec2 inv_source = vec2_splat(max(u_vec_res_scale.x, 0.01)) / u_source_size.xy;
 	vec2 uv_r = (uv - half_value) * (1.0 + u_radial_converge_red.xy) + half_value + u_converge_red.xy * inv_source;
 	vec2 uv_g = (uv - half_value) * (1.0 + u_radial_converge_green.xy) + half_value + u_converge_green.xy * inv_source;
 	vec2 uv_b = (uv - half_value) * (1.0 + u_radial_converge_blue.xy) + half_value + u_converge_blue.xy * inv_source;

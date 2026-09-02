@@ -17,6 +17,11 @@ uniform vec4 u_converge_blue;
 uniform vec4 u_radial_converge_red;
 uniform vec4 u_radial_converge_green;
 uniform vec4 u_radial_converge_blue;
+// Convergence error is quoted in pixels at a 1920-wide reference (the renderer's
+// vec_res_scale convention); without this factor the offset is texels, so a calibration made
+// at one window size lands somewhere else at another. The renderer injects the real factor
+// for the vector chains; the effect default of 1.0 leaves every other chain as it was.
+uniform vec4 u_vec_res_scale;
 
 void main()
 {
@@ -28,9 +33,9 @@ void main()
 	vec2 half_value = vec2(0.5, 0.5);
 
 	v_texcoord0 = a_texcoord0;
-	v_texcoord1 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_red.xy  ) + half_value + u_converge_red.xy   * (vec2(1.0, 1.0) / u_source_size.xy);
-	v_texcoord2 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_green.xy) + half_value + u_converge_green.xy * (vec2(1.0, 1.0) / u_source_size.xy);
-	v_texcoord3 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_blue.xy ) + half_value + u_converge_blue.xy  * (vec2(1.0, 1.0) / u_source_size.xy);
+	v_texcoord1 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_red.xy  ) + half_value + u_converge_red.xy   * (vec2_splat(max(u_vec_res_scale.x, 0.01)) / u_source_size.xy);
+	v_texcoord2 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_green.xy) + half_value + u_converge_green.xy * (vec2_splat(max(u_vec_res_scale.x, 0.01)) / u_source_size.xy);
+	v_texcoord3 = (a_texcoord0 - half_value) * (1.0 + u_radial_converge_blue.xy ) + half_value + u_converge_blue.xy  * (vec2_splat(max(u_vec_res_scale.x, 0.01)) / u_source_size.xy);
 
 	v_color0 = a_color0;
 }

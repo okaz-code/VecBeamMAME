@@ -53,6 +53,7 @@ uniform vec4 u_vector_image_scale;
 uniform vec4 u_bezel_glow_strength;
 uniform vec4 u_bezel_glow_width;
 uniform vec4 u_vector_render_scale;
+uniform vec4 u_vec_res_scale;
 uniform vec4 u_bezel_glow_curve;
 uniform vec4 u_bezel_long_reflection;
 uniform vec4 u_bezel_short_reflection;
@@ -106,7 +107,9 @@ float tube_vignette_at(vec2 q,vec2 aspect,float active)
 	float len=length(q*aspect)*(1.41421356/length(aspect));float blur=amount*0.75+0.25,radius=1.0-amount*0.25;
 	return saturate(smoothstep(radius,radius-blur,len));
 }
-float bezel_glow_width_px(){return max(u_bezel_glow_width.x,1.0)*clamp(u_vector_render_scale.x,0.1,1.0);}
+// Display-size normalised as well as render-scale normalised - see the colour combine.
+float bezel_glow_width_px(){return max(u_bezel_glow_width.x,1.0)*clamp(u_vector_render_scale.x,0.1,1.0)
+	*max(u_vec_res_scale.x,0.01);}
 
 // The bezel band was deriving its own signed distance with a comment saying it had to match
 // tube_signed_distance exactly - so it was the same round_box on the same coordinate, computed
