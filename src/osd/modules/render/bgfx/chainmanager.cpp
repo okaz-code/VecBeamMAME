@@ -902,8 +902,20 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 	uint16_t content_width, uint16_t content_height)
 {
 	// (1) Set native dims first so any TARGET_STYLE_NATIVE targets get correct sizes.
-	m_targets.update_target_sizes(0, width, height, TARGET_STYLE_NATIVE,
+	//
+	// A reference-sized target (the glow pyramid) has to know how much of the window the emulated
+	// screen actually covers, or a pillarboxed picture gets a halo sized for the whole window and
+	// therefore too wide for its content - the same complaint as tuning in a window and looking at
+	// it in fullscreen, only driven by aspect instead of size. Record it before the resize check so
+	// one rebuild covers both when the window changed too; when only the fraction moved, rebuild
+	// just the reference targets. A steady window reaches neither branch.
+	const float content_scale = (width > 0)
+		? float(content_width) / float(width) : 1.0f;
+	const bool content_changed = m_targets.set_content_scale(0, content_scale);
+	const bool dims_changed = m_targets.update_target_sizes(0, width, height, TARGET_STYLE_NATIVE,
 		m_user_prescale, m_max_prescale_size);
+	if (content_changed && !dims_changed)
+		m_targets.rebuild_reference_targets(0, m_user_prescale, m_max_prescale_size);
 
 	// (2) Register FBO color attachment as "screen0" in the chain texture manager.
 	m_textures.remove_provider("screen0");

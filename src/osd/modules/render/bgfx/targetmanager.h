@@ -41,6 +41,11 @@ public:
 	bgfx_target* create_backbuffer(void *handle, uint16_t width, uint16_t height);
 
 	bool update_target_sizes(uint32_t screen, uint16_t width, uint16_t height, uint32_t style, uint16_t user_prescale, uint16_t max_prescale_size);
+	// Record how much of the window the emulated screen covers (0..1). Returns true when the value
+	// moved enough to matter, which is the only time a reference-sized target has to be rebuilt.
+	// A steady window costs one float comparison per frame and nothing else.
+	bool set_content_scale(uint32_t screen, float scale);
+	void rebuild_reference_targets(uint32_t screen, uint16_t user_prescale, uint16_t max_prescale_size);
 	void update_screen_count(uint32_t count, uint16_t user_prescale, uint16_t max_prescale_size);
 
 	// Getters
@@ -49,7 +54,7 @@ public:
 	uint16_t height(uint32_t style, uint32_t screen);
 
 private:
-	void rebuild_targets(uint32_t screen, uint32_t style, uint16_t user_prescale, uint16_t max_prescale_size);
+	void rebuild_targets(uint32_t screen, uint32_t style, uint16_t user_prescale, uint16_t max_prescale_size, bool reference_only = false);
 	void create_output_if_nonexistent(uint32_t screen, uint16_t user_prescale, uint16_t max_prescale_size);
 
 	std::map<std::string, std::unique_ptr<bgfx_target> > m_targets;
@@ -57,6 +62,7 @@ private:
 
 	std::vector<osd_dim> m_guest_dims;
 	std::vector<osd_dim> m_native_dims;
+	std::vector<float> m_content_scale;
 	uint32_t m_screen_count;
 
 	static const int32_t MAX_SCREENS;
