@@ -31,8 +31,15 @@ public:
 	// sharing one depth buffer. A pass bound to it writes gl_FragData[0..N-1]; an input can sample
 	// any one of them. Needed where a single pass has to update more state than four channels hold -
 	// the vector phosphor pool keeps a peak colour AND a per-channel age, which is six.
+	// reference_width: when non-zero, "scale" is a fraction of a picture this many pixels wide
+	// instead of a fraction of the window. A blur pyramid needs this: with plain window fractions
+	// the level count is fixed, so the deepest level's texel is a constant number of WINDOW
+	// fractions and its reach across the picture grows as the window shrinks. Sizing the levels
+	// from a fixed reference keeps the reach a constant share of the picture. Aspect is preserved
+	// - height takes the same factor as width.
 	bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
-		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count = 1);
+		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count = 1,
+		uint16_t reference_width = 0);
 	bgfx_target(void *handle, uint16_t width, uint16_t height);
 	virtual ~bgfx_target();
 
@@ -47,6 +54,7 @@ public:
 	uint32_t                    style() const { return m_style; }
 	bool                        filter() const { return m_filter; }
 	float                       scale() const { return m_scale; }
+	uint16_t                    reference_width() const { return m_reference_width; }
 	uint32_t                    screen_index() const { return m_screen; }
 	uint16_t                    raw_width() const { return m_width; }
 	uint16_t                    raw_height() const { return m_height; }
@@ -81,6 +89,7 @@ private:
 	uint32_t                    m_style;
 	bool                        m_filter;
 	float                       m_scale;
+	uint16_t                    m_reference_width;
 
 	int32_t                     m_screen;
 
