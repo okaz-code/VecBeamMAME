@@ -44,7 +44,8 @@ bgfx_target* target_manager::create_target(
 		bool double_buffer,
 		bool filter,
 		float scale,
-		uint32_t screen)
+		uint32_t screen,
+		uint32_t attachments)
 {
 	const std::string full_name = name + std::to_string(screen);
 
@@ -55,7 +56,7 @@ bgfx_target* target_manager::create_target(
 		m_textures.remove_provider(full_name);
 	}
 
-	auto target = std::make_unique<bgfx_target>(std::move(name), format, width, height, xprescale, yprescale, style, double_buffer, filter, scale, screen);
+	auto target = std::make_unique<bgfx_target>(std::move(name), format, width, height, xprescale, yprescale, style, double_buffer, filter, scale, screen, attachments);
 	if (iter != m_targets.end())
 		iter->second = std::move(target);
 	else
@@ -145,13 +146,14 @@ void target_manager::rebuild_targets(uint32_t screen, uint32_t style, uint16_t u
 		const bool double_buffered = target->double_buffered();
 		const bool filter = target->filter();
 		const float scale = target->scale();
+		const uint32_t attachments = target->attachments();
 		const uint16_t width(sizes[screen].width());
 		const uint16_t height(sizes[screen].height());
 		uint16_t xprescale = user_prescale;
 		uint16_t yprescale = user_prescale;
 		bgfx_util::find_prescale_factor(width, height, max_prescale_size, xprescale, yprescale);
 
-		create_target(std::move(name), format, width, height, xprescale, yprescale, style, double_buffered, filter, scale, screen);
+		create_target(std::move(name), format, width, height, xprescale, yprescale, style, double_buffered, filter, scale, screen, attachments);
 	}
 }
 

@@ -24,8 +24,9 @@
 #include "util/strformat.h"
 
 
-bgfx_input_pair::bgfx_input_pair(int index, std::string sampler, std::string texture, std::vector<std::string> available_textures, std::string selection, chain_manager& chains, uint32_t screen_index)
+bgfx_input_pair::bgfx_input_pair(int index, std::string sampler, std::string texture, std::vector<std::string> available_textures, std::string selection, chain_manager& chains, uint32_t screen_index, uint32_t attachment)
 	: m_index(index)
+	, m_attachment(attachment)
 	, m_sampler(sampler)
 	, m_texture(texture)
 	, m_available_textures(available_textures)
@@ -88,7 +89,8 @@ void bgfx_input_pair::bind(bgfx_effect *effect, const int32_t screen) const
 		tex_bounds->set(values, sizeof(float) * 4);
 	}
 
-	bgfx::setTexture(m_index, effect->uniform(m_sampler)->handle(), chains().textures().handle(name));
+	// Colour attachment of a multi-attachment target; 0 (the default) is the ordinary single texture.
+	bgfx::setTexture(m_index, effect->uniform(m_sampler)->handle(), provider->texture(m_attachment));
 }
 
 int32_t bgfx_input_pair::texture_changed(int32_t id, std::string *str, int32_t newval)

@@ -11,11 +11,13 @@
 #include "target.h"
 
 #include <cstring>
+#include <vector>
 
 bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
-	uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen)
+	uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachment_count)
 	: m_name(name)
 	, m_format(format)
+	, m_attachments(attachment_count < 1 ? 1 : attachment_count)
 	, m_targets(nullptr)
 	, m_textures(nullptr)
 	, m_width(width)
@@ -44,7 +46,9 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 		uint32_t filter_mode = filter ? (BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC) : (BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT);
 		uint32_t depth_flags = wrap_mode | (BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT);
 
-		m_textures = new bgfx::TextureHandle[m_page_count * 2];
+		// Layout: colour attachment a of page p at [a * page_count + p], depth for page p last.
+		// With one attachment this is exactly the previous [page] / [page_count + page] arrangement.
+		m_textures = new bgfx::TextureHandle[m_page_count * (m_attachments + 1)];
 		m_targets = new bgfx::FrameBufferHandle[m_page_count];
 		// Zero-initialize the colour texture's backing memory explicitly: bgfx::createTexture2D with no
 		// _mem leaves the GPU texture's content genuinely undefined (not guaranteed zero by any backend
@@ -59,19 +63,25 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 		// generic zero-fill is correct regardless of which of this class's callers/formats is in use.
 		bgfx::TextureInfo tex_info;
 		bgfx::calcTextureSize(tex_info, m_width * xprescale, m_height * yprescale, 1, false, false, 1, format);
+		std::vector<bgfx::TextureHandle> handles(m_attachments + 1);
 		for (int page = 0; page < m_page_count; page++)
 		{
-			const bgfx::Memory *zero_mem = bgfx::alloc(tex_info.storageSize);
-			std::memset(zero_mem->data, 0, zero_mem->size);
-			m_textures[page] = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT, zero_mem);
-			assert(m_textures[page].idx != 0xffff);
+			for (uint32_t a = 0; a < m_attachments; a++)
+			{
+				const bgfx::Memory *zero_mem = bgfx::alloc(tex_info.storageSize);
+				std::memset(zero_mem->data, 0, zero_mem->size);
+				bgfx::TextureHandle &tex = m_textures[a * m_page_count + page];
+				tex = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT, zero_mem);
+				assert(tex.idx != 0xffff);
+				handles[a] = tex;
+			}
 
-			m_textures[m_page_count + page] = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, bgfx::TextureFormat::D32F, depth_flags | BGFX_TEXTURE_RT);
-			assert(m_textures[m_page_count + page].idx != 0xffff);
+			bgfx::TextureHandle &depth = m_textures[m_attachments * m_page_count + page];
+			depth = bgfx::createTexture2D(m_width * xprescale, m_height * yprescale, false, 1, bgfx::TextureFormat::D32F, depth_flags | BGFX_TEXTURE_RT);
+			assert(depth.idx != 0xffff);
+			handles[m_attachments] = depth;
 
-			bgfx::TextureHandle handles[2] = { m_textures[page], m_textures[m_page_count + page] };
-			m_targets[page] = bgfx::createFrameBuffer(2, handles, false);
-
+			m_targets[page] = bgfx::createFrameBuffer(uint8_t(m_attachments + 1), handles.data(), false);
 			assert(m_targets[page].idx != 0xffff);
 		}
 
@@ -82,6 +92,7 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 bgfx_target::bgfx_target(void *handle, uint16_t width, uint16_t height)
 	: m_name("backbuffer")
 	, m_format(bgfx::TextureFormat::Unknown)
+	, m_attachments(1)
 	, m_targets(nullptr)
 	, m_textures(nullptr)
 	, m_width(width)
@@ -115,8 +126,9 @@ bgfx_target::~bgfx_target()
 		for (int page = 0; page < m_page_count; page++)
 		{
 			bgfx::destroy(m_targets[page]);
-			bgfx::destroy(m_textures[m_page_count + page]);
-			bgfx::destroy(m_textures[page]);
+			bgfx::destroy(m_textures[m_attachments * m_page_count + page]);
+			for (uint32_t a = 0; a < m_attachments; a++)
+				bgfx::destroy(m_textures[a * m_page_count + page]);
 		}
 		delete [] m_textures;
 		delete [] m_targets;
@@ -168,14 +180,14 @@ bgfx::FrameBufferHandle bgfx_target::target()
 
 bgfx::TextureHandle bgfx_target::texture() const
 {
-	if (!m_initialized) return BGFX_INVALID_HANDLE;
+	return texture(0);
+}
 
-	if (m_double_buffer)
-	{
-		return m_textures[1 - m_current_page];
-	}
-	else
-	{
-		return m_textures[m_current_page];
-	}
+bgfx::TextureHandle bgfx_target::texture(uint32_t attachment) const
+{
+	if (!m_initialized || m_page_count == 0) return BGFX_INVALID_HANDLE;
+	if (attachment >= m_attachments) attachment = 0;
+	// A double-buffered target is READ from the page that is not currently being written.
+	const uint32_t page = m_double_buffer ? (1 - m_current_page) : m_current_page;
+	return m_textures[attachment * m_page_count + page];
 }

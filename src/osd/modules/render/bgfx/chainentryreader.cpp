@@ -175,7 +175,15 @@ bgfx_chain_entry* chain_entry_reader::read_from_value(
 			}
 
 			std::string sampler = input["sampler"].GetString();
-			auto* input_pair = new bgfx_input_pair(i, sampler, texture_name, texture_names, selection, chains, screen_index);
+			// "attachment": which colour attachment of a multi-attachment target to sample (default 0).
+			uint32_t attachment = 0;
+			if (input.HasMember("attachment"))
+			{
+				if (!READER_CHECK(input["attachment"].IsNumber(), "%sInput %u: 'attachment' must be a number\n", prefix, i))
+					return nullptr;
+				attachment = uint32_t(std::max(0, int(input["attachment"].GetDouble())));
+			}
+			auto* input_pair = new bgfx_input_pair(i, sampler, texture_name, texture_names, selection, chains, screen_index, attachment);
 			inputs.push_back(input_pair);
 		}
 	}

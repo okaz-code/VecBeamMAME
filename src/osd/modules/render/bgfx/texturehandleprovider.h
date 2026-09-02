@@ -21,6 +21,10 @@ public:
 
 	// Getters
 	virtual bgfx::TextureHandle texture() const = 0;
+	// Colour attachment N of a multi-attachment target. Everything that is not such a target has
+	// exactly one, so the default answers with it and no other provider needs to know about this.
+	virtual bgfx::TextureHandle texture(uint32_t attachment) const { return texture(); }
+	virtual uint32_t attachments() const { return 1; }
 	virtual bool is_target() const = 0;
 	virtual uint16_t width() const = 0;
 	virtual uint16_t width_margin() const = 0;

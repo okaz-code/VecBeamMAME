@@ -35,7 +35,7 @@ public:
 	~target_manager();
 
 	bgfx_target* create_target(std::string &&name, bgfx::TextureFormat::Enum format, uint16_t width, uint16_t height, uint16_t xprescale, uint16_t yprescale,
-		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen);
+		uint32_t style, bool double_buffer, bool filter, float scale, uint32_t screen, uint32_t attachments = 1);
 	void destroy_target(const std::string &name, uint32_t screen = -1);
 	bgfx_target* create_backbuffer(void *handle, uint16_t width, uint16_t height);
 
