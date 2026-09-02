@@ -49,6 +49,11 @@ uniform vec4 u_phos_rgb;          // rgb = per-channel half-life multiplier; 1,1
 // whole frame. Equal frame-average values therefore do not mean equal spot brightness, and a bullet
 // trail whose head sits inside phosphor_hold_ms reads exactly as bright as the dot behind it.
 // 1.0 = the previous behaviour.
+// Pool-side ceiling (masked_core_peak). The pool holds the beam PEAK, so a spot the beam
+// dwelled on can sit far above one calibrated beam; this caps what the fresh sample is
+// allowed to contribute, matching the same limit the update pass applies before storing.
+// 0 = off, which is what the monochrome chain did before it had the slider.
+uniform vec4 u_phos_peak;
 uniform vec4 u_fresh_gain;
 uniform vec4 u_np_gain;           // (gain, 0, 0, 0): cap_no_persist slider, 0 = off
 uniform vec4 u_line_channel_gain; // (r, g, b, 0): phosphor_color slider
@@ -104,6 +109,10 @@ void main()
 	// One age per channel, matching the update pass: channels excited at different times
 	// decay from their own excitation instead of sharing the most recent one.
 	vec3 poolAge = texture2D(s_age, v_texcoord0).rgb;
+	vec3 fresh = texture2D(s_cur, v_texcoord0).rgb;
+	float raw_fresh_peak = max(fresh.r, max(fresh.g, fresh.b));
+	if (u_phos_peak.x > 0.0 && raw_fresh_peak > u_phos_peak.x)
+		fresh *= u_phos_peak.x / raw_fresh_peak;
 	// accel = how much faster the overrange excess decays (u_phos2.x = phosphor_energy_decay).
 	// Per-channel (RGB) decay: each channel its own base half-life / total via u_phos_rgb (1,1,1 =
 	// uniform). Must match the update pass so re-excite and display agree.
@@ -126,7 +135,7 @@ void main()
 	// the error could only show as live content displayed at a DECAYED level - taking max with the
 	// current frame makes that entire failure class invisible by construction. In the normal case
 	// (pixel re-excited this present) pool == cur and this is exactly the previous output.
-	lit = max(lit, texture2D(s_cur, v_texcoord0).rgb);
+	lit = max(lit, fresh);
 	// Fresh-excitation gain, applied in the pool's own scale rather than to the raw s_cur sample -
 	// the two are not commensurate (measured about 5:1 on asteroid, and more before the roll-off), so
 	// a gain on s_cur has to exceed that ratio before max() even notices it. age == 0 means the pixel

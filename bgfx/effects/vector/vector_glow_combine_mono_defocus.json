@@ -335,6 +335,7 @@
         0.0
       ]
     },
-		{ "name":"u_vec_res_scale", "type":"vec4", "values":[1.0,0.0,0.0,0.0] }
+		{ "name":"u_vec_res_scale", "type":"vec4", "values":[1.0,0.0,0.0,0.0] },
+		{ "name":"u_masked_core_peak_emit", "type":"vec4", "values":[0.0,0.0,0.0,0.0] }
   ]
 }
