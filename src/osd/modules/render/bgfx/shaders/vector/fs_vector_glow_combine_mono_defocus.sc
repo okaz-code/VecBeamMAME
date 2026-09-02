@@ -34,6 +34,13 @@ uniform vec4 u_aux_ramp;
 #define BEZEL_TEX2D(_sampler, _uv) texture2D(_sampler, _uv)
 uniform vec4 u_defocus;
 uniform vec4 u_vec_pincushion_x_quad;
+// Direct-emission ceiling, the monochrome counterpart of the colour chain's
+// masked_core_peak_emit. The pool holds the beam PEAK, so a terminus the beam dwelled on can
+// sit several calibrated beams above a plain stroke; this decides how much of that survives to
+// the screen instead of being handed straight to the HDR roll-off, where everything above the
+// knee converges. Limits direct phosphor emission only, before the tube face and the glow, so
+// scattered light is left alone. 0 = off, which is what this chain did before it had the knob.
+uniform vec4 u_masked_core_peak_emit;
 uniform vec4 u_glow_enable;
 uniform vec4 u_phosphor_color;
 uniform vec4 u_target_dims;
@@ -228,6 +235,8 @@ void main()
 {
 	float tube_active=tube_active_amount();vec2 emit_uv=emission_uv(v_texcoord0);vec2 base_uv=vector_pincushion_uv(emit_uv);
 	bool outside=base_uv.x<0.0||base_uv.x>1.0||base_uv.y<0.0||base_uv.y>1.0;vec3 base=outside?vec3_splat(0.0):sample_defocused(base_uv);
+	float core_limit=u_masked_core_peak_emit.x;float core_peak=max(base.r,max(base.g,base.b));
+	if(core_limit>0.0&&core_peak>core_limit)base*=core_limit/core_peak;
 	vec2 tube_aspect_v=tube_aspect();vec2 tube_q=tube_quad_coord(v_texcoord0,tube_active);
 	float tube_sd=tube_signed_distance_at(tube_q,tube_aspect_v,tube_active);
 	float face=tube_face_factor_at(tube_sd,tube_active),vignette=tube_vignette_at(tube_q,tube_aspect_v,tube_active);
