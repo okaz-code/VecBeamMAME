@@ -13,10 +13,14 @@ $input v_color0, v_texcoord0
 
 #include "common.sh"
 
+// Metal bakes these unit numbers into [[texture(N)]] while a chain binds its input list
+// positionally, so a sampler MUST sit at its declared index in EVERY chain that uses this
+// pass. s_overlap is last because only vector-color has an overlap field: the monochrome and
+// vectrex chains bind the first three and stop.
 SAMPLER2D(s_prev, 0);   // pool attachment 0, previous frame: rgb = peak colour
-SAMPLER2D(s_prev_age, 3); // pool attachment 1, previous frame: rgb = per-channel age (ms)
+SAMPLER2D(s_prev_age, 2); // pool attachment 1, previous frame: rgb = per-channel age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
-SAMPLER2D(s_overlap, 2); // packed local light: rgb=density bloom, a=overload white heat
+SAMPLER2D(s_overlap, 3); // packed local light: rgb=density bloom, a=overload white heat
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;   // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)

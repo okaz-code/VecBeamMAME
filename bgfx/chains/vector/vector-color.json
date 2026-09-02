@@ -335,7 +335,7 @@
 
 		{ "effect": "vector/vector_phosphor", "name": "Phosphor",
 		  "_comment": "pool update: rgb=peak,a=age. A fresh hit above phosphor_hit_reset replaces the old pixel and resets age even when dimmer than its residue; below the floor, the legacy brighter-than-decayed test prevents gaussian tails from erasing adjacent afterglow. u_phos = (dt_ms, half, curve, total) is injected by the renderer. Reads+writes phos_pool in place (doublebuffered feedback).",
-		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_overlap", "target": "overlap_field0" }, { "sampler": "s_prev_age", "target": "phos_pool", "attachment": 1 } ],
+		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_prev_age", "target": "phos_pool", "attachment": 1 }, { "sampler": "s_overlap", "target": "overlap_field0" } ],
 		  "uniforms": [
 			{ "uniform": "u_phos_reset", "slider": "phosphor_hit_reset" },
 			{ "uniform": "u_phos_composite", "slider": "phosphor_weak_hit_composite" },
