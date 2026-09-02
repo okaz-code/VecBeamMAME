@@ -423,18 +423,24 @@ public:
 
 		// Pure-decay hold. Nothing is drawn and the position does not move, but the frame counts as
 		// advanced so the renderer bills one recorded frame period of display time against the pool.
-		if (m_decay_running && m_decay_left > 0)
+		if (m_decay_running)
 		{
-			--m_decay_left;
-			m_playback_advanced = true;
+			// Once the requested periods have elapsed the state is HELD, not released: serving the
+			// frame again would re-deposit it and undo the whole decay, which is what an external
+			// capture taken any time after the hold used to record. Freezing time as well as content
+			// keeps the decayed image on screen for as long as the tool is looked at.
+			const bool still_decaying = m_decay_left > 0;
+			if (still_decaying)
+				--m_decay_left;
+			m_playback_advanced = still_decaying;
 			count = 0;
 			stale = false;
 			const frame_index_entry &held = m_frame_index[size_t(std::max<s64>(m_play_position, 0))];
 			timed = held.timed;
 			generation = held.generation;
 			visarea = held.visarea;
-			if (m_decay_left == 0)
-				osd_printf_info("MVEC: decay hold complete at frame %llu\n",
+			if (still_decaying && m_decay_left == 0)
+				osd_printf_info("MVEC: decay hold complete at frame %llu, holding\n",
 					(unsigned long long)(u64(m_play_position) + 1U));
 			return true;
 		}
