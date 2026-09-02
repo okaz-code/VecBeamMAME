@@ -27,6 +27,7 @@ $input v_color0, v_texcoord0
 #include "common.sh"
 
 SAMPLER2D(s_tex, 0);   // pool: rgb = peak colour, a = age (ms)
+SAMPLER2D(s_age, 3);  // pool attachment 1: rgb = per-channel age (ms)
 SAMPLER2D(s_np,  1);   // no-persist FBO (caps / junction dots)
 SAMPLER2D(s_cur, 2);   // the CURRENT excitation frame (same "internal" page the update pass read)
 
@@ -99,23 +100,26 @@ float phos_flash(float age)
 
 void main()
 {
-	vec4 pool = texture2D(s_tex, v_texcoord0);
+	vec3 pool = texture2D(s_tex, v_texcoord0).rgb;
+	// One age per channel, matching the update pass: channels excited at different times
+	// decay from their own excitation instead of sharing the most recent one.
+	vec3 poolAge = texture2D(s_age, v_texcoord0).rgb;
 	// accel = how much faster the overrange excess decays (u_phos2.x = phosphor_energy_decay).
 	// Per-channel (RGB) decay: each channel its own base half-life / total via u_phos_rgb (1,1,1 =
 	// uniform). Must match the update pass so re-excite and display agree.
 	float accel = 1.0 + max(0.0, u_phos2.x);
 	vec3 tauN = u_phos.y * u_phos_rgb.rgb;
 	vec3 totN = u_phos.w * u_phos_rgb.rgb;
-	vec3 over = max(vec3_splat(0.0), pool.rgb - 1.0);
-	vec3 norm = pool.rgb - over;
+	vec3 over = max(vec3_splat(0.0), pool - 1.0);
+	vec3 norm = pool - over;
 	// Hold-then-decay (u_phos2.y = hold_ms): full brightness for hold_ms before the decay curve
 	// starts - closes the flickering dark seams a short half-life carved between a slowly-moving
 	// bright line's successive positions. Must match fs_vector_phosphor (the update pass).
-	float ageE = max(0.0, pool.a - u_phos2.y);
+	vec3 ageE = max(vec3_splat(0.0), poolAge - vec3_splat(u_phos2.y));
 	vec3 lit = vec3(
-		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
-		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
-		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
+		phos_two(ageE.r, tauN.r, u_phos.z, totN.r, accel, norm.r, over.r),
+		phos_two(ageE.g, tauN.g, u_phos.z, totN.g, accel, norm.g, over.g),
+		phos_two(ageE.b, tauN.b, u_phos.z, totN.b, accel, norm.b, over.b));
 	// Superposition lower bound: a pixel the beam is exciting RIGHT NOW can never be darker than
 	// that excitation, whatever the pool's (peak, age) state machine currently holds. Wherever the
 	// re-excite hysteresis mis-tracks (fluctuating deposits, overrange residues, scaling glyphs),
@@ -127,9 +131,9 @@ void main()
 	// the two are not commensurate (measured about 5:1 on asteroid, and more before the roll-off), so
 	// a gain on s_cur has to exceed that ratio before max() even notices it. age == 0 means the pixel
 	// was excited THIS present, which is exactly the newest hit and nothing else.
-	if (u_fresh_gain.x > 1.0 && pool.a <= 0.0)
+	if (u_fresh_gain.x > 1.0 && min(poolAge.r, min(poolAge.g, poolAge.b)) <= 0.0)
 		lit *= u_fresh_gain.x;
-	lit *= phos_flash(pool.a);
+	lit *= phos_flash(min(poolAge.r, min(poolAge.g, poolAge.b)));
 
 	lit += AUX_TEX2D(s_np, v_texcoord0).rgb * u_np_gain.x;
 	gl_FragColor = vec4(lit * u_line_channel_gain.rgb, 1.0);

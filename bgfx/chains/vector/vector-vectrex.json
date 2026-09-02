@@ -230,7 +230,7 @@
 		{ "name": "internal",  "mode": "native", "scale": 1, "doublebuffer": true, "format": "RG11B10F" },
 		{ "name": "glow_accum", "mode": "native", "scale": 0.5, "doublebuffer": false, "format": "RGBA16F",
 		  "_comment": "Half-resolution accumulator matching the renderer glow FBO; beam, no-persist content and phosphor pool remain full resolution." },
-		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RGBA16F",
+		{ "name": "phos_pool", "mode": "native", "scale": 1, "doublebuffer": true, "format": "RG11B10F", "attachments": 2,
 		  "_comment": "phosphor pool: rgb = peak excitation colour, a = age (ms). Held + decayed by S(age). RGBA16F so age fits in alpha and colour is preserved (mono now, imager/AVG colour later)." },
 		{ "name": "screen_hdr","mode": "native", "scale": 1, "doublebuffer": false, "format": "RG11B10F",
 		  "_comment": "linear chain output; its presence makes the renderer present this as an HDR chain (PQ/EDR, SDR fallback)" },
@@ -248,12 +248,12 @@
 
 		{ "effect": "vector/vector_phosphor", "name": "Phosphor",
 		  "_comment": "pool update: rgb=peak,a=age. If the fresh frame is brighter than the decayed pool the pixel re-excites (age 0), else the peak holds and age advances by dt. u_phos = (dt_ms, half, curve, total) injected by the renderer. Reads+writes phos_pool in place (doublebuffered feedback).",
-		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" } ],
+		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_prev_age", "target": "phos_pool", "attachment": 1 } ],
 		  "uniforms": [], "output": "phos_pool" },
 
 		{ "effect": "vector/vector_phosphor_compose", "name": "Phosphor Apply",
 		  "_comment": "single compose pass replacing the former Phosphor Apply (pool emit) + NoPersist Combine + Phosphor Tint trio - two full-res passes saved, math unchanged: internal = (pool_peak * S(age) + npglow * cap_no_persist) * phosphor_color. The no-persist FBO holds short-dwell junction dots (bright while drawn, no afterimage, never fed into the glow cascade); the old pass pair's net 0.3745 x 2.67 = 0.99991 add is exactly 1.0 here (that was the intent), and u_np_gain=0 both reproduces the old disablewhen skip and guards stale np content. The entry keeps the name 'Phosphor Apply' because the renderer injects u_phos into it by name.",
-		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "texture": "npglow" }, { "sampler": "s_cur", "target": "internal" } ],
+		  "input": [ { "sampler": "s_tex", "target": "phos_pool" }, { "sampler": "s_np", "texture": "npglow" }, { "sampler": "s_cur", "target": "internal" }, { "sampler": "s_age", "target": "phos_pool", "attachment": 1 } ],
 		  "uniforms": [
 			{ "uniform": "u_np_gain",           "slider": "cap_no_persist" }, { "uniform": "u_fresh_gain", "slider": "fresh_hit_gain" },
 			{ "uniform": "u_line_channel_gain", "slider": "phosphor_color" } ],

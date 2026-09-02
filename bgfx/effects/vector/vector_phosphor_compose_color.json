@@ -41,6 +41,7 @@
         2.0
       ]
     },
+    { "name": "s_age", "type": "int", "values": [ 3.0 ] },
     {
       "name": "u_phos",
       "type": "vec4",

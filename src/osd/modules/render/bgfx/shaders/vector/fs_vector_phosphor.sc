@@ -13,7 +13,8 @@ $input v_color0, v_texcoord0
 
 #include "common.sh"
 
-SAMPLER2D(s_prev, 0);   // pool, previous frame: rgb = peak colour, a = age (ms)
+SAMPLER2D(s_prev, 0);   // pool attachment 0, previous frame: rgb = peak colour
+SAMPLER2D(s_prev_age, 3); // pool attachment 1, previous frame: rgb = per-channel age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
 SAMPLER2D(s_overlap, 2); // packed local light: rgb=density bloom, a=overload white heat
 
@@ -87,9 +88,11 @@ void main()
 			cur = mix(cur, vec3_splat(white_peak), white_amount);
 		}
 	}
-	vec4  prev  = texture2D(s_prev, v_texcoord0);
-	vec3  peakP = prev.rgb;
-	float ageP  = prev.a;
+	vec3  peakP = texture2D(s_prev, v_texcoord0).rgb;
+	// One age PER CHANNEL. A pixel excited green and then blue has two different excitation times,
+	// and a single age cannot express that: the old pool had to throw the green away to take the
+	// blue, which is why a blue explosion erased green text instead of adding to it.
+	vec3  ageP  = texture2D(s_prev_age, v_texcoord0).rgb;
 
 	// Two-phase energy decay + per-channel (RGB) half-life. accel = overrange-excess speed-up
 	// (u_phos2.x = phosphor_energy_decay); u_phos_rgb = per-channel half-life multiplier (1,1,1 =
@@ -110,25 +113,31 @@ void main()
 	// Advance the previous phosphor state to the CURRENT source-frame time before comparing it with
 	// this frame's excitation. The old ordering compared against the previous frame's brighter value
 	// and only added dt afterward, producing a one-frame decision lag near moving/dimming strokes.
-	float advanced_age = ageP + max(u_phos.x, 0.0);
-	float ageE = max(0.0, advanced_age - u_phos2.y);
+	vec3 advanced_age = ageP + vec3_splat(max(u_phos.x, 0.0));
+	vec3 ageE = max(vec3_splat(0.0), advanced_age - vec3_splat(u_phos2.y));
 	vec3 dRGB = vec3(
-		phos_two(ageE, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
-		phos_two(ageE, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
-		phos_two(ageE, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
-	float decayed_energy = phos_radiant_energy(dRGB);
+		phos_two(ageE.r, tauN.r, u_phos.z, totN.r, accel, normP.r, overP.r),
+		phos_two(ageE.g, tauN.g, u_phos.z, totN.g, accel, normP.g, overP.g),
+		phos_two(ageE.b, tauN.b, u_phos.z, totN.b, accel, normP.b, overP.b));
 	float cur_energy     = phos_radiant_energy(cur);
 
 	vec3  peak;
-	float age;
+	vec3  age;
 	// In Replace mode, a meaningful newly drawn stroke replaces the old phosphor history even when it
 	// is dimmer than the surviving residue. The floor rejects the gaussian beam's near-zero tails.
 	// Preserve Brighter instead uses temporal maximum composition so no fresh dark/weak sample can
 	// carve a step into brighter afterglow. A zero reset floor retains brightness-only replacement.
 	bool meaningful_hit = u_phos_reset.x > 0.0 && cur_energy >= u_phos_reset.x;
 	bool replace_weak_hit = meaningful_hit && u_phos_composite.x < 0.5;
-	if (replace_weak_hit || cur_energy >= decayed_energy)
+	// Decided PER CHANNEL. A channel the new stroke does not deposit into keeps its own peak and
+	// goes on ageing, so blue landing on green residue now adds to it instead of replacing it.
+	// Replace mode still resets history, but only in the channels the stroke actually wrote: the
+	// per-pixel gate says a real stroke arrived, the per-channel floor says where it arrived.
+	for (int c = 0; c < 3; c++)
 	{
+		bool wrote_here = cur[c] >= u_phos_reset.x;
+		if ((replace_weak_hit && wrote_here) || cur[c] >= dRGB[c])
+		{
 		// (Re)excited, or explicitly selected by Replace: the new excitation becomes the pixel. Do NOT adopt the
 		// decayed residue here (a previous max(cur, dRGB) "fix" did): re-anchoring the residue at
 		// age 0 every present combines with the Hill curve's flat shoulder (S(one present) ~ 1 at
@@ -137,13 +146,15 @@ void main()
 		// grazed by weak deposits froze at partially-decayed levels (dark glyph interiors). The
 		// clobbered-white-afterglow band this tried to cure is instead mitigated by the compose
 		// pass's superposition lower bound (display >= current excitation).
-		peak = cur;   age = 0.0;
-	}
-	else
-	{
+			peak[c] = cur[c];   age[c] = 0.0;
+		}
+		else
+		{
 		// Temporal maximum composite: a dim gaussian end/tail cannot overwrite a brighter residue.
 		// Keep both the old peak and its advanced age, so preserving it does not re-anchor/freeze it.
-		peak = peakP; age = advanced_age;
+			peak[c] = peakP[c]; age[c] = advanced_age[c];
+		}
 	}
-	gl_FragColor = vec4(peak, age);
+	gl_FragData[0] = vec4(peak, 1.0);
+	gl_FragData[1] = vec4(age, 1.0);
 }
