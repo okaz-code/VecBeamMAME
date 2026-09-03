@@ -53,7 +53,8 @@ if __name__ == '__main__':
         except (OSError, ValueError):
             continue
         if u is not None:
-            units[os.path.relpath(path, effects)[:-5]] = u
+            # A chain always spells the effect with '/', so match that on Windows too.
+            units[os.path.relpath(path, effects)[:-5].replace(os.sep, '/')] = u
 
     errors = warnings = passes = 0
     for path in sorted(glob.glob(os.path.join(chains, '**', '*.json'), recursive=True)):
