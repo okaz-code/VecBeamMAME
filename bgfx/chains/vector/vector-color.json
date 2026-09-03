@@ -48,7 +48,7 @@
 		             {"slider":"bezel_glow_strength","mode":"enable"},{"slider":"monitor_bezel_reflection","mode":"enable"},
 		             {"slider":"convergence_global_gain","mode":"enable"},
 		             {"slider":"tube_face_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.98]]},{"slider":"vector_image_scale","mode":"curve","curve":[[0.0,1.0],[1.0,0.94]]}]},
-		{"type":"float","name":"macro_bezel","text":"[M] Bezel Reflection","default":0.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
+		{"type":"float","name":"macro_bezel","text":"[M] Bezel Reflection","default":1.0,"min":0.0,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector",
 		  "targets":[{"slider":"bezel_glow_strength","mode":"scale"},{"slider":"monitor_bezel_reflection","mode":"curve","curve":[[0.0,0.0],[1.0,0.5],[3.0,1.0]]}]},
 		{"type":"int_enum","name":"macro_beam_sim","text":"[M] Beam/Supply Sim","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off","On"],
 		  "targets":[{"slider":"beam_jitter","mode":"enable"},{"slider":"hv_droop","mode":"enable"},
