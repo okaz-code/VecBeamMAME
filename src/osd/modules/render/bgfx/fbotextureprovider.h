@@ -28,6 +28,8 @@ public:
 
 	// bgfx_texture_handle_provider interface
 	virtual bgfx::TextureHandle texture()    const override { return m_texture; }
+	// Single-attachment provider: keep the base overload visible rather than hiding it.
+	using bgfx_texture_handle_provider::texture;
 	virtual bool     is_target()             const override { return false; }
 	virtual uint16_t width()                 const override { return m_width; }
 	virtual uint16_t width_margin()          const override { return 0; }
