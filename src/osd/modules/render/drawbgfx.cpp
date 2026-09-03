@@ -7320,6 +7320,28 @@ int renderer_bgfx::draw(int update)
 					s_bgfx_edr_active ? 1.0f : 0.0f };
 				hp->set(vals, sizeof(float) * 4);
 				hp->upload();
+				// The two HDR paths normalise against different whites - EDR against the display's
+				// current reference white, HDR10 against the OS SDR white - so the same chain-space
+				// value lands at a different level on each. Anything quoted in normalised units
+				// (ambient especially, which is a flat pedestal) therefore has to be compared with
+				// this line in hand, not slider for slider. Logged when it moves, not per frame.
+				const float amb_level = m_chains->slider_value(0, "ambient_level", 0.0f);
+				const float amb_scale = (s_bgfx_hdr_active || s_bgfx_edr_active)
+					? 1.0f
+					: (1.0f / std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f));
+				if (std::abs(output_reference_white - m_logged_reference_white) > 0.01f
+					|| std::abs(amb_level - m_logged_ambient_level) > 1.0e-4f)
+				{
+					m_logged_reference_white = output_reference_white;
+					m_logged_ambient_level = amb_level;
+					osd_printf_verbose(
+							"BGFX: present reference white %.1f nits (%s), beam %.0f nits;"
+							" ambient level %.3f x output scale %.3f -> %.4f nits before mask/vignette\n",
+							output_reference_white,
+							s_bgfx_edr_active ? "EDR current headroom" : "OS SDR white",
+							vals[0], amb_level, amb_scale,
+							amb_level * 0.001f * amb_scale * vals[0]);
+				}
 			}
 			// Hue-preserving highlight roll-off (knee / max as multiples of beam_peak). Caps over-bright
 			// additive crossings while keeping chromaticity, so a blue line crossing stays blue instead of

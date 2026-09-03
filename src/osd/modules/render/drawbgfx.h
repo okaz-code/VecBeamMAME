@@ -551,6 +551,9 @@ private:
 	bgfx_effect *m_hdr_upscale_effect = nullptr;  // encoded composite -> physical output blit
 	float m_hdr_ui_nits_scale = 200.0f;     // UI stays at paper white
 	float m_hdr_art_nits_scale = 200.0f;    // ordinary artwork follows Room Ambient
+	// Last values reported by the present-path diagnostic, so it logs on change, not per frame.
+	float m_logged_reference_white = -1.0f;
+	float m_logged_ambient_level = -1.0f;
 	// Vectrex two-sided transparent overlay. Rear white ink and coloured resin/transmission are
 	// rendered to optical masks and composed with screen_hdr.  Surface print images remain ordinary
 	// bezel/artwork elements; the coloured-resin role itself is consumed by this optical path.
