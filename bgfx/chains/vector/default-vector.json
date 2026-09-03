@@ -2,9 +2,21 @@
 // copyright-holders:okaz-code
 // Default minimal vector chain. Auto-selected for vector games under BGFX when no compatible chain
 // is configured. It presents the analytic-AA vector lines that drawbgfx renders into a supersampled
-// FBO (exposed to the chain as "screen") by blitting that FBO to the output; the analytic line shape
-// (rounded caps, point handling) is produced by drawbgfx's fs_vector_line pass. Richer CRT chains
-// (phosphor / bloom / shadow mask / distortion) can be selected in place of this one.
+// FBO (exposed to the chain as "screen"); the analytic line shape (rounded caps, point handling) is
+// produced by drawbgfx's fs_vector_line pass. Richer CRT chains (phosphor / bloom / shadow mask /
+// distortion) can be selected in place of this one.
+//
+// The chain ends in "screen_hdr" rather than "output". That target's presence is what tells the
+// renderer to present this as an HDR chain: it seeds the linear work target with screen_hdr x
+// beam_peak_nits, composes artwork and UI on top, and encodes the result for whichever swapchain is
+// actually in use - PQ for Windows HDR10, linear extended for macOS EDR, gamma for SDR.
+//
+// Writing straight to "output" skipped all of that. On an SDR swapchain the values happened to land
+// correctly, and on macOS EDR the float swapchain passed them through, so the picture looked right
+// on both. On Windows HDR10 the swapchain is RGB10A2 holding PQ codes, and the same linear values
+// were read as PQ: measured on starwars 7399, faint strokes came out at 0.15x their intended
+// luminance while the saturated cores came out at 39.5x, which is why the Death Star explosion's
+// spokes were visible on macOS and not on Windows.
 {
 	"name": "Vector",
 	"author": "okaz-code",
@@ -15,7 +27,23 @@
 			"mode": "guest",
 			"bilinear": true,
 			"user_prescale": true
+		},
+		{   "name": "screen_hdr",
+			"mode": "native",
+			"scale": 1,
+			"doublebuffer": false,
+			"format": "RG11B10F"
 		}
+	],
+
+	"sliders": [
+		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":300,"min":80.0,"max":2000.0,"step":10.0,"format":"%4.0f","screen":"vector"},
+		{"type":"float","name":"hdr_rolloff_knee","text":"HDR Rolloff Knee (x beam)","default":1.0,"min":0.5,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"hdr_rolloff_max","text":"HDR Rolloff Max (x beam)","default":2.4,"min":0.5,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"hdr_sat_protect","text":"HDR Saturated Colour Protect","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_beam_level","text":"SDR Beam Level","default":0.9,"min":0.1,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_rolloff_knee","text":"SDR Highlight Knee","default":0.75,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"sdr_rolloff_ceiling","text":"SDR Highlight Ceiling","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector"}
 	],
 
 	"passes": [
@@ -27,11 +55,12 @@
 			"output": "guest"
 		},
 		{   "effect": "misc/blit",
-			"name": "Final blit to output",
+			"name": "Final blit to screen_hdr",
+			"_comment": "linear, normalized (1.0 = one calibrated beam). The renderer scales this by beam_peak_nits into absolute nits and encodes it for the active swapchain.",
 			"input": [
 				{ "sampler": "s_tex", "target": "guest" }
 			],
-			"output": "output"
+			"output": "screen_hdr"
 		}
 	]
 }
