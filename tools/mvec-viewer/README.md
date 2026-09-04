@@ -1,49 +1,52 @@
 # MVEC Viewer
 
-`mvec-viewer.html`をChrome、Edge、Safariなどで開き、`MVECファイル`からMAMEの
-`-vector_record`で記録したファイルを選択します。ファイルはブラウザ内だけで処理され、
-外部へ送信されません。
+Open `mvec-viewer.html` in Chrome, Edge or Safari and pick a file recorded by MAME's
+`-vector_record`. Everything is processed inside the browser; nothing is sent anywhere.
 
-## フレーム指定
+The tool's user interface is English only. A Japanese copy of this document is in
+[README.ja.md](README.ja.md).
 
-- `データ X / N`は、MVEC内で先頭から数えた1始まりのフレーム位置です。
-- `データのフレーム`欄へ番号を入力すると、その位置へ直接移動します。
-- `記録フレームID`はMVECに格納された0始まりのIDです。
-- 共同で確認するときは「データの125フレーム目」のように、`データ X / N`のXを指定してください。
+## Frame numbering
 
-## 画面の並び
+- `Data X / N` is the 1-based position of the frame counted from the start of the MVEC.
+- Typing a number into `Data frame` jumps straight to that position.
+- `Recorded frame ID` is the 0-based ID stored in the MVEC itself.
+- When comparing notes with someone else, quote the X of `Data X / N`, e.g. "data frame 125".
 
-フレーム操作(トランスポート・`データのフレーム`・フレーム位置スライダー)は
-ファイル情報行の直下にあります。表示画面はその下です。
+## Layout
 
-## 操作
+The frame controls (transport, `Data frame`, frame position slider) sit directly under the
+file-info line. The display is below them.
 
-- `前` / `次`: 1フレーム移動
-- `|<` / `>|`: 先頭 / 末尾へ移動
-- `再生`: 60フレーム/秒で連続表示
-- 左右矢印キー: 前後のフレームへ移動
-- Spaceキー: 再生 / 停止
-- フレーム位置スライダー: 任意位置へ移動
-- 表示方向: 記録座標を90度単位で回転
-- 拡大: マウスホイール(カーソル位置を中心に拡大)/ `＋` `−` ボタン / `+` `-` キー
-- 拡大位置の移動: 拡大中にキャンバスをドラッグ。参照モードでも同じように使えます
-- 全体表示に戻す: `全体`ボタン / キャンバスをダブルクリック / `0`キー
-- blank移動を表示: intensity 0のビーム移動経路も表示
-- ベクターをクリック: RGB、強度、beam energy、描画時間などを表示
-- 参照モード: 実画面と参照表を横に並べ、選択行までのベクターだけを描画して選択行を黄色で強調
-- 参照表の行クリック / 前後ボタン / 行番号 / スライダー: フレーム内のベクター行を選択
-- 参照モード中の上下矢印キー: 前後のベクター行へ移動
+## Controls
 
-読み込み時には全フレームのCRC32を検証します。staleフレームは、MAMEでの再生と同様に
-直前の有効なベクターリストを表示します。
+- `Prev` / `Next`: step one frame
+- `|<` / `>|`: jump to the first / last frame
+- `Play`: play back at 60 frames/second
+- Left / right arrow keys: previous / next frame
+- Space: play / stop
+- Frame position slider: seek anywhere
+- Orientation: rotate the recorded coordinates in 90° steps
+- Zoom: mouse wheel (zooms about the cursor) / `＋` `−` buttons / `+` `-` keys
+- Pan: drag the canvas while zoomed in. This works in reference mode too.
+- Back to the whole frame: `Fit` button / double-click the canvas / `0` key
+- Show blank moves: also draw the beam moves at intensity 0
+- Click a vector: shows RGB, intensity, beam energy, draw time and more
+- Reference mode: puts the display and the data table side by side, draws only the vectors up
+  to the selected row, and highlights that row in yellow
+- Click a table row / `Prev row`, `Next row` / `Vector row` / the slider: select a vector row
+- Up / down arrow keys in reference mode: previous / next vector row
 
-## 対応フォーマット
+Every frame's CRC32 is verified at load time. Stale frames show the last valid vector list,
+exactly as MAME does during playback.
 
-MVEC **1.0 / 1.1** を読み込めます(`vector.cpp` の `MVEC_VERSION_MAJOR/MINOR`)。
-1.1 はヘッダの system / device 文字列の後に **記録フレーム周期(attoseconds, i64)** が
-追加されているだけで、フレームチャンクとベクターレコード(66バイト)は 1.0 と同一です。
-周期が記録されている場合はステータス行に `1.1 ... 60.000Hz` のように記録レートを表示します
-(1.0 は周期を持たないため非表示)。マイナーが 2 以上のファイルは明示的に拒否します。
+## Supported formats
 
-このビューアはプリミティブなベクターデータを加算合成で確認するためのものです。
-BGFXチェインの残光、Glow、シャドウマスク、HDR/EDRなどは再現しません。
+MVEC **1.0 / 1.1** can be read (`MVEC_VERSION_MAJOR/MINOR` in `vector.cpp`). 1.1 only adds the
+**recorded frame period (attoseconds, i64)** after the header's system / device strings; the
+frame chunks and the 66-byte vector records are identical to 1.0. When the period is present
+the status line shows the recording rate, e.g. `1.1 ... 60.000Hz` (1.0 has no period, so
+nothing is shown). Files with a minor version of 2 or above are rejected outright.
+
+This viewer is for inspecting primitive vector data with additive blending. It does not
+reproduce the BGFX chain's afterglow, glow, shadow mask, HDR/EDR or anything similar.

@@ -660,7 +660,7 @@ textarea.form-control {
   outline: none;
   border: 0;
   accent-color: var(--primary);
-  /* 2px / 7% のトラックは実質見えなかったので、太さとコントラストを上げる */
+  /* A 2px / 7% track was effectively invisible, so thicken it and raise contrast. */
   background: linear-gradient(
       color-mix(in srgb, var(--foreground) 34%, transparent),
       color-mix(in srgb, var(--foreground) 34%, transparent)
@@ -754,12 +754,12 @@ html&gt;body{padding:0}&lt;/style&gt;
 &lt;body&gt;
 &lt;div id=&quot;mvec-viewer-root&quot;&gt;
   &lt;div class=&quot;viz-controls mvec-toolbar&quot;&gt;
-    &lt;label class=&quot;form-label&quot;&gt;MVECファイル
+    &lt;label class=&quot;form-label&quot;&gt;MVEC file
       &lt;input id=&quot;mvec-file&quot; class=&quot;form-control&quot; type=&quot;file&quot; accept=&quot;.mvec,application/octet-stream&quot;&gt;
     &lt;/label&gt;
-    &lt;label class=&quot;form-label&quot;&gt;表示方向
+    &lt;label class=&quot;form-label&quot;&gt;Orientation
       &lt;select id=&quot;mvec-rotation&quot; class=&quot;form-select&quot;&gt;
-        &lt;option value=&quot;0&quot;&gt;0°（記録座標）&lt;/option&gt;
+        &lt;option value=&quot;0&quot;&gt;0° (recorded)&lt;/option&gt;
         &lt;option value=&quot;90&quot;&gt;90°&lt;/option&gt;
         &lt;option value=&quot;180&quot;&gt;180°&lt;/option&gt;
         &lt;option value=&quot;270&quot;&gt;270°&lt;/option&gt;
@@ -767,61 +767,61 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;/label&gt;
     &lt;label class=&quot;form-check&quot;&gt;
       &lt;input id=&quot;mvec-blank&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot;&gt;
-      &lt;span class=&quot;form-check-label&quot;&gt;blank移動を表示&lt;/span&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;Show blank moves&lt;/span&gt;
     &lt;/label&gt;
-    &lt;label class=&quot;form-check form-switch&quot; data-tooltip=&quot;MAMEのvector_overscan_x/y 0.5相当で、記録された画面外ベクターを表示します&quot;&gt;
+    &lt;label class=&quot;form-check form-switch&quot; data-tooltip=&quot;Equivalent to MAME vector_overscan_x/y 0.5: reveals recorded vectors that fall outside the visible area&quot;&gt;
       &lt;input id=&quot;mvec-overscan&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot;&gt;
-      &lt;span class=&quot;form-check-label&quot;&gt;オーバースキャン表示（0.5）&lt;/span&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;Overscan (0.5)&lt;/span&gt;
     &lt;/label&gt;
     &lt;label class=&quot;form-check form-switch&quot;&gt;
       &lt;input id=&quot;mvec-reference-mode&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot; disabled&gt;
-      &lt;span class=&quot;form-check-label&quot;&gt;参照モード&lt;/span&gt;
+      &lt;span class=&quot;form-check-label&quot;&gt;Reference mode&lt;/span&gt;
     &lt;/label&gt;
   &lt;/div&gt;
 
-  &lt;div id=&quot;mvec-status&quot; class=&quot;text-small text-muted&quot; role=&quot;status&quot;&gt;MVECファイルを選択してください。&lt;/div&gt;
+  &lt;div id=&quot;mvec-status&quot; class=&quot;text-small text-muted&quot; role=&quot;status&quot;&gt;Choose an MVEC file.&lt;/div&gt;
 
   &lt;div class=&quot;viz-controls mvec-transport&quot;&gt;
     &lt;button id=&quot;mvec-first&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;|&amp;lt;&lt;/button&gt;
-    &lt;button id=&quot;mvec-prev&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;前&lt;/button&gt;
-    &lt;button id=&quot;mvec-play&quot; class=&quot;btn btn-primary&quot; type=&quot;button&quot; disabled&gt;再生&lt;/button&gt;
-    &lt;button id=&quot;mvec-next&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;次&lt;/button&gt;
+    &lt;button id=&quot;mvec-prev&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;Prev&lt;/button&gt;
+    &lt;button id=&quot;mvec-play&quot; class=&quot;btn btn-primary&quot; type=&quot;button&quot; disabled&gt;Play&lt;/button&gt;
+    &lt;button id=&quot;mvec-next&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;Next&lt;/button&gt;
     &lt;button id=&quot;mvec-last&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled&gt;&amp;gt;|&lt;/button&gt;
-    &lt;label class=&quot;form-label mvec-frame-field&quot;&gt;データのフレーム
+    &lt;label class=&quot;form-label mvec-frame-field&quot;&gt;Data frame
       &lt;input id=&quot;mvec-frame-number&quot; class=&quot;form-control&quot; type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot; disabled&gt;
     &lt;/label&gt;
-    &lt;output id=&quot;mvec-frame-count&quot; class=&quot;mvec-count&quot;&gt;データ 0 / 0&lt;/output&gt;
+    &lt;output id=&quot;mvec-frame-count&quot; class=&quot;mvec-count&quot;&gt;Data 0 / 0&lt;/output&gt;
     &lt;span class=&quot;mvec-zoom-group&quot;&gt;
-      &lt;output id=&quot;mvec-zoom&quot; class=&quot;mvec-count&quot;&gt;拡大 1x&lt;/output&gt;
-      &lt;button id=&quot;mvec-zoom-out&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;縮小（ホイール下 / -キー）&quot;&gt;−&lt;/button&gt;
-      &lt;button id=&quot;mvec-zoom-in&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;拡大（ホイール上 / +キー）&quot;&gt;＋&lt;/button&gt;
-      &lt;button id=&quot;mvec-zoom-reset&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;全体表示に戻す（ダブルクリック / 0キー）&quot;&gt;全体&lt;/button&gt;
+      &lt;output id=&quot;mvec-zoom&quot; class=&quot;mvec-count&quot;&gt;Zoom 1x&lt;/output&gt;
+      &lt;button id=&quot;mvec-zoom-out&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;Zoom out (wheel down / - key)&quot;&gt;−&lt;/button&gt;
+      &lt;button id=&quot;mvec-zoom-in&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;Zoom in (wheel up / + key)&quot;&gt;＋&lt;/button&gt;
+      &lt;button id=&quot;mvec-zoom-reset&quot; class=&quot;btn&quot; type=&quot;button&quot; disabled title=&quot;Fit the whole frame (double-click / 0 key)&quot;&gt;Fit&lt;/button&gt;
     &lt;/span&gt;
   &lt;/div&gt;
 
-  &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-frame-range&quot;&gt;フレーム位置&lt;/label&gt;
+  &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-frame-range&quot;&gt;Frame position&lt;/label&gt;
   &lt;input id=&quot;mvec-frame-range&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;1&quot; max=&quot;1&quot; value=&quot;1&quot; disabled&gt;
 
   &lt;div id=&quot;mvec-workspace&quot; class=&quot;mvec-workspace&quot;&gt;
     &lt;div class=&quot;mvec-stage&quot;&gt;
-      &lt;canvas id=&quot;mvec-canvas&quot; role=&quot;img&quot; aria-label=&quot;選択したMVECフレームのベクター表示&quot;&gt;&lt;/canvas&gt;
+      &lt;canvas id=&quot;mvec-canvas&quot; role=&quot;img&quot; aria-label=&quot;Vector view of the selected MVEC frame&quot;&gt;&lt;/canvas&gt;
     &lt;/div&gt;
 
-    &lt;section id=&quot;mvec-reference-panel&quot; class=&quot;mvec-reference&quot; hidden aria-label=&quot;フレーム内ベクターデータ&quot;&gt;
+    &lt;section id=&quot;mvec-reference-panel&quot; class=&quot;mvec-reference&quot; hidden aria-label=&quot;Vector data of the current frame&quot;&gt;
       &lt;div class=&quot;viz-controls mvec-reference-controls&quot;&gt;
-        &lt;button id=&quot;mvec-vector-prev&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;前の行&lt;/button&gt;
-        &lt;button id=&quot;mvec-vector-next&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;次の行&lt;/button&gt;
-        &lt;label class=&quot;form-label mvec-vector-field&quot;&gt;ベクター行
+        &lt;button id=&quot;mvec-vector-prev&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;Prev row&lt;/button&gt;
+        &lt;button id=&quot;mvec-vector-next&quot; class=&quot;btn&quot; type=&quot;button&quot;&gt;Next row&lt;/button&gt;
+        &lt;label class=&quot;form-label mvec-vector-field&quot;&gt;Vector row
           &lt;input id=&quot;mvec-vector-number&quot; class=&quot;form-control&quot; type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot;&gt;
         &lt;/label&gt;
-        &lt;output id=&quot;mvec-vector-count&quot; class=&quot;mvec-count&quot;&gt;行 0 / 0&lt;/output&gt;
+        &lt;output id=&quot;mvec-vector-count&quot; class=&quot;mvec-count&quot;&gt;Row 0 / 0&lt;/output&gt;
       &lt;/div&gt;
-      &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-vector-range&quot;&gt;描画する最終行&lt;/label&gt;
+      &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-vector-range&quot;&gt;Last row drawn&lt;/label&gt;
       &lt;input id=&quot;mvec-vector-range&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;1&quot; max=&quot;1&quot; value=&quot;1&quot;&gt;
-      &lt;div id=&quot;mvec-row-window&quot; class=&quot;text-small text-muted&quot;&gt;表示行 —&lt;/div&gt;
+      &lt;div id=&quot;mvec-row-window&quot; class=&quot;text-small text-muted&quot;&gt;Rows —&lt;/div&gt;
       &lt;div class=&quot;mvec-table-wrap&quot;&gt;
         &lt;table class=&quot;mvec-table&quot;&gt;
-          &lt;thead&gt;&lt;tr&gt;&lt;th&gt;行&lt;/th&gt;&lt;th&gt;種別&lt;/th&gt;&lt;th&gt;x0&lt;/th&gt;&lt;th&gt;y0&lt;/th&gt;&lt;th&gt;x1&lt;/th&gt;&lt;th&gt;y1&lt;/th&gt;&lt;th&gt;RGB&lt;/th&gt;&lt;th&gt;強度&lt;/th&gt;&lt;th&gt;energy&lt;/th&gt;&lt;th&gt;t0&lt;/th&gt;&lt;th&gt;t1&lt;/th&gt;&lt;th&gt;caps&lt;/th&gt;&lt;th&gt;scale&lt;/th&gt;&lt;th&gt;ramp µs&lt;/th&gt;&lt;th&gt;mid&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+          &lt;thead&gt;&lt;tr&gt;&lt;th&gt;row&lt;/th&gt;&lt;th&gt;kind&lt;/th&gt;&lt;th&gt;x0&lt;/th&gt;&lt;th&gt;y0&lt;/th&gt;&lt;th&gt;x1&lt;/th&gt;&lt;th&gt;y1&lt;/th&gt;&lt;th&gt;RGB&lt;/th&gt;&lt;th&gt;intens&lt;/th&gt;&lt;th&gt;energy&lt;/th&gt;&lt;th&gt;t0&lt;/th&gt;&lt;th&gt;t1&lt;/th&gt;&lt;th&gt;caps&lt;/th&gt;&lt;th&gt;scale&lt;/th&gt;&lt;th&gt;ramp µs&lt;/th&gt;&lt;th&gt;mid&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
           &lt;tbody id=&quot;mvec-vector-rows&quot;&gt;&lt;/tbody&gt;
         &lt;/table&gt;
       &lt;/div&gt;
@@ -830,8 +830,8 @@ html&gt;body{padding:0}&lt;/style&gt;
 
 
 
-  &lt;div id=&quot;mvec-frame-meta&quot; class=&quot;text-small text-muted&quot;&gt;記録フレームID —・ベクター —&lt;/div&gt;
-  &lt;div id=&quot;mvec-selection&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;ベクターをクリックすると詳細を表示します。&lt;/div&gt;
+  &lt;div id=&quot;mvec-frame-meta&quot; class=&quot;text-small text-muted&quot;&gt;Recorded frame ID — · vectors —&lt;/div&gt;
+  &lt;div id=&quot;mvec-selection&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;Click a vector to see its details.&lt;/div&gt;
 
 &lt;/div&gt;
 
@@ -922,8 +922,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   const ROW_WINDOW_SIZE = 80;
 
   const state = {
-    file: null,          // 全体を ArrayBuffer に載せない。2GB を超えるとブラウザが読めないため
-    payloads: new Map(), // フレーム番号 -&gt; そのフレームのペイロード（必要になった分だけ）
+    file: null,          // Never load the whole file into an ArrayBuffer: past 2GB the browser cannot.
+    payloads: new Map(), // frame index -&gt; that frame&#x27;s payload (only the ones actually needed)
     frames: [],
     cache: new Map(),
     current: 0,
@@ -935,8 +935,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     fileName: &#x27;&#x27;,
     drawRect: null,
     drawPoints: null,
-    zoom: 1,          // 1 = 全体表示
-    panX: 0,          // CSS px（キャンバス中心からのずれ）
+    zoom: 1,          // 1 = whole frame fitted
+    panX: 0,          // CSS px, offset from the canvas centre
     panY: 0,
     drag: null,
     dragMoved: false
@@ -959,9 +959,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     return (c ^ 0xffffffff) &gt;&gt;&gt; 0;
   }
 
-  // 走査窓。フレームのペイロードは最大 36 + 20000*66 = 約 1.3MB なので、16MB あれば
-  // どのフレームも窓に収まる。ファイル全体を一度に読まないのは、2GB を超える録画
-  // （starwars / mhavoc）で ArrayBuffer の上限に当たり NotReadableError になるため。
+  // Scan window. A frame payload is at most 36 + 20000*66 = about 1.3MB, so 16MB
+  // always holds a whole frame. We never read the entire file at once because
+  // recordings over 2GB (starwars / mhavoc) hit the ArrayBuffer limit and fail
+  // with NotReadableError.
   const SCAN_WINDOW = 1 &lt;&lt; 24;
 
   async function parseMvec(file, name, progress) {
@@ -970,31 +971,31 @@ html&gt;body{padding:0}&lt;/style&gt;
     let view = new DataView(bytes.buffer);
     const rel = abs =&gt; abs - winStart;
     async function need(abs, size, label) {
-      if (size &lt; 0 || abs &lt; 0 || abs + size &gt; file.size) throw new Error(label + &#x27;が途中で切れています。&#x27;);
+      if (size &lt; 0 || abs &lt; 0 || abs + size &gt; file.size) throw new Error(label + &#x27; is truncated.&#x27;);
       if (abs &gt;= winStart &amp;&amp; abs + size &lt;= winStart + bytes.length) return;
-      if (size &gt; SCAN_WINDOW) throw new Error(label + &#x27;が大きすぎます。&#x27;);
+      if (size &gt; SCAN_WINDOW) throw new Error(label + &#x27; is too large.&#x27;);
       winStart = abs;
       const buf = await file.slice(abs, Math.min(abs + SCAN_WINDOW, file.size)).arrayBuffer();
       bytes = new Uint8Array(buf);
       view = new DataView(buf);
     }
     let pos = 0;
-    await need(0, 16, &#x27;MVECヘッダー&#x27;);
+    await need(0, 16, &#x27;The MVEC header&#x27;);
     const expected = [77, 65, 77, 69, 86, 69, 67, 0];
     for (let i = 0; i &lt; expected.length; i++) {
-      if (bytes[i] !== expected[i]) throw new Error(&#x27;MVEC v1ファイルではありません。&#x27;);
+      if (bytes[i] !== expected[i]) throw new Error(&#x27;Not an MVEC v1 file.&#x27;);
     }
     pos = 8;
     const major = view.getUint16(rel(pos), true); pos += 2;
     const minor = view.getUint16(rel(pos), true); pos += 2;
     const endian = view.getUint32(rel(pos), true); pos += 4;
-    if (major !== 1 || minor &gt; 1 || endian !== 0x12345678) throw new Error(`未対応のMVEC形式です（${major}.${minor}）。`);
+    if (major !== 1 || minor &gt; 1 || endian !== 0x12345678) throw new Error(`Unsupported MVEC format (${major}.${minor}).`);
 
     const decoder = new TextDecoder(&#x27;utf-8&#x27;);
     async function readString() {
-      await need(pos, 2, &#x27;MVEC文字列&#x27;);
+      await need(pos, 2, &#x27;An MVEC string&#x27;);
       const length = view.getUint16(rel(pos), true); pos += 2;
-      await need(pos, length, &#x27;MVEC文字列&#x27;);
+      await need(pos, length, &#x27;An MVEC string&#x27;);
       const value = decoder.decode(bytes.subarray(rel(pos), rel(pos) + length));
       pos += length;
       return value;
@@ -1006,23 +1007,23 @@ html&gt;body{padding:0}&lt;/style&gt;
     // 0 or missing means the recorder did not know it; playback then infers it.
     let framePeriodAs = 0;
     if (minor &gt;= 1) {
-      await need(pos, 8, &#x27;MVECフレーム周期&#x27;);
+      await need(pos, 8, &#x27;The MVEC frame period&#x27;);
       framePeriodAs = Number(view.getBigInt64(rel(pos), true)); pos += 8;
     }
     const frames = [];
     let lastContent = -1;
     while (pos &lt; file.size) {
-      await need(pos, 8, &#x27;フレームチャンク&#x27;);
+      await need(pos, 8, &#x27;A frame chunk&#x27;);
       const magic = view.getUint32(rel(pos), true);
-      if (magic !== 0x4d415246) throw new Error(`フレーム${frames.length + 1}のFRAMマーカーが不正です。`);
+      if (magic !== 0x4d415246) throw new Error(`Frame ${frames.length + 1} has a bad FRAM marker.`);
       const payloadSize = view.getUint32(rel(pos) + 4, true);
       const payload = pos + 8;
-      if (payloadSize &lt; 36) throw new Error(`フレーム${frames.length + 1}のペイロードが短すぎます。`);
-      // ここで窓がずれることがあるので、これより前の rel() の結果は使い回さない
-      await need(payload, payloadSize + 4, `フレーム${frames.length + 1}`);
+      if (payloadSize &lt; 36) throw new Error(`Frame ${frames.length + 1} has a payload that is too short.`);
+      // The window may shift here, so never reuse a rel() result taken before this call.
+      await need(payload, payloadSize + 4, `Frame ${frames.length + 1}`);
       const storedCrc = view.getUint32(rel(payload) + payloadSize, true);
       const actualCrc = crc32(bytes, rel(payload), payloadSize);
-      if (storedCrc !== actualCrc) throw new Error(`フレーム${frames.length + 1}のCRCが一致しません。`);
+      if (storedCrc !== actualCrc) throw new Error(`Frame ${frames.length + 1} has a CRC mismatch.`);
 
       const id = view.getBigUint64(rel(payload), true);
       const flags = view.getUint32(rel(payload) + 8, true);
@@ -1030,8 +1031,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       const pointCount = view.getUint32(rel(payload) + 32, true);
       if (progress &amp;&amp; (frames.length &amp; 511) === 0) progress(pos, file.size);
       const expectedSize = 36 + pointCount * 66;
-      if (expectedSize !== payloadSize) throw new Error(`フレーム${frames.length + 1}のベクター数とサイズが一致しません。`);
-      if (stale &amp;&amp; pointCount !== 0) throw new Error(`staleフレーム${frames.length + 1}にベクターが格納されています。`);
+      if (expectedSize !== payloadSize) throw new Error(`Frame ${frames.length + 1} has a vector count that disagrees with its size.`);
+      if (stale &amp;&amp; pointCount !== 0) throw new Error(`Stale frame ${frames.length + 1} stores vectors.`);
       if (!stale) lastContent = frames.length;
 
       frames.push({
@@ -1052,7 +1053,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       });
       pos = payload + payloadSize + 4;
     }
-    if (!frames.length) throw new Error(&#x27;フレームが記録されていません。&#x27;);
+    if (!frames.length) throw new Error(&#x27;No frames were recorded.&#x27;);
 
     state.file = file;
     state.payloads.clear();
@@ -1077,7 +1078,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     state.frameHz = framePeriodAs &gt; 0 ? 1e18 / framePeriodAs : 0;
   }
 
-  // 表示に必要なフレームのペイロードだけを読み出す。ファイル全体は保持しない。
+  // Read only the payload of the frame we need to show; never keep the whole file.
   async function ensureContent(sourceIndex) {
     if (sourceIndex &lt; 0) return;
     if (state.cache.has(sourceIndex) || state.payloads.has(sourceIndex)) return;
@@ -1094,9 +1095,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     if (state.cache.has(sourceIndex)) return state.cache.get(sourceIndex);
     const source = state.frames[sourceIndex];
     const payload = state.payloads.get(sourceIndex);
-    if (!payload) return [];              // ensureContent がまだ読んでいない
+    if (!payload) return [];              // ensureContent has not fetched it yet
     const view = new DataView(payload);
-    let pos = 36;                         // ペイロード先頭からの相対
+    let pos = 36;                         // relative to the start of the payload
     const points = new Array(source.storedCount);
     for (let i = 0; i &lt; points.length; i++) {
       const x0 = view.getInt32(pos, true); pos += 4;
@@ -1170,7 +1171,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       drawH = Math.max(1, h - pad * 2);
       drawW = drawH * aspect;
     }
-    // 拡大とドラッグ移動。zoom は全体表示を 1 とする倍率、pan は CSS px なのでマウス移動量と 1:1。
+    // Zoom and drag. zoom is a factor with 1 = whole frame fitted; pan is in CSS px,
+    // so it tracks mouse movement 1:1.
     drawW *= state.zoom;
     drawH *= state.zoom;
     const panLimitX = Math.max(0, (drawW - w) * 0.5) / dpr + 48;
@@ -1269,20 +1271,23 @@ html&gt;body{padding:0}&lt;/style&gt;
   function vectorDetail(index) {
     const points = decodeContent(state.current);
     if (index &lt; 0 || index &gt;= points.length) {
-      selection.textContent = &#x27;ベクターをクリックすると詳細を表示します。&#x27;;
+      selection.textContent = &#x27;Click a vector to see its details.&#x27;;
       return;
     }
     const p = points[index];
     const hex = &#x27;#&#x27; + (p.color &amp; 0xffffff).toString(16).padStart(6, &#x27;0&#x27;).toUpperCase();
-    const kind = p.x0 === p.x &amp;&amp; p.y0 === p.y ? &#x27;点&#x27; : (p.intensity === 0 ? &#x27;blank移動&#x27; : &#x27;線&#x27;);
+    const kind = p.x0 === p.x &amp;&amp; p.y0 === p.y ? &#x27;point&#x27; : (p.intensity === 0 ? &#x27;blank move&#x27; : &#x27;line&#x27;);
     const frame = state.frames[state.current];
     const duration = frame.timed &amp;&amp; Number.isFinite(p.t0) &amp;&amp; Number.isFinite(p.t1) &amp;&amp; p.t0 &lt; 1e8
       ? Math.max(0, (p.t1 - p.t0) * 1e6) : NaN;
-    selection.textContent = `ベクター ${index + 1} / ${points.length}・${kind}・RGB ${hex}・強度 ${p.intensity}・energy ${p.energy.toFixed(4)}・描画時間 ${Number.isFinite(duration) ? duration.toFixed(3) + &#x27; µs&#x27; : &#x27;—&#x27;}・caps 0x${p.caps.toString(16)}`;
+    selection.textContent = `Vector ${index + 1} / ${points.length} · ${kind} · RGB ${hex}`
+      + ` · intensity ${p.intensity} · energy ${p.energy.toFixed(4)}`
+      + ` · draw time ${Number.isFinite(duration) ? duration.toFixed(3) + &#x27; µs&#x27; : &#x27;—&#x27;}`
+      + ` · caps 0x${p.caps.toString(16)}`;
   }
 
   function vectorKind(point) {
-    return point.x0 === point.x &amp;&amp; point.y0 === point.y ? &#x27;点&#x27; : (point.intensity === 0 ? &#x27;blank&#x27; : &#x27;線&#x27;);
+    return point.x0 === point.x &amp;&amp; point.y0 === point.y ? &#x27;point&#x27; : (point.intensity === 0 ? &#x27;blank&#x27; : &#x27;line&#x27;);
   }
 
   function vectorTime(value) {
@@ -1303,20 +1308,21 @@ html&gt;body{padding:0}&lt;/style&gt;
       state.selected = -1;
       vectorNumber.value = &#x27;1&#x27;;
       vectorRange.value = &#x27;1&#x27;;
-      vectorCount.textContent = &#x27;行 0 / 0&#x27;;
-      rowWindow.textContent = &#x27;表示行 —&#x27;;
+      vectorCount.textContent = &#x27;Row 0 / 0&#x27;;
+      rowWindow.textContent = &#x27;Rows —&#x27;;
       return;
     }
 
     state.selected = Math.max(0, Math.min(total - 1, state.selected));
     vectorNumber.value = String(state.selected + 1);
     vectorRange.value = String(state.selected + 1);
-    vectorCount.textContent = &#x27;行 &#x27; + (state.selected + 1) + &#x27; / &#x27; + total;
+    vectorCount.textContent = &#x27;Row &#x27; + (state.selected + 1) + &#x27; / &#x27; + total;
 
     const maxStart = Math.max(0, total - ROW_WINDOW_SIZE);
     const start = Math.max(0, Math.min(maxStart, state.selected - Math.floor(ROW_WINDOW_SIZE / 2)));
     const end = Math.min(total, start + ROW_WINDOW_SIZE);
-    rowWindow.textContent = &#x27;表示行 &#x27; + (start + 1) + &#x27;–&#x27; + end + &#x27; / &#x27; + total + &#x27;（選択行を中心に最大&#x27; + ROW_WINDOW_SIZE + &#x27;行）&#x27;;
+    rowWindow.textContent = &#x27;Rows &#x27; + (start + 1) + &#x27;–&#x27; + end + &#x27; / &#x27; + total
+      + &#x27; (up to &#x27; + ROW_WINDOW_SIZE + &#x27;, centred on the selection)&#x27;;
 
     const fragment = document.createDocumentFragment();
     for (let i = start; i &lt; end; i++) {
@@ -1330,7 +1336,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       ];
       const row = document.createElement(&#x27;tr&#x27;);
       row.setAttribute(&#x27;aria-selected&#x27;, i === state.selected ? &#x27;true&#x27; : &#x27;false&#x27;);
-      row.setAttribute(&#x27;aria-label&#x27;, &#x27;ベクター行 &#x27; + (i + 1));
+      row.setAttribute(&#x27;aria-label&#x27;, &#x27;Vector row &#x27; + (i + 1));
       for (const value of values) {
         const cell = document.createElement(&#x27;td&#x27;);
         cell.textContent = String(value);
@@ -1367,9 +1373,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     const points = decodeContent(state.current);
     number.value = String(human);
     range.value = String(human);
-    count.textContent = `データ ${human} / ${state.frames.length}`;
-    const sourceText = frame.stale &amp;&amp; frame.contentFrame &gt;= 0 ? `・stale（内容はデータ ${frame.contentFrame + 1}）` : &#x27;&#x27;;
-    meta.textContent = `記録フレームID ${frame.id.toString()}・generation ${frame.generation}・ベクター ${points.length}${sourceText}`;
+    count.textContent = `Data ${human} / ${state.frames.length}`;
+    const sourceText = frame.stale &amp;&amp; frame.contentFrame &gt;= 0 ? ` · stale (content from data ${frame.contentFrame + 1})` : &#x27;&#x27;;
+    meta.textContent = `Recorded frame ID ${frame.id.toString()} · generation ${frame.generation} · vectors ${points.length}${sourceText}`;
     if (referenceMode.checked) {
       renderReferenceRows(points);
       vectorDetail(state.selected);
@@ -1381,7 +1387,7 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   function setPlaying(value) {
     state.playing = Boolean(value &amp;&amp; state.frames.length);
-    play.textContent = state.playing ? &#x27;停止&#x27; : &#x27;再生&#x27;;
+    play.textContent = state.playing ? &#x27;Stop&#x27; : &#x27;Play&#x27;;
     play.setAttribute(&#x27;aria-pressed&#x27;, state.playing ? &#x27;true&#x27; : &#x27;false&#x27;);
     state.lastTick = 0;
     if (state.playing) requestAnimationFrame(tick);
@@ -1400,16 +1406,16 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   async function loadFile(file) {
     setPlaying(false);
-    status.textContent = `${file.name} を読み込み、全フレームのCRCを確認しています…`;
+    status.textContent = `Reading ${file.name} and verifying the CRC of every frame…`;
     try {
       await parseMvec(file, file.name, (done, size) =&gt; {
-        status.textContent = `${file.name} を読み込み、全フレームのCRCを確認しています… ${Math.floor(done / size * 100)}%`;
+        status.textContent = `Reading ${file.name} and verifying the CRC of every frame… ${Math.floor(done / size * 100)}%`;
       });
       const total = state.frames.length;
       transport.forEach(control =&gt; control.disabled = false);
       number.max = String(total);
       range.max = String(total);
-      status.textContent = `${file.name}・MVEC ${state.version}・system ${state.system}・device ${state.device}・${total}フレーム${state.frameHz ? `・${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;}（CRC正常）`;
+      status.textContent = `${file.name} · MVEC ${state.version} · system ${state.system} · device ${state.device} · ${total} frames${state.frameHz ? ` · ${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;} (CRC OK)`;
       await updateFrame(0);
       updateZoomUi();
     } catch (error) {
@@ -1420,9 +1426,9 @@ html&gt;body{padding:0}&lt;/style&gt;
       referencePanel.hidden = true;
       workspace.classList.remove(&#x27;reference-active&#x27;);
       vectorRows.replaceChildren();
-      count.textContent = &#x27;データ 0 / 0&#x27;;
-      meta.textContent = &#x27;記録フレームID —・ベクター —&#x27;;
-      status.textContent = `読み込みエラー: ${error instanceof Error ? error.message : String(error)}`;
+      count.textContent = &#x27;Data 0 / 0&#x27;;
+      meta.textContent = &#x27;Recorded frame ID — · vectors —&#x27;;
+      status.textContent = `Load error: ${error instanceof Error ? error.message : String(error)}`;
       render();
     }
   }
@@ -1466,7 +1472,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   number.addEventListener(&#x27;change&#x27;, () =&gt; updateFrame(Number(number.value) - 1));
   number.addEventListener(&#x27;keydown&#x27;, event =&gt; { if (event.key === &#x27;Enter&#x27;) updateFrame(Number(number.value) - 1); });
   canvas.addEventListener(&#x27;click&#x27;, event =&gt; {
-    if (state.dragMoved) { state.dragMoved = false; return; }   // ドラッグ終了のクリックは選択に使わない
+    if (state.dragMoved) { state.dragMoved = false; return; }   // the click that ends a drag must not select
     if (!state.drawPoints) return;
     const rect = canvas.getBoundingClientRect();
     const sx = canvas.width / rect.width;
@@ -1488,21 +1494,21 @@ html&gt;body{padding:0}&lt;/style&gt;
       render();
     }
   });
-  // ---- 表示の拡大 / ドラッグ移動（参照モードでも同じキャンバスなのでそのまま使える） ----
+  // ---- Zoom / drag-to-pan (the same canvas is used in reference mode, so this just works) ----
   const ZOOM_MIN = 1, ZOOM_MAX = 40;
   function updateZoomUi() {
     const has = state.frames.length &gt; 0;
     zoomIn.disabled = !has || state.zoom &gt;= ZOOM_MAX - 1e-6;
     zoomOut.disabled = !has || state.zoom &lt;= ZOOM_MIN + 1e-6;
     zoomReset.disabled = !has || (state.zoom === 1 &amp;&amp; state.panX === 0 &amp;&amp; state.panY === 0);
-    zoomLabel.textContent = `拡大 ${state.zoom &lt; 10 ? state.zoom.toFixed(1).replace(/\.0$/, &#x27;&#x27;) : Math.round(state.zoom)}x`;
+    zoomLabel.textContent = `Zoom ${state.zoom &lt; 10 ? state.zoom.toFixed(1).replace(/\.0$/, &#x27;&#x27;) : Math.round(state.zoom)}x`;
     canvas.style.cursor = state.drag ? &#x27;grabbing&#x27; : (state.zoom &gt; 1 ? &#x27;grab&#x27; : &#x27;crosshair&#x27;);
   }
   function setZoom(zoom, anchorX, anchorY) {
     if (!state.frames.length) return;
     const rect = canvas.getBoundingClientRect();
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
-    // カーソル位置を固定したまま倍率を変える: pan&#x27; = c - (c - pan) * (z&#x27;/z)
+    // Change the factor while keeping the cursor position fixed: pan&#x27; = c - (c - pan) * (z&#x27;/z)
     const cx = (anchorX === undefined ? rect.width * 0.5 : anchorX) - rect.width * 0.5;
     const cy = (anchorY === undefined ? rect.height * 0.5 : anchorY) - rect.height * 0.5;
     const k = next / state.zoom;
@@ -1526,7 +1532,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   }, { passive: false });
   canvas.addEventListener(&#x27;pointerdown&#x27;, event =&gt; {
     state.dragMoved = false;
-    if (!state.frames.length || event.button !== 0 || state.zoom &lt;= 1) return;   // 全体表示中はクリック選択を邪魔しない
+    if (!state.frames.length || event.button !== 0 || state.zoom &lt;= 1) return;   // do not fight click-to-select when fitted
     state.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: 0 };
     if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
     updateZoomUi();
