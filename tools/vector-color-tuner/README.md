@@ -1,12 +1,20 @@
-# MAME Vector Primary Color Tuner
+# MAME Vector Primary Colour Tuner
 
-`index.html` をブラウザで開くだけで使用できます。ネット接続やインストールは不要です。
+Open `index.html` in a browser and it works. No network connection, no install.
 
-- Direct Primary モード用に、赤・緑・青を Hue / Saturation / Brightness で個別調整します。
-- 無彩色成分は白のまま保持されるため、RGB一次色の調整で白いドットが着色しません。
-- MAMEへ反映する場合は右側の「MAME chain JSON」を使用します。
-- 「リセット（RGB基準色）」は全色を Hue Shift 0°、Saturation 1.0、Brightness 1.0へ戻します。チェインの現行デフォルト値を読み込む機能ではありません。
-- プレビューはMAMEの修正後SDR経路と同じく、線形色相保持ロールオフの後にRGB各成分へ個別ガンマを適用します。
-- HEXとCanvasはSDR表示用の色相・彩度の目安です。HDR/EDRの実輝度やディスプレイ固有のトーンマップは再現しないため、Brightness 1.0超過と高輝度色は実機で確認してください。
-- Saturationを1.0より上げると負成分を0へクリップするため、強い設定では彩度だけでなく色相も変わる場合があります。
-- 従来の CIE xy/Y モードもチェイン側の Advanced 選択肢として残しています。
+The tool's user interface is English only. A Japanese copy of this document is in
+[README.ja.md](README.ja.md).
+
+- Tunes red, green and blue individually by Hue / Saturation / Brightness, for Direct Primary mode.
+- The achromatic component is kept as white, so tuning the RGB primaries does not tint a white dot.
+- To carry a setting into MAME, use the chain JSON on the right.
+- `Reset (RGB reference)` returns every colour to Hue Shift 0°, Saturation 1.0, Brightness 1.0. It does
+  not read the chain's current defaults.
+- Like MAME's fixed SDR path, the preview applies the hue-preserving linear roll-off first and the
+  per-channel RGB gamma second.
+- The HEX values and the canvas are a guide to hue and saturation for an SDR display. They do not
+  reproduce real HDR/EDR luminance or a display's own tone mapping, so check Brightness above 1.0 and
+  any high-luminance colour on real hardware.
+- Raising Saturation above 1.0 clips the negative components to 0, so a strong setting can shift hue
+  and not only saturation.
+- The older CIE xy/Y mode is still there as an Advanced choice on the chain side.
