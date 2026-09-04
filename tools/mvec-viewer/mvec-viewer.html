@@ -814,6 +814,17 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;label class=&quot;form-label mvec-vector-field&quot;&gt;Vector row
           &lt;input id=&quot;mvec-vector-number&quot; class=&quot;form-control&quot; type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot;&gt;
         &lt;/label&gt;
+        &lt;label class=&quot;form-label mvec-rows-field&quot;&gt;Rows shown
+          &lt;select id=&quot;mvec-row-count&quot; class=&quot;form-select&quot;&gt;
+            &lt;option value=&quot;10&quot;&gt;10&lt;/option&gt;
+            &lt;option value=&quot;15&quot; selected&gt;15&lt;/option&gt;
+            &lt;option value=&quot;25&quot;&gt;25&lt;/option&gt;
+            &lt;option value=&quot;50&quot;&gt;50&lt;/option&gt;
+            &lt;option value=&quot;100&quot;&gt;100&lt;/option&gt;
+            &lt;option value=&quot;250&quot;&gt;250&lt;/option&gt;
+            &lt;option value=&quot;1000&quot;&gt;1000&lt;/option&gt;
+          &lt;/select&gt;
+        &lt;/label&gt;
         &lt;output id=&quot;mvec-vector-count&quot; class=&quot;mvec-count&quot;&gt;Row 0 / 0&lt;/output&gt;
       &lt;/div&gt;
       &lt;label class=&quot;form-label mvec-range-label&quot; for=&quot;mvec-vector-range&quot;&gt;Last row drawn&lt;/label&gt;
@@ -821,7 +832,29 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;div id=&quot;mvec-row-window&quot; class=&quot;text-small text-muted&quot;&gt;Rows —&lt;/div&gt;
       &lt;div class=&quot;mvec-table-wrap&quot;&gt;
         &lt;table class=&quot;mvec-table&quot;&gt;
-          &lt;thead&gt;&lt;tr&gt;&lt;th&gt;row&lt;/th&gt;&lt;th&gt;kind&lt;/th&gt;&lt;th&gt;x0&lt;/th&gt;&lt;th&gt;y0&lt;/th&gt;&lt;th&gt;x1&lt;/th&gt;&lt;th&gt;y1&lt;/th&gt;&lt;th&gt;RGB&lt;/th&gt;&lt;th&gt;intens&lt;/th&gt;&lt;th&gt;energy&lt;/th&gt;&lt;th&gt;t0&lt;/th&gt;&lt;th&gt;t1&lt;/th&gt;&lt;th&gt;caps&lt;/th&gt;&lt;th&gt;scale&lt;/th&gt;&lt;th&gt;ramp µs&lt;/th&gt;&lt;th&gt;mid&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+          &lt;thead&gt;
+            &lt;tr&gt;
+              &lt;th&gt;row&lt;/th&gt;
+              &lt;th&gt;kind&lt;/th&gt;
+              &lt;th&gt;x0&lt;/th&gt;
+              &lt;th&gt;y0&lt;/th&gt;
+              &lt;th&gt;x1&lt;/th&gt;
+              &lt;th&gt;y1&lt;/th&gt;
+              &lt;th data-tooltip=&quot;Segment length in screen units: hypot(x1-x0, y1-y0) / 65536&quot;&gt;len&lt;/th&gt;
+              &lt;th&gt;RGB&lt;/th&gt;
+              &lt;th&gt;intens&lt;/th&gt;
+              &lt;th&gt;energy&lt;/th&gt;
+              &lt;th&gt;t0&lt;/th&gt;
+              &lt;th&gt;t1&lt;/th&gt;
+              &lt;th data-tooltip=&quot;Draw time of this vector: t1 - t0&quot;&gt;dt µs&lt;/th&gt;
+              &lt;th data-tooltip=&quot;This vector&#x27;s share of the total draw time of the frame&quot;&gt;dt %&lt;/th&gt;
+              &lt;th data-tooltip=&quot;Draw time per unit of segment length: dt / len&quot;&gt;µs/len&lt;/th&gt;
+              &lt;th&gt;caps&lt;/th&gt;
+              &lt;th&gt;scale&lt;/th&gt;
+              &lt;th&gt;ramp µs&lt;/th&gt;
+              &lt;th&gt;mid&lt;/th&gt;
+            &lt;/tr&gt;
+          &lt;/thead&gt;
           &lt;tbody id=&quot;mvec-vector-rows&quot;&gt;&lt;/tbody&gt;
         &lt;/table&gt;
       &lt;/div&gt;
@@ -858,17 +891,38 @@ html&gt;body{padding:0}&lt;/style&gt;
   #mvec-viewer-root .mvec-transport { margin-top: 8px; }
   #mvec-viewer-root .mvec-frame-field { max-width: 150px; }
   #mvec-viewer-root .mvec-vector-field { max-width: 150px; }
+  #mvec-viewer-root .mvec-rows-field { max-width: 120px; }
   #mvec-viewer-root .mvec-count { min-width: 130px; font-variant-numeric: tabular-nums; }
   #mvec-viewer-root .mvec-range-label { margin-top: 8px; }
   #mvec-viewer-root .mvec-frame-meta,
   #mvec-viewer-root .mvec-selection { margin-top: 6px; font-variant-numeric: tabular-nums; }
   #mvec-viewer-root .mvec-reference { min-width: 0; margin: 8px 0; }
   #mvec-viewer-root .mvec-reference-controls { margin-bottom: 6px; }
-  #mvec-viewer-root .mvec-table-wrap { margin-top: 6px; overflow-x: auto; }
-  #mvec-viewer-root .mvec-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--font-size-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Both axes scroll here: the row-count select keeps the box short enough that the
+     horizontal scrollbar stays on screen, and max-height covers the largest choice. */
+  #mvec-viewer-root .mvec-table-wrap {
+    margin-top: 6px;
+    max-height: 70vh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+  }
+  /* min-width: max-content keeps every column at its natural width instead of
+     squeezing them, so the wrapper really does scroll horizontally. */
+  #mvec-viewer-root .mvec-table { min-width: max-content; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--font-size-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
   #mvec-viewer-root .mvec-table th,
   #mvec-viewer-root .mvec-table td { padding: 4px 7px; border-bottom: 1px solid var(--border); text-align: right; }
-  #mvec-viewer-root .mvec-table th { color: var(--muted-foreground); font-weight: 500; }
+  /* A collapsed border does not travel with a sticky header, so draw the rule
+     with an inset shadow instead. */
+  #mvec-viewer-root .mvec-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+    box-shadow: inset 0 -1px 0 var(--border);
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
   #mvec-viewer-root .mvec-table th:nth-child(2),
   #mvec-viewer-root .mvec-table td:nth-child(2) { text-align: left; }
   #mvec-viewer-root .mvec-table tbody tr { cursor: pointer; }
@@ -912,14 +966,28 @@ html&gt;body{padding:0}&lt;/style&gt;
   const vectorNumber = el(&#x27;mvec-vector-number&#x27;);
   const vectorCount = el(&#x27;mvec-vector-count&#x27;);
   const vectorRange = el(&#x27;mvec-vector-range&#x27;);
+  const rowCount = el(&#x27;mvec-row-count&#x27;);
   const rowWindow = el(&#x27;mvec-row-window&#x27;);
   const vectorRows = el(&#x27;mvec-vector-rows&#x27;);
+  const tableWrap = root.querySelector(&#x27;.mvec-table-wrap&#x27;);
+  const tableHead = root.querySelector(&#x27;.mvec-table thead&#x27;);
   const zoomLabel = el(&#x27;mvec-zoom&#x27;);
   const zoomIn = el(&#x27;mvec-zoom-in&#x27;);
   const zoomOut = el(&#x27;mvec-zoom-out&#x27;);
   const zoomReset = el(&#x27;mvec-zoom-reset&#x27;);
   const transport = [first, prev, play, next, last, number, range];
-  const ROW_WINDOW_SIZE = 80;
+
+  // How many table rows the reference panel shows at once, centred on the selection.
+  // Kept small by default because a full frame can hold up to 20000 vectors.
+  const DEFAULT_ROW_WINDOW = 15;
+  function rowWindowSize() {
+    const value = Number(rowCount.value);
+    return Number.isFinite(value) &amp;&amp; value &gt; 0 ? value : DEFAULT_ROW_WINDOW;
+  }
+
+  // Vector coordinates are stored in 1/65536 of a screen unit, the same units as
+  // frame.vis, so both axes share one scale and lengths are directly comparable.
+  const COORD_UNIT = 65536;
 
   const state = {
     file: null,          // Never load the whole file into an ArrayBuffer: past 2GB the browser cannot.
@@ -1268,6 +1336,35 @@ html&gt;body{padding:0}&lt;/style&gt;
     state.drawPoints = mapped;
   }
 
+  // Segment length in screen units. x/y share one scale, so this is comparable
+  // across both axes and against frame.vis extents.
+  function segmentLength(point) {
+    return Math.hypot(point.x - point.x0, point.y - point.y0) / COORD_UNIT;
+  }
+
+  // Draw time in µs. Only timed frames carry usable stamps; untimed records store
+  // huge values, which is what the 1e8 guard rejects.
+  function drawTime(frame, point) {
+    if (!frame || !frame.timed) return NaN;
+    if (!Number.isFinite(point.t0) || !Number.isFinite(point.t1) || point.t0 &gt;= 1e8) return NaN;
+    return Math.max(0, (point.t1 - point.t0) * 1e6);
+  }
+
+  // Total beam time of the frame, used as the denominator of the dt % column.
+  // Blank moves are included: the beam spends that time too.
+  function frameDrawTotal(frame, points) {
+    let total = 0;
+    for (const point of points) {
+      const dt = drawTime(frame, point);
+      if (Number.isFinite(dt)) total += dt;
+    }
+    return total;
+  }
+
+  function fixedOrDash(value, digits) {
+    return Number.isFinite(value) ? value.toFixed(digits) : &#x27;—&#x27;;
+  }
+
   function vectorDetail(index) {
     const points = decodeContent(state.current);
     if (index &lt; 0 || index &gt;= points.length) {
@@ -1278,11 +1375,15 @@ html&gt;body{padding:0}&lt;/style&gt;
     const hex = &#x27;#&#x27; + (p.color &amp; 0xffffff).toString(16).padStart(6, &#x27;0&#x27;).toUpperCase();
     const kind = p.x0 === p.x &amp;&amp; p.y0 === p.y ? &#x27;point&#x27; : (p.intensity === 0 ? &#x27;blank move&#x27; : &#x27;line&#x27;);
     const frame = state.frames[state.current];
-    const duration = frame.timed &amp;&amp; Number.isFinite(p.t0) &amp;&amp; Number.isFinite(p.t1) &amp;&amp; p.t0 &lt; 1e8
-      ? Math.max(0, (p.t1 - p.t0) * 1e6) : NaN;
+    const duration = drawTime(frame, p);
+    const length = segmentLength(p);
+    const total = frameDrawTotal(frame, points);
+    const share = Number.isFinite(duration) &amp;&amp; total &gt; 0 ? duration / total * 100 : NaN;
+    const perUnit = Number.isFinite(duration) &amp;&amp; length &gt; 0 ? duration / length : NaN;
     selection.textContent = `Vector ${index + 1} / ${points.length} · ${kind} · RGB ${hex}`
       + ` · intensity ${p.intensity} · energy ${p.energy.toFixed(4)}`
-      + ` · draw time ${Number.isFinite(duration) ? duration.toFixed(3) + &#x27; µs&#x27; : &#x27;—&#x27;}`
+      + ` · len ${length.toFixed(2)} · draw time ${fixedOrDash(duration, 3)} µs`
+      + ` · ${fixedOrDash(share, 2)}% of the frame · ${fixedOrDash(perUnit, 4)} µs/len`
       + ` · caps 0x${p.caps.toString(16)}`;
   }
 
@@ -1318,19 +1419,28 @@ html&gt;body{padding:0}&lt;/style&gt;
     vectorRange.value = String(state.selected + 1);
     vectorCount.textContent = &#x27;Row &#x27; + (state.selected + 1) + &#x27; / &#x27; + total;
 
-    const maxStart = Math.max(0, total - ROW_WINDOW_SIZE);
-    const start = Math.max(0, Math.min(maxStart, state.selected - Math.floor(ROW_WINDOW_SIZE / 2)));
-    const end = Math.min(total, start + ROW_WINDOW_SIZE);
+    const frame = state.frames[state.current];
+    const drawTotal = frameDrawTotal(frame, points);
+    const size = rowWindowSize();
+    const maxStart = Math.max(0, total - size);
+    const start = Math.max(0, Math.min(maxStart, state.selected - Math.floor(size / 2)));
+    const end = Math.min(total, start + size);
     rowWindow.textContent = &#x27;Rows &#x27; + (start + 1) + &#x27;–&#x27; + end + &#x27; / &#x27; + total
-      + &#x27; (up to &#x27; + ROW_WINDOW_SIZE + &#x27;, centred on the selection)&#x27;;
+      + &#x27; (up to &#x27; + size + &#x27;, centred on the selection) · frame draw time &#x27;
+      + (drawTotal &gt; 0 ? (drawTotal / 1000).toFixed(3) + &#x27; ms&#x27; : &#x27;—&#x27;);
 
     const fragment = document.createDocumentFragment();
     for (let i = start; i &lt; end; i++) {
       const p = points[i];
       const hex = &#x27;#&#x27; + (p.color &amp; 0xffffff).toString(16).padStart(6, &#x27;0&#x27;).toUpperCase();
+      const length = segmentLength(p);
+      const dt = drawTime(frame, p);
+      const share = Number.isFinite(dt) &amp;&amp; drawTotal &gt; 0 ? dt / drawTotal * 100 : NaN;
+      const perUnit = Number.isFinite(dt) &amp;&amp; length &gt; 0 ? dt / length : NaN;
       const values = [
-        i + 1, vectorKind(p), p.x0, p.y0, p.x, p.y, hex, p.intensity,
+        i + 1, vectorKind(p), p.x0, p.y0, p.x, p.y, length.toFixed(2), hex, p.intensity,
         p.energy.toFixed(4), vectorTime(p.t0), vectorTime(p.t1),
+        fixedOrDash(dt, 3), fixedOrDash(share, 2), fixedOrDash(perUnit, 4),
         &#x27;0x&#x27; + p.caps.toString(16), p.scale &lt; 0 ? &#x27;—&#x27; : p.scale,
         p.rampUs &lt; 0 ? &#x27;—&#x27; : p.rampUs.toFixed(3), p.midchange ? &#x27;yes&#x27; : &#x27;&#x27;
       ];
@@ -1346,6 +1456,17 @@ html&gt;body{padding:0}&lt;/style&gt;
       fragment.appendChild(row);
     }
     vectorRows.appendChild(fragment);
+
+    // With a large row window the selection can sit outside the scrolled box.
+    // Only tableWrap.scrollTop is touched, so the page itself never jumps.
+    const selectedRow = vectorRows.children[state.selected - start];
+    if (selectedRow &amp;&amp; tableWrap) {
+      const box = tableWrap.getBoundingClientRect();
+      const row = selectedRow.getBoundingClientRect();
+      const headHeight = tableHead ? tableHead.getBoundingClientRect().height : 0;
+      if (row.top &lt; box.top + headHeight) tableWrap.scrollTop -= box.top + headHeight - row.top;
+      else if (row.bottom &gt; box.bottom) tableWrap.scrollTop += row.bottom - box.bottom;
+    }
   }
 
   function selectVector(index) {
@@ -1451,6 +1572,9 @@ html&gt;body{padding:0}&lt;/style&gt;
       vectorDetail(-1);
       render();
     }
+  });
+  rowCount.addEventListener(&#x27;change&#x27;, () =&gt; {
+    if (referenceMode.checked) renderReferenceRows(decodeContent(state.current));
   });
   vectorPrev.addEventListener(&#x27;click&#x27;, () =&gt; selectVector(state.selected - 1));
   vectorNext.addEventListener(&#x27;click&#x27;, () =&gt; selectVector(state.selected + 1));

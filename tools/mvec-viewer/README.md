@@ -40,6 +40,32 @@ file-info line. The display is below them.
 Every frame's CRC32 is verified at load time. Stale frames show the last valid vector list,
 exactly as MAME does during playback.
 
+## Reference-mode table
+
+`Rows shown` sets how many rows the table draws at once — 10, 15 (default), 25, 50, 100, 250
+or 1000. The window is centred on the selected row, and the row-window line above the table
+says which range is on screen. Only that window is put into the DOM, so a frame with 20000
+vectors stays responsive; navigate with the row controls or the slider to reach the rest.
+
+The table scrolls in both directions: horizontally because the columns keep their natural
+width instead of being squeezed, and vertically once the chosen row count exceeds 70% of the
+window height. The header row stays pinned while you scroll.
+
+Alongside the recorded fields, three columns are computed from the record:
+
+| Column | Meaning |
+| --- | --- |
+| `len` | Segment length in screen units: `hypot(x1-x0, y1-y0) / 65536`. Coordinates are stored in 1/65536 screen units on both axes, so lengths are directly comparable with the `vis` extents of the frame. |
+| `dt µs` | Draw time of the vector, `t1 - t0`, in microseconds. |
+| `dt %` | The vector's share of the frame's total draw time. |
+| `µs/len` | Draw time per unit of length, `dt / len`. Effectively the inverse of beam speed, so it is nearly constant for ordinary line draws and stands out where it is not. |
+
+The row-window line also reports the frame's total draw time — the sum of `dt µs` over every
+vector, blank moves included, since the beam spends that time too.
+
+`t0`/`t1` are only meaningful for frames the recorder timed. For an untimed frame all four
+of these columns show `—`; `len` is still computed.
+
 ## Supported formats
 
 MVEC **1.0 / 1.1** can be read (`MVEC_VERSION_MAJOR/MINOR` in `vector.cpp`). 1.1 only adds the
