@@ -728,6 +728,8 @@ void chain_manager::apply_macros(bool force)
 			// would silently stop re-deriving the peak.
 			if (dest->name() == "beam_peak_nits0")
 				m_hdr_last_auto_beam = dest->value();
+			else if (dest->name() == "beam_peak_ratio0")
+				m_hdr_last_auto_beam_ratio = dest->value();
 			else if (dest->name() == "hdr_rolloff_max0")
 				m_hdr_last_auto_rolloff = dest->value();
 			// %g, not %.4f: the glow sliders calibrate around 1e-4, where four decimals cannot
@@ -778,6 +780,7 @@ void chain_manager::apply_hdr_auto()
 		: std::clamp((capability_ratio > 0.0f) ? capability_ratio / std::max(beam_ratio, 1e-3f) : 1.1f,
 				1.1f, 8.0f);
 	const float previous_beam = m_hdr_last_auto_beam;
+	const float previous_beam_ratio = m_hdr_last_auto_beam_ratio;
 	const float previous_rmax = m_hdr_last_auto_rolloff;
 
 	bool applied = false;
@@ -787,10 +790,23 @@ void chain_manager::apply_hdr_auto()
 		if (chain == nullptr)
 			continue;
 		const std::string beam_name = "beam_peak_nits" + std::to_string(screen);
+		const std::string ratio_name = "beam_peak_ratio" + std::to_string(screen);
 		const std::string rmax_name = "hdr_rolloff_max" + std::to_string(screen);
 		for (bgfx_slider *slider : chain->sliders())
 		{
-			if (slider->name() == beam_name)
+			// A chain declares one or the other. The ratio is the authoritative form; the nits
+			// slider stays for chains not yet converted and receives the same target expressed
+			// against the configured paper white, so those chains do not change behaviour.
+			if (slider->name() == ratio_name)
+			{
+				if (!m_hdr_live_refresh || previous_beam_ratio <= 0.0f
+						|| slider_matches_imported_value(*slider, previous_beam_ratio))
+				{
+					slider->import(beam_ratio);
+					applied = true;
+				}
+			}
+			else if (slider->name() == beam_name)
 			{
 				// A display move updates hardware-derived defaults, but must not replace a value restored
 				// from cfg or edited live. Values still equal to the preceding auto result remain automatic.
@@ -815,12 +831,14 @@ void chain_manager::apply_hdr_auto()
 		}
 	}
 	m_hdr_last_auto_beam = beam;
+	m_hdr_last_auto_beam_ratio = beam_ratio;
 	m_hdr_last_auto_rolloff = rmax;
 	// The values just imported are the new baseline for any macro that scales them, so drop the old
 	// capture and re-run the macros (which re-captures and re-applies the user's exposure).
 	if (applied)
 	{
 		m_macro_base.erase("beam_peak_nits0");
+		m_macro_base.erase("beam_peak_ratio0");
 		m_macro_base.erase("hdr_rolloff_max0");
 	}
 	apply_macros(true);
@@ -1655,9 +1673,12 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 			// A one-step user edit no longer matches and is saved normally. Relative EDR has no automatic
 			// rolloff value (m_hdr_last_auto_rolloff == 0), so its artistic ceiling remains persistable.
 			const std::string beam_name = "beam_peak_nits" + std::to_string(index);
+			const std::string ratio_name = "beam_peak_ratio" + std::to_string(index);
 			const std::string rmax_name = "hdr_rolloff_max" + std::to_string(index);
 			if ((slider->name() == beam_name && m_hdr_last_auto_beam > 0.0f
 					&& slider_matches_imported_value(*slider, m_hdr_last_auto_beam))
+				|| (slider->name() == ratio_name && m_hdr_last_auto_beam_ratio > 0.0f
+					&& slider_matches_imported_value(*slider, m_hdr_last_auto_beam_ratio))
 				|| (slider->name() == rmax_name && m_hdr_last_auto_rolloff > 0.0f
 					&& slider_matches_imported_value(*slider, m_hdr_last_auto_rolloff)))
 				continue;

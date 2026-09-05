@@ -474,7 +474,12 @@ private:
 			// of the sweep deposited so far keeps scatter in step with the light it is scattering.
 			// NOT applied to the no-persist dot: there the body vertex is degenerate and the dot lives
 			// entirely in that buffer, so it is beam rather than scatter and belongs at full strength.
-			float aux_scale = 1.0f);
+			float aux_scale = 1.0f,
+			// Per-channel attenuation of the BODY only, for cyclic flicker. Deliberately NOT applied
+			// to prim->color: that would take the post-pool routes down with it, and those have no
+			// persistence of their own, so the bloom would blink in step with the flicker. Only the
+			// body, which the phosphor pool integrates, may be attenuated. nullptr = no attenuation.
+			const float *body_rgb = nullptr);
 
 	// Deflection-amplifier dynamics: the AVG X/Y deflection amps are second-order
 	// systems, so the actual beam lags the commanded ramp and overshoots at direction changes (corner
@@ -685,6 +690,15 @@ private:
 	// Flip count, because the info-level notices deliberately go quiet after reporting each state
 	// once - which is exactly what hid how often this was actually toggling. Verbose only.
 	uint32_t m_vec_window_flips = 0;
+	// The beam target as a multiple of SDR white, which is what every consumer actually wants: the
+	// present shader divides chain space by the reference white, and macOS reports nothing but this
+	// ratio in the first place. beam_peak_ratio is the authoritative slider; a chain that still
+	// declares only beam_peak_nits is converted against the configured paper white so it behaves
+	// exactly as before. Absolute nits survive as an input format and in the log.
+	float vec_beam_peak_ratio() const;
+	// The same target expressed in chain-space nits, against the reference white the present pass
+	// will normalise by. Tracks a live reference white instead of freezing one at calibration time.
+	float vec_beam_peak_nits(float reference_white) const;
 	// Last reported engage decision and window width, so the info-level notice in draw() fires on a
 	// real change instead of every present.
 	bool m_vec_window_notice_engaged = false;

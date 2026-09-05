@@ -2651,6 +2651,22 @@ void renderer_bgfx::refresh_vec_slider_cache()
 		m_vs.overdrive_color[c] = (m_vs_ovcol[c] != nullptr) ? m_vs_ovcol[c]->value() : 1.0f;
 }
 
+float renderer_bgfx::vec_beam_peak_ratio() const
+{
+	const float ratio = m_chains->slider_value(0, "beam_peak_ratio", 0.0f);
+	if (ratio > 0.0f)
+		return ratio;
+	// Legacy chain: a nits target only means something against a white, and the configured paper
+	// white is the one it was authored against.
+	const float white = std::max(1.0f, m_module().paper_white_nits());
+	return std::max(0.01f, m_chains->slider_value(0, "beam_peak_nits", 1000.0f) / white);
+}
+
+float renderer_bgfx::vec_beam_peak_nits(float reference_white) const
+{
+	return vec_beam_peak_ratio() * std::max(1.0f, reference_white);
+}
+
 // Unified beam-energy model for sources that do not supply beam_energy (DVG / AVG / Cinematronics):
 // derive it renderer-side from the per-segment timestamps, with the same convention as the Vectrex
 // driver (0..1 = normal display range, >1 = overdrive from slow sweeps / dwelling dots).
@@ -3131,7 +3147,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	return true;
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float end_gain_start, float end_gain_finish, float stroke_px_per_ms, float dwell_scale, float aux_scale)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float end_gain_start, float end_gain_finish, float stroke_px_per_ms, float dwell_scale, float aux_scale, const float *body_rgb)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -3516,11 +3532,21 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		point_core_over = (core_alpha > 1.0e-6f) ? std::max(0.0f, point_peak / core_alpha - 1.0f) : 0.0f;
 	}
 
+	// Per-channel BODY-ONLY attenuation (cyclic flicker). It belongs here rather than on
+	// prim->color because the post-pool routes - glow, the overdrive flare, optical rays - are
+	// cleared every present and composited after the phosphor pool, so none of them has
+	// persistence of its own: dimming them makes the scattered light follow the instantaneous
+	// slice and the bloom blinks in step with the flicker. The pool integrates the body, which is
+	// the only part a rotating dropout may legitimately touch. Same rule the beam time window
+	// already follows via vp_aux_only. nullptr = no attenuation.
+	const float body_r = body_rgb ? std::clamp(body_rgb[0], 0.0f, 1.0f) : 1.0f;
+	const float body_g = body_rgb ? std::clamp(body_rgb[1], 0.0f, 1.0f) : 1.0f;
+	const float body_b = body_rgb ? std::clamp(body_rgb[2], 0.0f, 1.0f) : 1.0f;
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		std::min<uint32_t>(uint32_t(core_sat_r * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_g * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_b * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_r * body_r * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_g * body_g * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_b * body_b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(core_alpha * 255.0f + 0.5f));
 
 	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
@@ -6291,25 +6317,28 @@ int renderer_bgfx::draw(int update)
 							// vertex count leaves out. Without an analytic path there are no separate
 							// post-pool buffers at all, so there the vector is skipped outright as before.
 							const bool vp_window_excluded = beam_window_excludes(*vprim);
-							const bool vp_aux_only = vp_window_excluded && m_line_analytic
+							// The same rule covers a fully dropped cyclic-flicker bucket: its scattered
+							// light must not vanish with its body either. Where the aux buffers exist,
+							// the vector is kept and only its body geometry is discarded.
+							const bool vp_aux_capable = m_line_analytic
 									&& (glow_alloc || optical_alloc || np_alloc || ray_alloc);
-							const bool vp_flicker_excluded = (vp_in_bucket && !flicker_partial)
-								|| (vp_window_excluded && !vp_aux_only);
+							const bool vp_body_dropped = vp_window_excluded
+									|| (vp_in_bucket && !flicker_partial);
+							const bool vp_aux_only = vp_body_dropped && vp_aux_capable;
+							const bool vp_flicker_excluded = vp_body_dropped && !vp_aux_only;
 							if (vprim->type == render_primitive::LINE && PRIMFLAG_GET_VECTOR(vprim->flags) && !vp_flicker_excluded)
 							{
-								// Per-channel flicker is applied in place for the draw calls below and
-								// restored afterward (the same primitive list may be walked again). A
-								// channel at weight 1.0 goes fully dark (classic), at 0.15 it only dips
+								// Per-channel flicker, as a BODY-ONLY factor. It used to be written into
+								// prim->color and restored afterwards, which took the post-pool routes
+								// down with it: glow, the overdrive flare and the optical rays are
+								// cleared every present and have no persistence of their own, so the
+								// bloom dipped in step with every bucket rotation. The pool integrates
+								// the body, so that is the only part the dropout may touch. A channel at
+								// weight 1.0 takes the body fully dark (classic), at 0.15 it only dips
 								// 15% - it shimmers rather than blinks.
 								const bool vp_dimmed = vp_in_bucket && flicker_partial;
-								render_color vp_saved_color;
-								if (vp_dimmed)
-								{
-									vp_saved_color = vprim->color;
-									vprim->color.r *= 1.0f - fl_rgb[0];
-									vprim->color.g *= 1.0f - fl_rgb[1];
-									vprim->color.b *= 1.0f - fl_rgb[2];
-								}
+								const float vp_body_rgb[3] = {
+									1.0f - fl_rgb[0], 1.0f - fl_rgb[1], 1.0f - fl_rgb[2] };
 								if (m_line_analytic)
 								{
 									float scap = 1.0f, ecap = 1.0f;
@@ -6383,7 +6412,8 @@ int renderer_bgfx::draw(int update)
 											gcap_e = 1.0f + vertex_dwell_energy * dit->second.second;
 										}
 									}
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, gcap_s, gcap_e, sps, dsc, 1.0f);
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, gcap_s, gcap_e, sps, dsc, 1.0f,
+											vp_dimmed ? vp_body_rgb : nullptr);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;
 									if (npptr) np_verts += NP_VPL;
@@ -6393,8 +6423,7 @@ int renderer_bgfx::draw(int update)
 									put_solid_line(vprim, reinterpret_cast<ScreenVertex*>(tvb.data) + vertices);
 								if (!vp_aux_only)
 									vertices += verts_per_line;
-								if (vp_dimmed)
-									vprim->color = vp_saved_color;
+
 							}
 							vprim = vprim->next();
 						}
@@ -7073,11 +7102,14 @@ int renderer_bgfx::draw(int update)
 				// beam-derived glow near its 240-nit chain calibration while leaving core luminance and Energy
 				// Beam geometry untouched. Stability 0 reproduces the old coupled exposure; 1 keeps glow nits
 				// constant. SDR has its own exposure controls and deliberately bypasses this HDR-only factor.
-				constexpr float HDR_GLOW_REFERENCE_NITS = 240.0f;
-				const float beam_peak = std::max(1.0f, m_chains->slider_value(0, "beam_peak_nits", HDR_GLOW_REFERENCE_NITS));
+				// 240 nits against the 200-nit paper white this calibration was authored at, i.e. 1.2x
+				// SDR white. Expressed as a ratio because the beam target is one: comparing a ratio
+				// against a hard-coded nits figure would re-import the fiction this replaced.
+				constexpr float HDR_GLOW_REFERENCE_RATIO = 1.2f;
+				const float beam_ratio = std::max(0.01f, vec_beam_peak_ratio());
 				const float glow_stability = std::clamp(m_chains->slider_value(0, "hdr_glow_stability", 1.0f), 0.0f, 1.0f);
 				const float glow_compensation = hdr_present
-					? std::pow(HDR_GLOW_REFERENCE_NITS / beam_peak, glow_stability)
+					? std::pow(HDR_GLOW_REFERENCE_RATIO / beam_ratio, glow_stability)
 					: 1.0f;
 				const float glow_compensation_vals[4] = { glow_compensation, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_hdr_glow_compensation", glow_compensation_vals, 4);
@@ -7194,8 +7226,9 @@ int renderer_bgfx::draw(int update)
 		{
 			const float w = float(s_width[0]);
 			const float h = float(s_height[0]);
-			const float beam_peak = m_chains->slider_value(0, "beam_peak_nits", 1000.0f);
 			const float paper_white = m_module().paper_white_nits();
+			const float beam_peak = vec_beam_peak_nits(s_bgfx_edr_active
+					? m_module().edr_reference_white_nits() : paper_white);
 			// Keep the HDR beam calibration in absolute nits, but give SDR its own normalized
 			// beam level. Reusing beam_peak in SDR made a nominal beam 330/200 = 1.65 with
 			// the common defaults, clipping it before useful SDR-only shaping could occur.
@@ -7394,7 +7427,7 @@ int renderer_bgfx::draw(int update)
 					? m_module().edr_reference_white_nits()
 					: m_module().paper_white_nits();
 				float vals[4] = {
-					m_chains->slider_value(0, "beam_peak_nits", 1000.0f),
+					vec_beam_peak_nits(output_reference_white),
 					output_reference_white,
 					s_bgfx_hdr_active ? 1.0f : 0.0f,
 					s_bgfx_edr_active ? 1.0f : 0.0f };

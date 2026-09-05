@@ -299,6 +299,7 @@ private:
 	bool                            m_hdr_display_peak_absolute = true;
 	bool                            m_edr_relative_auto = false;
 	float                           m_hdr_last_auto_beam = 0.0f;
+	float                           m_hdr_last_auto_beam_ratio = 0.0f;
 	float                           m_hdr_last_auto_rolloff = 0.0f;
 	bool                            m_hdr_live_refresh = false;
 	// Last macro value applied, and the value last imported into each target. The latter is what keeps
