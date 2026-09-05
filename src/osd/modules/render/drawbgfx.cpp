@@ -125,6 +125,35 @@ public:
 		const float nominal = edr_nominal_peak_nits();
 		return (nominal > 0.0f) ? nominal : m_hdr_calibration_peak_nits;
 	}
+	// Display capability as a multiple of SDR white - the quantity chain_manager clamps the beam
+	// target against, and the only one macOS reports at all. Deliberately the POTENTIAL headroom on
+	// macOS, not the current one: potential is a panel property (measured stable at 14.05x and 16.00x
+	// across runs here) while current tracks the SDR brightness slider and the EDR bootstrap, so
+	// calibrating from it made one unchanged configuration land on two different tone scales.
+	// Present-time clipping keeps using the current value - a falling ceiling must act immediately -
+	// which is what the existing "potential is a capability/bootstrap value only" rule protects.
+	// 0 = not known yet; chain_manager then applies no clamp.
+	float hdr_headroom_ratio() const
+	{
+		if (m_edr_relative_auto)
+			return (m_edr_potential_headroom > 1.0f) ? m_edr_potential_headroom : 0.0f;
+		const float white = std::max(1.0f, m_effective_paper_white_nits);
+		return (m_hdr_calibration_peak_nits > 0.0f) ? m_hdr_calibration_peak_nits / white : 0.0f;
+	}
+	// Live display ceiling for the present shader, as a multiple of the reference white it normalises
+	// against. macOS supplies the sampled current headroom; an absolute-peak platform (Windows HDR10)
+	// has a fixed panel peak, and its SDR white is user-adjustable, so express it the same way rather
+	// than leaving the shader's dynamic ceiling switched off there. 0 = no ceiling known.
+	float hdr_present_headroom() const
+	{
+		if (m_edr_relative_auto || m_hdr_display_peak_absolute)
+		{
+			if (m_edr_headroom > 0.0f)
+				return m_edr_headroom;
+		}
+		const float white = std::max(1.0f, m_effective_paper_white_nits);
+		return (m_hdr_display_peak_nits > 0.0f) ? m_hdr_display_peak_nits / white : 0.0f;
+	}
 	// Consumed once by the renderer after the macOS EDR current headroom resolves: the chain HDR
 	// auto-config first ran during initialisation, before any EDR frame existed and therefore before
 	// the nominal peak was knowable.
@@ -1547,6 +1576,7 @@ int renderer_bgfx::create()
 			m_module().hdr_display_peak_is_absolute(),
 			m_module().edr_relative_auto());
 	m_chains->set_hdr_paper_white(m_module().paper_white_nits());
+	m_chains->set_hdr_headroom_ratio(m_module().hdr_headroom_ratio());
 	m_sliders_dirty = true;
 
 	uint32_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
@@ -4473,7 +4503,8 @@ int renderer_bgfx::draw(int update)
 				m_module().hdr_chain_peak_nits(),
 				m_module().hdr_display_peak_is_absolute(),
 				m_module().edr_relative_auto(),
-				m_module().paper_white_nits());
+				m_module().paper_white_nits(),
+				m_module().hdr_headroom_ratio());
 		m_sliders_dirty = true;
 	}
 	if (window_index == 0)
@@ -4512,7 +4543,8 @@ int renderer_bgfx::draw(int update)
 				m_module().hdr_chain_peak_nits(),
 				m_module().hdr_display_peak_is_absolute(),
 				m_module().edr_relative_auto(),
-				m_module().paper_white_nits());
+				m_module().paper_white_nits(),
+				m_module().hdr_headroom_ratio());
 		m_sliders_dirty = true;
 	}
 
@@ -4859,12 +4891,55 @@ int renderer_bgfx::draw(int update)
 		// vector_phosphor_rate cadence, which would beat audibly in the image on a title whose spans
 		// straddle the threshold. Hence the hysteresis band rather than a bare comparison.
 		const double window_span = vstats.sweep_t1 - vstats.sweep_t0;
+		// Real elapsed time between decisions, for the debounce below. Wall clock, not emulated time,
+		// so pause and slow motion neither stall nor rush the hold.
+		const int64_t window_latch_hpc = bx::getHPCounter();
+		const double window_latch_dt_ms = (m_vec_window_latch_hpc != 0)
+				? double(window_latch_hpc - m_vec_window_latch_hpc) * 1000.0 / double(bx::getHPFrequency())
+				: 0.0;
+		m_vec_window_latch_hpc = window_latch_hpc;
 		if (!window_available)
+		{
+			// Not a decision, a hard stop: nothing to debounce.
 			m_vec_window_engaged = false;
+			m_vec_window_pending = false;
+			m_vec_window_pending_ms = 0.0;
+		}
 		else if (window_span_usable)
-			m_vec_window_engaged = m_vec_window_engaged
+		{
+			const bool candidate = m_vec_window_engaged
 					? (window_span > window_w)              // stay engaged down to 1.0x
 					: (window_span > window_w * 1.25);      // need 1.25x to engage
+			// Debounce on top of the hysteresis. The band decides WHICH way the span points; the hold
+			// decides whether it has pointed that way long enough to be a scene change rather than
+			// noise. 0 restores the bare hysteresis.
+			const double hold_ms = std::max(0.0,
+					double(m_chains->slider_value(0, "beam_window_latch_ms", 0.0f)));
+			if (candidate == m_vec_window_engaged)
+			{
+				// Back to the state we are already in - abandon any pending flip outright, so a
+				// span that merely brushes the far side of the band never accumulates toward one.
+				m_vec_window_pending = candidate;
+				m_vec_window_pending_ms = 0.0;
+			}
+			else
+			{
+				if (m_vec_window_pending != candidate)
+				{
+					m_vec_window_pending = candidate;
+					m_vec_window_pending_ms = 0.0;
+				}
+				m_vec_window_pending_ms += window_latch_dt_ms;
+				if (m_vec_window_pending_ms >= hold_ms)
+				{
+					m_vec_window_engaged = candidate;
+					m_vec_window_pending_ms = 0.0;
+					osd_printf_verbose("BGFX: beam time window latch -> %s (flip %u, sweep %.2f ms"
+						" vs %.2f ms window, hold %.0f ms)\n", candidate ? "engaged" : "inert",
+						++m_vec_window_flips, window_span * 1000.0, window_w * 1000.0, hold_ms);
+				}
+			}
+		}
 		// else: no usable sweep this frame - hold the latch as it is
 		const bool window_on = window_wanted && m_vec_window_engaged;
 		m_vec_window_mode = window_on;
@@ -4951,10 +5026,15 @@ int renderer_bgfx::draw(int update)
 		// generated and rasterised eight times over for one pass. Their buffers are the same ones a
 		// non-windowed present already retains between source frames, so this is the same clause
 		// without the window term.
-		const bool deposit_aux = bezel_threshold_changed
-			|| ((window().machine().video().vector_present_rate() == 0)
-				? !vector_present_repeat
-				: m_vec_frame_advanced);
+		// A decay hold advances display time while serving no geometry, so a rebuild here would
+		// compose the aux buffers from an empty list and then freeze that: the held frame kept its
+		// phosphor pool and lost all of its glow. Retain instead - the buffers already hold the very
+		// frame being decayed, and a decaying phosphor goes on scattering light in the tube.
+		const bool deposit_aux = !vstats.playback_decay_hold
+			&& (bezel_threshold_changed
+				|| ((window().machine().video().vector_present_rate() == 0)
+					? !vector_present_repeat
+					: m_vec_frame_advanced));
 
 		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
 		// Untimed vectors hold no position in the sweep, so the beam time window's accounting
@@ -7364,7 +7444,7 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f),
 					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
 					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
-					s_bgfx_edr_active ? m_module().edr_headroom() : 0.0f };
+					(s_bgfx_edr_active || s_bgfx_hdr_active) ? m_module().hdr_present_headroom() : 0.0f };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
 			}

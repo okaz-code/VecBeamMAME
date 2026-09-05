@@ -743,30 +743,40 @@ void chain_manager::apply_hdr_auto()
 	if ((!m_edr_relative_auto && m_hdr_display_peak <= 0.0f) || !m_options.bgfx_hdr())
 		return;
 
-	// Prefer a stable 500-nit normal-vector target when a display peak is known and the panel can keep
-	// the target below the established 85% safety ceiling. macOS EDR auto has no absolute nits, so its
-	// peak arrives as headroom * reference white - the nominal scale the EDR present shader's dynamic
-	// ceiling and the HDR diagnostics already work in - and "500 nits" there means 2.5x SDR white
-	// rather than a physical figure. A lower-peak panel, or a peak that is not resolved yet (macOS
-	// before the first EDR frame), retains the previous 1.65 * paper-white calibration. Additive
-	// crossings/overload then use hdr_rolloff_max to approach the display peak.
+	// The beam target is a MULTIPLE OF SDR WHITE, and the display's capability CLAMPS it - it never
+	// selects it. The old form asked "does 500 nits fit under 0.85 * peak?" and dropped to a different
+	// calibration (1.65 * paper white) when it did not. On macOS relative auto that peak is the current
+	// EDR headroom * paper white, i.e. a momentary brightness-dependent figure, so the answer flipped
+	// between runs of the SAME configuration: headroom >= 2.94x took 500 nits, anything under it took
+	// 330, and the whole tone scale moved by 1.515x with nothing but a log line to say which had
+	// happened. Captures of one unchanged cfg came back at max 1.520 and 2.314 - exactly 330/500.
+	// A clamp cannot do that: a weak display degrades continuously and an ample one always gets the
+	// artistic target. Nits survive only as an input format (converted here) and in the log.
 	const float paper_white = std::max(1.0f, m_hdr_paper_white);
 	const float peak = m_hdr_display_peak;
-	const float previous_desired_beam = m_edr_relative_auto
-		? 1.65f * paper_white
-		: std::min(1.65f * paper_white, 0.85f * peak);
-	constexpr float preferred_beam_nits = 500.0f;
-	// Roll-off room kept above the preferred beam for additive crossings and overload. 1.0 applies the
-	// 85% safety ceiling alone (a panel whose peak only just clears the target still takes the 500-nit
-	// beam); raise it if crossings read as compressed on such a panel.
-	constexpr float preferred_beam_reserve = 1.0f;
-	const bool preferred_beam_has_headroom = peak > 0.0f
-		&& preferred_beam_nits * preferred_beam_reserve <= 0.85f * peak;
-	const float desired_beam = preferred_beam_has_headroom
-		? preferred_beam_nits
-		: previous_desired_beam;
-	const float beam = std::clamp(std::round(desired_beam / 10.0f) * 10.0f, 80.0f, 2000.0f);
-	const float rmax = m_edr_relative_auto ? 0.0f : std::clamp(peak / beam, 1.1f, 8.0f);
+	// Artistic target: 2.5x SDR white, which is the 500 nits the previous code preferred at the
+	// 200-nit default paper white. Expressed as a ratio because that is what the present shader
+	// consumes (beam_peak / output_reference_white) and all macOS can report.
+	constexpr float preferred_beam_ratio = 2.5f;
+	// Safety ceiling kept below the display's own limit, so additive crossings and overload have
+	// somewhere to go instead of clipping at the panel.
+	constexpr float beam_capability_reserve = 0.85f;
+	// Capability, as a multiple of SDR white. Prefer the stable headroom ratio; fall back to the peak
+	// when only nits are known, and to no clamp at all before either has resolved.
+	const float capability_ratio = (m_hdr_headroom_ratio > 0.0f)
+		? m_hdr_headroom_ratio
+		: ((peak > 0.0f) ? peak / paper_white : 0.0f);
+	const float beam_ratio = (capability_ratio > 0.0f)
+		? std::min(preferred_beam_ratio, beam_capability_reserve * capability_ratio)
+		: preferred_beam_ratio;
+	const float beam = std::clamp(std::round(beam_ratio * paper_white / 10.0f) * 10.0f, 80.0f, 2000.0f);
+	// Roll-off ceiling as a multiple of the beam. Relative auto leaves this to the present shader's
+	// dynamic clamp (u_hdr_rolloff.w), which follows the CURRENT headroom instead of freezing a
+	// capability figure that the brightness slider can invalidate.
+	const float rmax = m_edr_relative_auto
+		? 0.0f
+		: std::clamp((capability_ratio > 0.0f) ? capability_ratio / std::max(beam_ratio, 1e-3f) : 1.1f,
+				1.1f, 8.0f);
 	const float previous_beam = m_hdr_last_auto_beam;
 	const float previous_rmax = m_hdr_last_auto_rolloff;
 
@@ -817,18 +827,20 @@ void chain_manager::apply_hdr_auto()
 
 	if (applied)
 	{
-		if (m_edr_relative_auto && peak > 0.0f)
+		// Report the ratio first on every path - it is the quantity the shader uses and the only one
+		// macOS can measure - and add the nits only where they are a real figure rather than a
+		// paper-white multiple. A clamped beam says so, so a dim result is never a silent one.
+		const char *clamped = (beam_ratio < preferred_beam_ratio - 1e-3f) ? " (clamped by display)" : "";
+		if (m_edr_relative_auto)
 			osd_printf_info(
-					"BGFX: EDR relative auto-config: nominal peak=%.0f nits (headroom %.2fx of %.0f-nit reference white), beam=%.0f nits (%.2fx reference white); dynamic display ceiling enabled\n",
-					peak, peak / paper_white, paper_white, beam, beam / paper_white);
-		else if (m_edr_relative_auto)
-			osd_printf_info(
-					"BGFX: EDR relative auto-config: beam=%.2fx reference white; headroom not resolved yet, dynamic display ceiling enabled\n",
-					beam / paper_white);
+					"BGFX: EDR relative auto-config: beam=%.2fx SDR white%s; capability %.2fx%s, dynamic display ceiling enabled\n",
+					beam_ratio, clamped,
+					capability_ratio,
+					(m_hdr_headroom_ratio > 0.0f) ? " potential headroom" : " (not resolved yet)");
 		else if (m_hdr_display_peak_absolute)
 			osd_printf_info(
-					"BGFX: HDR auto-config: display=%.0f nits, SDR white=%.1f nits, beam=%.0f nits, rolloff max=%.2f\n",
-					peak, paper_white, beam, rmax);
+					"BGFX: HDR auto-config: beam=%.2fx SDR white%s (= %.0f nits at %.1f-nit SDR white), display=%.0f nits (%.2fx), rolloff max=%.2f\n",
+					beam_ratio, clamped, beam, paper_white, peak, capability_ratio, rmax);
 		else
 			osd_printf_info("BGFX: HDR relative calibration unavailable\n");
 	}

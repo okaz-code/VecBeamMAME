@@ -297,6 +297,12 @@ struct render_vector_stats
 	// advances them by exactly one refresh. playback_reset changes after a discontinuous seek.
 	bool  playback_active = false;
 	bool  playback_paused = false;
+	// -vector_playback_decay is holding: display time advances (that is the decay) while NOTHING is
+	// drawn. The post-pool routes - glow, halation, no-persist dots, rays - are rebuilt whenever a
+	// source frame advances, so without this they are rebuilt from the empty list and the held image
+	// keeps the phosphor pool but loses every trace of scattered light. Renderers that retain those
+	// buffers between source frames must keep retaining them here.
+	bool  playback_decay_hold = false;
 	float playback_dt_ms = 0.0F;
 	double playback_time_ms = 0.0;
 	u32   playback_reset = 0U;

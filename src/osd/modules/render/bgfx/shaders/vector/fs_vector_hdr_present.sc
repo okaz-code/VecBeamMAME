@@ -40,7 +40,10 @@ void main()
 		// CAMetalLayer does not tone-map values above current EDR headroom; they clip. Keep the user's
 		// artistic ceiling, but dynamically lower it to the hardware ceiling. If available headroom
 		// falls below the normal beam knee, move the knee down as well to retain a soft shoulder.
-		if (edr && u_hdr_rolloff.w > 0.0)
+		// HDR10 gets the same treatment: its panel peak is fixed but the SDR white it is measured
+		// against is a user setting, so a ceiling written once at startup goes stale exactly as a
+		// macOS one would. The renderer passes 0 when no ceiling is known, which disables this.
+		if (u_hdr_rolloff.w > 0.0)
 		{
 			float display_ceil = u_hdr_rolloff.w * output_reference_white;
 			ceil = min(ceil, display_ceil);

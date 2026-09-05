@@ -145,15 +145,21 @@ public:
 	// Clear temporal FBO history without destroying the active chain.
 	void request_temporal_reset();
 
-	// HDR auto-config calibration. Absolute-peak platforms derive both values from nits. Relative
-	// macOS EDR auto uses a stable artistic beam and leaves the hardware ceiling to a dynamic present
-	// uniform instead of freezing a transient headroom ratio into the sliders.
+	// HDR auto-config calibration. The beam target is a MULTIPLE OF SDR WHITE on every platform: the
+	// present shader only ever uses beam_peak / output_reference_white, and macOS reports nothing but
+	// that ratio in the first place (headroom). Absolute nits remain an input format and a reporting
+	// unit - hand them over here when the platform knows them, and they are converted at this edge.
 	void set_hdr_display_peak(float nits, bool absolute = true, bool edr_relative_auto = false)
 	{
 		m_hdr_display_peak = nits;
 		m_hdr_display_peak_absolute = absolute;
 		m_edr_relative_auto = edr_relative_auto;
 	}
+	// How many times SDR white this display can present, as a STABLE capability rather than the
+	// momentary value. On macOS that is the potential EDR headroom (brightness-independent - the
+	// current headroom tracks the SDR brightness slider and is latched from whatever the first
+	// post-EDR sample happened to be); elsewhere it is peak nits / SDR white. 0 = not known yet.
+	void set_hdr_headroom_ratio(float ratio) { m_hdr_headroom_ratio = ratio; }
 	void set_hdr_paper_white(float nits) { m_hdr_paper_white = nits; }
 	// MACRO sliders: import the values they derive into their target sliders. force = the user moved a
 	// macro (or the chain was just loaded), so the targets are overwritten; otherwise only macros whose
@@ -163,10 +169,12 @@ public:
 	// Update hardware-derived defaults after the host window crosses to another monitor. This is
 	// intentionally separate from the initial setter because the first application occurs as part of
 	// load_chains(), while a live display change must update the already-loaded sliders immediately.
-	void refresh_hdr_display(float nits, bool absolute, bool edr_relative_auto, float paper_white)
+	void refresh_hdr_display(float nits, bool absolute, bool edr_relative_auto, float paper_white,
+			float headroom_ratio)
 	{
 		set_hdr_display_peak(nits, absolute, edr_relative_auto);
 		set_hdr_paper_white(paper_white);
+		set_hdr_headroom_ratio(headroom_ratio);
 		m_hdr_live_refresh = true;
 		apply_hdr_auto();
 		m_hdr_live_refresh = false;
@@ -287,6 +295,7 @@ private:
 	// HDR auto-config calibration peak; absolute nits when known. Relative EDR auto is ratio-based.
 	float                           m_hdr_display_peak = 0.0f;
 	float                           m_hdr_paper_white = 200.0f;
+	float                           m_hdr_headroom_ratio = 0.0f;
 	bool                            m_hdr_display_peak_absolute = true;
 	bool                            m_edr_relative_auto = false;
 	float                           m_hdr_last_auto_beam = 0.0f;

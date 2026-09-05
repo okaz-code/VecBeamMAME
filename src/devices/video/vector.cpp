@@ -325,6 +325,9 @@ public:
 	bool recording() const { return m_mode == mode::RECORD; }
 	bool playing() const { return m_mode == mode::PLAYBACK; }
 	bool playback_paused() const { return m_tool_paused; }
+	// True for the whole -vector_playback_decay sequence, both while the requested periods elapse
+	// and afterwards while the state is held: in neither case is any geometry served.
+	bool playback_decay_hold() const { return m_decay_running; }
 	bool playback_advanced() const { return m_playback_advanced; }
 	attotime playback_frame_period() const
 	{
@@ -1571,6 +1574,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.total_energy = stats_total_energy;
 	stats.playback_active = playback_active;
 	stats.playback_paused = playback_active && m_stream->playback_paused();
+	stats.playback_decay_hold = playback_active && m_stream->playback_decay_hold();
 	const attotime playback_period = playback_active
 		? m_stream->playback_frame_period() : screen.frame_period();
 	stats.playback_dt_ms = (playback_active && playback_advanced)

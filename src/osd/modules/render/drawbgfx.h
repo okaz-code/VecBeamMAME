@@ -673,6 +673,18 @@ private:
 	// window width, disengage below 1.0x, so a title whose spans straddle the threshold does not
 	// flip the phosphor between per-present and vector_phosphor_rate cadence every pass.
 	bool m_vec_window_engaged = false;
+	// Hysteresis alone still flips on a title whose sweep length swings across the band - mhavoc
+	// alternates 2.2 ms and 22 ms and flipped 31 times in a 60-second capture. Each flip switches the
+	// deposit between windowed and whole-frame, which moves the phosphor cadence and steps the bloom
+	// that rides on the pool. So the candidate state must also HOLD for beam_window_latch_ms of real
+	// time before it is adopted: a genuine scene change persists and still crosses within a second,
+	// while frame-to-frame span noise never does.
+	bool m_vec_window_pending = false;          // candidate state the debounce is timing
+	double m_vec_window_pending_ms = 0.0;       // how long it has held
+	int64_t m_vec_window_latch_hpc = 0;         // bx::getHPCounter() at the previous decision
+	// Flip count, because the info-level notices deliberately go quiet after reporting each state
+	// once - which is exactly what hid how often this was actually toggling. Verbose only.
+	uint32_t m_vec_window_flips = 0;
 	// Last reported engage decision and window width, so the info-level notice in draw() fires on a
 	// real change instead of every present.
 	bool m_vec_window_notice_engaged = false;
