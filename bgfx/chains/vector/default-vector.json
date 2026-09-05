@@ -8,7 +8,7 @@
 //
 // The chain ends in "screen_hdr" rather than "output". That target's presence is what tells the
 // renderer to present this as an HDR chain: it seeds the linear work target with screen_hdr x
-// beam_peak_nits, composes artwork and UI on top, and encodes the result for whichever swapchain is
+// beam_peak_ratio, composes artwork and UI on top, and encodes the result for whichever swapchain is
 // actually in use - PQ for Windows HDR10, linear extended for macOS EDR, gamma for SDR.
 //
 // Writing straight to "output" skipped all of that. On an SDR swapchain the values happened to land
@@ -37,7 +37,7 @@
 	],
 
 	"sliders": [
-		{"type":"float","name":"beam_peak_nits","text":"HDR Beam Peak (nits)","default":300,"min":80.0,"max":2000.0,"step":10.0,"format":"%4.0f","screen":"vector"},
+		{"type":"float","name":"beam_peak_ratio","text":"HDR Beam Peak (x SDR white)","default":1.5,"min":0.25,"max":30.0,"step":0.05,"format":"%2.2f","screen":"vector"},
 		{"type":"float","name":"hdr_rolloff_knee","text":"HDR Rolloff Knee (x beam)","default":1.0,"min":0.5,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"hdr_rolloff_max","text":"HDR Rolloff Max (x beam)","default":2.4,"min":0.5,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector"},
 		{"type":"float","name":"hdr_sat_protect","text":"HDR Saturated Colour Protect","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector"},
@@ -56,7 +56,7 @@
 		},
 		{   "effect": "misc/blit",
 			"name": "Final blit to screen_hdr",
-			"_comment": "linear, normalized (1.0 = one calibrated beam). The renderer scales this by beam_peak_nits into absolute nits and encodes it for the active swapchain.",
+			"_comment": "linear, normalized (1.0 = one calibrated beam). The renderer scales this by beam_peak_ratio x SDR reference white and encodes it for the active swapchain.",
 			"input": [
 				{ "sampler": "s_tex", "target": "guest" }
 			],
