@@ -7474,7 +7474,10 @@ int renderer_bgfx::draw(int update)
 			if (ro)
 			{
 				float rov[4] = {
-					m_chains->slider_value(0, "hdr_rolloff_knee", 1.0f),
+					// Fraction of the display ceiling at which the shoulder starts. Below it the
+					// reproduction is linear, so the ratio between a plain stroke and a dense
+					// additive overlap survives to the screen instead of being compressed away.
+					m_chains->slider_value(0, "hdr_shoulder_start", 0.85f),
 					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
 					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
 					(s_bgfx_edr_active || s_bgfx_hdr_active) ? m_module().hdr_present_headroom() : 0.0f };

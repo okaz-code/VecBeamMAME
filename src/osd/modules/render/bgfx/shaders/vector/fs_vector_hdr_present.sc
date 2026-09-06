@@ -13,7 +13,9 @@ $input v_color0, v_texcoord0
 SAMPLER2D(s_tex, 0);
 
 uniform vec4 u_hdr_params;
-uniform vec4 u_hdr_rolloff;      // (knee xpeak, max xpeak, saturation protect, current EDR headroom)
+// (shoulder start as a FRACTION of the display ceiling, ceiling as a multiple of beam peak when no
+//  live headroom is known, saturation protect, current display headroom x reference white)
+uniform vec4 u_hdr_rolloff;
 uniform vec4 u_sdr_rolloff;      // (knee, ceiling, shadow_curve, 0) SDR-only, paper_white units; see SDR branch below
 
 void main()
@@ -33,22 +35,28 @@ void main()
 	// of 1.0 leaves a single full-intensity line untouched and only rolls the brighter overlaps.
 	if (hdr || edr)
 	{
+		// THIS IS A DISPLAY FIT, NOT A TUBE MODEL. The two used to be one curve: the knee sat at
+		// hdr_rolloff_knee x BEAM PEAK, i.e. just above an ordinary stroke, so every additive overlap
+		// entered compression immediately and the tube's own dynamic range was thrown away before it
+		// reached the screen. Measured on starwars frame 4840: the accumulated deposit already carried
+		// the small TIE fighter at 9.1x a plain stroke in chain space, and the old anchoring delivered
+		// 4.7x. Anchoring the shoulder to what the DISPLAY can do instead leaves the simulation's ratio
+		// intact up to the shoulder and only bends the last stretch, which is what a tone map is for.
+		// The tube's own saturation belongs upstream, in chain space, where it does not move when the
+		// viewer touches the brightness slider.
 		float peak = max(u_hdr_params.x, 1.0);
 		float m0   = max(L.r, max(L.g, L.b));   // original peak (overload indicator - additive overlap nits)
-		float knee = u_hdr_rolloff.x * peak;
-		float ceil = u_hdr_rolloff.y * peak;
-		// CAMetalLayer does not tone-map values above current EDR headroom; they clip. Keep the user's
-		// artistic ceiling, but dynamically lower it to the hardware ceiling. If available headroom
-		// falls below the normal beam knee, move the knee down as well to retain a soft shoulder.
-		// HDR10 gets the same treatment: its panel peak is fixed but the SDR white it is measured
-		// against is a user setting, so a ceiling written once at startup goes stale exactly as a
-		// macOS one would. The renderer passes 0 when no ceiling is known, which disables this.
-		if (u_hdr_rolloff.w > 0.0)
-		{
-			float display_ceil = u_hdr_rolloff.w * output_reference_white;
-			ceil = min(ceil, display_ceil);
-			knee = min(knee, ceil * 0.85);
-		}
+		// Ceiling: what the display can actually present. CAMetalLayer does not tone-map above the
+		// current EDR headroom - it clips - and on HDR10 the panel peak is fixed but the SDR white it
+		// is measured against is a user setting, so a ceiling frozen at startup goes stale either way.
+		// u_hdr_rolloff.w = 0 means no live figure is available; fall back to the artistic multiple.
+		float ceil = (u_hdr_rolloff.w > 0.0)
+				? min(u_hdr_rolloff.y * peak, u_hdr_rolloff.w * output_reference_white)
+				: u_hdr_rolloff.y * peak;
+		// Shoulder start as a FRACTION OF THAT CEILING (u_hdr_rolloff.x). Everything below it is
+		// reproduced linearly, so a single stroke and a dense overlap keep the ratio the deposit gave
+		// them. 1.0 = hard clip at the ceiling, no shoulder.
+		float knee = clamp(u_hdr_rolloff.x, 0.05, 1.0) * ceil;
 		if (ceil > knee && m0 > knee)
 		{
 			// Saturated-colour protection (u_hdr_rolloff.z, 0 = off): a display renders WHITE at peak
