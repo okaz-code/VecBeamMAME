@@ -325,11 +325,14 @@
 		},
 
 		{ "effect": "vector/vector_overlap_white_extract", "name": "Overlap White Extract",
+		  "_comment": "Extract + the two blurs below run only when the white-hot path is on. Both consumers of overlap_field0 (Phosphor, Glow Combine) already gate their sample on overlap_white_strength, so at zero these three half-res RGBA16F passes were building a field nothing would read. They were the only ungated passes in the chain.",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "overlap_white_strength", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "texture": "overlap" } ],
 		  "uniforms": [ { "uniform": "u_overlap_white_count", "slider": "overlap_white_count" } ],
 		  "output": "overlap_field0" },
 
 		{ "effect": "vector/vector_overlap_white_blur", "name": "Overlap White Blur X",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "overlap_white_strength", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "target": "overlap_field0" } ],
 		  "uniforms": [
 			{ "uniform": "u_overlap_blur_direction", "value": [ 1.0, 0.0 ] },
@@ -337,6 +340,7 @@
 		  "output": "overlap_field1" },
 
 		{ "effect": "vector/vector_overlap_white_blur", "name": "Overlap White Blur Y",
+		  "disablewhen": [ { "type": "slider", "condition": "equal", "name": "overlap_white_strength", "value": 0.0 } ],
 		  "input": [ { "sampler": "s_tex", "target": "overlap_field1" } ],
 		  "uniforms": [
 			{ "uniform": "u_overlap_blur_direction", "value": [ 0.0, 1.0 ] },
