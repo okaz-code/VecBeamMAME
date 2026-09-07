@@ -2722,8 +2722,10 @@ float renderer_bgfx::dwell_energy_gain(render_primitive *prim, float seg_len, bo
 		return 1.0f;
 	const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
 	const double v = (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);
+	// Floor at 1: this models EXTRA energy from a slow sweep, so a stroke faster than the reference
+	// must be left alone rather than dimmed. Without the floor an ordinary vector came out at 0.95.
 	const double x = double(std::max(0.01f, m_vs.dwell_energy_norm)) / std::max(1e-6, v);
-	return powf(std::clamp(float(x), 0.0f, std::max(1.0f, m_vs.dwell_energy_max)),
+	return powf(std::clamp(float(x), 1.0f, std::max(1.0f, m_vs.dwell_energy_max)),
 			m_vs.dwell_energy_curve);
 }
 
