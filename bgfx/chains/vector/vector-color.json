@@ -223,6 +223,7 @@
 		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.65,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"tube_gamma","text":"Tube Transfer Gamma (overlap)","default":1.0,"min":0.2,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"join_extend","text":"Polyline Joint Seam Extend","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak","text":"Masked Core Peak Limit","default":1.0,"min":0.0,"max":16.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak_emit","text":"Masked Core Peak Limit (emission)","default":1.0,"min":0.0,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"core_overlap_max","text":"Direct Core Overlap","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Additive","Uniform Maximum"]},
