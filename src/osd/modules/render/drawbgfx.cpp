@@ -6776,9 +6776,25 @@ int renderer_bgfx::draw(int update)
 			}
 
 			// Explicit optical-effects FBO: point halation rim/fill and starburst rays are
-			// composited directly, after ordinary glow tail shaping. Clear every frame so turning
-			// either effect off cannot leave a stale optical image behind.
-			if (m_optical_separate && bgfx::isValid(m_vec_optical_fb))
+			// composited directly, after ordinary glow tail shaping.
+			// Gated on the AUX cadence, exactly like the glow and no-persist blocks above - this used
+			// to run (and therefore CLEAR) on every present. The aux routes deliberately receive the
+			// whole pass and are retained between presents, so clearing this one unconditionally left
+			// halation on screen only for the single present that carried a new source frame: with the
+			// beam time window on, every other present blacked it out (a flicker with no counterpart
+			// in the model, and one the bloom in m_vec_glow_fb never had because that block is gated),
+			// and a playback frame-step or decay hold - which never advance the source - removed it
+			// entirely. -novector_beam_window hid the bug by making every present a depositing one.
+			// The clauses, in order: new geometry to draw; rays, which land here instead of the glow
+			// buffer when the optical FBO exists; a genuinely empty new pass, so a cleared screen does
+			// not keep the last pass's halation; and a new pass with the effects switched OFF
+			// (m_optical_vpl / m_ray_vpl both zero, so nothing allocates), which still has to clear
+			// once or turning halation off would leave its last image behind forever. An allocation
+			// FAILURE deliberately matches none of them: retaining the last complete optical image
+			// beats blacking it out, which is what the no-persist block does for the same reason.
+			const bool optical_off_clear = deposit_aux && m_optical_vpl == 0 && m_ray_vpl == 0;
+			if (m_optical_separate && bgfx::isValid(m_vec_optical_fb)
+				&& (optical_alloc || ray_alloc || empty_vector_source || optical_off_clear))
 			{
 				const uint16_t optical_view = uint16_t(s_current_view++);
 				bgfx_view_profile::name(optical_view, "vec_optical");
