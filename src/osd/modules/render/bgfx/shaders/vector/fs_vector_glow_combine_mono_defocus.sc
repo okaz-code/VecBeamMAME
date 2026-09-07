@@ -126,7 +126,11 @@ float bezel_band_at(float sd,float active)
 	if(active<0.5||u_ambient_level.x<=0.0||u_bezel_glow_strength.x<=0.0)return 0.0;
 	vec2 dims=tube_quad_dims();float signed_px=sd*min(dims.x,dims.y);
 	float width_px=bezel_glow_width_px(),curve=max(u_bezel_glow_curve.x,0.25);
-	return exp(-pow(max(signed_px,0.0)/width_px,curve))*step(0.0,signed_px);
+	// The exp is exactly 1.0 at and inside the face boundary, so the band's inner edge was entirely
+	// the step's: 0 -> full gain in one pixel. Antialias it with the same footprint tube_face_factor
+	// uses on this distance field, floored at one pixel for near-tangent edges.
+	float band_aa=max(fwidth(signed_px),1.0);
+	return exp(-pow(max(signed_px,0.0)/width_px,curve))*smoothstep(-band_aa,band_aa,signed_px);
 }
 vec3 shape_glow(vec3 c)
 {
@@ -207,7 +211,10 @@ vec3 bezel_corner_light(vec2 source_uv)
 	vec2 content_min=bezel_source_min(),content_max=bezel_source_max();
 	float vertical_distance=min(abs(source_uv.x-content_min.x),abs(content_max.x-source_uv.x));
 	float horizontal_distance=min(abs(source_uv.y-content_min.y),abs(content_max.y-source_uv.y));
-	float corner_blend=bezel_glow_width_px()/max(min(u_target_dims.x,u_target_dims.y),1.0);
+	// Floored at an absolute reach: the corner seam's width is a property of the corner, not of the
+	// falloff distance, and a narrow band would otherwise shrink this blend away and expose it.
+	float corner_blend=max(bezel_glow_width_px(),24.0*max(u_vec_res_scale.x,0.01))
+		/max(min(u_target_dims.x,u_target_dims.y),1.0);
 	float distance_delta=vertical_distance-horizontal_distance;
 	if(distance_delta<=-corner_blend)return bezel_axis_light(source_uv,vertical_axis);
 	if(distance_delta>=corner_blend)return bezel_axis_light(source_uv,horizontal_axis);

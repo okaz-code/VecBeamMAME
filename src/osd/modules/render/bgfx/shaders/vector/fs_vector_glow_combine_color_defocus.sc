@@ -234,7 +234,13 @@ float bezel_band_at(float sd, float active)
 	float curve = max(u_bezel_glow_curve.x, 0.25);
 
 	float outside = exp(-pow(max(signed_px, 0.0) / width_px, curve));
-	return outside * step(0.0, signed_px);
+	// outside is exactly 1.0 at and inside the face boundary (its own max() flattens it there), so
+	// the band's inner edge was entirely this step's: 0 -> full gain in one pixel, and the only
+	// unfiltered edge left in this shader. tube_face_factor_at already antialiases the SAME distance
+	// field, so use the same footprint. fwidth is in the pixel units signed_px is measured in,
+	// floored at one pixel so a near-tangent edge still gets a pixel of ramp instead of a hard line.
+	float band_aa = max(fwidth(signed_px), 1.0);
+	return outside * smoothstep(-band_aa, band_aa, signed_px);
 }
 vec2 vector_pincushion_uv(vec2 texcoord)
 {
@@ -362,7 +368,11 @@ vec3 bezel_bloom_source(vec2 source_uv)
 	vec2 horizontal_edge = vec2(clamp(source_uv.x, content_min.x, content_max.x), top ? content_min.y : content_max.y);
 	float vertical_distance = min(abs(source_uv.x - content_min.x), abs(content_max.x - source_uv.x));
 	float horizontal_distance = min(abs(source_uv.y - content_min.y), abs(content_max.y - source_uv.y));
-	float corner_blend = bezel_glow_width_px()
+	// Tying the blend to the glow width means a narrow band (10 px where this used to be 100)
+	// shrinks it to almost nothing and the triangular seam it exists to hide comes back. The seam's
+	// width is a property of the corner, not of the falloff distance, so floor it at an absolute
+	// reach, scaled the same way every other pixel magnitude in this shader is.
+	float corner_blend = max(bezel_glow_width_px(), 24.0 * max(u_vec_res_scale.x, 0.01))
 		/ max(min(u_target_dims.x, u_target_dims.y), 1.0);
 	float distance_delta = vertical_distance - horizontal_distance;
 	if (distance_delta <= -corner_blend)
