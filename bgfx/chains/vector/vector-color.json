@@ -116,6 +116,9 @@
 		// ---- Beam energy model ----
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"energy_infl","text":"Energy Influence (no-current src)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"dwell_energy_curve","text":"Dwell Energy Curve (0=off)","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"dwell_energy_norm","text":"Dwell Energy Reference (widths/ms)","default":0.95,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"dwell_energy_max","text":"Dwell Energy Max (x)","default":8.0,"min":1.0,"max":32.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_speed_norm","text":"Energy Speed Norm (scr/ms)","default":3.0,"min":0.05,"max":12.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_curve","text":"Energy Curve","default":2.5,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_line_max","text":"Energy Line Max / Density Cap","default":1.2,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},

@@ -2532,6 +2532,9 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "energy_obj_sharp", &renderer_bgfx::vec_slider_cache::energy_obj_sharp, 2.0f },
 	{ "energy_obj_star", &renderer_bgfx::vec_slider_cache::energy_obj_star, 1.5f },
 	{ "energy_speed_norm", &renderer_bgfx::vec_slider_cache::energy_speed_norm, 0.8f },
+	{ "dwell_energy_norm", &renderer_bgfx::vec_slider_cache::dwell_energy_norm, 0.95f },
+	{ "dwell_energy_curve", &renderer_bgfx::vec_slider_cache::dwell_energy_curve, 0.0f },
+	{ "dwell_energy_max", &renderer_bgfx::vec_slider_cache::dwell_energy_max, 8.0f },
 	{ "energy_stroke_agg", &renderer_bgfx::vec_slider_cache::energy_stroke_agg, 1.0f },
 	{ "glow_narrow", &renderer_bgfx::vec_slider_cache::glow_narrow, 0.0f },
 	{ "hv_droop", &renderer_bgfx::vec_slider_cache::hv_droop, 0.0f },
@@ -2703,6 +2706,25 @@ float renderer_bgfx::generic_beam_energy(render_primitive *prim, float seg_len, 
 		emax = std::max(1.0f, m_vs.energy_line_max);
 	}
 	return float(std::clamp(double(I) * ((1.0 - infl) + infl * s * emax), 0.0, 16.0));
+}
+
+// Dwell energy: how much longer than the reference this stroke lingers over a unit of screen.
+// The deposit is current x time, and a device-supplied beam_energy carries only the current, so
+// without this a slow sweep and a fast one at the same current deposit the same light. Returns 1.0
+// when off, untimed, or point-classified (a parked dot's dwell is already the energy_dot_* model).
+// Deliberately NOT folded into n: n also drives the beam WIDTH, and a slower beam is not a wider
+// one - the extra energy belongs in the amplitude overrange, which is where the caller applies it.
+float renderer_bgfx::dwell_energy_gain(render_primitive *prim, float seg_len, bool as_point,
+		float screen_ref) const
+{
+	if (m_vs.dwell_energy_curve <= 0.0f || as_point || seg_len <= 0.5f
+			|| !(prim->t0 >= 0.0 && prim->t1 > prim->t0))
+		return 1.0f;
+	const double dt_ms = (prim->t1 - prim->t0) * 1000.0;
+	const double v = (double(seg_len) / std::max(1.0f, screen_ref)) / std::max(1e-6, dt_ms);
+	const double x = double(std::max(0.01f, m_vs.dwell_energy_norm)) / std::max(1e-6, v);
+	return powf(std::clamp(float(x), 0.0f, std::max(1.0f, m_vs.dwell_energy_max)),
+			m_vs.dwell_energy_curve);
 }
 
 // Port of the Vectrex driver's object_boost() (see vectrex_v.cpp): beam_energy *= 1..energy_obj_max
@@ -3444,7 +3466,11 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		// the ramp from the knee to peak (1.0); above peak it grows linearly so true overdrive keeps
 		// climbing instead of saturating at the same flare as a 1.0 line. Sources that never exceed 1.0
 		// (AVG/DVG, color.a fallback) get ot<=1 and behave exactly as before.
-		const float ot     = (n - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f);   // n above the overload threshold
+		// Current x dwell drives the AMPLITUDE; n alone (current) drives the width. On starwars this
+		// is what tells the explosion centre from the crawl text: their accumulated brightness is
+		// within a factor of two of each other, but the centre's beam lingers seven times longer.
+		const float ne     = n * dwell_energy_gain(prim, seg_len, as_point, e_screen_ref);
+		const float ot     = (ne - ov_thresh) / ov_span * (as_point ? ov_dot : 1.0f);   // above the overload threshold
 		if (ot > 0.0f)
 		{
 			const float ocurve = m_vs.intensity_overdrive_curve;

@@ -350,6 +350,17 @@ public:
 		float energy_obj_sharp = 2.0f;
 		float energy_obj_star = 1.5f;
 		float energy_speed_norm = 0.8f;
+		// Deposit = current x dwell. A device-supplied beam_energy (starwars AVG's STAT/VCTR pair) is
+		// a CURRENT; the time the beam spends over a unit of screen is a separate factor and was
+		// being dropped entirely, because the renderer's speed model only runs when it derives the
+		// energy itself. Measured on starwars: the explosion centre sweeps at 7.06 us per screen
+		// unit against 0.99 for the crawl text, so at the same current it lays down seven times the
+		// energy per unit length. That ratio is the only quantity that separates the two - their
+		// accumulated brightness is within a factor of two, so no brightness curve can.
+		// dwell_energy_curve 0 = off.
+		float dwell_energy_norm = 0.95f;   // reference sweep speed, screen widths per ms
+		float dwell_energy_curve = 0.0f;
+		float dwell_energy_max = 8.0f;     // cap on the slow-beam multiplier
 		float energy_stroke_agg = 1.0f;
 		float glow_narrow = 0.0f;
 		float hv_droop = 0.0f;
@@ -695,6 +706,8 @@ private:
 	// ratio in the first place. beam_peak_ratio is the authoritative slider; a chain that still
 	// declares only beam_peak_nits is converted against the configured paper white so it behaves
 	// exactly as before. Absolute nits survive as an input format and in the log.
+	float dwell_energy_gain(render_primitive *prim, float seg_len, bool as_point,
+			float screen_ref) const;
 	float vec_beam_peak_ratio() const;
 	// The same target expressed in chain-space nits, against the reference white the present pass
 	// will normalise by. Tracks a live reference white instead of freezing one at calibration time.
