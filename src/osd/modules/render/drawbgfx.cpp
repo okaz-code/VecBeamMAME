@@ -6523,6 +6523,17 @@ int renderer_bgfx::draw(int update)
 					dsh->set(vals, sizeof(float) * 4);
 					dsh->upload();
 				}
+				// How much of the seam-filling join extension to keep at a CONTINUOUS joint. The
+				// extension replaces the axial roll-off with 1.0 around a shared vertex and BOTH
+				// segments do it, so a polyline corner receives two full passes where the beam made
+				// one. 1.0 = legacy, 0.0 = the erf roll-off alone, which already sums to one pass.
+				bgfx_uniform* jex = line_eff->uniform("u_join_extend");
+				if (jex)
+				{
+					float vals[4] = { m_chains->slider_value(0, "join_extend", 1.0f), 0.0f, 0.0f, 0.0f };
+					jex->set(vals, sizeof(float) * 4);
+					jex->upload();
+				}
 				set_halo_quad_edge(line_eff);
 				if (m_vs.core_overlap_max > 0.5f)
 				{
@@ -6719,6 +6730,13 @@ int renderer_bgfx::draw(int update)
 						float vals[4] = { m_chains->slider_value(0, "vertex_dwell_width", 1.0f), 0.0f, 0.0f, 0.0f };
 						dsh->set(vals, sizeof(float) * 4);
 						dsh->upload();
+					}
+					bgfx_uniform* jex = line_eff->uniform("u_join_extend");
+					if (jex)
+					{
+						float vals[4] = { m_chains->slider_value(0, "join_extend", 1.0f), 0.0f, 0.0f, 0.0f };
+						jex->set(vals, sizeof(float) * 4);
+						jex->upload();
 					}
 					set_halo_quad_edge(line_eff);
 				};

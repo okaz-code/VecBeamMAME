@@ -34,6 +34,8 @@ uniform vec4 u_halo_quad_edge;
 // spot convolved with its own motion; a deposit made while the beam is STOPPED is not, so the two
 // need not share a width. 1.0 keeps them equal, which is what this did before the slider existed.
 uniform vec4 u_dwell_shape;
+// x = how much of the seam-filling join extension to keep at a CONTINUOUS joint. See join_allowed.
+uniform vec4 u_join_extend;
 
 float sharpen(float g, float p)
 {
@@ -156,7 +158,15 @@ void main()
 		// halo at FULL strength ~2 sigma beyond the line end and then drops it in one step, drawing a hard
 		// axis-aligned boundary around every primitive - the square frame that appears as soon as a broad
 		// faint halo is dialled up. Halos need the plain swept-gaussian roll-off, not a join.
-		float join_allowed = step(0.0, v_texcoord3.w);
+		// A CONTINUOUS joint double-counts. The join zone replaces the axial roll-off with 1.0 over
+		// +-2 sigma AROUND the shared vertex, and both segments do it, so each contributes its full
+		// perpendicular profile where the beam made a single pass - exactly 2x too much at every
+		// corner of a polyline. That is why the score and level text light up at their corners even
+		// though nothing is blanked there. The erf roll-off needs no help at such a joint: the
+		// segment ending there contributes 0.5 and the one starting there contributes 0.5, which is
+		// already the correct single pass, continuous and seamless. u_join_extend scales the zone so
+		// the old behaviour is still reachable: 1.0 = legacy (double-counted), 0.0 = corrected.
+		float join_allowed = step(0.0, v_texcoord3.w) * clamp(u_join_extend.x, 0.0, 1.0);
 		float start_join_support = max(start_radius, 2.0 * sg);
 		float finish_join_support = max(finish_radius, 2.0 * sg);
 		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
