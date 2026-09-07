@@ -29,6 +29,17 @@ uniform vec4 u_phos_reset; // x = meaningful fresh-hit floor; >0 makes every suc
 uniform vec4 u_phos_composite; // x > 0.5: a weaker hit cannot darken brighter surviving phosphor
 uniform vec4 u_phos_peak;  // x = direct-excitation peak limit applied before pool storage; 0 = off
 uniform vec4 u_phos_radiant; // x = RGB combination brightness: 0 peak-normalised, 1 physical additive, >1 emphasis
+// x = tube transfer exponent. THE TUBE'S OWN SATURATION, in chain space, where 1.0 is one
+// calibrated beam. A real CRT does not answer twice the deposited energy with twice the light: the
+// excitable-site density, the beam current and the Z amplifier are all finite, so the top of the
+// range compresses. Without this the chain is linear wherever the display fit is linear, and two
+// crossing strokes come out at exactly 2x - which is why every crossing in a block of text lit up.
+// Applied hue-preserving to the ACCUMULATED fresh deposit and BEFORE pool storage, so the pool
+// holds emitted light rather than raw energy; putting the compression in the display shoulder
+// instead made a large fall in the pool show as a small fall on screen, and bright areas looked
+// as though they would not decay. Content at or below one beam is untouched, so an ordinary
+// unoverlapped stroke does not move. 1.0 = off (linear, previous behaviour).
+uniform vec4 u_tube_gamma;
 uniform vec4 u_overlap_white_strength;
 uniform vec4 u_overlap_white_brightness;
 
@@ -76,6 +87,15 @@ void main()
 	// composite left overlap pixels with a larger stored peak, so they remained brighter for the
 	// entire decay. This makes the stored state obey the same calibrated ceiling as the visible core.
 	float raw_cur_peak = max(cur.r, max(cur.g, cur.b));
+	// Tube transfer first: it is the physical response, and the peak limit below is a display-side
+	// guard that should act on emitted light, not on raw deposited energy.
+	float tube_g = u_tube_gamma.x;
+	if (tube_g > 0.0 && tube_g < 0.999 && raw_cur_peak > 1.0)
+	{
+		float emitted = pow(raw_cur_peak, tube_g);   // continuous at 1.0, so no step at the knee
+		cur *= emitted / raw_cur_peak;
+		raw_cur_peak = emitted;
+	}
 	if (u_phos_peak.x > 0.0 && raw_cur_peak > u_phos_peak.x)
 		cur *= u_phos_peak.x / raw_cur_peak;
 	// Store the white-hot colour in the phosphor pool as well as showing its immediate direct flash.

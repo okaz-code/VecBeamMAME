@@ -219,6 +219,7 @@
 		{"type":"float","name":"shadow_mask_strength","text":"Shadow Mask Strength","default":0.3,"min":0.0,"max":1.0,"step":0.01,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"shadow_mask_scale","text":"Shadow Mask Size (px @1080p)","default":0.65,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"shadow_mask_brightboost","text":"Shadow Mask Brightness Boost","default":0.0,"min":0.0,"max":2.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"tube_gamma","text":"Tube Transfer Gamma (overlap)","default":1.0,"min":0.2,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak","text":"Masked Core Peak Limit","default":1.0,"min":0.0,"max":16.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak_emit","text":"Masked Core Peak Limit (emission)","default":1.0,"min":0.0,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"core_overlap_max","text":"Direct Core Overlap","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Additive","Uniform Maximum"]},
@@ -347,7 +348,7 @@
 			{ "uniform": "u_phos_radiant", "slider": "phosphor_rgb_combination" },
 			{ "uniform": "u_overlap_white_strength", "slider": "overlap_white_strength" },
 			{ "uniform": "u_overlap_white_brightness", "slider": "overlap_white_brightness" },
-			{ "uniform": "u_phos_peak",  "slider": "masked_core_peak" } ], "output": "phos_pool" },
+			{ "uniform": "u_phos_peak",  "slider": "masked_core_peak" }, { "uniform": "u_tube_gamma", "slider": "tube_gamma" } ], "output": "phos_pool" },
 
 		{ "effect": "vector/vector_phosphor_compose_color", "name": "Phosphor Apply",
 		  "_comment": "colour compose: pool emit + converged no-persist caps/dots + phosphor tint + CIE phosphor-to-sRGB conversion in one pass. This preserves the old ordering while removing the full-res npglow_dc target/pass and the following chroma pass. The entry name remains 'Phosphor Apply' for renderer u_phos injection.",
