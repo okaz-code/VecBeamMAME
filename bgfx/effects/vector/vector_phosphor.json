@@ -26,6 +26,7 @@
 		{ "name": "u_phos_reset",    "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_phos_composite","type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_phos_peak",     "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+		{ "name": "u_tube_gamma",    "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_phos_radiant",  "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_overlap_white_strength",   "type": "vec4", "values": [ 0.8, 0.0, 0.0, 0.0 ] },
 		{ "name": "u_overlap_white_brightness", "type": "vec4", "values": [ 0.5, 0.0, 0.0, 0.0 ] },
