@@ -55,6 +55,7 @@ vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
 bgfx_macos_edr_reference_white 100
+bgfx_macos_edr_calibration absolute
 ```
 
 **真偽値**は `1` / `0` を書く。コマンドラインの `-novector_playback_overlay` のような
@@ -534,6 +535,29 @@ macOS の EDR では、この値が「基準白」としてヘッドルーム計
 macOS のみ。非不透明 Metal レイヤで Core Animation コンポジットを要求する。
 EDR ヘッドルームの取得に関わる。`-nobgfx_macos_force_composited` で無効化。
 
+### `bgfx_macos_edr_calibration`
+
+| | |
+|---|---|
+| 型 / 既定 | string / `absolute` |
+| 値 | `absolute` / `relative` |
+
+macOS のみ。較正値（`hdr_peak_target_nits` など）をどの基準で読むか。
+
+| | `absolute`（既定） | `relative` |
+|---|---|---|
+| 目標値の意味 | 絶対 nits | 名目 SDR 白（`bgfx_hdr_paper_white`）の倍数 |
+| 輝度スライダを上げると | 描画は一定、UI だけ明るくなる | 描画も天井も明るくなる |
+| Mac / Win の値共通化 | 成立する | 崩れる |
+
+`relative` は絶対 nits 導出を入れる前の挙動。`potential == current` かつ
+`-bgfx_hdr_paper_white 100`（実際の基準白）を併用したときだけ `absolute` と一致するので、
+`relative` を使うならこの併用が事実上必須。既定の 200 のままでは 2 倍ずれる。
+
+**Mac / Win で同じ較正値を使うのが目的なら `absolute` のままにする。**
+
+詳細は [HDR 設定ガイド §3.7](hdr-settings.ja.md)。
+
 ### `bgfx_macos_edr_reference_white`
 
 | | |
@@ -581,6 +605,7 @@ vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
 bgfx_macos_edr_reference_white 100
+bgfx_macos_edr_calibration absolute
 bgfx_hdr_paper_white      200
 ```
 

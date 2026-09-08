@@ -209,12 +209,20 @@ The Liquid Retina XDR display built into a MacBook Pro (M5), with a TCL 32R84
 
 Check these in order.
 
-1. **Turn the monitor's brightness to maximum.**  Switch off automatic
-   brightness if it is on.
-2. **Check that HDR is actually enabled.**  If it cannot be, the renderer falls
+1. **Turn the monitor's own brightness to maximum.**  This is what decides the
+   peak the panel can actually deliver, so nothing else can make up for it.
+   Switch off automatic brightness, and the panel's own power-saving / ABL
+   settings with it.
+2. **The macOS Displays brightness slider does not need to be pushed up.**  It
+   moves the SDR white point, not the monitor's output: raising it does not make
+   the picture brighter - under absolute calibration the beam holds its
+   luminance and only the UI gets brighter - and pushing it far enough uses up
+   the EDR headroom, leaving no room for highlights.  A lower reference white
+   leaves more headroom, not less.
+3. **Check that HDR is actually enabled.**  If it cannot be, the renderer falls
    back to SDR and that is darker.
-3. Set `bgfx_hdr_display_peak` and `bgfx_hdr_paper_white` to match the monitor's
-   peak brightness.
+4. Set `bgfx_hdr_display_peak` only if the peak cannot be detected - macOS
+   derives it from the potential headroom, so it is normally unnecessary.
 4. Games differ by a factor of two in the beam drive they ask for.
    `Brightness Threshold (T)` decides which drive level reaches full brightness,
    so lower it for a game that renders dark.

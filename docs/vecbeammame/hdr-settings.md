@@ -91,6 +91,7 @@ menu**.  They keep their values and are still saved; nothing reads them.
 | `bgfx_hdr` | 1 | Attempt HDR10/EDR, fall back to SDR.  0 = force SDR |
 | `bgfx_hdr_display_peak` | `auto` | Display peak in nits.  `auto` / a number / `0` (derive nothing, keep chain defaults) |
 | `bgfx_macos_edr_reference_white` | 100 | **The nits an EDR headroom of 1.0 stands for.**  Panel peak = potential headroom x this |
+| `bgfx_macos_edr_calibration` | `absolute` | Calibration basis.  `absolute` = the targets are absolute nits and hold across brightness changes; `relative` = read against a nominal SDR white and follow the slider (§3.7) |
 | `bgfx_hdr_paper_white` | 200 | UI white in nits.  **Effectively inert**: overridden on both HDR paths and cancelled out in SDR (§6) |
 
 > Startup options go on the command line or in an ini; everything else is a
@@ -171,6 +172,58 @@ macOS that moves with the screen brightness, so **calibrate at a fixed
 brightness, or pin the ceiling with `hdr_headroom_override`**.
 
 `-verbose` reports the active path, SDR white, headroom and the derived values.
+
+---
+
+## 3.7 Calibration basis (absolute / relative)
+
+`bgfx_macos_edr_calibration` selects between two bases.
+
+| | `absolute` (default) | `relative` |
+|---|---|---|
+| What the targets mean | Absolute nits | Multiples of a nominal SDR white (`bgfx_hdr_paper_white`) |
+| Panel peak as seen | `potential x 100`, fixed | `current x paper_white`, moves with brightness |
+| Raising the brightness | The picture holds, **only the UI brightens** | **Both the picture and the ceiling brighten** |
+| Sharing values Mac/Win | Works | Breaks |
+
+`relative` is the behaviour from before the absolute derivation existed, and is
+implemented by skipping that derivation.
+
+Measured on the built-in XDR (potential 16.00x, i.e. a real 1600-nit panel):
+
+| Mode | paper_white | current | Panel as seen | Ceiling | Beam | Emitted |
+|---|---:|---:|---:|---:|---:|---:|
+| absolute | any | 16.00x | 1600 | 1600 | 250 | **250 nits** |
+| absolute | any | 8.00x | 1600 | 1600 | 250 | **250 nits** |
+| absolute | any | 4.00x | 1600 | 1600 | 250 | **250 nits** |
+| relative | 200 | 16.00x | 3200 | 3000 | 375 | 188 nits |
+| relative | 100 | 16.00x | 1600 | 1600 | 250 | **250 nits** |
+| relative | 100 | 8.00x | 800 | 800 | 250 | 500 nits |
+| relative | 100 | 4.00x | 400 | 400 | 250 | 1000 nits |
+
+The Windows external panel under the same calibration (DXGI 1390, SDR white
+240) emits **250 nits**.
+
+So **`relative` agrees with Windows only when `potential == current` and
+`paper_white` matches the real reference white of 100** - and under exactly
+those conditions `current x paper_white = potential x 100`, so **`relative`
+degenerates into `absolute`**.  Left at the default paper white of 200 it is
+out by a factor of two.
+
+`absolute` exists for the case where potential and current diverge - which is
+to say, whenever the brightness slider moves away from the point the reference
+was measured at.  In the table above `absolute` holds 250 nits across current
+16 -> 8 -> 4 while `relative` doubles each step, 250 -> 500 -> 1000.
+
+**Use `absolute` if the point is to share values between Mac and Windows.**
+`relative` is for the separate goal of wanting the picture to track the
+brightness slider, and there `-bgfx_hdr_paper_white 100` is effectively
+mandatory alongside it.
+
+There is no third basis that tracks only the ceiling.  Moving the SDR white
+point does not change what the panel can emit - `current x current SDR white =
+potential x 100 = panel peak`, the terms cancel - so an absolute ceiling has
+nothing to track.
 
 ---
 

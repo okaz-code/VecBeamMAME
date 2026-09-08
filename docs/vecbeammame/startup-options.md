@@ -61,6 +61,7 @@ vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
 bgfx_macos_edr_reference_white 100
+bgfx_macos_edr_calibration absolute
 ```
 
 **Booleans** are written `1` / `0`.  The command line's `no` prefix, as in
@@ -599,6 +600,33 @@ macOS only.  Requests Core Animation compositing with a non-opaque Metal layer,
 which bears on whether EDR headroom can be obtained.  Disable with
 `-nobgfx_macos_force_composited`.
 
+### `bgfx_macos_edr_calibration`
+
+| | |
+|---|---|
+| Type / default | string / `absolute` |
+| Values | `absolute` / `relative` |
+
+macOS only.  Which basis the calibration values (`hdr_peak_target_nits` and
+friends) are read against.
+
+| | `absolute` (default) | `relative` |
+|---|---|---|
+| What the targets mean | Absolute nits | Multiples of a nominal SDR white (`bgfx_hdr_paper_white`) |
+| Raising the brightness slider | The picture holds, only the UI brightens | Both the picture and the ceiling brighten |
+| Sharing values Mac/Win | Works | Breaks |
+
+`relative` is the behaviour from before the absolute derivation existed.  It
+agrees with `absolute` only when `potential == current` and
+`-bgfx_hdr_paper_white 100` (the real reference white) is used alongside it, so
+that pairing is effectively mandatory with `relative`; left at the default 200
+it is out by a factor of two.
+
+**Keep `absolute` if the point is to share one calibration between Mac and
+Windows.**
+
+See [HDR settings §3.7](hdr-settings.md) for the numbers.
+
 ### `bgfx_macos_edr_reference_white`
 
 | | |
@@ -648,6 +676,7 @@ vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
 bgfx_macos_edr_reference_white 100
+bgfx_macos_edr_calibration absolute
 bgfx_hdr_paper_white      200
 ```
 

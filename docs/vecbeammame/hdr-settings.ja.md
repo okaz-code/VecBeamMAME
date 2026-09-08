@@ -72,6 +72,7 @@ Windows HDR10 の ST.2084 PQ と SDR のガンマ OETF は RGB 各成分へ個�
 | `bgfx_hdr` | 1 | HDR10/EDR を試行。利用不能なら SDR へフォールバック。0 = SDR 強制 |
 | `bgfx_hdr_display_peak` | `auto` | ディスプレイピーク（nits）。`auto` / 数値 / `0`（導出せずチェイン既定を維持） |
 | `bgfx_macos_edr_reference_white` | 100 | **macOS EDR のヘッドルーム 1.0 が何 nit か。** パネルピーク = potential headroom × この値 |
+| `bgfx_macos_edr_calibration` | `absolute` | 較正の基準。`absolute` = 目標値は絶対 nits で輝度変更に不変。`relative` = 名目 SDR 白の倍数として読み、輝度に追従（§3.7） |
 | `bgfx_hdr_paper_white` | 200 | UI 白（nits）。**HDR/EDR ではどちらも上書きされ、SDR では約分されて消えるため、実質的に効かない**（§6） |
 
 > 起動オプションはコマンドライン/ini、その他はスライダーメニュー（または cfg）で設定する。
@@ -128,6 +129,51 @@ BGFX: macOS EDR absolute scale: panel peak 1600 nits (potential headroom x refer
 **Present 時の天井**は current headroom に追従する。低下はクリッピング防止のため即時、上昇は約 1 秒で平滑化する。macOS では画面輝度を動かすとこれが動くため、**較正中は輝度を固定するか `hdr_headroom_override` で天井を固定すること**。
 
 `-verbose` で有効経路・SDR 白・headroom・導出値を確認できる。
+
+---
+
+## 3.7 較正の基準（absolute / relative）
+
+`bgfx_macos_edr_calibration` で 2 つの基準を選べる。
+
+| | `absolute`（既定） | `relative` |
+|---|---|---|
+| 目標値の意味 | 絶対 nits | 名目 SDR 白（`bgfx_hdr_paper_white`）の倍数 |
+| パネルピーク認識 | `potential × 100`（不変） | `current × paper_white`（輝度で動く） |
+| 輝度を上げると | 描画は一定、**UI だけ明るくなる** | **描画も天井も明るくなる** |
+| Mac / Win の値共通化 | 成立する | 崩れる |
+
+`relative` は絶対 nits 導出を入れる前の挙動で、導出をスキップすることで実現している。
+
+内蔵 XDR（potential 16.00x ＝ パネル実 1600nit）での実測:
+
+| mode | paper_white | current | パネル認識 | 天井 | beam | 実発光 |
+|---|---:|---:|---:|---:|---:|---:|
+| absolute | 任意 | 16.00x | 1600 | 1600 | 250 | **250 nit** |
+| absolute | 任意 | 8.00x | 1600 | 1600 | 250 | **250 nit** |
+| absolute | 任意 | 4.00x | 1600 | 1600 | 250 | **250 nit** |
+| relative | 200 | 16.00x | 3200 | 3000 | 375 | 188 nit |
+| relative | 100 | 16.00x | 1600 | 1600 | 250 | **250 nit** |
+| relative | 100 | 8.00x | 800 | 800 | 250 | 500 nit |
+| relative | 100 | 4.00x | 400 | 400 | 250 | 1000 nit |
+
+同条件の Windows 外付け（DXGI 1390 / SDR 白 240）は **250 nit**。
+
+つまり **`relative` が Windows と一致するのは `potential == current` かつ `paper_white` が実際の
+基準白（100）と一致しているときだけ**で、その条件下では `current × paper_white = potential × 100`
+となり **`relative` は `absolute` に退化する**。既定の `paper_white` 200 のままでは 2 倍ずれる。
+
+`absolute` が存在する理由は、potential と current が乖離したとき ─ すなわち輝度スライダを基準
+測定点から動かしたとき ─ に較正を保つことにある。上表で `absolute` は current 16→8→4 で 250nit
+を維持するが、`relative` は 250→500→1000 と倍々に暴れる。
+
+**Mac / Win の値共通化が目的なら `absolute` を使うこと。** `relative` の用途は「輝度スライダに
+応じて絵の明るさも変わってほしい」という、較正とは別の目的に限られる。その場合は
+`-bgfx_hdr_paper_white 100` の併用が事実上必須になる。
+
+なお「天井だけを輝度に追従させる」第 3 の基準は存在しない。SDR 白点を動かしてもパネルが出せる
+最大輝度は変わらない（`current × 現在のSDR白 = potential × 100 = パネルピーク` で約分される）ため、
+絶対 nits で見た天井には追従する対象がない。
 
 ---
 
