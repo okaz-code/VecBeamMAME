@@ -60,6 +60,7 @@ vector_beam_window        1
 vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
+bgfx_macos_edr_reference_white 100
 ```
 
 **Booleans** are written `1` / `0`.  The command line's `no` prefix, as in
@@ -598,6 +599,32 @@ macOS only.  Requests Core Animation compositing with a non-opaque Metal layer,
 which bears on whether EDR headroom can be obtained.  Disable with
 `-nobgfx_macos_force_composited`.
 
+### `bgfx_macos_edr_reference_white`
+
+| | |
+|---|---|
+| Type / default | int / `100` (nits) |
+
+macOS only.  **The nits an EDR headroom of 1.0 stands for.**  macOS never
+reports absolute luminance, only a ratio against a reference white, so this one
+number is what turns the whole EDR path absolute.
+
+```
+panel peak       = potential headroom x this value
+current SDR white = panel peak / current headroom
+```
+
+100 was measured on two displays (built-in XDR: 16.00x -> 1600 nits, matching
+the spec; external: 14.05x -> 1405 nits, where DXGI reports 1390 - inside that
+panel's EDID rounding).  Change it only for a display that does not follow the
+convention.  `0` disables the derivation and falls back to the paper-white
+scale.  A numeric `bgfx_hdr_display_peak` takes precedence.
+
+The derived figures are logged when they resolve and whenever they move, so the
+value can be checked against the panel's specification.
+
+See the [HDR settings guide](hdr-settings.md) for the full picture.
+
 ### `bgfx_macos_edr_diagnostics`
 
 | | |
@@ -620,6 +647,7 @@ vector_beam_window        1
 vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
+bgfx_macos_edr_reference_white 100
 bgfx_hdr_paper_white      200
 ```
 

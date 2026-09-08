@@ -54,6 +54,7 @@ vector_beam_window        1
 vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
+bgfx_macos_edr_reference_white 100
 ```
 
 **真偽値**は `1` / `0` を書く。コマンドラインの `-novector_playback_overlay` のような
@@ -533,6 +534,30 @@ macOS の EDR では、この値が「基準白」としてヘッドルーム計
 macOS のみ。非不透明 Metal レイヤで Core Animation コンポジットを要求する。
 EDR ヘッドルームの取得に関わる。`-nobgfx_macos_force_composited` で無効化。
 
+### `bgfx_macos_edr_reference_white`
+
+| | |
+|---|---|
+| 型 / 既定 | int / `100`（nits） |
+
+macOS のみ。**EDR ヘッドルーム 1.0 が何 nit に相当するか。** macOS は絶対輝度を
+報告せず基準白に対する比率しか返さないため、この 1 個の数値が EDR 経路全体を
+絶対 nits に変換する。
+
+```
+パネルピーク   = potential headroom × この値
+現在の SDR 白  = パネルピーク ÷ current headroom
+```
+
+2 台で実測して確認した値が 100 である（内蔵 XDR: 16.00x → 1600nit（公称一致）、
+外付け: 14.05x → 1405nit（DXGI 報告 1390、EDID 丸めの範囲））。この規約に従わない
+ディスプレイに当たった場合だけ変更する。`0` で導出を無効化し、従来の paper white
+スケールに戻る。`bgfx_hdr_display_peak` に数値を指定した場合はそちらが優先される。
+
+導出結果は起動時とスケール変化時にログへ出るので、値が妥当か確認できる。
+
+詳細は [HDR 設定ガイド](hdr-settings.ja.md) を参照。
+
 ### `bgfx_macos_edr_diagnostics`
 
 | | |
@@ -555,6 +580,7 @@ vector_beam_window        1
 vector_present_rate       auto
 bgfx_hdr                  1
 bgfx_hdr_display_peak     auto
+bgfx_macos_edr_reference_white 100
 bgfx_hdr_paper_white      200
 ```
 
