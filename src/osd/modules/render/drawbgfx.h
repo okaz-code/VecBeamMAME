@@ -562,15 +562,16 @@ private:
 	// blend modes (alpha / multiply / add) in linear light - reproducing the half-mirror combine -
 	// and a final pass PQ-encodes the result (gamma on an SDR swapchain).
 	bool m_vec_hdr_chain = false;          // active chain is HDR-type (has a screen_hdr target)
-	// The MAME system-selection UI runs before any machine screen exists, so there is no chain to
-	// declare screen_hdr and the composite above never engaged - yet on Windows the swapchain is
-	// already HDR10 (see the preflight in create()). The UI then went out through the plain sRGB
-	// gui effects with no PQ encode and no Rec.709 -> Rec.2020 step, so menu white landed on PQ
-	// code 1.0 = 10000 nits (measured: 41.7x a 240-nit SDR white) and the saturated logo colours
-	// came out of gamut. macOS never showed it: its EDR layer is extended-linear sRGB where 1.0 IS
-	// the reference white, which is what an unencoded write happens to mean. Composite the UI in
-	// linear nits and let the same present pass encode it.
-	bool m_hdr_ui_only = false;            // HDR10 output, no screen at all: UI is the whole frame
+	// MAME's own UI can be the whole frame before any machine screen exists - the system selector,
+	// and the game-info / warning boxes shown before a system's CPU runs. There is no chain to
+	// declare screen_hdr then, so the composite above never engaged, yet the swapchain is already
+	// HDR10 (see the preflight in create()). The UI went out through the plain sRGB gui effects
+	// with no PQ encode and no Rec.709 -> Rec.2020 step, so menu white landed on PQ code 1.0 =
+	// 10000 nits (measured: 41.7x a 240-nit SDR white) and MAME's saturated colours came out of
+	// gamut. On macOS EDR the extended-linear layer did put white on the reference white, but the
+	// missing sRGB -> linear step still left midtones about 2.3x too bright. Composite the UI in
+	// linear nits and let the same present pass encode it. See the predicate in draw().
+	bool m_hdr_ui_only = false;            // HDR10/EDR output, no emulated screen: UI is the frame
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
 	bgfx_target *m_hdr_present_work = nullptr; // encoded composite before optional output upscale
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into

@@ -7385,22 +7385,32 @@ int renderer_bgfx::draw(int update)
 		bgfx_target *const screen_hdr = m_chains->has_applicable_chain(0)
 			? m_chains->targets().target(0, "screen_hdr") : nullptr;
 		m_vec_hdr_chain = (window_index == 0) && (screen_hdr != nullptr);
-		// ___empty is the system selector: MAME's own UI with no emulated picture under it, so no
-		// chain declares screen_hdr and nothing seeds the work target. Composite the UI in linear
-		// nits anyway so the present pass encodes it, instead of letting sRGB code values reach an
-		// HDR10 backbuffer raw. Identified by driver name because the alternatives do not hold:
-		// the driver does configure a (permanently black) screen device, so enumerating screen
-		// devices finds one, and the chain manager's screen count is a cache that only ever grows,
-		// so it cannot distinguish the selector from a system already shown in this session.
-		// MAME treats this driver as a special case by identity elsewhere for the same reason.
+		// MAME's own UI with no emulated picture under it: the system selector, and the game-info /
+		// warning boxes a system shows before its CPU runs. Neither has a chain declaring
+		// screen_hdr, so nothing seeds the work target and the UI used to go straight out through
+		// the plain sRGB gui effects - unencoded into a Rec.2020/PQ backbuffer, which put menu
+		// white on PQ code 1.0 (measured 41.7x a 240-nit SDR white) and read MAME's saturated
+		// colours as Rec.2020 primaries. Composite the UI in linear nits instead and let the same
+		// present pass encode it.
 		//
-		// HDR10 only. The SDR fallback needs no help: sRGB code values in an sRGB backbuffer are
-		// already right. macOS EDR is left alone deliberately - its layer is extended-linear, so an
-		// unencoded write puts white exactly at the reference white, which is why the menu looks
-		// correct there. It does still skip the sRGB->linear step, so EDR midtones are darker than
-		// they should be; that is a separate, milder question and not one this machine can measure.
+		// Two conditions, because neither covers both cases. screen_count() is a cache that only
+		// ever grows, so "no screen has appeared yet" is exactly the startup-UI window and closes
+		// for good once the system draws - which is what keeps a RUNNING raster system, whose only
+		// distinguishing feature is also the absence of screen_hdr, out of this path. But it cannot
+		// recognise the selector after a system has already run in this session, and ___empty can:
+		// MAME identifies that driver by identity elsewhere for the same reason. (Enumerating
+		// screen devices is not an alternative - ___empty configures a permanently black one.)
+		//
+		// Applies to HDR10 and to macOS EDR, which sets s_bgfx_hdr_active too. EDR's layer is
+		// extended-linear, so an unencoded write did land white on the reference white, but it also
+		// skipped sRGB -> linear: an sRGB 0.5 written raw is 0.5 where linear light wants 0.214, so
+		// EDR midtones came out about 2.3x too BRIGHT. The UI nits scale and the present pass agree
+		// there because paper white is made to follow the derived reference white (see
+		// update_edr_headroom), so white stays put and only the transfer is corrected. The SDR
+		// fallback needs no help at all: sRGB code values in an sRGB backbuffer are already right.
 		m_hdr_ui_only = (window_index == 0) && !m_vec_hdr_chain && s_bgfx_hdr_active
-				&& !std::strcmp(window().machine().system().name, "___empty");
+				&& (m_chains->screen_count() == 0
+					|| !std::strcmp(window().machine().system().name, "___empty"));
 
 		if (hdr_composite())
 		{
