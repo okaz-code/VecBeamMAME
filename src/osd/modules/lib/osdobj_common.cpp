@@ -167,6 +167,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_HDR_DISPLAY_PEAK,          OSDOPTVAL_AUTO,     core_options::option_type::STRING,   "HDR display peak luminance in nits, or auto to query the OS; derives beam_peak_nits / hdr_rolloff_max defaults (0 = keep chain defaults; only used with bgfx_hdr)" },
 	{ OSDOPTION_BGFX_MACOS_FORCE_COMPOSITED,    "1",                core_options::option_type::BOOLEAN,  "request macOS Core Animation compositing with a non-opaque Metal layer (use -nobgfx_macos_force_composited to disable)" },
 	{ OSDOPTION_BGFX_MACOS_EDR_DIAGNOSTICS,     "0",                core_options::option_type::BOOLEAN,  "log macOS CAMetalLayer state and raw EDR headroom once per second" },
+	{ OSDOPTION_BGFX_MACOS_EDR_REFERENCE_WHITE, "100",              core_options::option_type::INTEGER,  "nits that macOS EDR headroom 1.0 stands for; panel peak = potential headroom x this, and the current SDR white = panel peak / current headroom (0 = keep the paper-white scale)" },
 	{ OSDOPTION_BGFX_SHADOW_MASK,                "slot-mask.png",   core_options::option_type::STRING,   "shadow mask texture name" },
 	{ OSDOPTION_BGFX_LUT,                        "lut-default.png", core_options::option_type::STRING,   "LUT texture name" },
 	{ OSDOPTION_BGFX_AVI_NAME,                   OSDOPTVAL_AUTO,    core_options::option_type::PATH,     "filename for BGFX output logging" },

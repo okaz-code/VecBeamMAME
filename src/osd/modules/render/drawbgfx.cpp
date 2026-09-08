@@ -137,7 +137,12 @@ public:
 	{
 		if (m_edr_relative_auto)
 			return (m_edr_potential_headroom > 1.0f) ? m_edr_potential_headroom : 0.0f;
-		const float white = std::max(1.0f, m_effective_paper_white_nits);
+		// EDR with an explicit peak normalises against the RECONSTRUCTED reference white, because
+		// that is what the present shader divides by; the paper-white option is a different number
+		// and dividing the panel peak by it reported a capability the output scale did not match.
+		// Windows HDR10 has no such split - there both are the one OS-reported SDR white.
+		const float white = std::max(1.0f, (m_edr_output_active && m_edr_reference_white_nits > 0.0f)
+				? m_edr_reference_white_nits : m_effective_paper_white_nits);
 		return (m_hdr_calibration_peak_nits > 0.0f) ? m_hdr_calibration_peak_nits / white : 0.0f;
 	}
 	// Live display ceiling for the present shader, as a multiple of the reference white it normalises
@@ -213,6 +218,14 @@ protected:
 	float m_edr_raw_headroom = 0.0f;
 	float m_edr_potential_headroom = 0.0f;
 	float m_edr_logged_headroom = 0.0f;
+	// Nits that an EDR headroom of 1.0 stands for (-bgfx_macos_edr_reference_white). macOS reports
+	// headroom against a fixed reference white and never in absolute units, so this one number is
+	// what turns every EDR ratio into nits. 0 = do not derive, keep the paper-white scale.
+	float m_edr_reference_nits = 0.0f;
+	float m_edr_logged_reference_white = 0.0f;
+	// True while the output path is macOS EDR. The accessors below are declared ahead of
+	// s_bgfx_edr_active, and Windows must not take the EDR branches, so carry it as state.
+	bool m_edr_output_active = false;
 	int64_t m_edr_headroom_update_ticks = 0;
 	int64_t m_macos_edr_diagnostic_ticks = 0;
 	bool m_hdr_display_peak_absolute = false;
@@ -947,6 +960,10 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_macos_edr_diagnostic_ticks = 0;
 	m_hdr_display_peak_absolute = false;
 	m_edr_relative_auto = false;
+	m_edr_logged_reference_white = 0.0f;
+	m_edr_output_active = s_bgfx_edr_active;
+	m_edr_reference_nits = s_bgfx_edr_active
+			? float(std::max(0, m_options->bgfx_macos_edr_reference_white())) : 0.0f;
 	m_edr_current_resolved = false;
 	m_edr_calibration_dirty = false;
 	m_macos_edr_force_applied = false;
@@ -1160,10 +1177,49 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		m_edr_headroom += (detected - m_edr_headroom) * alpha;
 	}
 
-	// Numeric macOS calibration is absolute. Reconstruct the physical reference-white scale from the
-	// filtered current ratio; relative auto deliberately keeps the configured paper-white scale.
-	if (!m_edr_relative_auto && m_hdr_display_peak_nits > 0.0f && m_edr_headroom > 0.0f)
-		m_edr_reference_white_nits = m_hdr_display_peak_nits / m_edr_headroom;
+	// Absolute nits for the EDR path. macOS never reports luminance, only a ratio against a fixed
+	// reference white, so ONE number turns the whole scale absolute: measured 100.0 nits exactly on
+	// a 1600-nit XDR reporting 16.00x, and 98.9 on a 1390-nit external reporting 14.05x - inside
+	// that panel's EDID rounding. POTENTIAL headroom times it is the panel peak (a panel property,
+	// stable across brightness); the panel peak over the CURRENT headroom is the SDR white the
+	// compositor is using right now, because raising the brightness slider raises that white and
+	// drops the current headroom in step. A numeric -bgfx_hdr_display_peak overrides the derivation
+	// with the user's figure and takes the same second step.
+	//
+	// paper white FOLLOWS the reference white here, and must: the UI and artwork are drawn at
+	// paper_white nits and the present shader divides by the reference white, so leaving the two
+	// apart would render the menus at paper_white/reference - with the old fixed 200 against a
+	// derived 100 that is exactly twice SDR white. Windows HDR10 already does this, taking both
+	// from the OS SDR white.
+	float derived_panel_peak = 0.0f;
+	if (m_edr_headroom > 0.0f)
+	{
+		if (!m_edr_relative_auto && m_hdr_display_peak_nits > 0.0f)
+			derived_panel_peak = m_hdr_display_peak_nits;
+		else if (m_edr_relative_auto && m_edr_reference_nits > 0.0f && m_edr_potential_headroom > 1.0f)
+			derived_panel_peak = m_edr_potential_headroom * m_edr_reference_nits;
+	}
+	if (derived_panel_peak > 0.0f)
+	{
+		const float reference_white = derived_panel_peak / m_edr_headroom;
+		m_edr_reference_white_nits = reference_white;
+		m_effective_paper_white_nits = reference_white;
+		// Report the derived scale, and again whenever it has moved materially. Without this the
+		// reconstruction was invisible: resolve_hdr_display_peak() logs only at init, where the
+		// current headroom is still the documented 1.0 bootstrap value and the branch cannot run.
+		if (m_edr_logged_reference_white <= 0.0f
+			|| std::abs(reference_white - m_edr_logged_reference_white)
+				>= std::max(1.0f, m_edr_logged_reference_white * 0.05f))
+		{
+			m_edr_logged_reference_white = reference_white;
+			osd_printf_info(
+					"BGFX: macOS EDR absolute scale: panel peak %.0f nits (%s), SDR white %.0f nits at current %.2fx\n",
+					derived_panel_peak,
+					m_edr_relative_auto
+						? "potential headroom x reference white" : "from bgfx_hdr_display_peak",
+					reference_white, m_edr_headroom);
+		}
+	}
 
 #else
 	(void)nwh;
