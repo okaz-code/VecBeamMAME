@@ -110,6 +110,7 @@
 		{"type":"float","name":"overload_dot_gain","text":"Overdrive Dot Gain","default":2.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_max","text":"Overdrive Max (x peak)","default":3.0,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak","text":"Masked Core Peak (pool)","default":0.0,"min":0.0,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"tube_gamma","text":"Tube Transfer Gamma (overlap)","default":1.0,"min":0.2,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"masked_core_peak_emit","text":"Masked Core Peak (emission)","default":0.0,"min":0.0,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overdrive_core","text":"Overdrive to Core","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overload_bloom","text":"Overload Defocus (blur)","default":0.7,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -223,7 +224,8 @@
 		  "_comment": "pool update: rgb=peak,a=age. If the fresh frame is brighter than the decayed pool the pixel re-excites (age 0), else the peak holds and age advances by dt. u_phos = (dt_ms, half, curve, total) injected by the renderer. Reads+writes phos_pool in place (doublebuffered feedback).",
 		  "input": [ { "sampler": "s_prev", "target": "phos_pool" }, { "sampler": "s_tex", "target": "internal" }, { "sampler": "s_prev_age", "target": "phos_pool", "attachment": 1 } ],
 		  "uniforms": [ { "uniform": "u_overlap_white_strength", "value": [ 0.0 ] },
-			{ "uniform": "u_phos_peak", "slider": "masked_core_peak" } ], "output": "phos_pool" },
+			{ "uniform": "u_phos_peak", "slider": "masked_core_peak" },
+			{ "uniform": "u_tube_gamma", "slider": "tube_gamma" } ], "output": "phos_pool" },
 
 		{ "effect": "vector/vector_phosphor_compose", "name": "Phosphor Apply",
 		  "_comment": "single compose pass replacing the former Phosphor Apply (pool emit) + NoPersist Combine + Phosphor Tint trio - two full-res passes saved, math unchanged: internal = (pool_peak * S(age) + npglow * cap_no_persist) * phosphor_color. The no-persist FBO holds short-dwell junction dots (bright while drawn, no afterimage, never fed into the glow cascade); the old pass pair's net 0.3745 x 2.67 = 0.99991 add is exactly 1.0 here (that was the intent), and u_np_gain=0 both reproduces the old disablewhen skip and guards stale np content. The entry keeps the name 'Phosphor Apply' because the renderer injects u_phos into it by name.",
