@@ -320,6 +320,12 @@ public:
 		float bright_normal_cap = 1.0f;
 		float bright_sigmoid = 0.0f;
 		float bright_sigmoid_center = 0.5f;
+		// Per-channel brightness transfer exponent. The shared transfer above (bright_threshold /
+		// bright_sigmoid) is one curve for all three guns; a real colour tube's guns do not share one.
+		// 1 = off, and the default, so nothing is spent until a channel is actually bent.
+		float bright_curve_red = 1.0f;
+		float bright_curve_green = 1.0f;
+		float bright_curve_blue = 1.0f;
 		float bright_threshold = 0.0f;
 		float core_flat = 0.0f;
 		float core_overlap_max = 0.0f; // colour chain: max-blend direct excitation to avoid overlap hotspots

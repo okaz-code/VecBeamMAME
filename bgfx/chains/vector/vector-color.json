@@ -75,6 +75,9 @@
 		// ---- Brightness transfer ----
 		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":-2.0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"bright_curve_red","text":"Brightness Curve Red","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"bright_curve_green","text":"Brightness Curve Green","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"bright_curve_blue","text":"Brightness Curve Blue","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Beam width ----
 		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.7,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},

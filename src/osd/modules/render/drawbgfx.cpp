@@ -2601,6 +2601,9 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "bright_normal_cap", &renderer_bgfx::vec_slider_cache::bright_normal_cap, 1.0f },
 	{ "bright_sigmoid", &renderer_bgfx::vec_slider_cache::bright_sigmoid, 0.0f },
 	{ "bright_sigmoid_center", &renderer_bgfx::vec_slider_cache::bright_sigmoid_center, 0.5f },
+	{ "bright_curve_red", &renderer_bgfx::vec_slider_cache::bright_curve_red, 1.0f },
+	{ "bright_curve_green", &renderer_bgfx::vec_slider_cache::bright_curve_green, 1.0f },
+	{ "bright_curve_blue", &renderer_bgfx::vec_slider_cache::bright_curve_blue, 1.0f },
 	{ "bright_threshold", &renderer_bgfx::vec_slider_cache::bright_threshold, 0.0f },
 	{ "core_flat", &renderer_bgfx::vec_slider_cache::core_flat, 0.0f },
 	{ "core_overlap_max", &renderer_bgfx::vec_slider_cache::core_overlap_max, 0.0f },
@@ -3717,11 +3720,37 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float body_r = body_rgb ? std::clamp(body_rgb[0], 0.0f, 1.0f) : 1.0f;
 	const float body_g = body_rgb ? std::clamp(body_rgb[1], 0.0f, 1.0f) : 1.0f;
 	const float body_b = body_rgb ? std::clamp(body_rgb[2], 0.0f, 1.0f) : 1.0f;
+	// Per-channel brightness transfer. display_a is ONE curve (bright_threshold, then the optional
+	// sigmoid) applied to all three guns, but a colour tube's guns have their own transfer
+	// characteristics, and the chain had no way to say so - phosphor_color is a linear gain, which
+	// cannot change the SHAPE of the response, only its scale.
+	//
+	// It rides in the vertex colour rather than the alpha because the shader computes
+	// coverage = v_color0.a * fade and deposits v_color0.rgb * coverage, so a factor in rgb is
+	// exactly a per-channel multiplier on the deposit while alpha keeps carrying the one shared
+	// profile. That also leaves the point path (which recomputes core_alpha against
+	// point_brightness_scale and spills the excess into z) untouched. Expressed as the RATIO of the
+	// channel's own curve to the shared one, so a channel at 1.0 contributes exactly 1.0 and the
+	// existing calibration does not move.
+	//
+	// Three powf per vector at worst, and only for a channel that is actually bent - the guards make
+	// the default free. If a profile ever shows this, display_a is a bounded 0..1 input and a 256-entry
+	// interpolated table replaces the powf exactly.
+	float curve_r = 1.0f, curve_g = 1.0f, curve_b = 1.0f;
+	if (display_a > 1.0e-6f)
+	{
+		if (m_vs.bright_curve_red != 1.0f)
+			curve_r = powf(display_a, std::max(0.01f, m_vs.bright_curve_red)) / display_a;
+		if (m_vs.bright_curve_green != 1.0f)
+			curve_g = powf(display_a, std::max(0.01f, m_vs.bright_curve_green)) / display_a;
+		if (m_vs.bright_curve_blue != 1.0f)
+			curve_b = powf(display_a, std::max(0.01f, m_vs.bright_curve_blue)) / display_a;
+	}
 	// clamp: length_factor can exceed 1.0 with the dwell-time boost, and u32Color does not clamp
 	const uint32_t rgba = u32Color(
-		std::min<uint32_t>(uint32_t(core_sat_r * body_r * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_g * body_g * length_factor * 255.0f + 0.5f), 255),
-		std::min<uint32_t>(uint32_t(core_sat_b * body_b * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_r * body_r * curve_r * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_g * body_g * curve_g * length_factor * 255.0f + 0.5f), 255),
+		std::min<uint32_t>(uint32_t(core_sat_b * body_b * curve_b * length_factor * 255.0f + 0.5f), 255),
 		uint32_t(core_alpha * 255.0f + 0.5f));
 
 	// Overdrive white flare encoding (deposited into the glow buffer = post shadow-mask, so it is not
