@@ -1826,18 +1826,28 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 		// values keep applying and keep being saved - this only decides what the user has to scroll
 		// past. A chain without the toggle shows everything, exactly as before.
 		bool show_advanced = true;
+		// The absolute-nits beam model (hdr_peak_target_nits > 0) DERIVES the beam ratio and the
+		// ceiling ratio from the nits targets and the display, so the two sliders that used to carry
+		// them are no longer inputs. apply_hdr_auto() still writes them for chains that have not
+		// adopted the model, which means they sit in the menu showing a number nothing reads - and a
+		// user who adjusts one to no effect has no way to tell why. Withhold them while the model is
+		// on; they keep their values and keep being saved, exactly like the advanced group.
+		bool nits_model = false;
 		for (bgfx_slider* slider : chain_sliders)
 		{
 			if (slider->name() == "advanced_sliders0")
-			{
 				show_advanced = slider->value() > 0.5f;
-				break;
-			}
+			else if (slider->name() == "hdr_peak_target_nits0")
+				nits_model = slider->value() > 0.0f;
 		}
 		size_t published = 0;
 		for (bgfx_slider* slider : chain_sliders)
 		{
 			if (slider->advanced() && !show_advanced)
+				continue;
+			if (nits_model
+				&& (slider->name() == "beam_peak_ratio0" || slider->name() == "hdr_rolloff_max0"
+					|| slider->name() == "beam_peak_nits0"))
 				continue;
 			published++;
 			slider_state *const core_slider = slider->core_slider();
@@ -1849,9 +1859,9 @@ std::vector<ui::menu_item> chain_manager::get_slider_list()
 			sliders.emplace_back(std::move(item));
 		}
 
-		osd_printf_verbose("BGFX: slider menu for screen %u: %u of %u published (advanced %s)\n",
+		osd_printf_verbose("BGFX: slider menu for screen %u: %u of %u published (advanced %s, nits model %s)\n",
 			unsigned(index), unsigned(published), unsigned(chain_sliders.size()),
-			show_advanced ? "on" : "off");
+			show_advanced ? "on" : "off", nits_model ? "on" : "off");
 
 		if (published > 0)
 		{
