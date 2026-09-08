@@ -223,6 +223,7 @@ protected:
 	// what turns every EDR ratio into nits. 0 = do not derive, keep the paper-white scale.
 	float m_edr_reference_nits = 0.0f;
 	float m_edr_logged_reference_white = 0.0f;
+	float m_edr_prev_reference_white = 0.0f;
 	// True while the output path is macOS EDR. The accessors below are declared ahead of
 	// s_bgfx_edr_active, and Windows must not take the EDR branches, so carry it as state.
 	bool m_edr_output_active = false;
@@ -961,6 +962,7 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_hdr_display_peak_absolute = false;
 	m_edr_relative_auto = false;
 	m_edr_logged_reference_white = 0.0f;
+	m_edr_prev_reference_white = 0.0f;
 	m_edr_output_active = s_bgfx_edr_active;
 	m_edr_reference_nits = s_bgfx_edr_active
 			? float(std::max(0, m_options->bgfx_macos_edr_reference_white())) : 0.0f;
@@ -1176,6 +1178,17 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		const float alpha = 1.0f - std::exp(-float(std::min(dt, 0.25)));
 		m_edr_headroom += (detected - m_edr_headroom) * alpha;
 	}
+	else
+	{
+		// Inside the 1% deadband, SETTLE on the reported value instead of holding the ramp's last
+		// step. The ramp approaches asymptotically, so it crosses into the deadband while still
+		// about a percent short and the branch above then stops firing - the state froze there and
+		// never returned to the figure the OS was reporting. Lowering the display brightness back to
+		// where it started therefore did not restore the original headroom. The deadband is there to
+		// reject jitter, not to leave a permanent offset; detected is stable when nothing is moving,
+		// so snapping to it costs nothing and removes the error.
+		m_edr_headroom = detected;
+	}
 
 	// Absolute nits for the EDR path. macOS never reports luminance, only a ratio against a fixed
 	// reference white, so ONE number turns the whole scale absolute: measured 100.0 nits exactly on
@@ -1207,9 +1220,19 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		// Report the derived scale, and again whenever it has moved materially. Without this the
 		// reconstruction was invisible: resolve_hdr_display_peak() logs only at init, where the
 		// current headroom is still the documented 1.0 bootstrap value and the branch cannot run.
-		if (m_edr_logged_reference_white <= 0.0f
+		// Two conditions, because one is not enough. A 5% jump covers a brightness change while it is
+		// happening; but the rise filter closes the last part of that change in steps far smaller
+		// than any sensible jump threshold, so the FINAL value was never reported and the log stopped
+		// at whatever the last big step had been. The second clause catches that: the derivation has
+		// stopped moving between samples, and what is on screen no longer matches what was printed.
+		const bool scale_jumped = m_edr_logged_reference_white <= 0.0f
 			|| std::abs(reference_white - m_edr_logged_reference_white)
-				>= std::max(1.0f, m_edr_logged_reference_white * 0.05f))
+				>= std::max(1.0f, m_edr_logged_reference_white * 0.05f);
+		const bool scale_settled = !scale_jumped
+			&& std::abs(reference_white - m_edr_prev_reference_white) <= 0.01f
+			&& std::abs(reference_white - m_edr_logged_reference_white) > 0.5f;
+		m_edr_prev_reference_white = reference_white;
+		if (scale_jumped || scale_settled)
 		{
 			m_edr_logged_reference_white = reference_white;
 			osd_printf_info(
