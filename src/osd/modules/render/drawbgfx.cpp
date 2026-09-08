@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 
 // render/bgfx
 #include "bgfx/effect.h"
@@ -2082,7 +2083,7 @@ void renderer_bgfx::render_avi_quad()
 	const auto h = uint16_t(s_height[0]);
 	bgfx_view_profile::name(view, "avi_quad");
 
-	if (m_vec_hdr_chain)
+	if (hdr_composite())
 	{
 		// HDR chain: the present pass already encoded the finished frame into m_avi_target
 		// (draw() redirects present_fb there while recording), so this view is the display
@@ -2192,7 +2193,7 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 
 	// HDR: artwork (non-screen) quads draw into the linear work target with the HDR gui effects
 	// (linearize + nits scale + native blend), so MAME's blend modes compose physically.
-	bgfx_effect** effects = is_screen ? m_screen_effect : ((m_vec_hdr_chain && !is_screen) ? m_hdr_gui_effect : m_gui_effect);
+	bgfx_effect** effects = is_screen ? m_screen_effect : (hdr_composite() ? m_hdr_gui_effect : m_gui_effect);
 	const uint32_t blend = PRIMFLAG_GET_BLENDMODE(prim->flags);
 	bgfx_effect* effect = effects[blend];
 	set_hdr_gui_scale(effect, blend, prim);
@@ -2222,7 +2223,7 @@ void renderer_bgfx::render_textured_quad(render_primitive* prim, bgfx::Transient
 
 void renderer_bgfx::set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim)
 {
-	if (!m_vec_hdr_chain || effect == nullptr)
+	if (!hdr_composite() || effect == nullptr)
 		return;
 
 	// Layout artwork and the MAME UI share the same final primitive list, but room light must not
@@ -7384,19 +7385,40 @@ int renderer_bgfx::draw(int update)
 		bgfx_target *const screen_hdr = m_chains->has_applicable_chain(0)
 			? m_chains->targets().target(0, "screen_hdr") : nullptr;
 		m_vec_hdr_chain = (window_index == 0) && (screen_hdr != nullptr);
+		// ___empty is the system selector: MAME's own UI with no emulated picture under it, so no
+		// chain declares screen_hdr and nothing seeds the work target. Composite the UI in linear
+		// nits anyway so the present pass encodes it, instead of letting sRGB code values reach an
+		// HDR10 backbuffer raw. Identified by driver name because the alternatives do not hold:
+		// the driver does configure a (permanently black) screen device, so enumerating screen
+		// devices finds one, and the chain manager's screen count is a cache that only ever grows,
+		// so it cannot distinguish the selector from a system already shown in this session.
+		// MAME treats this driver as a special case by identity elsewhere for the same reason.
+		//
+		// HDR10 only. The SDR fallback needs no help: sRGB code values in an sRGB backbuffer are
+		// already right. macOS EDR is left alone deliberately - its layer is extended-linear, so an
+		// unencoded write puts white exactly at the reference white, which is why the menu looks
+		// correct there. It does still skip the sRGB->linear step, so EDR midtones are darker than
+		// they should be; that is a separate, milder question and not one this machine can measure.
+		m_hdr_ui_only = (window_index == 0) && !m_vec_hdr_chain && s_bgfx_hdr_active
+				&& !std::strcmp(window().machine().system().name, "___empty");
 
-		if (m_vec_hdr_chain)
+		if (hdr_composite())
 		{
-			// (re)create the linear work target (absolute nits): vector screen + artwork composited
-			const uint16_t uw = std::max<uint16_t>(1, uint16_t(float(s_width[0]) * m_output_scale + 0.5f));
-			const uint16_t uh = std::max<uint16_t>(1, uint16_t(float(s_height[0]) * m_output_scale + 0.5f));
+			// (re)create the linear work target (absolute nits): vector screen + artwork composited.
+			// bgfx_output_scale exists to cut the cost of the VecBeam composite; the UI-only path has
+			// no such cost and softening menu text to save nothing would be a poor trade, so it
+			// always composites at full resolution (and therefore needs no present-work target).
+			const float composite_scale = m_hdr_ui_only ? 1.0f : m_output_scale;
+			const uint16_t uw = std::max<uint16_t>(1, uint16_t(float(s_width[0]) * composite_scale + 0.5f));
+			const uint16_t uh = std::max<uint16_t>(1, uint16_t(float(s_height[0]) * composite_scale + 0.5f));
 			bool target_changed = false;
 			if (uw > 0 && uh > 0 && (m_hdr_work == nullptr || m_hdr_work->width() != uw || m_hdr_work->height() != uh))
 			{
 				m_hdr_work = m_targets->create_target("hdr_work", bgfx::TextureFormat::RG11B10F, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, false, 1.0f, 0);
 				target_changed = true;
 			}
-			if (m_output_scale < 1.0f
+			const bool needs_present_work = composite_scale < 1.0f;
+			if (needs_present_work
 				&& (m_hdr_present_work == nullptr || m_hdr_present_work->width() != uw || m_hdr_present_work->height() != uh))
 			{
 				m_hdr_present_work = m_targets->create_target("hdr_present_work", bgfx::TextureFormat::RG11B10F, uw, uh, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
@@ -7404,10 +7426,13 @@ int renderer_bgfx::draw(int update)
 			}
 			if (target_changed)
 				osd_printf_verbose("BGFX: output scale %.2f, composite %ux%u, physical %ux%u\n",
-					m_output_scale, unsigned(uw), unsigned(uh), unsigned(s_width[0]), unsigned(s_height[0]));
+					composite_scale, unsigned(uw), unsigned(uh), unsigned(s_width[0]), unsigned(s_height[0]));
 			// Safety: drop to the plain SDR path if the work target could not be created.
-			if (m_hdr_work == nullptr || (m_output_scale < 1.0f && m_hdr_present_work == nullptr))
+			if (m_hdr_work == nullptr || (needs_present_work && m_hdr_present_work == nullptr))
+			{
 				m_vec_hdr_chain = false;
+				m_hdr_ui_only = false;
+			}
 		}
 
 		if (m_vec_hdr_chain)
@@ -7493,6 +7518,24 @@ int renderer_bgfx::draw(int update)
 				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : m_hdr_ui_nits_scale, 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
 			}
 		}
+		else if (m_hdr_ui_only)
+		{
+			// UI-only: everything in the frame is the system-selection UI, so both scales are plain
+			// paper white. Room Ambient and Overlay Ambient Light describe light falling on a tube
+			// and its printed overlay; there is no tube here, and dimming the menu by them would
+			// make the picker darker than the emulator it launches.
+			// paper_white_nits() is the same anchor the chain path uses for UI white; on Windows it
+			// follows the OS SDR white level, which is exactly where the menu belongs.
+			const float paper_white = m_module().paper_white_nits();
+			m_hdr_ui_nits_scale = paper_white;
+			m_hdr_art_nits_scale = paper_white;
+			for (int b = 0; b < 4; b++)
+			{
+				if (m_hdr_gui_effect[b] == nullptr) continue;
+				bgfx_uniform *u = m_hdr_gui_effect[b]->uniform("u_hdr_gui");
+				if (u) { float val[4] = { (b == BLENDMODE_RGB_MULTIPLY) ? 1.0f : m_hdr_ui_nits_scale, 0,0,0 }; u->set(val, sizeof(float)*4); u->upload(); }
+			}
+		}
 		setup_ortho_view();
 	}
 
@@ -7538,7 +7581,7 @@ int renderer_bgfx::draw(int update)
 			// vertices==0 (all prims skipped); passing it to setVertexBuffer would crash inside BGFX
 			// with a garbage handle.
 			// HDR: packed UI quads/lines also go through the HDR gui effects into the work target.
-			bgfx_effect *gui = m_vec_hdr_chain ? m_hdr_gui_effect[blend] : m_gui_effect[blend];
+			bgfx_effect *gui = hdr_composite() ? m_hdr_gui_effect[blend] : m_gui_effect[blend];
 			set_hdr_gui_scale(gui, blend, batch_first);
 			bgfx::setVertexBuffer(0, &buffer);
 			bgfx::setTexture(0, gui->uniform("s_tex")->handle(), m_texture_cache->texture());
@@ -7546,8 +7589,8 @@ int renderer_bgfx::draw(int update)
 			bgfx_uniform* inv_view_dims = gui->uniform("u_inv_view_dims");
 			if (inv_view_dims)
 			{
-				const float view_w = m_vec_hdr_chain && m_hdr_work ? float(m_hdr_work->width()) : float(s_width[window_index]);
-				const float view_h = m_vec_hdr_chain && m_hdr_work ? float(m_hdr_work->height()) : float(s_height[window_index]);
+				const float view_w = hdr_composite() && m_hdr_work ? float(m_hdr_work->width()) : float(s_width[window_index]);
+				const float view_h = hdr_composite() && m_hdr_work ? float(m_hdr_work->height()) : float(s_height[window_index]);
 				float values[4] = { -1.0f / view_w, 1.0f / view_h, 0.0f, 0.0f };
 				inv_view_dims->set(values, sizeof(values));
 				inv_view_dims->upload();
@@ -7566,9 +7609,12 @@ int renderer_bgfx::draw(int update)
 
 	// HDR present (section 4.1): the work target now holds vector + artwork composited in linear
 	// nits. Encode it to the backbuffer (PQ for HDR10, gamma for the SDR fallback).
-	if (m_vec_hdr_chain && window_index == 0 && m_hdr_present_effect != nullptr && m_hdr_work != nullptr)
+	if (hdr_composite() && window_index == 0 && m_hdr_present_effect != nullptr && m_hdr_work != nullptr)
 	{
-		const bool scaled_output = m_output_scale < 1.0f && m_hdr_present_work != nullptr && m_hdr_upscale_effect != nullptr;
+		// The UI-only composite is always full resolution, so it never takes the upscale detour
+		// even when bgfx_output_scale is set for the chains this session would otherwise run.
+		const bool scaled_output = !m_hdr_ui_only && m_output_scale < 1.0f
+				&& m_hdr_present_work != nullptr && m_hdr_upscale_effect != nullptr;
 		const uint32_t required_vertices = scaled_output ? 12 : 6;
 		if (required_vertices == bgfx::getAvailTransientVertexBuffer(required_vertices, ScreenVertex::ms_decl))
 		{
@@ -8187,10 +8233,13 @@ void renderer_bgfx::setup_ortho_view()
 		m_ortho_view->disable_color_clear();
 	}
 
-	if (m_vec_hdr_chain && m_hdr_work != nullptr)
+	if (hdr_composite() && m_hdr_work != nullptr)
 	{
 		// Artwork/UI draws into the single linear work target (seeded with the vector screen by
 		// the screen pass). Per-frame view index; no clear (the seed pass already filled it).
+		// With no chain there is no seed pass, so this view has to clear the target itself -
+		// otherwise the previous frame survives underneath and every alpha-blended menu element
+		// composites over a stale picture.
 		if (m_hdr_work_view == UINT_MAX)
 		{
 			m_hdr_work_view = s_current_view++;
@@ -8199,7 +8248,8 @@ void renderer_bgfx::setup_ortho_view()
 			const uint16_t vh = m_hdr_work->height();
 			bgfx::setViewFrameBuffer(uint16_t(m_hdr_work_view), m_hdr_work->target());
 			bgfx::setViewRect(uint16_t(m_hdr_work_view), 0, 0, vw, vh);
-			bgfx::setViewClear(uint16_t(m_hdr_work_view), BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
+			bgfx::setViewClear(uint16_t(m_hdr_work_view),
+					m_hdr_ui_only ? BGFX_CLEAR_COLOR : BGFX_CLEAR_NONE, 0x00000000, 1.0f, 0);
 			bgfx::setViewMode(uint16_t(m_hdr_work_view), bgfx::ViewMode::Sequential);
 			float proj[16];
 			bx::mtxOrtho(proj, 0.0f, float(s_width[window().index()]), float(s_height[window().index()]), 0.0f, 0.0f, 100.0f, 0.0f, bgfx::getCaps()->homogeneousDepth);

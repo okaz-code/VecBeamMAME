@@ -105,6 +105,10 @@ private:
 	buffer_status buffer_primitives(bool atlas_valid, render_primitive** prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
 
 	void render_textured_quad(render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int window_index);
+	// True while the frame is assembled in the linear nits work target and encoded by the HDR
+	// present pass - either from an HDR-type chain or, with no screen at all, from the UI alone.
+	// Everything that routes artwork/UI away from the plain sRGB gui effects keys on this.
+	bool hdr_composite() const { return m_vec_hdr_chain || m_hdr_ui_only; }
 	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
 	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
 	bool prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index);
@@ -558,6 +562,15 @@ private:
 	// blend modes (alpha / multiply / add) in linear light - reproducing the half-mirror combine -
 	// and a final pass PQ-encodes the result (gamma on an SDR swapchain).
 	bool m_vec_hdr_chain = false;          // active chain is HDR-type (has a screen_hdr target)
+	// The MAME system-selection UI runs before any machine screen exists, so there is no chain to
+	// declare screen_hdr and the composite above never engaged - yet on Windows the swapchain is
+	// already HDR10 (see the preflight in create()). The UI then went out through the plain sRGB
+	// gui effects with no PQ encode and no Rec.709 -> Rec.2020 step, so menu white landed on PQ
+	// code 1.0 = 10000 nits (measured: 41.7x a 240-nit SDR white) and the saturated logo colours
+	// came out of gamut. macOS never showed it: its EDR layer is extended-linear sRGB where 1.0 IS
+	// the reference white, which is what an unencoded write happens to mean. Composite the UI in
+	// linear nits and let the same present pass encode it.
+	bool m_hdr_ui_only = false;            // HDR10 output, no screen at all: UI is the whole frame
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
 	bgfx_target *m_hdr_present_work = nullptr; // encoded composite before optional output upscale
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
