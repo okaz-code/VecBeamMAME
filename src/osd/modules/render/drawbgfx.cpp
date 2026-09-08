@@ -2604,6 +2604,10 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "bright_curve_red", &renderer_bgfx::vec_slider_cache::bright_curve_red, 1.0f },
 	{ "bright_curve_green", &renderer_bgfx::vec_slider_cache::bright_curve_green, 1.0f },
 	{ "bright_curve_blue", &renderer_bgfx::vec_slider_cache::bright_curve_blue, 1.0f },
+	{ "spot_scale_red", &renderer_bgfx::vec_slider_cache::spot_scale_red, 1.0f },
+	{ "spot_scale_green", &renderer_bgfx::vec_slider_cache::spot_scale_green, 1.0f },
+	{ "spot_scale_blue", &renderer_bgfx::vec_slider_cache::spot_scale_blue, 1.0f },
+	{ "rgb_spot_beam", &renderer_bgfx::vec_slider_cache::rgb_spot_beam, 0.0f },
 	{ "bright_threshold", &renderer_bgfx::vec_slider_cache::bright_threshold, 0.0f },
 	{ "core_flat", &renderer_bgfx::vec_slider_cache::core_flat, 0.0f },
 	{ "core_overlap_max", &renderer_bgfx::vec_slider_cache::core_overlap_max, 0.0f },
@@ -3894,7 +3898,28 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	const float end_finish = std::clamp(end_cap, 0.0f, 1.0f);
 	const float rounded_start = std::clamp(round_start, 0.0f, 1.0f);
 	const float rounded_finish = std::clamp(round_end, 0.0f, 1.0f);
-	const float pad = std::max(wcore, end_core) + 3.5f * sigma + 0.5f;
+	// Per-channel spot size, additive form. The scale belongs to the spot the GUN focuses to, not to
+	// the width overdrive adds on top of it: overload widening is a beam-current effect the three guns
+	// share, so scaling the finished sigma and core would put colour fringes on the widened part of
+	// every overloaded stroke. Carry the NORMAL-width share of each instead and let the shader add
+	// share * (scale - 1); the overload increments then stay common by construction.
+	//
+	// sigma's share is the width-derived term alone - overload bloom, edge defocus and HV droop are
+	// added after it and are not the gun's focus. The core's share is the flat-core fraction of the
+	// normal width, which is exactly what wcore adds beyond its own overload term.
+	// (1 - flat_f) because the flat-core split scales sigma down by exactly that, and min() against
+	// the final sigma so a spot that landed on the sig_floor cannot have a share larger than itself.
+	const float spot_norm_sigma = std::min(sigma,
+			(normal_width / 3.2f) * ((flat_f > 0.0f) ? (1.0f - flat_f) : 1.0f));
+	const float spot_norm_core = flat_f * 0.5f * normal_width;
+	// The quad has to cover the WIDEST channel or that channel is truncated at the edge, and the
+	// pedestal removal then renormalises against the wrong radius - a rectangle around every stroke.
+	const float spot_scale_max = (m_vs.rgb_spot_beam > 0.5f)
+			? std::max(1.0f, std::max({ m_vs.spot_scale_red, m_vs.spot_scale_green, m_vs.spot_scale_blue }))
+			: 1.0f;
+	const float spot_extra = spot_scale_max - 1.0f;
+	const float pad = std::max(wcore, end_core) + spot_norm_core * spot_extra
+			+ 3.5f * (sigma + spot_norm_sigma * spot_extra) + 0.5f;
 
 	if (seg_len > 0.0001f) { const float inv = 1.0f / seg_len; dx *= inv; dy *= inv; }
 	else { dx = 1.0f; dy = 0.0f; }
@@ -3911,6 +3936,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_end_finish = rounded_finish > 0.5f ? -(1.0f + end_finish) : end_finish;
 		vertex[i].m_end_core = end_core; vertex[i].m_end_transition = end_transition;
 		vertex[i].m_end_gain_start = dwell_gain_start; vertex[i].m_end_gain_finish = dwell_gain_finish;
+		vertex[i].m_spot_norm_sigma = spot_norm_sigma; vertex[i].m_spot_norm_core = spot_norm_core;
 	};
 
 	// 2D gaussian dot quad (point mode: sigma sign flags it in the shader). tgt selects the core or the
@@ -3926,7 +3952,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
 			tgt[i].m_end_core = wc; tgt[i].m_end_transition = 0.0f;
-			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f;
+			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f; tgt[i].m_spot_norm_sigma = 0.0f; tgt[i].m_spot_norm_core = 0.0f;
 		};
 		dv(base + 0, cx - p, cy - p, -p, -p);
 		dv(base + 1, cx + p, cy - p,  p, -p);
@@ -3944,7 +3970,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[base + i].m_a = 0.0f; tgt[base + i].m_b = 0.0f; tgt[base + i].m_d = 0.0f; tgt[base + i].m_sigma = -1.0f;
 			tgt[base + i].m_end_start = 0.0f; tgt[base + i].m_end_finish = 0.0f;
 			tgt[base + i].m_end_core = 0.0f; tgt[base + i].m_end_transition = 0.0f;
-			tgt[base + i].m_end_gain_start = 1.0f; tgt[base + i].m_end_gain_finish = 1.0f;
+			tgt[base + i].m_end_gain_start = 1.0f; tgt[base + i].m_end_gain_finish = 1.0f; tgt[base + i].m_spot_norm_sigma = 0.0f; tgt[base + i].m_spot_norm_core = 0.0f;
 		}
 	};
 
@@ -3961,7 +3987,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_a = a; tgt[i].m_b = radius; tgt[i].m_d = d; tgt[i].m_sigma = sg;
 			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
 			tgt[i].m_end_core = 0.0f; tgt[i].m_end_transition = 0.0f;
-			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f;
+			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f; tgt[i].m_spot_norm_sigma = 0.0f; tgt[i].m_spot_norm_core = 0.0f;
 		};
 		rv(base + 0, cx - p, cy - p, -p, -p);
 		rv(base + 1, cx + p, cy - p,  p, -p);
@@ -4242,7 +4268,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 							ray_vertex[i].m_a = a; ray_vertex[i].m_b = a - slen; ray_vertex[i].m_d = d; ray_vertex[i].m_sigma = ssig;
 							ray_vertex[i].m_end_start = 0.0f; ray_vertex[i].m_end_finish = 0.0f;
 							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = -1.0f;   // halo quad
-							ray_vertex[i].m_end_gain_start = 1.0f; ray_vertex[i].m_end_gain_finish = 1.0f;
+							ray_vertex[i].m_end_gain_start = 1.0f; ray_vertex[i].m_end_gain_finish = 1.0f; ray_vertex[i].m_spot_norm_sigma = 0.0f; ray_vertex[i].m_spot_norm_core = 0.0f;
 						};
 						rvv(rbase + 0, sx0 + rnx * rpad, sy0 + rny * rpad, a0,  rpad);
 						rvv(rbase + 1, sx1 + rnx * rpad, sy1 + rny * rpad, a1,  rpad);
@@ -4339,7 +4365,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			// full strength that far past the line end and then drop it in one step - a hard rectangular
 			// edge around every primitive.
 			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;
-			glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
+			glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
 		gv(m_glow_off_glow + 1, gsx1 + nx * gpad, gsy1 + ny * gpad, ga1, ga1 - seg_len,  gpad);
@@ -4363,7 +4389,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
 				glow_vertex[i].m_end_core = wcore; glow_vertex[i].m_end_transition = 0.0f;
-				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
+				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 			};
 			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
 			fv(m_glow_off_flare + 1, fsx1 + nx * fpad, fsy1 + ny * fpad, fa1, fa1 - seg_len,  fpad);
@@ -4386,7 +4412,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
 				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
 				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;   // halo quad
-				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f;
+				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
 			ov(m_glow_off_oglow + 1, osx1 + nx * opad, osy1 + ny * opad, oa1, oa1 - seg_len,  opad);
@@ -6491,7 +6517,7 @@ int renderer_bgfx::draw(int update)
 										bv[n].m_d=d; bv[n].m_sigma=-falloff;
 										bv[n].m_end_start=0.0f; bv[n].m_end_finish=0.0f;
 										bv[n].m_end_core=0.0f; bv[n].m_end_transition=0.0f;
-										bv[n].m_end_gain_start = 1.0f; bv[n].m_end_gain_finish = 1.0f;
+										bv[n].m_end_gain_start = 1.0f; bv[n].m_end_gain_finish = 1.0f; bv[n].m_spot_norm_sigma = 0.0f; bv[n].m_spot_norm_core = 0.0f;
 									};
 									cvtx(0,bloom.x-pad,bloom.y-pad,-pad,-pad); cvtx(1,bloom.x+pad,bloom.y-pad,pad,-pad);
 									cvtx(2,bloom.x+pad,bloom.y+pad,pad,pad);   cvtx(3,bloom.x-pad,bloom.y-pad,-pad,-pad);
@@ -6699,6 +6725,23 @@ int renderer_bgfx::draw(int update)
 					dsh->set(vals, sizeof(float) * 4);
 					dsh->upload();
 				}
+				// Per-channel spot size: three width scales and an explicit enable. The scales are a
+				// property of the tube's three guns, the same for every vector, so they are a uniform
+				// and the shader's branch stays coherent for the whole draw. The enable is separate
+				// from the scales on purpose - the path triples the transcendentals in the heaviest
+				// fragment shader in the chain, so switching it off for performance must not cost the
+				// values that were tuned.
+				bgfx_uniform* ssc = line_eff->uniform("u_spot_scale_rgb");
+				if (ssc)
+				{
+					float vals[4] = {
+						std::max(0.05f, m_chains->slider_value(0, "spot_scale_red", 1.0f)),
+						std::max(0.05f, m_chains->slider_value(0, "spot_scale_green", 1.0f)),
+						std::max(0.05f, m_chains->slider_value(0, "spot_scale_blue", 1.0f)),
+						(m_chains->slider_value(0, "rgb_spot_beam", 0.0f) > 0.5f) ? 1.0f : 0.0f };
+					ssc->set(vals, sizeof(float) * 4);
+					ssc->upload();
+				}
 				// How much of the seam-filling join extension to keep at a CONTINUOUS joint. The
 				// extension replaces the axial roll-off with 1.0 around a shared vertex and BOTH
 				// segments do it, so a polyline corner receives two full passes where the beam made
@@ -6835,7 +6878,7 @@ int renderer_bgfx::draw(int update)
 							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
 							ev[i].m_end_start = 0.0f; ev[i].m_end_finish = 0.0f;
 							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = -1.0f;   // halo quad
-							ev[i].m_end_gain_start = 1.0f; ev[i].m_end_gain_finish = 1.0f;
+							ev[i].m_end_gain_start = 1.0f; ev[i].m_end_gain_finish = 1.0f; ev[i].m_spot_norm_sigma = 0.0f; ev[i].m_spot_norm_core = 0.0f;
 						};
 						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
 						const float sx1 = ex1 + edx * epad, sy1 = ey1 + edy * epad;

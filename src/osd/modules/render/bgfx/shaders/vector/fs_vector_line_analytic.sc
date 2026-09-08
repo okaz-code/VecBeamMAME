@@ -34,6 +34,7 @@ uniform vec4 u_halo_quad_edge;
 // spot convolved with its own motion; a deposit made while the beam is STOPPED is not, so the two
 // need not share a width. 1.0 keeps them equal, which is what this did before the slider existed.
 uniform vec4 u_dwell_shape;
+uniform vec4 u_spot_scale_rgb;   // (scale_r, scale_g, scale_b, enable)
 // x = how much of the seam-filling join extension to keep at a CONTINUOUS joint. See join_allowed.
 uniform vec4 u_join_extend;
 
@@ -53,18 +54,36 @@ float erf_approx(float x)
 	return s * (1.0 - p * exp(-x * x));
 }
 
-void main()
+// One channel's beam coverage, at a width scaled by `scale`.
+//
+// The three guns of a colour tube do not focus to the same spot, so a white stroke fringes at its
+// edges and the widest channel reaches furthest. Getting that right means rasterising the analytic
+// profile once per channel - there is no way to recover it from a finished image, because a wider
+// sigma is not a blur of a narrower one: the caps, the join zone and the short-stroke peak
+// normalisation all move with the width. So the whole coverage derivation lives here and main()
+// calls it once or three times.
+//
+// scale is ADDITIVE against the normal-width share, not a multiplier on the total: tc4.zw carry the
+// share of sigma and of the core that came from the beam width, and each grows by share*(scale-1).
+// That keeps the width OVERDRIVE adds - overload bloom and the overload core - common to all three
+// channels, which is what it should be: overload widening is a beam-current effect the three guns
+// share, and scaling the finished spot instead put colour fringes on the widened part of every
+// overloaded stroke. Edge defocus and HV droop stay common for the same reason. At scale = 1.0 every
+// term is an exact + 0.0, so the single-channel path is bit-identical to what it was before.
+// bgfx exposes the $input varyings only inside main(), so they are passed in explicitly.
+float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 {
-	float a  = v_texcoord1.x;
-	float b  = v_texcoord1.y;
-	float d  = v_texcoord1.z;
-	float sg = abs(v_texcoord1.w);
+	float a  = tc1.x;
+	float b  = tc1.y;
+	float d  = tc1.z;
+	float spot_extra = scale - 1.0;
+	float sg = abs(tc1.w) + tc4.z * spot_extra;
 	sg = max(sg, 1e-4);
 
 	float inv_2s2 = 1.0 / (2.0 * sg * sg);
 
 	float fade;
-	if (v_texcoord1.w < 0.0)
+	if (tc1.w < 0.0)
 	{
 		if (b > 0.5)
 		{
@@ -76,16 +95,16 @@ void main()
 			float r = sqrt(a * a + d * d);
 			fade = exp(-((r - b) * (r - b)) * inv_2s2);
 		}
-		else if (v_texcoord0.y > 0.001)
+		else if (tc0.y > 0.001)
 		{
-			// flat-core point: a SOLID disc of radius v_texcoord0.y with a thin gaussian skirt (sg)
+			// flat-core point: a SOLID disc of radius tc0.y with a thin gaussian skirt (sg)
 			// outside it. Width-lifted (overdriven) dots read as crisp bright discs instead of soft
 			// blobs. Flat dots are large by construction, so the box-integrated sub-pixel AA of the
 			// plain path below is not needed here.
 			// Rounded-square dwell spot. u_line_params.w is corner roundness:
 			// 0 = compact rounded square, 1 = the former circular disc. The gaussian is
 			// evaluated only outside the solid SDF core, preserving the existing soft skirt.
-			float half_extent = v_texcoord0.y;
+			float half_extent = max(tc0.y + tc4.w * spot_extra, 0.0);
 			float corner = mix(half_extent * 0.15, half_extent, clamp(u_line_params.w, 0.0, 1.0));
 			vec2 q = abs(vec2(a, d)) - vec2_splat(half_extent) + vec2_splat(corner);
 			float sd = length(max(q, vec2_splat(0.0))) + min(max(q.x, q.y), 0.0) - corner;
@@ -124,13 +143,17 @@ void main()
 		// inside the true [p0,p1] stroke instead of drawing additive dots over its ends. The start/end
 		// profiles taper to the ordinary body width over the requested distance; max (not sum) prevents
 		// short strokes whose profiles overlap from becoming twice as wide in the middle.
-		float start_round = (v_texcoord3.x < 0.0) ? 1.0 : 0.0;
-		float finish_round = (v_texcoord3.y < 0.0) ? 1.0 : 0.0;
-		float start_amount = (v_texcoord3.x < 0.0) ? (-v_texcoord3.x - 1.0) : v_texcoord3.x;
-		float finish_amount = (v_texcoord3.y < 0.0) ? (-v_texcoord3.y - 1.0) : v_texcoord3.y;
-		float body_core = max(v_texcoord0.y, 0.0);
-		float end_core = max(v_texcoord3.z, 0.0);
-		float transition = max(v_texcoord3.w, 1e-4);
+		float start_round = (tc3.x < 0.0) ? 1.0 : 0.0;
+		float finish_round = (tc3.y < 0.0) ? 1.0 : 0.0;
+		float start_amount = (tc3.x < 0.0) ? (-tc3.x - 1.0) : tc3.x;
+		float finish_amount = (tc3.y < 0.0) ? (-tc3.y - 1.0) : tc3.y;
+		// The solid part of the same cross-section, so it takes the same additive share. `transition`
+		// below is untouched - it is the axial distance over which an endpoint returns to the body
+		// width, a property of the stroke's geometry rather than of the gun's focus.
+		float core_extra = tc4.w * spot_extra;
+		float body_core = max(max(tc0.y, 0.0) + core_extra, 0.0);
+		float end_core = max(max(tc3.z, 0.0) + core_extra, 0.0);
+		float transition = max(tc3.w, 1e-4);
 		float end_curve = max(u_line_params.x, 0.1);
 		float start_profile = start_amount * pow(clamp(1.0 - max(a, 0.0) / transition, 0.0, 1.0), end_curve);
 		float finish_profile = finish_amount * pow(clamp(1.0 - max(-b, 0.0) / transition, 0.0, 1.0), end_curve);
@@ -166,7 +189,7 @@ void main()
 		// segment ending there contributes 0.5 and the one starting there contributes 0.5, which is
 		// already the correct single pass, continuous and seamless. u_join_extend scales the zone so
 		// the old behaviour is still reachable: 1.0 = legacy (double-counted), 0.0 = corrected.
-		float join_allowed = step(0.0, v_texcoord3.w) * clamp(u_join_extend.x, 0.0, 1.0);
+		float join_allowed = step(0.0, tc3.w) * clamp(u_join_extend.x, 0.0, 1.0);
 		float start_join_support = max(start_radius, 2.0 * sg);
 		float finish_join_support = max(finish_radius, 2.0 * sg);
 		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
@@ -223,8 +246,8 @@ void main()
 		// that - by design it keeps the body's peak brightness - so the extra energy is added here
 		// as amplitude, falling off with the beam's own sigma rather than the (much longer) width
 		// transition: the beam is stationary at a point, not spread along the taper.
-		float gain_start  = max(v_texcoord4.x, 1.0) - 1.0;
-		float gain_finish = max(v_texcoord4.y, 1.0) - 1.0;
+		float gain_start  = max(tc4.x, 1.0) - 1.0;
+		float gain_finish = max(tc4.y, 1.0) - 1.0;
 		if (gain_start > 0.0 || gain_finish > 0.0)
 		{
 			// Narrowing this sharpens the radial spokes an explosion ring builds out of stacked
@@ -240,6 +263,28 @@ void main()
 			fade *= 1.0 + gain_start * wa + gain_finish * wb;
 		}
 	}
+	return fade;
+}
+
+void main()
+{
+	// Per-channel spot size. u_spot_scale_rgb = (scale_r, scale_g, scale_b, enable). The scales are
+	// tube properties and identical for every vector, so they are a uniform, not vertex data - which
+	// is also why the branch below is coherent for the whole draw and costs nothing while it is off.
+	//
+	// ON, this evaluates the coverage THREE times: about 15 erf, 6-9 exp and 3 sharpen per fragment
+	// against 5/2-3/1, in the heaviest fragment shader in the chain. On an ALU-bound part (measured:
+	// Intel HD 520) that lands close to 2-3x on this pass, which is why it has an explicit switch
+	// rather than being inferred from the scales - turning it off for performance must not cost the
+	// tuned values.
+	vec3 fade3;
+	if (u_spot_scale_rgb.w > 0.5)
+		fade3 = vec3(
+			beam_fade(u_spot_scale_rgb.x, v_texcoord0, v_texcoord1, v_texcoord3, v_texcoord4),
+			beam_fade(u_spot_scale_rgb.y, v_texcoord0, v_texcoord1, v_texcoord3, v_texcoord4),
+			beam_fade(u_spot_scale_rgb.z, v_texcoord0, v_texcoord1, v_texcoord3, v_texcoord4));
+	else
+		fade3 = vec3_splat(beam_fade(1.0, v_texcoord0, v_texcoord1, v_texcoord3, v_texcoord4));
 
 	// Float intensity multiplier. Core/overload geometry carries z >= 0 (x1 and above); very faint
 	// halation geometry may carry -1 < z < 0 so its gain is not quantized through RGBA8 vertex colour.
@@ -257,10 +302,15 @@ void main()
 	bool halo_quad = v_texcoord3.w < 0.0;
 	float quad_pedestal = halo_quad ? u_halo_quad_edge.x : QUAD_EDGE_PEDESTAL;
 	float quad_renorm   = halo_quad ? u_halo_quad_edge.y : QUAD_EDGE_RENORM;
-	fade = max(0.0, fade - quad_pedestal) * quad_renorm;
+	fade3 = max(vec3_splat(0.0), fade3 - vec3_splat(quad_pedestal)) * quad_renorm;
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
-	float coverage = v_color0.a * fade * over_mult;
-	vec4 deposit = vec4(v_color0.rgb * coverage, coverage);
+	vec3 coverage3 = v_color0.rgb * (v_color0.a * over_mult) * fade3;
+	// The alpha channel stays SCALAR. It is the Long-line weight and the overlap-statistics input,
+	// both of which are per-primitive quantities, so the widest channel is the honest representative:
+	// a narrow channel must not be able to under-report a stroke's presence.
+	float coverage = v_color0.a * max(fade3.r, max(fade3.g, fade3.b)) * over_mult;
+	vec4 deposit = vec4(coverage3, coverage);
+	float fade = max(fade3.r, max(fade3.g, fade3.b));
 	// v_texcoord2.x < -0.5 marks the overdrive hot core for chains that mask it as direct phosphor
 	// emission. Keep it out of the ordinary unmasked glow attachment and route it through MRT 2.
 	float separated_flare = step(v_texcoord2.x, -0.5);

@@ -58,6 +58,13 @@ struct AnalyticLineVertex
 	// body's peak brightness by design). See vertex-dwell-energy-plan.md.
 	float m_end_gain_start;
 	float m_end_gain_finish;
+	// Per-channel spot size, additive form. The scale must reach the spot the gun focuses to and
+	// NOT the width overdrive adds on top: overload widening is a beam-current effect that the three
+	// guns share, so scaling the finished sigma/core would fringe the widened part of every
+	// overloaded stroke. These carry the NORMAL-width share of each, and the shader adds
+	// share * (scale - 1) instead of multiplying the total. 0 = nothing to scale.
+	float m_spot_norm_sigma;
+	float m_spot_norm_core;
 
 	static void init()
 	{
@@ -67,7 +74,7 @@ struct AnalyticLineVertex
 			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord2, 4, bgfx::AttribType::Float)
-			.add(bgfx::Attrib::TexCoord3, 2, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord3, 4, bgfx::AttribType::Float)
 			.end();
 	}
 

@@ -326,6 +326,12 @@ public:
 		float bright_curve_red = 1.0f;
 		float bright_curve_green = 1.0f;
 		float bright_curve_blue = 1.0f;
+		// Per-channel spot size (the exact, per-channel rasterisation path). Width multipliers plus an
+		// explicit enable, so turning the cost off leaves the tuned scales intact.
+		float spot_scale_red = 1.0f;
+		float spot_scale_green = 1.0f;
+		float spot_scale_blue = 1.0f;
+		float rgb_spot_beam = 0.0f;
 		float bright_threshold = 0.0f;
 		float core_flat = 0.0f;
 		float core_overlap_max = 0.0f; // colour chain: max-blend direct excitation to avoid overlap hotspots

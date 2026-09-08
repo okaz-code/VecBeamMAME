@@ -31,6 +31,7 @@
     },
     { "name": "u_line_params",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
     { "name": "u_dwell_shape",   "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] },
+    { "name": "u_spot_scale_rgb", "type": "vec4", "values": [ 1.0, 1.0, 1.0, 0.0 ] },
     { "name": "u_join_extend",   "type": "vec4", "values": [ 1.0, 0.0, 0.0, 0.0 ] }
 	]
 }
