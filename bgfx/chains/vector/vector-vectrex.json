@@ -221,6 +221,7 @@
 		{"type":"float","name":"beam_peak_ratio","text":"HDR Beam Peak (x SDR white)","default":0.96,"min":0.25,"max":30.0,"step":0.05,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_glow_stability","text":"HDR Glow Stability","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_shoulder_start","text":"HDR Shoulder Start (x display ceiling)","default":0.85,"min":0.05,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"hdr_headroom_override","text":"HDR Headroom Override (x SDR white, 0 = live)","default":0.0,"min":0.0,"max":16.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_rolloff_max","text":"HDR Highlight Max (xpeak)","default":2.5,"min":0.5,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_sat_protect","text":"HDR Saturated Color Protect","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"sdr_beam_level","text":"SDR Beam Level","default":0.90,"min":0.10,"max":1.00,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},

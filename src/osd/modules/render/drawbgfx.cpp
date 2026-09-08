@@ -7535,6 +7535,19 @@ int renderer_bgfx::draw(int update)
 			bgfx_uniform *ro = m_hdr_present_effect->uniform("u_hdr_rolloff");
 			if (ro)
 			{
+				// Headroom override (x SDR white; 0 = follow the display). The present ceiling normally
+				// tracks the display's CURRENT headroom, which on macOS moves with the SDR brightness
+				// slider - so one unchanged cfg reads differently between sessions and calibrating the
+				// overrange against it is guesswork. A non-zero value pins w to a fixed multiple of the
+				// reference white instead. That unit is the one the shader already consumes, so it means
+				// the same thing on both platforms even though they resolve the reference white
+				// differently: Windows HDR10 takes it from the OS SDR white and macOS EDR from the
+				// paper-white option, and both divide by it. It is mainly a macOS control - on Windows
+				// hdr_present_headroom() is a fixed panel peak over that white and barely moves.
+				const bool hdr_out = s_bgfx_edr_active || s_bgfx_hdr_active;
+				const float hdr_headroom_fixed = m_chains->slider_value(0, "hdr_headroom_override", 0.0f);
+				const float hdr_headroom = !hdr_out ? 0.0f
+					: ((hdr_headroom_fixed > 0.0f) ? hdr_headroom_fixed : m_module().hdr_present_headroom());
 				float rov[4] = {
 					// Fraction of the display ceiling at which the shoulder starts. Below it the
 					// reproduction is linear, so the ratio between a plain stroke and a dense
@@ -7542,7 +7555,7 @@ int renderer_bgfx::draw(int update)
 					m_chains->slider_value(0, "hdr_shoulder_start", 0.85f),
 					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
 					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
-					(s_bgfx_edr_active || s_bgfx_hdr_active) ? m_module().hdr_present_headroom() : 0.0f };
+					hdr_headroom };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
 			}
