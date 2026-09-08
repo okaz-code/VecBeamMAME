@@ -2733,8 +2733,55 @@ void renderer_bgfx::refresh_vec_slider_cache()
 		m_vs.overdrive_color[c] = (m_vs_ovcol[c] != nullptr) ? m_vs_ovcol[c]->value() : 1.0f;
 }
 
+// The calibration in absolute nits, resolved against this display. Returns 0 when the chain does
+// not use the model (hdr_peak_target_nits 0), which leaves the legacy ratio/nits sliders in charge.
+//
+// The target is the PEAK - the brightest thing on screen, a spoke or an enemy bullet - because that
+// is what a real tube is judged by, and one calibrated beam sits at a fixed fraction below it. The
+// display clamps the peak, never selects it, so a brighter monitor raises both together and the
+// picture keeps its ratios while getting brighter. The floor is what stops a display that cannot
+// reach the target from dragging the ordinary beam down with it: on a panel short of the target the
+// overrange takes the loss instead, which is the right way round - a correctly bright picture with
+// squashed highlights beats a dim one with perfect ratios.
+bool renderer_bgfx::vec_beam_nits_model(float &beam_nits, float &ceiling_nits) const
+{
+	const float peak_target = m_chains->slider_value(0, "hdr_peak_target_nits", 0.0f);
+	if (peak_target <= 0.0f)
+		return false;
+	const float beam_target = std::max(1.0f, m_chains->slider_value(0, "hdr_beam_target_nits", peak_target));
+	const float beam_floor = std::max(0.0f, m_chains->slider_value(0, "hdr_beam_floor_nits", 0.0f));
+	// 0 when the platform cannot say; the target then stands unclamped.
+	const float panel_peak = m_module().hdr_chain_peak_nits();
+	ceiling_nits = (panel_peak > 0.0f) ? std::min(peak_target, panel_peak) : peak_target;
+	const float fraction = beam_target / peak_target;
+	beam_nits = std::clamp(ceiling_nits * fraction, std::min(beam_floor, beam_target), beam_target);
+	return beam_nits > 0.0f;
+}
+
+// Ceiling as a multiple of the beam - what u_hdr_rolloff.y wants. Derived, not read: with the beam
+// on the floor the ratio is whatever the display left, and a hand-set value would clip the ceiling
+// somewhere else. Equals peak_target / beam_target wherever the display can reach the target.
+float renderer_bgfx::vec_hdr_ceiling_ratio(float fallback) const
+{
+	float beam_nits = 0.0f, ceiling_nits = 0.0f;
+	if (vec_beam_nits_model(beam_nits, ceiling_nits) && beam_nits > 0.0f)
+		return ceiling_nits / beam_nits;
+	return fallback;
+}
+
 float renderer_bgfx::vec_beam_peak_ratio() const
 {
+	float beam_nits = 0.0f, ceiling_nits = 0.0f;
+	if (vec_beam_nits_model(beam_nits, ceiling_nits))
+	{
+		// Absolute nits over the reference white this platform actually normalises against. That is
+		// the whole point: the SAME calibration lands on the same light on both, where a ratio to
+		// SDR white could not, because that white is an OS-reported user setting on Windows and a
+		// derived 100-nit convention on macOS.
+		const float white = std::max(1.0f, s_bgfx_edr_active
+				? m_module().edr_reference_white_nits() : m_module().paper_white_nits());
+		return std::max(0.01f, beam_nits / white);
+	}
 	const float ratio = m_chains->slider_value(0, "beam_peak_ratio", 0.0f);
 	if (ratio > 0.0f)
 		return ratio;
@@ -7632,7 +7679,7 @@ int renderer_bgfx::draw(int update)
 					// reproduction is linear, so the ratio between a plain stroke and a dense
 					// additive overlap survives to the screen instead of being compressed away.
 					m_chains->slider_value(0, "hdr_shoulder_start", 0.85f),
-					m_chains->slider_value(0, "hdr_rolloff_max", 1.3f),
+					vec_hdr_ceiling_ratio(m_chains->slider_value(0, "hdr_rolloff_max", 1.3f)),
 					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
 					hdr_headroom };
 				ro->set(rov, sizeof(float) * 4);

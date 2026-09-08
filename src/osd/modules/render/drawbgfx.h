@@ -708,6 +708,8 @@ private:
 	// exactly as before. Absolute nits survive as an input format and in the log.
 	float dwell_energy_gain(render_primitive *prim, float seg_len, bool as_point,
 			float screen_ref) const;
+	bool vec_beam_nits_model(float &beam_nits, float &ceiling_nits) const;
+	float vec_hdr_ceiling_ratio(float fallback) const;
 	float vec_beam_peak_ratio() const;
 	// The same target expressed in chain-space nits, against the reference white the present pass
 	// will normalise by. Tracks a live reference white instead of freezing one at calibration time.
