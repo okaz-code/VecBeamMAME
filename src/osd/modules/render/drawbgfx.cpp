@@ -223,6 +223,13 @@ protected:
 	// headroom against a fixed reference white and never in absolute units, so this one number is
 	// what turns every EDR ratio into nits. 0 = do not derive, keep the paper-white scale.
 	float m_edr_reference_nits = 0.0f;
+	// Calibration basis (-bgfx_macos_edr_calibration). absolute: the nits targets are absolute
+	// luminance, so the beam and the ceiling hold while the display brightness moves and only the UI
+	// tracks it. relative: the targets are read against a nominal SDR white instead, so both follow
+	// the brightness slider - the behaviour before the absolute derivation existed. There is no third
+	// option: the panel's own peak does not change when the SDR white point moves, so an absolute
+	// ceiling has nothing to track, and only the choice of basis is a real one.
+	bool m_edr_relative_calibration = false;
 	float m_edr_logged_reference_white = 0.0f;
 	float m_edr_prev_reference_white = 0.0f;
 	// True while the output path is macOS EDR. The accessors below are declared ahead of
@@ -967,6 +974,13 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_edr_output_active = s_bgfx_edr_active;
 	m_edr_reference_nits = s_bgfx_edr_active
 			? float(std::max(0, m_options->bgfx_macos_edr_reference_white())) : 0.0f;
+	{
+		const std::string_view basis = m_options->bgfx_macos_edr_calibration();
+		m_edr_relative_calibration = (basis == "relative");
+		if (!m_edr_relative_calibration && basis != "absolute")
+			osd_printf_warning("BGFX: unknown bgfx_macos_edr_calibration '%s'; using absolute\n",
+				std::string(basis).c_str());
+	}
 	m_edr_current_resolved = false;
 	m_edr_calibration_dirty = false;
 	m_macos_edr_force_applied = false;
@@ -1157,7 +1171,8 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		m_edr_current_resolved = true;
 		m_edr_headroom = detected;
 		m_edr_logged_headroom = detected;
-		osd_printf_info("BGFX: macOS EDR current headroom resolved to %.2fx SDR white\n", detected);
+		osd_printf_info("BGFX: macOS EDR current headroom resolved to %.2fx SDR white (%s calibration)\n",
+			detected, m_edr_relative_calibration ? "relative" : "absolute");
 		// Relative auto derives its nominal display peak from this value, so the chain calibration that
 		// ran without it has to be redone. An explicit numeric peak is already absolute and needs no
 		// re-run (only edr_reference_white_nits() is reconstructed from the headroom, below).
@@ -1210,7 +1225,12 @@ void video_bgfx::update_edr_headroom(void *nwh)
 	{
 		if (!m_edr_relative_auto && m_hdr_display_peak_nits > 0.0f)
 			derived_panel_peak = m_hdr_display_peak_nits;
-		else if (m_edr_relative_auto && m_edr_reference_nits > 0.0f && m_edr_potential_headroom > 1.0f)
+		// Relative calibration deliberately derives nothing: the reference white stays the configured
+		// paper white, so hdr_chain_peak_nits() reports current headroom x that white and both the
+		// beam and the ceiling move with the brightness slider. The nits targets stop being nits
+		// there, which is the whole trade - it is the pre-derivation behaviour, kept switchable.
+		else if (m_edr_relative_auto && !m_edr_relative_calibration
+				&& m_edr_reference_nits > 0.0f && m_edr_potential_headroom > 1.0f)
 			derived_panel_peak = m_edr_potential_headroom * m_edr_reference_nits;
 	}
 	if (derived_panel_peak > 0.0f)

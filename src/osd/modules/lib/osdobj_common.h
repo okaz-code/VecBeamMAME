@@ -98,6 +98,7 @@
 #define OSDOPTION_BGFX_MACOS_FORCE_COMPOSITED "bgfx_macos_force_composited"
 #define OSDOPTION_BGFX_MACOS_EDR_DIAGNOSTICS "bgfx_macos_edr_diagnostics"
 #define OSDOPTION_BGFX_MACOS_EDR_REFERENCE_WHITE "bgfx_macos_edr_reference_white"
+#define OSDOPTION_BGFX_MACOS_EDR_CALIBRATION "bgfx_macos_edr_calibration"
 #define OSDOPTION_BGFX_SHADOW_MASK      "bgfx_shadow_mask"
 #define OSDOPTION_BGFX_LUT              "bgfx_lut"
 #define OSDOPTION_BGFX_AVI_NAME         "bgfx_avi_name"
@@ -186,6 +187,7 @@ public:
 	bool bgfx_macos_force_composited() const { return bool_value(OSDOPTION_BGFX_MACOS_FORCE_COMPOSITED); }
 	bool bgfx_macos_edr_diagnostics() const { return bool_value(OSDOPTION_BGFX_MACOS_EDR_DIAGNOSTICS); }
 	int bgfx_macos_edr_reference_white() const { return int_value(OSDOPTION_BGFX_MACOS_EDR_REFERENCE_WHITE); }
+	const char *bgfx_macos_edr_calibration() const { return value(OSDOPTION_BGFX_MACOS_EDR_CALIBRATION); }
 	const char *bgfx_shadow_mask() const { return value(OSDOPTION_BGFX_SHADOW_MASK); }
 	const char *bgfx_lut() const { return value(OSDOPTION_BGFX_LUT); }
 	const char *bgfx_avi_name() const { return value(OSDOPTION_BGFX_AVI_NAME); }
