@@ -144,6 +144,7 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_VECTOR_OVERSCAN_Y,                          "1.0",       core_options::option_type::FLOAT,      "set vector overscan zoom factor (Y), < 1.0 reveals off-screen beams" },
 	{ OPTION_VECTOR_BLANK_LEAK,                          "0.0",       core_options::option_type::FLOAT,      "set vector blanked-beam leak level (0 = off), faintly draws blanked retrace/move paths" },
 	{ OPTION_VECTOR_BEAM_WINDOW ";beamwin",              "1",         core_options::option_type::BOOLEAN,    "deposit only the slice of the beam sweep each present covers, letting the phosphor hold the rest; turns the vector presentation timer on by itself" },
+	{ OPTION_VECTOR_BEAM_IDLE_MS ";vecidle",             "auto",      core_options::option_type::STRING,     "stop depositing after the beam has been parked this many ms with no new list, so a halted AVG/DVG (a self-test, for example) fades out instead of leaving the last picture's scattered light on screen (auto = the phosphor's own decay time, 0 = off)" },
 	{ OPTION_VECTOR_QUALITY ";vecq",                     nullptr,     core_options::option_type::STRING,     "vector rendering effort preset: high, medium or low - sets render scale, output scale and the beam time window together (unset = leave each as configured)" },
 	{ OPTION_VECTOR_WINDOW_SCATTER,                      "0",         core_options::option_type::BOOLEAN,    "clip-window scatter for the hardware that has the circuit (Major Havoc, Battlezone): the latched edge lands somewhere slightly different every frame, seen as the window wobbling. Off by default - on Battlezone all four edges are held, so the whole frame breathes. The other three imperfections (droop, dielectric absorption, offset) are always on" },
 	{ OPTION_VECTOR_WINDOW_DROOP,                        "5.0",       core_options::option_type::FLOAT,      "clip-window sample-and-hold droop, percent of screen height per second (0 = off, ideal hold)" },
@@ -535,6 +536,28 @@ emu_options::~emu_options()
 //-------------------------------------------------
 //  system_name
 //-------------------------------------------------
+
+//-------------------------------------------------
+//  vector_beam_idle_ms - how long the beam may
+//  stay parked before deposits stop
+//-------------------------------------------------
+
+double emu_options::vector_beam_idle_ms() const
+{
+	const char *const setting = value(OPTION_VECTOR_BEAM_IDLE_MS);
+	// "auto" (and an empty setting) means "as long as the phosphor keeps light": the renderer
+	// substitutes the active chain's phosphor_total_ms, because once the pool has fully decayed
+	// there is nothing left on the tube face for the retained list to scatter.
+	if (!setting || !*setting || !core_stricmp(setting, "auto"))
+		return -1.0;
+	if (!core_stricmp(setting, "off") || !core_stricmp(setting, "none"))
+		return 0.0;
+
+	char *end = nullptr;
+	const double ms = std::strtod(setting, &end);
+	return (end && !*end && ms >= 0.0) ? ms : -1.0;
+}
+
 
 int emu_options::vector_present_rate() const
 {

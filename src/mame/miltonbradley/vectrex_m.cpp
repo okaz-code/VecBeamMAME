@@ -91,7 +91,8 @@ void vectrex_base_state::screen_configuration()
 	const ioport_value conf = m_io_3dconf->read();
 	unsigned char cport = (unsigned char)conf;
 
-	// Cache the beam_energy draw-time model params once per frame (used by the dwell/stroke energy models).
+	// Cache the beam_energy shaping params once per frame. Both energy models share m_beam_infl; the
+	// stroke model keys on beam speed (time per unit length), the parked-dot model on real dwell time.
 	m_beam_infl  = m_io_beam_infl.read_safe(50) / 100.0;                    // 0..1 influence
 	m_beam_curve = std::max(0.05, m_io_beam_curve.read_safe(50) / 50.0);    // saturation exponent g
 	m_beam_max   = std::max(1.0, m_io_beam_max.read_safe(50) / 100.0 * 8.0);// per-area phosphor saturation ceiling

@@ -192,7 +192,7 @@ private:
 	attotime m_ramp_start_time;   // time RAMP last went active; ramp_us = now - this while RAMP active
 	double m_cur_ramp_us = 0.0;   // RAMP-active duration sampled in update_vector, copied into each point
 	// beam_energy draw-time model params, cached once per frame in screen_configuration()
-	double m_beam_infl = 0.5;        // influence (0..1): 0 = flat intensity, 1 = fully draw-time shaped
+	double m_beam_infl = 0.5;        // influence (0..1): 0 = flat intensity, 1 = fully shaped by beam speed (strokes) / dwell time (parked dots)
 	double m_beam_curve = 1.0;       // draw-time saturation exponent g (gentleness)
 	double m_beam_max = 4.0;         // per-unit-area max beam_energy (phosphor saturation ceiling)
 	// Parked-dot dwell model params (dot_dwell_energy): real-hw calibrated - the dazzle onset of a

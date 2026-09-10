@@ -310,6 +310,9 @@ public:
 		float beam_jitter_saturation_start = 1.5f;
 		float beam_jitter_saturation_range = 1.5f;
 		float beam_jitter_saturation_curve = 2.0f;
+		// Fraction of the jitter calibration that survives BELOW the saturation knee, as an analogue
+		// noise floor. 0 = the knee gates the effect completely; 0.02 was the hardwired value.
+		float beam_jitter_floor = 0.02f;
 		float overload_display_compression = 1.0f;
 		float beam_width_max = 1.5f;
 		float beam_width_min = 1.0f;
@@ -704,6 +707,18 @@ private:
 	// receives to the screen-update period. Deriving it from elapsed time also self-corrects when a
 	// present is dropped, and freezes on its own while the machine is paused.
 	double m_vec_window_base_time = -1.0;   // emulated seconds at this list's first present
+	// Sweep time this pass has been deposited up to, and the emulated clock at the previous present.
+	// The window marches forward from where it stopped by the time that actually elapsed, so its
+	// position and its width come from ONE clock and consecutive windows tile whatever the present
+	// pacing does. -1 = nothing deposited yet.
+	double m_vec_window_covered = -1.0;
+	double m_vec_window_prev_now = -1.0;
+	// BEAMWIN accounting: sweep_t0 of the pass being reported, the emulated time its presents
+	// actually accumulated, and how much sweep time that bought. span vs covered says whether a
+	// short deposit was the pass running out of presentation time or something else entirely.
+	double m_vec_window_pass_t0 = 0.0;
+	double m_vec_window_log_elapsed = 0.0;
+	double m_vec_window_log_covered = 0.0;
 	// Keyed on list_generation, NOT frame_id: a pass must keep its window walk for as long as its
 	// list lives, and the VGGO cadence is not the screen refresh. Star Wars refreshes its vector
 	// screen every 24.381 ms but issues VGGO every 6 to 11 IRQ periods (measured median 36.53 ms in
@@ -711,6 +726,16 @@ private:
 	// frame_id gave a 34 ms sweep only 24 ms worth of window and permanently clipped its tail.
 	uint32_t m_vec_window_generation = ~uint32_t(0);
 	bool m_vec_window_mode = false;        // beam_window active this present (read by the later chain gate)
+	// -vector_beam_idle_ms: how long the CPU has left the beam parked. clear_list() runs only at a
+	// list boundary (avgdvg go_w / the Tempest jump to zero), so a halted vector generator leaves
+	// MAME's retained display list valid and the renderer keeps rebuilding the whole pass's
+	// scattered light from it. These track the parked interval so draw() can stop depositing once
+	// the phosphor has gone dark; see the beam_idle comment there.
+	// Lower bound for -vector_beam_idle_ms auto; see the beam_idle comment in draw().
+	static constexpr double BEAM_IDLE_AUTO_FLOOR_MS = 250.0;
+	uint32_t m_vec_idle_generation = ~uint32_t(0);
+	double m_vec_idle_since = -1.0;        // emulated seconds when the current list was first seen
+	bool m_vec_idle_gate = false;          // gate state last present, for the one-line transition notice
 	// Hysteresis state for the sweep-versus-window-width test in draw(): engage above 1.25x the
 	// window width, disengage below 1.0x, so a title whose spans straddle the threshold does not
 	// flip the phosphor between per-present and vector_phosphor_rate cadence every pass.

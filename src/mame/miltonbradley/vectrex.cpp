@@ -124,11 +124,11 @@ static INPUT_PORTS_START(vectrex)
 	PORT_ADJUSTER(52, "X skew delay") // Y-axis lead -> Vectrex glyph slant; ~80ns/step (0 = upright, ~51 = ~4us default, 100 = ~8us)
 
 	PORT_START("BEAMINFL")
-	PORT_ADJUSTER(60, "Beam draw-time influence") // 0 = flat intensity, 100 = fully draw-time shaped (short=dim, long=bright)
+	PORT_ADJUSTER(60, "Beam draw-time influence") // 0 = flat intensity, 100 = fully shaped by beam SPEED (slow beam bright, fast beam dark; the name is kept for ioport compatibility). Shared with the parked-dot model
 	PORT_START("BEAMCURVE")
-	PORT_ADJUSTER(50, "Beam draw-time curve")     // draw-time (dt) saturation gentleness (g = adj/50; 50 = 1.0)
+	PORT_ADJUSTER(50, "Beam draw-time curve")     // saturation exponent on time-per-unit-length, i.e. 1/speed (g = adj/50; 50 = 1.0 = x/(x+1) unshaped)
 	PORT_START("BEAMMAX")
-	PORT_ADJUSTER(50, "Beam max energy")          // per-unit-area phosphor saturation ceiling (max = adj/100 x 8; 50 = 4.0)
+	PORT_ADJUSTER(50, "Beam max energy")          // per-unit-area phosphor saturation ceiling AND the gain of the speed term (max = adj/100 x 8; 50 = 4.0)
 	PORT_START("DOTREF")
 	PORT_ADJUSTER(60, "Dot dwell ref (x5 us)")    // parked-dot dwell normalizer T_ref = adj x 5us (60 = 300us); the I x dt dazzle contour stays linear below it
 	PORT_START("DOTCURVE")

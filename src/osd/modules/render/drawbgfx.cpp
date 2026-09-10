@@ -2591,6 +2591,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "beam_jitter_saturation_start", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_start, 1.5f },
 	{ "beam_jitter_saturation_range", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_range, 1.5f },
 	{ "beam_jitter_saturation_curve", &renderer_bgfx::vec_slider_cache::beam_jitter_saturation_curve, 2.0f },
+	{ "beam_jitter_floor", &renderer_bgfx::vec_slider_cache::beam_jitter_floor, 0.02f },
 	{ "overload_display_compression", &renderer_bgfx::vec_slider_cache::overload_display_compression, 1.0f },
 	{ "beam_width_max", &renderer_bgfx::vec_slider_cache::beam_width_max, 1.5f },
 	{ "beam_width_min", &renderer_bgfx::vec_slider_cache::beam_width_min, 1.0f },
@@ -2905,9 +2906,11 @@ float renderer_bgfx::energy_object_lift(float intensity01, bool as_point) const
 // modulation and DAC/integrator endpoint motion, so position noise can no longer be enabled while
 // energy jitter is absent (or vice versa). The fixed calibration keeps the UI simple:
 //   strength 1 = up to +/-8% beam energy and +/-2 reference pixels of endpoint motion.
-// Below the independently configured saturation knee only 2% of that calibration remains as an
-// almost invisible analogue noise floor. Beam-width overload therefore need not shake text; the
-// remaining 98% rises later, over the saturation range and curve, for genuinely extreme vectors.
+// Below the independently configured saturation knee only beam_jitter_floor of that calibration
+// remains as an almost invisible analogue noise floor (0.02 = the historical hardwired value; 0 gates
+// the effect on the knee completely, so nothing at all shakes until a vector is genuinely overloaded).
+// Beam-width overload therefore need not shake text; the rest rises later, over the saturation range
+// and curve, for genuinely extreme vectors.
 // Endpoint seeds depend only on endpoint position, so connected vectors share exactly the same offset.
 void renderer_bgfx::beam_jitter(float n, float x0, float y0, float x1, float y1,
 	float &energy_scale, float &ox0, float &oy0, float &ox1, float &oy1)
@@ -2926,7 +2929,8 @@ void renderer_bgfx::beam_jitter(float n, float x0, float y0, float x1, float y1,
 		saturation = powf(saturation, saturation_curve);
 	// Smooth the curve's endpoints without changing its user-selected delayed/early rise.
 	const float saturation_gate = saturation * saturation * (3.0f - 2.0f * saturation);
-	const float activity = strength * (0.02f + 0.98f * saturation_gate);
+	const float noise_floor = std::clamp(m_vs.beam_jitter_floor, 0.0f, 1.0f);
+	const float activity = strength * (noise_floor + (1.0f - noise_floor) * saturation_gate);
 	const float energy_amount = 0.08f * activity;
 	const float position_amount = 2.0f * vec_res_scale() * activity;
 	const double t = m_vec_time_ms * double(std::max(1.0f, m_vs.beam_jitter_hz)) * 0.001;
@@ -3581,8 +3585,15 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			+ std::max(0.0f, prim->color.g) + std::max(0.0f, prim->color.b);
 		const float combination = std::clamp((rgb_additive - rgb_peak) / (2.0f * rgb_peak), 0.0f, 1.0f);
 		const float combination_width = 1.0f + m_vs.phosphor_rgb_combination_width * combination;
-		beam_units *= combination_width;
+		// The NORMAL share only. This used to multiply beam_units as well, which meant it also scaled
+		// whatever overload_width_add had already put on top - so an overloaded white stroke grew its
+		// overdrive increment by the same factor as its spot, and read far thicker than an overloaded
+		// primary. Overload widening is a beam-current effect the three guns share; how many phosphor
+		// dots of the triad are lit does not change it. Same rule the per-channel spot scale follows,
+		// for the same reason.
+		const float overload_units = std::max(0.0f, beam_units - normal_beam_units);
 		normal_beam_units *= combination_width;
+		beam_units = normal_beam_units + overload_units;
 	}
 	float width = beam_units * vec_res_scale();
 	const float normal_width = std::max(0.5f, normal_beam_units * vec_res_scale());
@@ -5056,6 +5067,8 @@ int renderer_bgfx::draw(int update)
 			m_flicker_prev_t0 = -1.0;
 			m_flicker_prev_t1 = -1.0;
 			m_vec_window_base_time = -1.0;
+			m_vec_window_covered = -1.0;
+			m_vec_window_prev_now = -1.0;
 			m_vec_window_generation = ~uint32_t(0);
 			m_vec_persist_prev_t = -1.0;
 			m_vec_phosphor_budget = 1.0;
@@ -5261,6 +5274,8 @@ int renderer_bgfx::draw(int update)
 		{
 			// Leave no half-counted pass behind for the next engagement to add to.
 			m_vec_window_base_time = -1.0;
+			m_vec_window_covered = -1.0;
+			m_vec_window_prev_now = -1.0;
 			m_vec_window_log_presents = 0;
 			m_vec_window_log_deposited = 0;
 			m_vec_window_log_total = 0;
@@ -5291,6 +5306,59 @@ int renderer_bgfx::draw(int update)
 				|| ((window().machine().video().vector_present_rate() == 0)
 					? !vector_present_repeat
 					: m_vec_frame_advanced));
+
+		// -vector_beam_idle_ms. clear_list() runs only at a list boundary - avgdvg's go_w() and the
+		// Tempest/Quantum jump to zero - so while the vector generator is halted (Star Wars parks it
+		// for seconds during the CPU self-test) MAME's retained display list stays valid and this
+		// loop goes on re-emitting it. The body is already covered: the beam time window walks past
+		// sweep_t1, nothing more is deposited, and the pool decays it out. The post-pool routes are
+		// not. deposit_aux above follows frame_id, which advances on every screen update including a
+		// stale redraw, so glow, halation, no-persist dots and rays are rebuilt from the WHOLE
+		// retained pass at full strength for as long as the halt lasts, and window_aux_ramp clamps
+		// to 1.0 once the sweep is over. What sits on screen is therefore not afterglow: it is the
+		// scattered light of a picture whose phosphor went dark long ago.
+		// Once the pool has had its full decay time with no new list, there is nothing left on the
+		// tube face to scatter, so stop depositing at all. The zeroed aux_count then reaches
+		// empty_vector_source further down, which blanks the glow / optical / no-persist buffers -
+		// necessary rather than merely tidy, because the bezel reflection samples those same
+		// textures and deliberately ignores window_aux_ramp, so scaling could never have cleared it.
+		// The default threshold is the phosphor's own decay time, two orders of magnitude above the
+		// real inter-pass gap (measured median 6.5 ms on Star Wars), so a running game never reaches
+		// it. The clock is emulated time, so a paused machine holds its picture instead of fading.
+		// MVEC playback is excluded: a held frame there is the player's own decay-hold state, which
+		// deliberately retains the aux buffers (see playback_decay_hold).
+		double beam_idle_ms = window().machine().options().vector_beam_idle_ms();
+		if (beam_idle_ms < 0.0)
+		{
+			// The pool is empty after phosphor_total_ms, but that is not on its own a safe
+			// threshold: the vector-color chain ships 100 ms, and a RUNNING game already leaves
+			// gaps of up to 48.8 ms between lists (mean 28.7 ms, measured over 7 s of Star Wars
+			// attract), so a single slow pass could trip the gate and pop the glow off for a frame.
+			// Auto therefore keeps a floor clear of the hardware's own cadence - 5x the longest
+			// measured gap, and still 37x shorter than the 9.24 s the Star Wars self-test parks the
+			// AVG for. An explicit -vector_beam_idle_ms overrides the floor.
+			beam_idle_ms = std::max(BEAM_IDLE_AUTO_FLOOR_MS,
+					double(m_chains->slider_value(0, "phosphor_total_ms", 500.0f)));
+		}
+		const double beam_idle_now = window().machine().time().as_double();
+		if (vstats.list_generation != m_vec_idle_generation || !vstats.list_stale
+			|| m_vec_idle_since < 0.0 || beam_idle_now < m_vec_idle_since)
+		{
+			m_vec_idle_generation = vstats.list_generation;
+			m_vec_idle_since = beam_idle_now;
+		}
+		const bool beam_idle = beam_idle_ms > 0.0 && !vstats.playback_active
+			&& (beam_idle_now - m_vec_idle_since) * 1000.0 > beam_idle_ms;
+		// One line per transition at verbose level, in the same spirit as the BEAMWIN notice: a
+		// silent gate is indistinguishable from a broken one, and this is the only place that says
+		// the renderer decided the tube had gone dark.
+		if (beam_idle != m_vec_idle_gate)
+		{
+			m_vec_idle_gate = beam_idle;
+			osd_printf_verbose("BEAMIDLE %s t=%.3fs list=%u parked=%.1fms threshold=%.1fms\n",
+					beam_idle ? "on" : "off", beam_idle_now, vstats.list_generation,
+					(beam_idle_now - m_vec_idle_since) * 1000.0, beam_idle_ms);
+		}
 
 		int vector_count = deposit_vector_source ? 0 : m_vec_cached_vector_count;
 		// Untimed vectors hold no position in the sweep, so the beam time window's accounting
@@ -5424,16 +5492,24 @@ int renderer_bgfx::draw(int update)
 			{
 				// Report what the pass that just ended actually got (see m_vec_window_log_presents).
 				if (m_vec_window_log_presents != 0)
-					osd_printf_verbose("BEAMWIN span=%.4f presents=%d deposited=%d total=%d glow=%d\n",
-							m_vec_window_log_span * 1000.0, m_vec_window_log_presents,
+					osd_printf_verbose(
+							"BEAMWIN span=%.4f elapsed=%.4f covered=%.4f presents=%d deposited=%d total=%d glow=%d\n",
+							m_vec_window_log_span * 1000.0,
+							m_vec_window_log_elapsed * 1000.0, m_vec_window_log_covered * 1000.0,
+							m_vec_window_log_presents,
 							m_vec_window_log_deposited, m_vec_window_log_total,
 							m_vec_window_log_glow);
 				m_vec_window_log_presents = 0;
 				m_vec_window_log_deposited = 0;
 				m_vec_window_log_total = 0;
 				m_vec_window_log_glow = 0;
+				m_vec_window_log_elapsed = 0.0;
+				m_vec_window_log_covered = 0.0;
+				m_vec_window_pass_t0 = vstats.sweep_t0;
 				m_vec_window_generation = vstats.list_generation;
 				m_vec_window_base_time = now;
+				// A new pass starts undeposited at the head of its own sweep.
+				m_vec_window_covered = vstats.sweep_t0;
 			}
 			m_vec_window_log_span = window_span;
 			// beam_window_scale is the RATE at which the window walks the sweep, in multiples of real
@@ -5449,8 +5525,37 @@ int renderer_bgfx::draw(int update)
 			// Above 1.0 the sweep is replayed faster than it happened, so more of it lands inside the
 			// pass's presentation time and the flicker weakens - the knob for dialling the effect back
 			// without giving up single-deposit correctness.
-			window_lo = vstats.sweep_t0 + std::max(0.0, now - m_vec_window_base_time) * window_scale;
-			window_hi = window_lo + window_w;
+			// The window marches on from where the last deposit stopped, by the sweep time that
+			// ACTUALLY elapsed since that deposit. Position and width then come from one clock and
+			// consecutive windows tile exactly - which is what the previous form only managed when
+			// one present happened per nominal present period.
+			//
+			// It did not manage it here. The position advanced with elapsed emulated time while the
+			// width stayed at the nominal period, so whenever a present carried more emulated time
+			// than that period the windows stepped further apart than they were wide and left GAPS,
+			// and every segment whose t0 fell in one was dropped. Measured on a Vectrex title that
+			// multiplexes its text across three lists (yakyu2, spans 19.9 / 31.5 / 20.0 ms): the
+			// 31.5 ms list came out 263/353 on three presents and 176/353 on two, so a quarter to a
+			// half of that list's strokes never reached the pool at all - while the 19.9 ms list,
+			// which happened to get enough presents to overlap, was always complete. One third of
+			// the text flickering far harder than the rest, and no phosphor setting could recover it
+			// because the light was never deposited.
+			//
+			// A gap in the middle of a sweep has no physical reading - the beam does not skip a
+			// stretch and come back. Running out before the end does: that is a pass longer than the
+			// presentation time it received, which is the flicker this models. This form can only
+			// produce the second.
+			const double window_dt = (m_vec_window_prev_now >= 0.0 && now > m_vec_window_prev_now)
+					? (now - m_vec_window_prev_now)
+					: window().machine().video().vector_present_period().as_double();
+			if (!(m_vec_window_covered >= vstats.sweep_t0))
+				m_vec_window_covered = vstats.sweep_t0;
+			window_lo = m_vec_window_covered;
+			window_hi = window_lo + window_dt * window_scale;
+			m_vec_window_covered = window_hi;
+			m_vec_window_prev_now = now;
+			m_vec_window_log_elapsed += window_dt;
+			m_vec_window_log_covered = window_hi - m_vec_window_pass_t0;
 			// Past the end of the sweep nothing is deposited: the pass has finished and the beam is
 			// idle until the next VGGO. That gap is real - measured median 6.5 ms on Star Wars - and
 			// is what the phosphor pool turns into visible flicker.
@@ -5595,6 +5700,17 @@ int renderer_bgfx::draw(int update)
 		// the FBO clear and temporal chain continue to run; suppress allocations
 		// and draws for repeated presents so the fresh excitation inputs are black.
 		if (!deposit_vector_source)
+		{
+			visible_count = 0;
+			aux_count = 0;
+			aux_point_count = 0;
+		}
+		// The beam has been parked for longer than the phosphor holds light (see beam_idle above):
+		// deposit nothing, so the pool finishes decaying and empty_vector_source blanks the
+		// scattered-light buffers instead of re-adding the parked picture's halo forever. Note this
+		// leaves vector_count alone: the screen is still a vector screen and still owns its FBO
+		// clear and its temporal chain - it is showing a dark tube, not nothing at all.
+		if (beam_idle)
 		{
 			visible_count = 0;
 			aux_count = 0;

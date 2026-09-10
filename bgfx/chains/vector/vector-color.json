@@ -202,6 +202,7 @@
 		{"type":"float","name":"beam_jitter_saturation_start","text":"Beam Jitter Saturation Start","default":1.5,"min":0.5,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_saturation_range","text":"Beam Jitter Saturation Range","default":1.5,"min":0.1,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_saturation_curve","text":"Beam Jitter Saturation Curve","default":2.0,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"beam_jitter_floor","text":"Beam Jitter Noise Floor","default":0.02,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 
 		// ---- Color adjustment ----
 		{"type":"intenum","name":"primary_color_mode","text":"Color Adjustment Mode","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["CIE xy/Y (Advanced)","Direct Primary"]},
