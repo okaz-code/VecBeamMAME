@@ -746,8 +746,8 @@ private:
 	// that rides on the pool. So the candidate state must also HOLD for beam_window_latch_ms of real
 	// time before it is adopted: a genuine scene change persists and still crosses within a second,
 	// while frame-to-frame span noise never does.
-	bool m_vec_window_pending = false;          // candidate state the debounce is timing
-	double m_vec_window_pending_ms = 0.0;       // how long it has held
+	double m_vec_window_span_peak = 0.0;        // longest sweep seen inside the hold window
+	double m_vec_window_peak_age_ms = 0.0;      // how long the peak has stood unbeaten
 	int64_t m_vec_window_latch_hpc = 0;         // bx::getHPCounter() at the previous decision
 	// Flip count, because the info-level notices deliberately go quiet after reporting each state
 	// once - which is exactly what hid how often this was actually toggling. Verbose only.

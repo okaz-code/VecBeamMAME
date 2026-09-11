@@ -214,6 +214,11 @@ protected:
 	float m_hdr_calibration_peak_nits = 0.0f; // absolute nits, or nominal paper-white units for EDR auto
 	float m_sdr_white_nits = 0.0f;
 	float m_effective_paper_white_nits = 200.0f;
+	// Paper white is the brightness of the MAME UI and of every piece of layout artwork, so it must
+	// not step when macOS moves the EDR headroom underneath it. False until the derived SDR white has
+	// stopped moving; from there the follow is a ramp. See update_edr_headroom.
+	bool m_edr_paper_white_settled = false;
+	double m_edr_paper_white_stable_s = 0.0;
 	float m_edr_reference_white_nits = 200.0f;
 	float m_edr_headroom = 0.0f;
 	float m_edr_raw_headroom = 0.0f;
@@ -971,6 +976,8 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 	m_edr_relative_auto = false;
 	m_edr_logged_reference_white = 0.0f;
 	m_edr_prev_reference_white = 0.0f;
+	m_edr_paper_white_settled = false;
+	m_edr_paper_white_stable_s = 0.0;
 	m_edr_output_active = s_bgfx_edr_active;
 	m_edr_reference_nits = s_bgfx_edr_active
 			? float(std::max(0, m_options->bgfx_macos_edr_reference_white())) : 0.0f;
@@ -1237,7 +1244,40 @@ void video_bgfx::update_edr_headroom(void *nwh)
 	{
 		const float reference_white = derived_panel_peak / m_edr_headroom;
 		m_edr_reference_white_nits = reference_white;
-		m_effective_paper_white_nits = reference_white;
+		// Paper white follows it, but it must not STEP. This figure is the brightness of the MAME UI
+		// and of every piece of layout artwork - the Vectrex overlay plate and its bezel among them -
+		// and the reference white it follows is whatever macOS is doing with the EDR headroom right
+		// now. That moves on its own: measured 1.07x at launch rising to 7.04x a few seconds later,
+		// so the derived SDR white goes from 1495 nits to 227 and the artwork with it, and auto
+		// brightness and True Tone keep nudging it afterwards. Sample-for-sample following put all of
+		// that on screen as the frame flashing - one large flash at startup and a continuous shimmer
+		// after it.
+		//
+		// Two parts. Until the derivation has stopped moving, hold the configured paper white: the
+		// bootstrap headroom is not a calibration, and since the present shader writes
+		// paper_white / reference_white, a HELD paper white displays at a constant brightness however
+		// the reference moves underneath it - which is exactly the property wanted here. Once it has
+		// settled, follow with a one-second time constant, so a monitor swap or a brightness change
+		// still arrives, as a fade rather than a step.
+		constexpr double PAPER_WHITE_SETTLE_S = 0.5;
+		constexpr double PAPER_WHITE_TAU_S = 1.0;
+		const float previous_reference = m_edr_prev_reference_white;
+		const bool reference_stable = previous_reference > 0.0f
+			&& std::abs(reference_white - previous_reference)
+				<= std::max(0.5f, reference_white * 0.005f);
+		m_edr_paper_white_stable_s = reference_stable ? (m_edr_paper_white_stable_s + dt) : 0.0;
+		if (!m_edr_paper_white_settled && m_edr_paper_white_stable_s >= PAPER_WHITE_SETTLE_S)
+		{
+			m_edr_paper_white_settled = true;
+			osd_printf_verbose(
+				"BGFX: paper white following the derived SDR white (%.0f nits) from %.0f nits\n",
+				reference_white, m_effective_paper_white_nits);
+		}
+		if (m_edr_paper_white_settled && dt > 0.0)
+		{
+			const float alpha = 1.0f - std::exp(-float(std::min(dt, 0.25) / PAPER_WHITE_TAU_S));
+			m_effective_paper_white_nits += (reference_white - m_effective_paper_white_nits) * alpha;
+		}
 		// Report the derived scale, and again whenever it has moved materially. Without this the
 		// reconstruction was invisible: resolve_hdr_display_peak() logs only at init, where the
 		// current headroom is still the documented 1.0 bootstrap value and the branch cannot run.
@@ -5169,44 +5209,52 @@ int renderer_bgfx::draw(int update)
 		m_vec_window_latch_hpc = window_latch_hpc;
 		if (!window_available)
 		{
-			// Not a decision, a hard stop: nothing to debounce.
+			// Not a decision, a hard stop: nothing to hold.
 			m_vec_window_engaged = false;
-			m_vec_window_pending = false;
-			m_vec_window_pending_ms = 0.0;
+			m_vec_window_span_peak = 0.0;
+			m_vec_window_peak_age_ms = 0.0;
 		}
 		else if (window_span_usable)
 		{
-			const bool candidate = m_vec_window_engaged
-					? (window_span > window_w)              // stay engaged down to 1.0x
-					: (window_span > window_w * 1.25);      // need 1.25x to engage
-			// Debounce on top of the hysteresis. The band decides WHICH way the span points; the hold
-			// decides whether it has pointed that way long enough to be a scene change rather than
-			// noise. 0 restores the bare hysteresis.
+			// Decide on the LONGEST sweep seen recently, not on this pass alone. A title that
+			// multiplexes its picture across several lists of different lengths asks the band
+			// different questions on consecutive passes, and mixing windowed and unwindowed passes is
+			// the thing to avoid - if any list in the mix overruns a window, all of them want the
+			// window. Measured on a Vectrex title that rotates three lists of 19.9 / 20.0 / 31.5 ms:
+			// at scale 2.0 the window is 16.67 ms, so only the 31.5 ms list clears the 1.25x engage
+			// edge while the other two sit inside the band. Timing an unbroken run of one answer -
+			// which is what this used to do - could therefore never engage from cold, because the two
+			// short lists reset the timer 40 times a second, and the same setting reached by lowering
+			// the scale and raising it again stayed engaged for good. Same knob, same units: the hold
+			// is now how long a peak stands before it is allowed to fall back, so 0 still means "this
+			// pass only" and the bare hysteresis.
 			const double hold_ms = std::max(0.0,
 					double(m_chains->slider_value(0, "beam_window_latch_ms", 0.0f)));
-			if (candidate == m_vec_window_engaged)
+			if (window_span >= m_vec_window_span_peak)
 			{
-				// Back to the state we are already in - abandon any pending flip outright, so a
-				// span that merely brushes the far side of the band never accumulates toward one.
-				m_vec_window_pending = candidate;
-				m_vec_window_pending_ms = 0.0;
+				m_vec_window_span_peak = window_span;
+				m_vec_window_peak_age_ms = 0.0;
 			}
 			else
 			{
-				if (m_vec_window_pending != candidate)
+				m_vec_window_peak_age_ms += window_latch_dt_ms;
+				if (m_vec_window_peak_age_ms >= hold_ms)
 				{
-					m_vec_window_pending = candidate;
-					m_vec_window_pending_ms = 0.0;
+					m_vec_window_span_peak = window_span;
+					m_vec_window_peak_age_ms = 0.0;
 				}
-				m_vec_window_pending_ms += window_latch_dt_ms;
-				if (m_vec_window_pending_ms >= hold_ms)
-				{
-					m_vec_window_engaged = candidate;
-					m_vec_window_pending_ms = 0.0;
-					osd_printf_verbose("BGFX: beam time window latch -> %s (flip %u, sweep %.2f ms"
-						" vs %.2f ms window, hold %.0f ms)\n", candidate ? "engaged" : "inert",
-						++m_vec_window_flips, window_span * 1000.0, window_w * 1000.0, hold_ms);
-				}
+			}
+			// The band still decides, and still only on a quantity that has stopped moving, so a
+			// scene change crosses it wholesale and a span sitting on the edge does not chatter.
+			const bool candidate = m_vec_window_engaged
+					? (m_vec_window_span_peak > window_w)           // stay engaged down to 1.0x
+					: (m_vec_window_span_peak > window_w * 1.25);   // need 1.25x to engage
+			if (candidate != m_vec_window_engaged)
+			{
+				m_vec_window_engaged = candidate;
+				osd_printf_verbose("BGFX: beam time window latch -> %s (flip %u, peak sweep %.2f ms"
+					" vs %.2f ms window, hold %.0f ms)\n", candidate ? "engaged" : "inert",
+					++m_vec_window_flips, m_vec_window_span_peak * 1000.0, window_w * 1000.0, hold_ms);
 			}
 		}
 		// else: no usable sweep this frame - hold the latch as it is
