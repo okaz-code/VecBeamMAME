@@ -5109,6 +5109,8 @@ int renderer_bgfx::draw(int update)
 			m_vec_window_base_time = -1.0;
 			m_vec_window_covered = -1.0;
 			m_vec_window_prev_now = -1.0;
+			m_vec_window_elapsed_min = 0.0;
+			m_vec_window_min_age = 0;
 			m_vec_window_generation = ~uint32_t(0);
 			m_vec_persist_prev_t = -1.0;
 			m_vec_phosphor_budget = 1.0;
@@ -5182,11 +5184,43 @@ int renderer_bgfx::draw(int update)
 		// Window width, needed here because the sweep has to be compared against it before deciding
 		// whether to window at all. beam_window_scale is the rate the window walks the sweep at, in
 		// multiples of real time; see the bounds block below.
-		const double window_scale = window_wanted
+		// Sweep extent of THIS pass. Needed before the rate below, so it is computed here rather than
+		// with the latch it also feeds.
+		const double window_span = vstats.sweep_t1 - vstats.sweep_t0;
+		const double window_trim = window_wanted
 				? double(std::clamp(m_chains->slider_value(0, "beam_window_scale", 1.0f), 0.25f, 4.0f))
 				: 1.0;
+		// The rate the window walks the sweep at, in multiples of real time.
+		//
+		// A fixed multiplier cannot be right for a machine whose passes differ in length, because the
+		// renderer is ONE PASS BEHIND: a device hands over the beam activity of the interval that just
+		// ended, so a sweep of length interval N is displayed across interval N+1. Star Wars never
+		// shows it - every list is the same length - but the Vectrex has no dark gap at all and its
+		// intervals differ by 1.6x. Measured on yakyu's text screen, which rotates lists of 31.52,
+		// 20.03 and 19.88 ms: the 19.88 ms list was handed 33.33 ms of presentation and the 31.52 ms
+		// list 16.67, exactly the span of whichever list came NEXT. The longest list reliably got the
+		// shortest time, always lost the same tail, and needed a fixed scale of 1.89 to survive - at
+		// which point the short lists finish in a third of their time and sit dark.
+		//
+		// So derive the rate per pass instead: span over the presentation time a pass actually gets.
+		// That figure is only known at a pass's end, so use the shortest seen recently - the shortest
+		// is what a pass must survive, and holding it with a release lets a scene change move it. Every
+		// pass then finishes inside its own presentation time, the long ones by running fast and the
+		// short ones by running slow, which is also what a machine that never stops drawing looks
+		// like. beam_window_scale stops being a per-game compensation and becomes a trim about 1.0.
+		const bool window_adaptive = window_wanted
+				&& m_chains->slider_value(0, "beam_window_adaptive", 1.0f) > 0.5f;
+		const double window_auto = (window_adaptive && m_vec_window_elapsed_min > 1e-6 && window_span > 0.0)
+				? std::clamp(window_span / m_vec_window_elapsed_min, 0.25, 4.0)
+				: 1.0;
+		const double window_rate = std::clamp(window_trim * window_auto, 0.25, 8.0);
+		// The engage yardstick stays on the TRIM alone, deliberately. It answers a different question -
+		// is there anything to gain by slicing this sweep at the nominal presentation rate - and
+		// feeding the adaptive rate back into it would make the test scale with its own answer, so a
+		// title whose sweep fits one window comfortably (Asteroids at 6.3 ms) would start engaging and
+		// pay for a slicing that changes nothing.
 		const double window_w = std::max(1e-9,
-				window().machine().video().vector_present_period().as_double() * window_scale);
+				window().machine().video().vector_present_period().as_double() * window_trim);
 		// A sweep no longer than one window is deposited in full by that window's own present - the
 		// window starts exactly at sweep_t0 - so windowing it produces the same picture the
 		// frame-based path does, while still forcing a source deposit on every present and running
@@ -5199,7 +5233,6 @@ int renderer_bgfx::draw(int update)
 		// the threshold looks the same either way - but it moves the phosphor between per-present and
 		// vector_phosphor_rate cadence, which would beat audibly in the image on a title whose spans
 		// straddle the threshold. Hence the hysteresis band rather than a bare comparison.
-		const double window_span = vstats.sweep_t1 - vstats.sweep_t0;
 		// Real elapsed time between decisions, for the debounce below. Wall clock, not emulated time,
 		// so pause and slow motion neither stall nor rush the hold.
 		const int64_t window_latch_hpc = bx::getHPCounter();
@@ -5290,9 +5323,10 @@ int renderer_bgfx::draw(int update)
 					if (m_vec_window_engaged)
 					{
 						osd_printf_info("BGFX: beam time window active - sweep %.2f ms over %.2f ms windows"
-							" (%.1f per sweep), scale %.2f\n",
+							" (%.1f per sweep), trim %.2f, rate %.2f (%s)\n",
 							window_span * 1000.0, window_w * 1000.0,
-							window_span / window_w, window_scale);
+							window_span / window_w, window_trim, window_rate,
+							window_adaptive ? "adaptive" : "fixed");
 					}
 					else
 					{
@@ -5561,12 +5595,30 @@ int renderer_bgfx::draw(int update)
 				// Report what the pass that just ended actually got (see m_vec_window_log_presents).
 				if (m_vec_window_log_presents != 0)
 					osd_printf_verbose(
-							"BEAMWIN span=%.4f elapsed=%.4f covered=%.4f presents=%d deposited=%d total=%d glow=%d\n",
+							"BEAMWIN span=%.4f elapsed=%.4f covered=%.4f rate=%.2f presents=%d deposited=%d total=%d glow=%d\n",
 							m_vec_window_log_span * 1000.0,
 							m_vec_window_log_elapsed * 1000.0, m_vec_window_log_covered * 1000.0,
+							m_vec_window_log_rate,
 							m_vec_window_log_presents,
 							m_vec_window_log_deposited, m_vec_window_log_total,
 							m_vec_window_log_glow);
+				// What that pass actually received, fed back as the divisor for the next rate. The
+				// shortest recent value is the one a pass has to survive; the age release lets it
+				// climb again when the scene changes instead of pinning the rate to a one-off.
+				if (m_vec_window_log_elapsed > 1e-6)
+				{
+					if (m_vec_window_log_elapsed <= m_vec_window_elapsed_min
+						|| m_vec_window_elapsed_min <= 0.0)
+					{
+						m_vec_window_elapsed_min = m_vec_window_log_elapsed;
+						m_vec_window_min_age = 0;
+					}
+					else if (++m_vec_window_min_age >= 8)
+					{
+						m_vec_window_elapsed_min = m_vec_window_log_elapsed;
+						m_vec_window_min_age = 0;
+					}
+				}
 				m_vec_window_log_presents = 0;
 				m_vec_window_log_deposited = 0;
 				m_vec_window_log_total = 0;
@@ -5580,6 +5632,7 @@ int renderer_bgfx::draw(int update)
 				m_vec_window_covered = vstats.sweep_t0;
 			}
 			m_vec_window_log_span = window_span;
+			m_vec_window_log_rate = window_rate;
 			// beam_window_scale is the RATE at which the window walks the sweep, in multiples of real
 			// time, so it scales the window's POSITION as well as its width (window_scale / window_w,
 			// computed with the engage test above): the window advances by (elapsed x scale) and is
@@ -5619,7 +5672,7 @@ int renderer_bgfx::draw(int update)
 			if (!(m_vec_window_covered >= vstats.sweep_t0))
 				m_vec_window_covered = vstats.sweep_t0;
 			window_lo = m_vec_window_covered;
-			window_hi = window_lo + window_dt * window_scale;
+			window_hi = window_lo + window_dt * window_rate;
 			m_vec_window_covered = window_hi;
 			m_vec_window_prev_now = now;
 			m_vec_window_log_elapsed += window_dt;
