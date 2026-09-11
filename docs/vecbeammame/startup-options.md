@@ -244,6 +244,32 @@ The chain also has `beam_window` / `beam_window_scale` sliders, and **both sides
 must be on** for it to work: this option is the master switch at startup, the
 sliders are the adjustment while running.
 
+### `vector_list_sync` / alias `veclistsync`
+
+| | |
+|---|---|
+| Type / default | bool / **`1` (on)** |
+
+**Hands a finished vector list to the renderer at the next present instead of
+waiting for the next emulated screen update.**
+
+The instant the CPU finishes a list - VGGO on the AVG/DVG, the VIA T2 refresh
+timer on the Vectrex - has nothing to do with when the emulated screen updates.
+With this off, a pass's lifetime as the renderer sees it is rounded to a whole
+number of refresh periods.  A list lives 1.18 to 1.89 refresh periods on the
+titles measured, so it is sampled once or twice depending on phase and **a
+31.5 ms sweep can be handed 12.5 ms of presentation** - the longest list
+reliably gets the least time, and the same strokes flicker hard every pass.
+
+With it on the rounding unit becomes the presentation interval.  On the Star
+Wars ranking screen (`beam_window_scale` 1.0, presenting at 120 Hz) the loss on
+the short passes fell from 291 of 1059 vectors to 43, which is that much less
+for `beam_window_scale` to make up.
+
+It does nothing when `vector_beam_window` is off or the present loop is not
+running.  MVEC recordings are unaffected (recording stays on the frame clock).
+`-noveclistsync` restores the old behaviour.
+
 ### `vector_window_scatter`
 
 | | |

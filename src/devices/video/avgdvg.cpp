@@ -776,6 +776,10 @@ int avg_device::avg_common_strobe2()
 
 				m_vector->clear_list();
 				vg_flush_list_end();
+				// The list is complete as of this instant. Publishing it is the screen update's job,
+				// but that runs at the emulated refresh rate and the two cadences are unrelated -
+				// see screen_device::vector_present_refresh.
+				m_vector->mark_list_pending();
 			}
 		}
 		else
@@ -1503,7 +1507,11 @@ void avgdvg_device_base::go_w(u8 data)
 {
 	vggo();
 
-	if (m_sync_halt && (m_nvect > 10))
+	// A short list does not start a new one (Major Havoc sets VGGO after very short vector lists),
+	// so the flush below appends to the list already in the device instead of beginning a pass.
+	// Only a real boundary is worth publishing early.
+	bool const new_list = m_sync_halt && (m_nvect > 10);
+	if (new_list)
 	{
 		/*
 		 * This is a good time to start a new frame. Major Havoc
@@ -1513,6 +1521,10 @@ void avgdvg_device_base::go_w(u8 data)
 		m_vector->clear_list();
 	}
 	vg_flush_list_end();
+	// The list is complete now, not at the next emulated screen update; see
+	// screen_device::vector_present_refresh for why the difference matters.
+	if (new_list)
+		m_vector->mark_list_pending();
 
 	vg_set_halt(0);
 	m_vg_run_timer->adjust(attotime::zero);

@@ -102,6 +102,7 @@ video_manager::video_manager(running_machine &machine)
 	, m_vector_present_rate(0)
 	, m_vector_present_auto(false)
 	, m_vector_presenting(false)
+	, m_vector_list_sync(false)
 	, m_output_changed(false)
 	, m_throttle_last_ticks(0)
 	, m_throttle_realtime(attotime::zero)
@@ -235,6 +236,9 @@ video_manager::video_manager(running_machine &machine)
 			configured_present_rate = -1;   // auto
 			present_rate_from_window = true;
 		}
+		// Only meaningful with the presentation loop running: without it there is exactly one present
+		// per emulated screen update, which is the very cadence this works around.
+		m_vector_list_sync = machine.options().vector_list_sync();
 		m_vector_present_auto = configured_present_rate < 0;
 		m_vector_present_rate = m_vector_present_auto ? 60U : u32(std::clamp(configured_present_rate, 0, 360));
 		bool have_vector_screen = false;
@@ -796,6 +800,21 @@ void video_manager::present_update(attotime current_time)
 
 	{
 		auto profile = g_profiler.start(PROFILER_BLIT);
+		// A vector beam list produced since the last emulated screen update goes out now instead of
+		// waiting for the next one, which cuts the quantum on a pass's apparent lifetime from one
+		// emulated refresh period to one presentation interval (see
+		// screen_device::vector_present_refresh). It runs here, rather than at the producer, because
+		// this is the point immediately before the OSD reads the render containers.
+		if (m_vector_list_sync)
+		{
+			bool republished = false;
+			for (screen_device &screen : screen_device_enumerator(machine().root_device()))
+				republished = screen.vector_present_refresh() || republished;
+			// Not a repeat of an already cached presentation any more: the renderer has to rebuild
+			// its primitive list and treat this as a fresh source.
+			if (republished)
+				m_vector_presenting = false;
+		}
 		machine().osd().update(false);
 		// A complete chain presentation is now cached. Any additional timer callback before the
 		// next emulated screen update is a repeat and can use the lightweight path.

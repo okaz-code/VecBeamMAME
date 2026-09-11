@@ -1348,6 +1348,21 @@ void vector_device::clear_list(bool advance_generation)
 }
 
 //-------------------------------------------------
+// A complete beam list exists; ask for it to be published at the next presentation.
+//-------------------------------------------------
+
+void vector_device::mark_list_pending()
+{
+	// MVEC playback drives the list from the stream inside screen_update, so between emulated frames
+	// there is nothing new to publish - and republishing would pull the next recorded frame early and
+	// run the playback at the presentation rate.
+	if (m_stream && m_stream->playing())
+		return;
+	if (has_screen())
+		screen().set_vector_list_pending();
+}
+
+//-------------------------------------------------
 // Update the screen container with queued vectors.
 //-------------------------------------------------
 
@@ -1380,12 +1395,40 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		}
 	}
 
+	// The presentation timer already put THIS list in the container (see
+	// screen_device::vector_present_refresh). Publishing it again on the emulated frame would refill
+	// the container with identical content and announce a second source arrival: the BGFX renderer's
+	// aux routes - glow, halation, no-persist dots, rays - key on the stats frame counter and would
+	// rasterise one beam list's worth of scattered light twice. Recording is the exception, since it
+	// belongs to the frame clock rather than to the list, so it still runs.
+	if (!screen.in_present_refresh() && !playback_frame
+		&& m_list_generation == m_present_published_generation
+		&& m_vector_index == m_present_published_count)
+	{
+		if (m_stream && m_stream->recording())
+		{
+			const bool record_stale = (m_list_generation == m_last_recorded_generation);
+			m_last_recorded_generation = m_list_generation;
+			m_stream->record_frame(m_vector_list.get(), m_vector_index, record_stale,
+				frame_timed, m_list_generation, visarea);
+		}
+		return 0;
+	}
+
 	float xscale = 1.0f / (65536 * visarea.width());
 	float yscale = 1.0f / (65536 * visarea.height());
 	float xoffs = (float)visarea.min_x;
 	float yoffs = (float)visarea.min_y;
 
 	point *curpoint = m_vector_list.get();
+	// The list is being published now, whichever path got here: an emulated screen update or the
+	// presentation timer's out-of-band republication. Either way there is nothing left pending.
+	screen.clear_vector_list_pending();
+	if (screen.in_present_refresh())
+	{
+		m_present_published_generation = m_list_generation;
+		m_present_published_count = m_vector_index;
+	}
 	screen.container().empty();
 	screen.container().add_rect(0.0f, 0.0f, 1.0f, 1.0f, rgb_t(0xff,0x00,0x00,0x00), PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA) | PRIMFLAG_VECTORBUF(1));
 
@@ -1396,9 +1439,20 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	m_beam_list_stale = playback_frame ? playback_stale : (m_list_generation == m_last_drawn_generation);
 	m_last_drawn_generation = m_list_generation;
 
-	if (m_stream && m_stream->recording())
-		m_stream->record_frame(m_vector_list.get(), m_vector_index, m_beam_list_stale,
+	// Recording stays on the emulated frame clock: MVEC frames are written once per screen update and
+	// played back at that period, so a presentation-timer republication must not add one. It also
+	// needs its own generation memory - once a list has been published out of band, m_beam_list_stale
+	// is already true when the emulated frame arrives, and recording that would tell playback the
+	// pass never started.
+	if (m_stream && m_stream->recording() && !screen.in_present_refresh())
+	{
+		const bool record_stale = playback_frame
+			? playback_stale
+			: (m_list_generation == m_last_recorded_generation);
+		m_last_recorded_generation = m_list_generation;
+		m_stream->record_frame(m_vector_list.get(), m_vector_index, record_stale,
 			frame_timed, m_list_generation, visarea);
+	}
 
 	// Per-frame statistics for the render container (see render_vector_stats): total beam energy
 	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam

@@ -558,6 +558,8 @@ screen_device::screen_device(const machine_config &mconfig, const char *tag, dev
 	, m_curbitmap(0)
 	, m_curtexture(0)
 	, m_changed(true)
+	, m_vector_list_pending(false)
+	, m_in_present_refresh(false)
 	, m_last_partial_reset(attotime::zero)
 	, m_last_partial_scan(0)
 	, m_partial_scan_hpos(0)
@@ -1808,6 +1810,43 @@ bool screen_device::update_quads()
 	bool result = m_changed;
 	m_changed = false;
 	return result;
+}
+
+
+//-------------------------------------------------
+//  vector_present_refresh - republish a vector
+//  display list that was produced since the last
+//  emulated screen update
+//-------------------------------------------------
+
+bool screen_device::vector_present_refresh()
+{
+	if (!m_vector_list_pending)
+		return false;
+
+	// The flag is cleared by the publication itself (vector_device::screen_update), so both the
+	// AVG/DVG path - where the device IS the update callback - and the Vectrex path - where the
+	// driver builds the list from its ring buffer and then calls the device - clear it at the one
+	// point the list actually reaches the container. Clear it here as well for the cases that
+	// return early below, or a screen that cannot publish would ask again every present.
+	m_vector_list_pending = false;
+
+	if ((m_type != SCREEN_TYPE_VECTOR) || m_screen_update_rgb32.isnull())
+		return false;
+	if (!machine().render().is_live(*this))
+		return false;
+
+	screen_bitmap &curbitmap = m_bitmap[m_curbitmap];
+	if (!curbitmap.valid())
+		return false;
+
+	// Container-only work: a vector screen_update fills the render container and never touches the
+	// bitmap, so this neither commits a frame nor disturbs partial-update state. m_changed is left
+	// alone for the same reason - the frame accounting belongs to the emulated refresh.
+	m_in_present_refresh = true;
+	m_screen_update_rgb32(*this, curbitmap.as_rgb32(), m_visarea);
+	m_in_present_refresh = false;
+	return true;
 }
 
 

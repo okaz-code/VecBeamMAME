@@ -66,6 +66,14 @@ public:
 	// window's cursor) is misled by it.
 	void clear_list(bool advance_generation = true);
 
+	// A COMPLETE beam list now exists. Called at the producer's own list boundary - VGGO on the
+	// AVG/DVG, the VIA T2 refresh timer on the Vectrex - which is NOT the screen refresh: the list
+	// otherwise waits for the next emulated screen update before it reaches the renderer, and that
+	// wait is what quantises a pass's apparent lifetime to the refresh period (see
+	// screen_device::vector_present_refresh). Marking it lets the presentation timer publish it
+	// within one presentation interval instead.
+	void mark_list_pending();
+
 	// True when the beam list was not refreshed since the previous frame (the CPU did not start a
 	// new list). A renderer can use this to reproduce CRT flicker; the emulation does not act on it.
 	bool beam_list_stale() const { return m_beam_list_stale; }
@@ -165,6 +173,17 @@ private:
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;
 	uint32_t m_last_drawn_generation;
+	// Separate memory for the MVEC stale flag. Recording runs on the emulated frame clock while
+	// publication can now happen earlier, so the two cannot share m_last_drawn_generation: by the
+	// time the emulated frame reaches the recorder the list has already been drawn once and would
+	// be written to the stream as a stale frame.
+	uint32_t m_last_recorded_generation = 0;
+	// What the presentation timer last published out of band, so the emulated frame that follows can
+	// tell "the renderer already has this" from "this is new". The point count goes with it because
+	// the Vectrex does not advance the generation for every list it hands over: its spot killer feeds
+	// an EMPTY list at the same generation to blank the screen, and that has to get through.
+	uint32_t m_present_published_generation = ~uint32_t(0);
+	int m_present_published_count = -1;
 	bool m_beam_list_stale;
 	// render_vector_stats frame counter: increments every screen_update (i.e. every emulated frame
 	// the device drew), so a renderer can tell running frames from pause / menu re-presents.

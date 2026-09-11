@@ -125,6 +125,7 @@
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
 #define OPTION_VECTOR_BEAM_IDLE_MS  "vector_beam_idle_ms"
+#define OPTION_VECTOR_LIST_SYNC     "vector_list_sync"
 #define OPTION_VECTOR_QUALITY       "vector_quality"
 #define OPTION_VECTOR_WINDOW_SCATTER    "vector_window_scatter"
 #define OPTION_VECTOR_WINDOW_DROOP  "vector_window_droop"
@@ -435,6 +436,9 @@ public:
 	// Milliseconds the beam may stay parked (no new list) before nothing more is deposited:
 	// < 0 = follow the chain's phosphor_total_ms, 0 = off. See vector_beam_idle_ms() in emuopts.cpp.
 	double vector_beam_idle_ms() const;
+	// Publish a vector beam list at the presentation rate instead of waiting for the next emulated
+	// screen update; see screen_device::vector_present_refresh.
+	bool vector_list_sync() const { return bool_value(OPTION_VECTOR_LIST_SYNC); }
 	const char *vector_quality() const { return value(OPTION_VECTOR_QUALITY); }
 	// Fills the four settings -vector_quality stands for and returns true, or returns false when no
 	// preset is named. Callers apply a value only where the underlying option is still at its default,

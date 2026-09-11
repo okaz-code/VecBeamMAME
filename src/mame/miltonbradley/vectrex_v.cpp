@@ -122,8 +122,18 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::refresh)
 	/* Refresh only marks the range of vectors which will be drawn
 	 * during the next screen_update. */
 	flush_stroke();   // emit any stroke still buffered at the frame boundary
+	const int prev_start = m_display_start;
+	const int prev_end = m_display_end;
 	m_display_start = m_display_end;
 	m_display_end = m_point_index;
+	// This timer, armed from VIA T2 at a period the GAME picks, is where a Vectrex beam list really
+	// begins - the screen refresh is a separate and unrelated 60 Hz. Waiting for the next screen
+	// update to publish the new window quantises the pass's apparent lifetime to that 60 Hz; ask for
+	// it to go out at the next presentation instead (screen_device::vector_present_refresh). The
+	// condition matches the new_beam_list test in screen_update: a window that did not move is the
+	// same pass being re-presented, not a new one.
+	if (m_display_start != prev_start || m_display_end != prev_end)
+		m_vector->mark_list_pending();
 }
 
 

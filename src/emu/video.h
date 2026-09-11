@@ -133,6 +133,7 @@ private:
 	u32                 m_vector_present_rate;      // requested presentation rate in Hz (0 = disabled)
 	bool                m_vector_present_auto;      // resolve presentation rate from the active monitor
 	bool                m_vector_presenting;        // current OSD update is a presentation-only vector refresh
+	bool                m_vector_list_sync;         // publish a new vector beam list at the presentation rate
 	bool                m_output_changed;           // did an output element change?
 
 	// throttling calculations

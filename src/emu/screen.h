@@ -419,6 +419,24 @@ public:
 	bool update_quads();
 	void update_burnin();
 
+	// Host-rate republication of a vector display list. A vector device produces a COMPLETE beam
+	// list at its own boundary - VGGO on the AVG/DVG, the VIA T2 refresh timer on the Vectrex - but
+	// that list only reaches the renderer when this screen's update callback runs, which happens at
+	// the EMULATED REFRESH RATE. A pass's lifetime as the renderer sees it is therefore quantised to
+	// that rate. Measured on three titles a list lives 1.18 to 1.89 refresh periods, so it is
+	// sampled once or twice depending on phase, and a 31.5 ms sweep can be handed 12.5 ms worth of
+	// presentation while a 19.9 ms one gets 37.5 ms - the longest list reliably receives the least
+	// time. Marking the list pending at its real boundary and republishing it from the presentation
+	// timer cuts that quantum from one refresh period to one presentation interval.
+	void set_vector_list_pending() { m_vector_list_pending = true; }
+	void clear_vector_list_pending() { m_vector_list_pending = false; }
+	bool vector_list_pending() const { return m_vector_list_pending; }
+	// True while vector_present_refresh() is inside the update callback, so a device can tell an
+	// out-of-band republication from an emulated frame. Anything that belongs to the frame clock
+	// rather than to the list - MVEC recording - keys on this.
+	bool in_present_refresh() const { return m_in_present_refresh; }
+	bool vector_present_refresh();
+
 	// globally accessible constants
 	static constexpr int DEFAULT_FRAME_RATE = 60;
 	static const attotime DEFAULT_FRAME_PERIOD;
@@ -487,6 +505,8 @@ private:
 	u8                  m_curbitmap;                // current bitmap index
 	u8                  m_curtexture;               // current texture index
 	bool                m_changed;                  // has this bitmap changed?
+	bool                m_vector_list_pending;      // a new vector beam list is waiting to be published
+	bool                m_in_present_refresh;       // inside vector_present_refresh()
 	attotime            m_last_partial_reset;       // last time partial updates were reset
 	s32                 m_last_partial_scan;        // scanline of last partial update
 	s32                 m_partial_scan_hpos;        // horizontal pixel last rendered on this partial scanline
