@@ -3118,7 +3118,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	}
 	if (!have_white && !have_color)
 		return bail("no overlay artwork marked in this frame's primitives");
-	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 4.0f));
+	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 12.0f));
 	uint32_t const blur_iterations = radius >= 12.0f ? 3U : (radius >= 7.0f ? 2U : 1U);
 	// ink masks + optional box prefilter + repeated blur H/V pairs + composite
 	uint32_t const required_vertices = (role_quads + blur_iterations * 2U + 2U) * 6U;
@@ -3261,7 +3261,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	// the heavy floor survives the repeated H/V passes because an exponential tail stays
 	// exponential under self-convolution, unlike the Gaussian it replaces.  Building the
 	// weights here keeps the control free per pixel and the normalisation exact.
-	float const blur_shape = std::clamp(m_chains->slider_value(0, "overlay_diffusion_shape", 2.0f), 0.2f, 6.0f);
+	float const blur_shape = std::clamp(m_chains->slider_value(0, "overlay_diffusion_shape", 0.4f), 0.2f, 6.0f);
 	float blur_tap[5];
 	{
 		float sum = 0.0f;
@@ -3341,9 +3341,9 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	float values0[4] = {
 		seed_peak,
 		std::clamp(m_chains->slider_value(0, "overlay_white_transmission", 0.65f), 0.0f, 1.0f),
-		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.18f)),
-		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.50f), 0.0f, 1.0f) };
-	const float ambient_product = std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.15f))
+		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.25f)),
+		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.10f), 0.0f, 1.0f) };
+	const float ambient_product = std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.50f))
 			* std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
 	m_vx_seen_seed_peak = seed_peak;
 	m_vx_seen_paper_white = paper_white;
@@ -3352,11 +3352,11 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		ambient_product,
 		paper_white,
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 2.5f)),
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 0.60f)) };
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 1.10f)) };
 	float values2[4] = {
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_dark_level", 0.01f)),
-		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_bleach", 0.80f), 0.0f, 1.0f),
-		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_knee", 0.08f), 0.0f, 0.99f),
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_dark_level", 0.15f)),
+		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_bleach", 0.0f), 0.0f, 1.0f),
+		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_knee", 0.15f), 0.0f, 0.99f),
 		std::max(0.05f, m_chains->slider_value(0, "overlay_color_highlight_curve", 0.55f)) };
 	params0->set(values0, sizeof(values0)); params0->upload();
 	params1->set(values1, sizeof(values1)); params1->upload();
