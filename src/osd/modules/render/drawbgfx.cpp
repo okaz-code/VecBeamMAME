@@ -5451,7 +5451,27 @@ int renderer_bgfx::draw(int update)
 		// lettering. Keep this live-hardware presentation model out of deterministic MVEC playback.
 		// Mutually exclusive with the beam time window: both model the same physical constraint, one
 		// by subtracting a synthetic rotating bucket and one by depositing the real time slice.
-		const bool flicker_on = vstats.timed && !vstats.playback_active && !window_on;
+		// Keyed on window_AVAILABLE, not on whether the window engaged for THIS pass. The window
+		// declines to engage when a sweep already fits inside one of its windows - that is the window
+		// system judging that this pass needs no slicing, not an absence of the window system - so
+		// firing the synthetic bucket there makes the two models alternate as the content crosses the
+		// engage threshold. Measured on the Vectrex BIOS startup, whose lists alternate 11.6 and
+		// 13.6 ms against this chain's 12 ms flicker threshold and a 16.67 ms window at scale 2.0:
+		// every other list dropped a sixth of its vectors and the logo pulsed, while the same scene
+		// under MVEC playback - where the clause below switches the bucket off - was clean, and so was
+		// the same scene at a scale low enough for the window to engage. Cyclic flicker is the
+		// fallback for when the window CANNOT run (no present loop, engine without real sweep
+		// timestamps, or the user turned it off), and that is what window_available says.
+		const bool flicker_on = vstats.timed && !vstats.playback_active && !window_available;
+		// One line when the fallback takes over, and one when it stops. A whole presentation model
+		// switching itself on silently is what made this expensive to find.
+		if (flicker_on != m_vec_flicker_notice_on)
+		{
+			m_vec_flicker_notice_on = flicker_on;
+			osd_printf_verbose("BGFX: cyclic flicker %s (beam time window %s)\n",
+				flicker_on ? "active - the beam time window is not available" : "off",
+				window_available ? "available" : "unavailable");
+		}
 		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero

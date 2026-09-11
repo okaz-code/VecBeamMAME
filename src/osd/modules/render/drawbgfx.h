@@ -752,6 +752,7 @@ private:
 	// Flip count, because the info-level notices deliberately go quiet after reporting each state
 	// once - which is exactly what hid how often this was actually toggling. Verbose only.
 	uint32_t m_vec_window_flips = 0;
+	bool m_vec_flicker_notice_on = false;       // last reported cyclic-flicker state
 	// The beam target as a multiple of SDR white, which is what every consumer actually wants: the
 	// present shader divides chain space by the reference white, and macOS reports nothing but this
 	// ratio in the first place. beam_peak_ratio is the authoritative slider; a chain that still
