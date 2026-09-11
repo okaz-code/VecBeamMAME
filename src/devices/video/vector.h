@@ -178,12 +178,6 @@ private:
 	// time the emulated frame reaches the recorder the list has already been drawn once and would
 	// be written to the stream as a stale frame.
 	uint32_t m_last_recorded_generation = 0;
-	// What the presentation timer last published out of band, so the emulated frame that follows can
-	// tell "the renderer already has this" from "this is new". The point count goes with it because
-	// the Vectrex does not advance the generation for every list it hands over: its spot killer feeds
-	// an EMPTY list at the same generation to blank the screen, and that has to get through.
-	uint32_t m_present_published_generation = ~uint32_t(0);
-	int m_present_published_count = -1;
 	bool m_beam_list_stale;
 	// render_vector_stats frame counter: increments every screen_update (i.e. every emulated frame
 	// the device drew), so a renderer can tell running frames from pause / menu re-presents.

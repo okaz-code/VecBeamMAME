@@ -1395,26 +1395,6 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		}
 	}
 
-	// The presentation timer already put THIS list in the container (see
-	// screen_device::vector_present_refresh). Publishing it again on the emulated frame would refill
-	// the container with identical content and announce a second source arrival: the BGFX renderer's
-	// aux routes - glow, halation, no-persist dots, rays - key on the stats frame counter and would
-	// rasterise one beam list's worth of scattered light twice. Recording is the exception, since it
-	// belongs to the frame clock rather than to the list, so it still runs.
-	if (!screen.in_present_refresh() && !playback_frame
-		&& m_list_generation == m_present_published_generation
-		&& m_vector_index == m_present_published_count)
-	{
-		if (m_stream && m_stream->recording())
-		{
-			const bool record_stale = (m_list_generation == m_last_recorded_generation);
-			m_last_recorded_generation = m_list_generation;
-			m_stream->record_frame(m_vector_list.get(), m_vector_index, record_stale,
-				frame_timed, m_list_generation, visarea);
-		}
-		return 0;
-	}
-
 	float xscale = 1.0f / (65536 * visarea.width());
 	float yscale = 1.0f / (65536 * visarea.height());
 	float xoffs = (float)visarea.min_x;
@@ -1424,11 +1404,6 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// The list is being published now, whichever path got here: an emulated screen update or the
 	// presentation timer's out-of-band republication. Either way there is nothing left pending.
 	screen.clear_vector_list_pending();
-	if (screen.in_present_refresh())
-	{
-		m_present_published_generation = m_list_generation;
-		m_present_published_count = m_vector_index;
-	}
 	screen.container().empty();
 	screen.container().add_rect(0.0f, 0.0f, 1.0f, 1.0f, rgb_t(0xff,0x00,0x00,0x00), PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA) | PRIMFLAG_VECTORBUF(1));
 
