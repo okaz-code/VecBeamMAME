@@ -173,11 +173,6 @@ private:
 	// CPU starts a new beam list; screen_update sets m_beam_list_stale when the current frame did not.
 	uint32_t m_list_generation;
 	uint32_t m_last_drawn_generation;
-	// Separate memory for the MVEC stale flag. Recording runs on the emulated frame clock while
-	// publication can now happen earlier, so the two cannot share m_last_drawn_generation: by the
-	// time the emulated frame reaches the recorder the list has already been drawn once and would
-	// be written to the stream as a stale frame.
-	uint32_t m_last_recorded_generation = 0;
 	bool m_beam_list_stale;
 	// render_vector_stats frame counter: increments every screen_update (i.e. every emulated frame
 	// the device drew), so a renderer can tell running frames from pause / menu re-presents.

@@ -1404,30 +1404,41 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// The list is being published now, whichever path got here: an emulated screen update or the
 	// presentation timer's out-of-band republication. Either way there is nothing left pending.
 	screen.clear_vector_list_pending();
+	// An out-of-band publication exists to get the primitives and the list generation to the
+	// renderer early - it is NOT an emulated frame, and nothing on the frame clock may move for it.
+	// The renderer counts source frames to pace the phosphor and the scattered-light routes, so
+	// letting this bump the counter inserted an extra, unevenly spaced CRT redraw between the real
+	// ones: on the Vectrex, whose driver republishes its display window every screen update anyway,
+	// that put roughly 25 extra redraws per second among 60 regular ones and the beat was visible as
+	// the whole picture pulsing. The beam time window keys on list_generation and deposits on every
+	// present regardless, so it gets what it needs from the container alone. When the window is not
+	// engaged this therefore changes nothing at all, which is exactly right: without a window there
+	// is no reason to care that a list arrived a few milliseconds earlier.
+	const bool present_refresh = screen.in_present_refresh();
 	screen.container().empty();
 	screen.container().add_rect(0.0f, 0.0f, 1.0f, 1.0f, rgb_t(0xff,0x00,0x00,0x00), PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA) | PRIMFLAG_VECTORBUF(1));
 
-	m_frame_begin_notifier();
+	if (!present_refresh)
+		m_frame_begin_notifier();
 
 	// CRT-flicker detection normally follows list generations. MVEC playback restores the recorded
 	// stale decision explicitly because it affects notifiers, EHT load and temporal renderer state.
-	m_beam_list_stale = playback_frame ? playback_stale : (m_list_generation == m_last_drawn_generation);
-	m_last_drawn_generation = m_list_generation;
-
-	// Recording stays on the emulated frame clock: MVEC frames are written once per screen update and
-	// played back at that period, so a presentation-timer republication must not add one. It also
-	// needs its own generation memory - once a list has been published out of band, m_beam_list_stale
-	// is already true when the emulated frame arrives, and recording that would tell playback the
-	// pass never started.
-	if (m_stream && m_stream->recording() && !screen.in_present_refresh())
+	const bool stale_now = playback_frame
+		? playback_stale
+		: (m_list_generation == m_last_drawn_generation);
+	if (!present_refresh)
 	{
-		const bool record_stale = playback_frame
-			? playback_stale
-			: (m_list_generation == m_last_recorded_generation);
-		m_last_recorded_generation = m_list_generation;
-		m_stream->record_frame(m_vector_list.get(), m_vector_index, record_stale,
-			frame_timed, m_list_generation, visarea);
+		m_beam_list_stale = stale_now;
+		m_last_drawn_generation = m_list_generation;
 	}
+
+	// Recording stays on the emulated frame clock: MVEC frames are written once per screen update
+	// and played back at that period, so a presentation-timer republication must not add one. The
+	// stale flag it writes is the frame's own, which is why the out-of-band publication must leave
+	// m_last_drawn_generation alone - otherwise the pass would be recorded as one that never started.
+	if (m_stream && m_stream->recording() && !present_refresh)
+		m_stream->record_frame(m_vector_list.get(), m_vector_index, stale_now,
+			frame_timed, m_list_generation, visarea);
 
 	// Per-frame statistics for the render container (see render_vector_stats): total beam energy
 	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam
@@ -1580,23 +1591,28 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				m_move_notifier(curpoint->x, curpoint->y, curpoint->col, visarea.width(), visarea.height());
 		}
 
-		curpoint->emitted = true;
+		// Left unemitted by an out-of-band publication: the emulated frame that follows must see
+		// these points for the first time, or it would fire no notifiers and publish zero beam
+		// energy for a list that is very much being drawn.
+		if (!present_refresh)
+			curpoint->emitted = true;
 
 		curpoint++;
 	}
 
-	m_frame_end_notifier();
+	if (!present_refresh)
+		m_frame_end_notifier();
 
 	// Publish this frame's statistics into the screen container; render_target propagates them
 	// onto the primitive list, where a renderer can read them without touching this device.
 	render_vector_stats stats;
 	const bool playback_active = m_stream && m_stream->playing();
 	const bool playback_advanced = !playback_active || m_stream->playback_advanced();
-	if (playback_advanced)
+	if (playback_advanced && !present_refresh)
 		++m_stats_frame_id;
 	stats.frame_id = m_stats_frame_id;
 	stats.list_generation = m_list_generation;
-	stats.list_stale = m_beam_list_stale;
+	stats.list_stale = stale_now;
 	stats.timed = frame_timed;
 	stats.sweep_t0 = stats_sweep_t0;
 	stats.sweep_t1 = stats_sweep_t1;
