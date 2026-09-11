@@ -3351,7 +3351,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	float values1[4] = {
 		ambient_product,
 		paper_white,
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 4.0f)),
+		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 1.0f)),
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 0.60f)) };
 	float values2[4] = {
 		std::max(0.0f, m_chains->slider_value(0, "overlay_color_dark_level", 0.01f)),
