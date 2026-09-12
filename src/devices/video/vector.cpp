@@ -160,7 +160,16 @@ namespace {
 
 constexpr u32 MVEC_FRAME_MAGIC = 0x4d415246U; // "FRAM" in little-endian byte order
 constexpr u16 MVEC_VERSION_MAJOR = 1;
-constexpr u16 MVEC_VERSION_MINOR = 1;
+constexpr u16 MVEC_VERSION_MINOR = 2;
+// 1.2 adds the publication TIME and an out-of-band flag to every frame, and records every
+// publication rather than only the ones that land on an emulated screen update. Up to 1.1 the
+// recorder sampled the beam list on the screen clock while the live path also publishes out of band
+// the moment a list completes, so the recording quantised the list cadence to the frame grid: on
+// starwars, live passes spread 3..7 presents around six while the recording replayed as 4 or 8 with
+// nothing between, and a third of the passes ran twice as long as they should. The timestamps are
+// what the renderer's beam time window paces itself from, so that cadence has to survive recording.
+constexpr size_t MVEC_FRAME_HEADER_1_1 = 36U;
+constexpr size_t MVEC_FRAME_HEADER_1_2 = 48U;
 constexpr size_t MVEC_QUEUE_LIMIT = 256U * 1024U * 1024U;
 std::mutex s_mvec_claim_mutex;
 bool s_mvec_claimed = false;
@@ -338,15 +347,30 @@ public:
 	void sync_playback_audio()
 	{
 		const bool discontinuity = !m_audio_sync_valid || m_audio_reset != m_playback_reset || m_audio_paused != m_tool_paused;
-		const double time_seconds = double(playback_position()) * playback_frame_period().as_double();
-		m_owner.machine().sound().vector_playback_sync(time_seconds, m_tool_paused, discontinuity);
+		// Same clock the renderer uses. Position x frame period counts PUBLICATIONS, and 1.2 records
+		// the out-of-band ones too, so that figure runs about 1.66x fast on Star Wars - the audio
+		// would be told the stream is further along than it is, and drift further with every serve.
+		m_owner.machine().sound().vector_playback_sync(playback_time_seconds(), m_tool_paused, discontinuity);
 		m_audio_sync_valid = true;
 		m_audio_reset = m_playback_reset;
 		m_audio_paused = m_tool_paused;
 	}
 	u32 playback_reset() const { return m_playback_reset; }
-	u64 playback_position() const { return m_play_position < 0 ? 0U : u64(m_play_position); }
-	u64 playback_total() const { return u64(m_frame_index.size()); }
+	// Raw stream index - internal only (seeks, the ring, the timeline).
+	u64 playback_index() const { return m_play_position < 0 ? 0U : u64(m_play_position); }
+	// Frame number as the overlay and the options count it.
+	u64 playback_position() const { return ordinal_for_index(playback_index()); }
+	// Elapsed display time, for the renderer's emulated-time axes (Beam Jitter's wobble rides on it).
+	// 1.2 takes it from the recorded timestamps, which is exact. Position x frame period - what this
+	// was - counts PUBLICATIONS, and since 1.2 records the out-of-band ones too that figure now runs
+	// about 1.66x fast on Star Wars, which would drive those axes at the wrong rate.
+	double playback_time_seconds() const
+	{
+		if (m_minor >= 2 && m_play_position >= 0 && !m_frame_index.empty())
+			return (m_frame_index[size_t(m_play_position)].publish_time - m_first_publish_time).as_double();
+		return double(playback_position()) * playback_frame_period().as_double();
+	}
+	u64 playback_total() const { return u64(m_frame_ordinals.size()); }
 
 	void finish()
 	{
@@ -375,15 +399,21 @@ public:
 		m_mode = mode::NONE;
 	}
 
-	void record_frame(const point *points, int count, bool stale, bool timed, u32 generation, const rectangle &visarea)
+	void record_frame(const point *points, int count, bool stale, bool timed, u32 generation, const rectangle &visarea,
+			attotime publish_time, bool out_of_band)
 	{
 		if (!recording()) return;
 		std::vector<u8> payload;
 		const u32 stored_count = stale ? 0U : u32(count);
-		payload.reserve(40U + size_t(stored_count) * 72U);
+		payload.reserve(52U + size_t(stored_count) * 72U);
 		append_u64(payload, m_frames);
-		append_u32(payload, (stale ? 1U : 0U) | (timed ? 2U : 0U));
+		append_u32(payload, (stale ? 1U : 0U) | (timed ? 2U : 0U) | (out_of_band ? 4U : 0U));
 		append_u32(payload, generation);
+		// When this publication happened, on the machine clock. The interval between consecutive
+		// publications is the quantity playback has to reproduce; deriving it from the frame period
+		// is exactly what went wrong, because a publication does not have to land on a frame.
+		append_i32(payload, publish_time.seconds());
+		append_i64(payload, publish_time.attoseconds());
 		append_i32(payload, visarea.min_x); append_i32(payload, visarea.max_x);
 		append_i32(payload, visarea.min_y); append_i32(payload, visarea.max_y);
 		append_u32(payload, stored_count);
@@ -413,7 +443,8 @@ public:
 		++m_frames;
 	}
 
-	bool playback_frame(point *dest, int capacity, int &count, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
+	bool playback_frame(point *dest, int capacity, int &count, bool &stale, bool &timed, u32 &generation, rectangle &visarea,
+			bool present_refresh)
 	{
 		if (!playing()) return false;
 		m_playback_advanced = false;
@@ -460,10 +491,20 @@ public:
 				m_advance_finished = true;
 		}
 
-		u64 target = (m_pending_position != INVALID_POSITION)
+		const bool sequential = (m_pending_position == INVALID_POSITION);
+		u64 target = !sequential
 			? m_pending_position
 			: (m_play_position < 0 ? 0U : u64(m_play_position) + (m_tool_paused ? 0U : 1U));
 		m_pending_position = INVALID_POSITION;
+		// An emulated screen update owns the frame clock, so it must land on a frame publication.
+		// Out-of-band ones between here and there are normally consumed by the presentation timer
+		// first; any left over belong to presents that did not happen (no present loop, or one too
+		// slow to keep up) and are stepped over rather than shifting the frame clock onto them.
+		if (sequential && !present_refresh && !m_tool_paused)
+		{
+			while (target < m_frame_index.size() && m_frame_index[target].out_of_band)
+				++target;
+		}
 		if (target >= m_frame_index.size())
 		{
 			// vector_playback_end 2 wraps instead of stopping. Falling through with target 0 lets the
@@ -496,6 +537,12 @@ public:
 			m_eof = false;
 			if (discontinuity)
 				++m_playback_reset;
+			if (discontinuity || !m_publish_base_valid)
+			{
+				m_publish_base = m_owner.machine().time().as_double()
+						- m_frame_index[size_t(target)].publish_time.as_double();
+				m_publish_base_valid = true;
+			}
 		}
 		else
 		{
@@ -512,8 +559,8 @@ public:
 		{
 			m_announced_paused_position = m_play_position;
 			osd_printf_info("MVEC: paused at frame %llu/%llu\n",
-				(unsigned long long)(u64(m_play_position) + 1U),
-				(unsigned long long)m_frame_index.size());
+				(unsigned long long)(playback_position() + 1U),
+				(unsigned long long)playback_total());
 			if (m_decay_left > 0)
 				m_decay_running = true;
 		}
@@ -547,7 +594,66 @@ private:
 		u32 point_count = 0;
 		rectangle visarea;
 		u64 content_frame = INVALID_POSITION;
+		attotime publish_time = attotime::zero;   // 1.2+: when this publication happened
+		bool out_of_band = false;                 // 1.2+: published by the presentation timer
+		u64 frame_ordinal = 0;                    // position among FRAME publications only
 	};
+	// Every number a user sees or types - the overlay, -vector_playback_start, the go-to tool - counts
+	// FRAME publications, never the out-of-band ones 1.2 also records. Those are an implementation
+	// detail of how the list cadence is reproduced, and letting them into the count would silently
+	// renumber every existing capture recipe: on Star Wars there are about 1.66 publications per
+	// frame, so frame 400 of a 1.1 file and frame 400 of a 1.2 file would be different moments.
+	// Below 1.2 nothing is out of band, so ordinal and index coincide and this is a no-op.
+	std::vector<u64> m_frame_ordinals;            // ordinal -> index
+	u64 index_for_ordinal(u64 ordinal) const
+	{
+		if (m_frame_ordinals.empty())
+			return 0U;
+		return m_frame_ordinals[size_t(std::min<u64>(ordinal, m_frame_ordinals.size() - 1U))];
+	}
+	u64 ordinal_for_index(u64 index) const
+	{
+		return (index < m_frame_index.size()) ? m_frame_index[size_t(index)].frame_ordinal : 0U;
+	}
+	size_t frame_header_size() const
+	{
+		return (m_minor >= 2) ? MVEC_FRAME_HEADER_1_2 : MVEC_FRAME_HEADER_1_1;
+	}
+	// The recorded publication that follows the one on screen. Playback reproduces the TIMELINE, so
+	// the device has to know both whether the next publication is an out-of-band one and whether its
+	// moment has come; serving it early would put playback back on the presentation clock, which is
+	// the quantisation this format revision exists to remove. Files below 1.2 carry no out-of-band
+	// frames, so both answers are false and playback behaves exactly as it did.
+	const frame_index_entry *next_frame() const
+	{
+		if (!playing() || m_tool_paused || m_play_position < 0)
+			return nullptr;
+		const u64 next = u64(m_play_position) + 1U;
+		return (next < m_frame_index.size()) ? &m_frame_index[next] : nullptr;
+	}
+public:
+	bool next_is_out_of_band() const
+	{
+		const frame_index_entry *e = next_frame();
+		return e && e->out_of_band;
+	}
+	bool out_of_band_due(const attotime &now) const
+	{
+		const frame_index_entry *e = next_frame();
+		if (!e || !e->out_of_band || !m_publish_base_valid)
+			return false;
+		// REBASED. The recorded timestamps are the original machine's clock and the playback machine
+		// has its own; they agree only when playback happens to start at frame 0 and run straight
+		// through. After a seek - or -vector_playback_start - a recorded stamp several seconds into
+		// the stream sits far ahead of a playback clock that began at zero, so no out-of-band frame
+		// was ever due and every one of them was stepped over by the frame clock. Measured: passes
+		// dropped from 37.5 ms to 25.0 ms, exactly one screen update, which is the pre-1.2 cadence
+		// artefact reappearing for anyone who used the goto tool.
+		return (e->publish_time.as_double() + m_publish_base) <= now.as_double();
+	}
+private:
+
+
 
 	void read_indexed_frame(u64 index, bool &stale, bool &timed, u32 &generation, rectangle &visarea)
 	{
@@ -592,6 +698,11 @@ private:
 		stale = bool(flags & 1U);
 		timed = bool(flags & 2U);
 		generation = reader.get_u32();
+		if (m_minor >= 2)
+		{
+			reader.get_i32();
+			reader.get_i64();
+		}
 		visarea.min_x = reader.get_i32(); visarea.max_x = reader.get_i32();
 		visarea.min_y = reader.get_i32(); visarea.max_y = reader.get_i32();
 		const u32 stored_count = reader.get_u32();
@@ -646,6 +757,7 @@ private:
 			fatalerror("MVEC header is truncated\n");
 		if (major != MVEC_VERSION_MAJOR || minor > MVEC_VERSION_MINOR || endian != 0x12345678U)
 			fatalerror("MVEC format version or byte order is unsupported\n");
+		m_minor = minor;
 		const std::string system = read_file_string();
 		const std::string device = read_file_string();
 		if (minor >= 1 && !read_file_i64(m_recorded_frame_period))
@@ -665,9 +777,9 @@ private:
 			{
 				// The option counts frames the way the overlay and the goto tool do, from 1, so a
 				// number read off the overlay can be pasted straight into the command line.
-				m_pending_position = std::min<u64>(u64(start) - 1U, m_frame_index.size() - 1U);
+				m_pending_position = index_for_ordinal(u64(start) - 1U);
 				osd_printf_info("MVEC: starting playback at frame %llu\n",
-					(unsigned long long)(m_pending_position + 1U));
+					(unsigned long long)(ordinal_for_index(m_pending_position) + 1U));
 			}
 			// -vector_playback_pause holds that frame instead of running on from it. An external
 			// capture tool needs a still image and a marker saying which frame it is looking at;
@@ -730,11 +842,18 @@ private:
 			entry.stale = bool(flags & 1U);
 			entry.timed = bool(flags & 2U);
 			entry.generation = reader.get_u32();
+			if (m_minor >= 2)
+			{
+				const s32 secs = reader.get_i32();
+				const s64 attos = reader.get_i64();
+				entry.publish_time = attotime(secs, attos);
+				entry.out_of_band = bool(flags & 4U);
+			}
 			entry.visarea.min_x = reader.get_i32(); entry.visarea.max_x = reader.get_i32();
 			entry.visarea.min_y = reader.get_i32(); entry.visarea.max_y = reader.get_i32();
 			const u32 count = reader.get_u32();
 			entry.point_count = count;
-			if (count > MAX_POINTS || payload_size != 36U + count * 66U)
+			if (count > MAX_POINTS || payload_size != frame_header_size() + count * 66U)
 				fatalerror("MVEC frame payload size is invalid at frame %llu\n", (unsigned long long)expected);
 			if (entry.stale)
 			{
@@ -750,7 +869,28 @@ private:
 			m_frame_index.emplace_back(entry);
 		}
 		m_input.clear();
-		osd_printf_info("MVEC: indexed %llu frames\n", (unsigned long long)m_frame_index.size());
+		m_frame_ordinals.clear();
+		m_frame_ordinals.reserve(m_frame_index.size());
+		for (size_t i = 0; i < m_frame_index.size(); i++)
+		{
+			// An out-of-band frame takes the ordinal of the frame publication it belongs to, so a
+			// position landing on one still reports a sensible number.
+			m_frame_index[i].frame_ordinal = u64(m_frame_ordinals.size());
+			if (!m_frame_index[i].out_of_band)
+			{
+				m_frame_index[i].frame_ordinal = u64(m_frame_ordinals.size());
+				m_frame_ordinals.push_back(u64(i));
+			}
+		}
+		if (!m_frame_index.empty())
+			m_first_publish_time = m_frame_index.front().publish_time;
+		if (m_frame_ordinals.size() == m_frame_index.size())
+			osd_printf_info("MVEC: indexed %llu frames\n", (unsigned long long)m_frame_ordinals.size());
+		else
+			osd_printf_info("MVEC: indexed %llu frames (%llu publications, %llu of them out of band)\n",
+				(unsigned long long)m_frame_ordinals.size(),
+				(unsigned long long)m_frame_index.size(),
+				(unsigned long long)(m_frame_index.size() - m_frame_ordinals.size()));
 		if (m_frame_index.empty())
 			fatalerror("MVEC file contains no frames\n");
 	}
@@ -784,7 +924,8 @@ private:
 			if (entry.stale || !entry.point_count)
 				continue;
 
-			// frame marker/size (8), payload header (36), point fields before t0 (25)
+			// frame marker/size (8), payload header (36 - this path only runs for 1.0, which has
+			// no publication time), point fields before t0 (25)
 			m_input.clear();
 			m_input.seekg(entry.offset + std::streamoff(69));
 			u8 bytes[12];
@@ -938,7 +1079,7 @@ private:
 		else if (input.code_pressed_once(KEYCODE_PGUP)) request_relative(-60);
 		else if (input.code_pressed_once(KEYCODE_PGDN)) request_relative(60);
 		else if (input.code_pressed_once(KEYCODE_HOME)) request_position(0, true);
-		else if (input.code_pressed_once(KEYCODE_END)) request_position(m_frame_index.size() - 1U, true);
+		else if (input.code_pressed_once(KEYCODE_END)) request_position(playback_total() - 1U, true);
 		else if (input.code_pressed_once(KEYCODE_G))
 		{
 			// A hidden overlay makes the modal frame-number input indistinguishable
@@ -955,15 +1096,18 @@ private:
 
 	void request_relative(s64 delta)
 	{
-		const s64 base = std::max<s64>(m_play_position, 0);
-		const u64 target = u64(std::clamp<s64>(base + delta, 0, s64(m_frame_index.size() - 1U)));
+		// Stepping counts frames, not publications: one press of Right is one frame forward whatever
+		// the file records between them.
+		const s64 base = s64(playback_position());
+		const u64 target = u64(std::clamp<s64>(base + delta, 0, s64(playback_total()) - 1));
 		request_position(target, true);
 		show_tool_message(delta < 0 ? "Step back" : "Step forward");
 	}
 
+	// target is a frame ORDINAL; the stream position it maps to is internal.
 	void request_position(u64 target, bool pause)
 	{
-		m_pending_position = std::min<u64>(target, m_frame_index.size() - 1U);
+		m_pending_position = index_for_ordinal(target);
 		if (pause)
 			m_tool_paused = true;
 		m_eof = false;
@@ -979,18 +1123,19 @@ private:
 #else
 		const char *const modifier_name = "Alt";
 #endif
-		const u64 shown = (m_pending_position != INVALID_POSITION ? m_pending_position : playback_position()) + 1U;
+		const u64 shown = ((m_pending_position != INVALID_POSITION)
+				? ordinal_for_index(m_pending_position) : playback_position()) + 1U;
 		std::string text;
 		if (m_goto_mode)
 			text = util::string_format(
 				"MVEC playback: %s\nFrame: %s / %llu\nEnter: jump  Backspace: erase  Esc: cancel",
 				status, m_goto_digits.empty() ? "_" : m_goto_digits.c_str(),
-				(unsigned long long)m_frame_index.size());
+				(unsigned long long)playback_total());
 		else
 			text = util::string_format(
 				"MVEC playback: %s\nFrame: %llu / %llu\n%s+P play/pause  %s+Left/Right step\n"
 				"%s+PgUp/PgDn 60 frames  %s+Home/End  %s+G go to  %s+O overlay",
-				status, (unsigned long long)shown, (unsigned long long)m_frame_index.size(),
+				status, (unsigned long long)shown, (unsigned long long)playback_total(),
 				modifier_name, modifier_name, modifier_name, modifier_name, modifier_name, modifier_name);
 		m_owner.machine().ui().set_vector_playback_text(std::move(text));
 	}
@@ -1051,7 +1196,7 @@ private:
 	{
 		m_eof = true;
 		m_tool_paused = true;
-		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)m_frame_index.size(), reason);
+		osd_printf_info("MVEC: playback ended after %llu frames (%s)\n", (unsigned long long)playback_total(), reason);
 		show_tool_message("End of file");
 		if (m_owner.machine().options().vector_playback_end() == 1)
 			m_owner.machine().schedule_exit();
@@ -1099,6 +1244,11 @@ private:
 	std::string m_goto_digits;
 	u32 m_playback_reset = 0;
 	attoseconds_t m_recorded_frame_period = 0;
+	u16 m_minor = MVEC_VERSION_MINOR;           // format minor of the file being played back
+	// Playback clock minus recorded clock, re-established whenever the position jumps.
+	double m_publish_base = 0.0;
+	bool m_publish_base_valid = false;
+	attotime m_first_publish_time = attotime::zero;  // 1.2+: timestamp of the first recorded frame
 };
 
 float vector_options::s_flicker = 0.0f;
@@ -1370,6 +1520,18 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 {
 	uint32_t flags = PRIMFLAG_ANTIALIAS(1) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD) | PRIMFLAG_VECTOR(1);
 	rectangle visarea = screen.visible_area();
+	// An out-of-band present whose recorded publication is not due yet has nothing to publish. Leave
+	// the container holding the list that is already on screen and keep the pending flag up, so the
+	// presentation timer asks again next present and the publication lands on the machine time it was
+	// recorded at. Serving it now instead would hand the renderer a new pass boundary at the
+	// presentation rate, which is what the recorded timeline exists to stop.
+	if (m_stream && m_stream->playing() && screen.in_present_refresh()
+		&& !m_stream->out_of_band_due(machine().time()))
+	{
+		if (m_stream->next_is_out_of_band())
+			screen.set_vector_list_pending();
+		return 0;
+	}
 	bool playback_frame = false;
 	bool playback_stale = false;
 	bool frame_timed = m_avg_timing;
@@ -1378,7 +1540,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		int playback_count = 0;
 		u32 playback_generation = 0;
 		playback_frame = m_stream->playback_frame(m_vector_list.get(), MAX_POINTS, playback_count,
-			playback_stale, frame_timed, playback_generation, visarea);
+			playback_stale, frame_timed, playback_generation, visarea, screen.in_present_refresh());
 		m_vector_index = playback_count;
 		m_list_generation = playback_generation;
 		m_stream->sync_playback_audio();
@@ -1404,6 +1566,11 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// The list is being published now, whichever path got here: an emulated screen update or the
 	// presentation timer's out-of-band republication. Either way there is nothing left pending.
 	screen.clear_vector_list_pending();
+	// Re-arm it immediately when the stream's next publication is an out-of-band one. The flag has to
+	// be set AFTER this clear, and the serve above has already moved the position on, so this asks
+	// about the publication that follows the one being published now.
+	if (m_stream && m_stream->playing() && m_stream->next_is_out_of_band())
+		screen.set_vector_list_pending();
 	// An out-of-band publication exists to get the primitives and the list generation to the
 	// renderer early - it is NOT an emulated frame, and nothing on the frame clock may move for it.
 	// The renderer counts source frames to pace the phosphor and the scattered-light routes, so
@@ -1432,13 +1599,19 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		m_last_drawn_generation = m_list_generation;
 	}
 
-	// Recording stays on the emulated frame clock: MVEC frames are written once per screen update
-	// and played back at that period, so a presentation-timer republication must not add one. The
-	// stale flag it writes is the frame's own, which is why the out-of-band publication must leave
-	// m_last_drawn_generation alone - otherwise the pass would be recorded as one that never started.
-	if (m_stream && m_stream->recording() && !present_refresh)
+	// Every publication is recorded, out-of-band ones included, each stamped with the machine time it
+	// happened at. Recording only the screen-update ones sampled the list cadence on the frame grid:
+	// the live path publishes the moment a list completes, which is not the frame clock, so a recorded
+	// frame either carried a new list or repeated the previous one and playback replayed passes of one
+	// OR two frame periods with nothing in between. The beam time window paces itself from those pass
+	// boundaries, so it read the artefact as content and the picture flickered.
+	//
+	// The out-of-band flag travels with the frame because the two publications are not interchangeable
+	// on the way back either: an out-of-band one is not an emulated frame, and must not move the frame
+	// clock, the stale decision or the frame-begin notifier when it is replayed.
+	if (m_stream && m_stream->recording())
 		m_stream->record_frame(m_vector_list.get(), m_vector_index, stale_now,
-			frame_timed, m_list_generation, visarea);
+			frame_timed, m_list_generation, visarea, machine().time(), present_refresh);
 
 	// Per-frame statistics for the render container (see render_vector_stats): total beam energy
 	// (EHT load) and shaped off-screen energy (monitor glow), accumulated below once per beam
@@ -1625,7 +1798,7 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.playback_dt_ms = (playback_active && playback_advanced)
 		? float(playback_period.as_double() * 1000.0) : 0.0f;
 	stats.playback_time_ms = playback_active
-		? double(m_stream->playback_position()) * playback_period.as_double() * 1000.0 : 0.0;
+		? m_stream->playback_time_seconds() * 1000.0 : 0.0;
 	stats.playback_reset = playback_active ? m_stream->playback_reset() : 0U;
 	stats.playback_position = playback_active ? m_stream->playback_position() : 0U;
 	stats.playback_total = playback_active ? m_stream->playback_total() : 0U;

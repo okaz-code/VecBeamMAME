@@ -267,7 +267,7 @@ the short passes fell from 291 of 1059 vectors to 43, which is that much less
 for `beam_window_scale` to make up.
 
 It does nothing when `vector_beam_window` is off or the present loop is not
-running.  MVEC recordings are unaffected (recording stays on the frame clock).
+running.  MVEC recordings are unaffected.
 `-noveclistsync` restores the old behaviour.
 
 ### `vector_window_scatter`
@@ -376,10 +376,24 @@ For debugging.  Writes timed beam events as CSV, one event per line.  Open
 ## 3. MVEC beam event streams
 
 Records and replays the **final vector list** produced by actually playing a
-game.  Recording is one frame per emulated frame, and the stream is an
-intermediate representation upstream of the renderer, so **running the same MVEC
-through different renderer settings leaves the renderer as the only
-difference.**
+game.  The stream is an intermediate representation upstream of the renderer, so
+**running the same MVEC through different renderer settings leaves the renderer
+as the only difference.**
+
+**Format 1.2 records PUBLICATIONS, not screen updates.**  The live vector device
+also publishes out of band the moment a list completes, which is not the screen
+clock.  Recording only the screen updates quantised the true list cadence onto
+the frame grid, so a replayed pass lasted either one or two frame periods and
+nothing between (Star Wars: 395 passes of four presents and 210 of eight).  The
+beam time window paces itself from those pass boundaries, so it read the
+artefact as content and the picture flickered.  1.2 stamps every publication
+with its machine time and an out-of-band flag, and playback reproduces the
+timeline.
+
+**Frame numbers still count frame publications only.**  The out-of-band ones are
+an implementation detail of reproducing the cadence; counting them would
+renumber every existing capture recipe.  Below 1.2 nothing is out of band, so
+the numbering is identical.
 
 ### `vector_record`
 
@@ -397,7 +411,8 @@ devices, only the first is recorded.
 
 Writing happens on its own thread, so the effect on emulation speed is small,
 but **the files are large**: 66 bytes per point, about 500MB per minute on
-starwars.
+starwars.  Format 1.2 also records the out-of-band publications, which makes a
+file about **1.66x** the size of a 1.1 one on starwars.
 
 ### `vector_playback`
 
