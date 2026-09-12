@@ -10,10 +10,15 @@ SAMPLER2D(s_screen, 0);
 SAMPLER2D(s_diffused, 1);
 SAMPLER2D(s_white, 2);
 SAMPLER2D(s_color, 3);
+// Penumbra copy of the rear white ink. s_white above is the sharp one.
+SAMPLER2D(s_vx_shadow, 4);
 
 uniform vec4 u_overlay_params0; // x=seed nits, y=white transmission, z=white reflectance, w=resin diffusion strength
 uniform vec4 u_overlay_params1; // x=ambient, y=paper white nits, z=colour optical density, w=colour resin glow
 uniform vec4 u_overlay_params2; // x=dark level, y=highlight bleach, z=highlight knee, w=highlight curve
+uniform vec4 u_vx_screen_rect;  // xy = tube face origin in window UV, zw = its size
+uniform vec4 u_vx_shadow;       // x = strength, y = centre gap (fraction of face width), z = rim scale, w = azimuth
+uniform vec4 u_vx_shadow_ink;   // x = rear white transmission
 
 void main()
 {
@@ -108,7 +113,30 @@ void main()
 	// Room light is what makes an unlit plate visible at all, so the floor scales with it. It used
 	// to be an absolute level, which meant turning the light down left the dark parts of the
 	// overlay exactly as bright as before - the one place a viewer expects a light control to work.
+	// The unlit plate is shadowed too, and it is the term that matters. Where the rear is clear the
+	// room light does not stop at the resin - it carries on to the phosphor and comes back, so this
+	// floor stands for resin scatter AND that return path. The phosphor's own pedestal inside
+	// `transmitted` was already shadowed in Glow Combine, but on the shipped calibration it is 0.075
+	// nits against this floor's ~14.7, so shadowing only that changed the picture by half a percent
+	// and was invisible. reflected_white is deliberately left alone: that is room light bouncing off
+	// the ink itself, and the ink cannot shade what lands on it.
+	//
+	// Same construction as Glow Combine's, in window UV, which is what this pass already works in.
+	// The sagitta is taken from the position inside the tube face rather than the distortion field -
+	// this pass has no tube geometry - which is the same paraboloid to the accuracy that matters here.
+	float vx_shadow = 1.0;
+	if (u_vx_shadow.x > 0.0 && u_vx_screen_rect.z > 0.0)
+	{
+		vec2 vx_face = (v_texcoord0 - u_vx_screen_rect.xy) / max(u_vx_screen_rect.zw, vec2_splat(1.0e-6));
+		vec2 vx_r = (vx_face - vec2_splat(0.5)) * 2.0;
+		float vx_sag = clamp(dot(vx_r, vx_r), 0.0, 1.0);
+		float vx_gap = u_vx_shadow.y * mix(1.0, u_vx_shadow.z, vx_sag);
+		vec2 vx_dir = vec2(cos(u_vx_shadow.w), -sin(u_vx_shadow.w));
+		vec2 vx_uv = v_texcoord0 + vx_dir * vx_gap * u_vx_screen_rect.z;
+		float vx_cover = clamp(mix(texture2D(s_white, vx_uv).r, texture2D(s_vx_shadow, vx_uv).r, vx_sag), 0.0, 1.0);
+		vx_shadow = mix(1.0, clamp(u_vx_shadow_ink.x, 0.0, 1.0), vx_cover * clamp(u_vx_shadow.x, 0.0, 1.0));
+	}
 	vec3 dark_resin = static_filter
-		* (u_overlay_params1.y * u_overlay_params1.x * u_overlay_params2.x * resin_coverage);
+		* (u_overlay_params1.y * u_overlay_params1.x * u_overlay_params2.x * resin_coverage) * vx_shadow;
 	gl_FragColor = vec4(behind_resin * color_filter + dark_resin, 1.0) * v_color0;
 }

@@ -111,6 +111,8 @@ private:
 	bool hdr_composite() const { return m_vec_hdr_chain || m_hdr_ui_only; }
 	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
 	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
+	bool blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h, const float *projection);
+	bool prepare_vectrex_overlay_masks(int window_index);
 	bool prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index);
 	void render_post_screen_quad(int view, render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
 
@@ -627,6 +629,26 @@ private:
 	float m_vx_seen_seed_peak = 0.0f, m_vx_reported_seed_peak = -1.0f;
 	float m_vx_seen_paper_white = 0.0f, m_vx_reported_paper_white = -1.0f;
 	float m_vx_seen_ambient = 0.0f, m_vx_reported_ambient = -1.0f;
+	// The ink masks are drawn before the screen chain so Glow Combine can cast the rear print's
+	// shadow onto the tube's ambient pedestal; the composite then reuses them.
+	bool m_vx_masks_ready = false;
+	uint16_t m_vx_mask_width = 0;
+	uint16_t m_vx_mask_height = 0;
+	// Penumbra copy of the rear white ink, for the shadow it casts on the tube's ambient
+	// illumination. ONE blurred level, at the radius the widest gap implies: the sharp mask is
+	// already there, so Glow Combine mixes the two by how far the tube face has fallen away from the
+	// plate and gets a penumbra that widens toward the rim without a second blur chain. A lerp is not
+	// a convolution, but it is monotonic in softness, which is what this is for.
+	bgfx_target *m_vectrex_overlay_shadow[2] = { nullptr, nullptr };
+	// The overlay is a still image. Blurring it every present would be two full-window passes at the
+	// host present rate; this key skips the work until the artwork, the radius or the size moves.
+	uint64_t m_vx_shadow_key = 0;
+	// Where the tube face sits inside the window, in window UV. The masks are rasterised in window
+	// space and Glow Combine works in chain space, so it needs this to look the ink up at all.
+	float m_vx_screen_rect[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+	bool m_vx_screen_rect_valid = false;
+	float m_vx_logged_strength = -1.0f;
+	float m_vx_logged_face = -1.0f;
 	bgfx_target *m_vectrex_overlay_white = nullptr;
 	bgfx_target *m_vectrex_overlay_color = nullptr;
 	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };

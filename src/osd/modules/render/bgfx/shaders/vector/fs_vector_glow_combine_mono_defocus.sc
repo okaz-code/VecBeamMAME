@@ -11,6 +11,10 @@ SAMPLER2D(s_bloom, 1);
 SAMPLER2D(s_optical, 2);
 SAMPLER2D(s_bezel_source, 3);
 SAMPLER2D(s_bezel_length, 4);
+// Rear ink, for the shadow it casts on the tube's ambient illumination. Sharp and penumbra copies;
+// both read black when the Vectrex overlay path is not running, which switches the term off.
+SAMPLER2D(s_vx_ink, 5);
+SAMPLER2D(s_vx_shadow, 6);
 
 // Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
 // window's deposited fraction. The renderer used to bake this into their vertices, but their
@@ -49,6 +53,9 @@ uniform vec4 u_ambient_color;
 uniform vec4 u_ambient_level;
 uniform vec4 u_room_ambient;
 uniform vec4 u_ambient_output_scale;
+uniform vec4 u_vx_screen_rect;  // xy = tube face origin in window UV, zw = its size
+uniform vec4 u_vx_shadow;       // x = strength, y = centre gap (fraction of face width), z = rim scale, w = azimuth (radians)
+uniform vec4 u_vx_shadow_ink;   // x = rear white transmission
 uniform vec4 u_hdr_glow_compensation;
 uniform vec4 u_convergence_global;
 uniform vec4 u_convergence_global_color;
@@ -248,7 +255,34 @@ void main()
 	float tube_sd=tube_signed_distance_at(tube_q,tube_aspect_v,tube_active);
 	float face=tube_face_factor_at(tube_sd,tube_active),vignette=tube_vignette_at(tube_q,tube_aspect_v,tube_active);
 	vec3 phosphor_tint=max(u_phosphor_color.rgb,vec3_splat(0.0));
-	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette;
+	// Rear print shadow. Room light reaches the phosphor only after crossing the plate, so where the
+	// rear ink is opaque the tube face behind it is unlit - and because the light arrives at an angle
+	// across an air gap, that unlit patch is DISPLACED from the ink itself. The displacement and the
+	// penumbra are the same order here (a measured 3.5 mm gap at the centre opening to 7.5 mm at the
+	// rim, against a room light of finite angular size), so what a viewer sees is a soft band beside
+	// the print rather than a sharp copy of it.
+	//
+	// The gap follows the tube face: it is a paraboloid falling away from the flat plate, so the
+	// offset and the softness both grow toward the rim. The sharp and blurred masks are mixed by the
+	// same figure, which widens the penumbra outward without a second blur chain.
+	//
+	// Only the ambient pedestal is shadowed. The beam is emitted by the phosphor itself and casts no
+	// shadow, which is also why this cannot live in the overlay composite: by then the two are summed.
+	float vx_shadow=1.0;
+	if(u_vx_shadow.x>0.0)
+	{
+		vec2 vx_r=tube_q*2.0;
+		float vx_sag=clamp(dot(vx_r,vx_r),0.0,1.0);
+		float vx_gap=u_vx_shadow.y*mix(1.0,u_vx_shadow.z,vx_sag);
+		// Screen space, y downward, so "up" is negative: an azimuth of 45 degrees is the upper right.
+		vec2 vx_dir=vec2(cos(u_vx_shadow.w),-sin(u_vx_shadow.w));
+		vec2 vx_uv=u_vx_screen_rect.xy+v_texcoord0*u_vx_screen_rect.zw
+			+vx_dir*vx_gap*u_vx_screen_rect.z;
+		// The mask targets are premultiplied, so for white ink any colour channel IS the coverage.
+		float vx_cover=clamp(mix(texture2D(s_vx_ink,vx_uv).r,texture2D(s_vx_shadow,vx_uv).r,vx_sag),0.0,1.0);
+		vx_shadow=mix(1.0,clamp(u_vx_shadow_ink.x,0.0,1.0),vx_cover*clamp(u_vx_shadow.x,0.0,1.0));
+	}
+	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette*vx_shadow;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;
 	if(!emit_outside){if(u_glow_enable.x>0.0)glow=shape_glow(texture2D(s_bloom,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN);optical=AUX_TEX2D(s_optical,emit_uv).rgb*GLOW_BRIGHTNESS_GAIN;}
 	// The gain is a uniform, so this branch is coherent across the whole draw. At zero - which is
