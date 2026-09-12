@@ -666,7 +666,42 @@ it is out by a factor of two.
 **Keep `absolute` if the point is to share one calibration between Mac and
 Windows.**
 
+**`relative` only does anything with `bgfx_hdr_display_peak auto`.**  A numeric
+peak takes the absolute derivation path, which does not consult this setting at
+all, so the result is the same as `absolute`.
+
 See [HDR settings §3.7](hdr-settings.md) for the numbers.
+
+### `bgfx_macos_edr_adaptation`
+
+| | |
+|---|---|
+| Type / default | float / `0.5` |
+| Range | `0.0`-`1.0` |
+
+macOS only.  **How far the absolute nits targets follow the display's derived
+SDR white.**  `0` = not at all (pure absolute nits), `1` = fully (equivalent to
+`relative`).  Values between model incomplete visual adaptation.
+
+```
+factor = clamp((derived SDR white / bgfx_macos_edr_reference_white) ^ this, 0.5, 2.0)
+```
+
+The factor multiplies `hdr_peak_target_nits`, `hdr_beam_target_nits` and
+`hdr_beam_floor_nits` **alike**, so beam/peak is unchanged and the tone scale
+keeps its shape.  It is anchored at `bgfx_macos_edr_reference_white` (100 nits
+by default), so a calibration made there is unchanged by any setting here and
+this only describes what happens as the display moves away from it.
+
+The derived SDR white moves with auto-brightness and True Tone as well as the
+slider, which makes it a better ambient signal than the brightness slider
+position (a normalised figure needing private API).  It swings hard at startup
+(measured 1495 nits to 227), so it is gated on the same settle test as paper
+white and followed with a four-second time constant.
+
+**Pass `-bgfx_macos_edr_adaptation 0` when calibrating.**  With the default of
+0.5 the targets follow each display's SDR white, so absolute nits stop being
+reproducible across machines.
 
 ### `bgfx_macos_edr_reference_white`
 

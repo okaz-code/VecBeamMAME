@@ -145,6 +145,10 @@ BGFX: macOS EDR absolute scale: panel peak 1600 nits (potential headroom x refer
 
 `relative` は絶対 nits 導出を入れる前の挙動で、導出をスキップすることで実現している。
 
+**したがって `relative` が効くのは `bgfx_hdr_display_peak auto` のときだけである。**
+ピークに数値を指定した場合は `m_hdr_display_peak_absolute` が立って絶対導出の分岐に入り、
+較正基準の設定は参照されない。
+
 内蔵 XDR（potential 16.00x ＝ パネル実 1600nit）での実測:
 
 | mode | paper_white | current | パネル認識 | 天井 | beam | 実発光 |

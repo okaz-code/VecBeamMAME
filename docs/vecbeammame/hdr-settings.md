@@ -189,6 +189,10 @@ brightness, or pin the ceiling with `hdr_headroom_override`**.
 `relative` is the behaviour from before the absolute derivation existed, and is
 implemented by skipping that derivation.
 
+**So `relative` only does anything with `bgfx_hdr_display_peak auto`.**  A
+numeric peak sets `m_hdr_display_peak_absolute` and takes the absolute
+derivation branch, which never reads the calibration basis.
+
 Measured on the built-in XDR (potential 16.00x, i.e. a real 1600-nit panel):
 
 | Mode | paper_white | current | Panel as seen | Ceiling | Beam | Emitted |

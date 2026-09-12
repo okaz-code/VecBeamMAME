@@ -108,6 +108,10 @@ public:
 	float edr_headroom() const { return m_edr_headroom; }
 	bool hdr_display_peak_is_absolute() const { return m_hdr_display_peak_absolute; }
 	bool edr_relative_auto() const { return m_edr_relative_auto; }
+	// Multiplier applied to the absolute nits targets so they follow the display's derived SDR
+	// white (-bgfx_macos_edr_adaptation). 1.0 = pure absolute nits, the default and the only basis
+	// in which a calibration figure is reproducible. See update_edr_headroom for the derivation.
+	float edr_adaptation_factor() const { return m_edr_adaptation_factor; }
 	// macOS EDR relative auto has no absolute nits, but the whole EDR path already works in a nominal
 	// scale where 1.0 is SDR reference white (the present shader's display ceiling and the HDR
 	// diagnostics both use headroom * reference white). Express the display peak in that same scale so
@@ -235,6 +239,14 @@ protected:
 	// option: the panel's own peak does not change when the SDR white point moves, so an absolute
 	// ceiling has nothing to track, and only the choice of basis is a real one.
 	bool m_edr_relative_calibration = false;
+	// Degree of adaptation (-bgfx_macos_edr_adaptation), 0 = off. The nits targets are multiplied by
+	// (derived SDR white / edr_reference_white) ^ exponent, so 0 keeps them absolute and 1 reproduces
+	// the relative basis. Anything between models incomplete visual adaptation, which is what a viewer
+	// actually does when the room gets brighter. The factor is smoothed and gated on the same settle
+	// flag as paper white, because the reference white swings wildly before EDR has bootstrapped.
+	float m_edr_adaptation_exponent = 0.0f;
+	float m_edr_adaptation_factor = 1.0f;
+	float m_edr_logged_adaptation = 1.0f;
 	float m_edr_logged_reference_white = 0.0f;
 	float m_edr_prev_reference_white = 0.0f;
 	// True while the output path is macOS EDR. The accessors below are declared ahead of
@@ -988,6 +1000,9 @@ void video_bgfx::resolve_hdr_display_peak(void *nwh)
 			osd_printf_warning("BGFX: unknown bgfx_macos_edr_calibration '%s'; using absolute\n",
 				std::string(basis).c_str());
 	}
+	m_edr_adaptation_exponent = std::clamp(m_options->bgfx_macos_edr_adaptation(), 0.0f, 1.0f);
+	m_edr_adaptation_factor = 1.0f;
+	m_edr_logged_adaptation = 1.0f;
 	m_edr_current_resolved = false;
 	m_edr_calibration_dirty = false;
 	m_macos_edr_force_applied = false;
@@ -1277,6 +1292,63 @@ void video_bgfx::update_edr_headroom(void *nwh)
 		{
 			const float alpha = 1.0f - std::exp(-float(std::min(dt, 0.25) / PAPER_WHITE_TAU_S));
 			m_effective_paper_white_nits += (reference_white - m_effective_paper_white_nits) * alpha;
+		}
+
+		// Degree-of-adaptation factor for the nits targets. The derived SDR white is already the
+		// physical paper white in nits and it moves with the brightness slider, auto brightness and
+		// True Tone, so it is a better ambient signal than the brightness slider position - that is a
+		// normalised figure with a per-model curve, needs private API, and misses True Tone entirely.
+		//
+		// Exponent 0 leaves the targets absolute, which is the only basis a calibration figure is
+		// reproducible in and therefore the default. 1 makes them track the white one-for-one, which is
+		// arithmetically the relative basis. Real visual adaptation is partial, so the useful settings
+		// are in between - and unlike the absolute/relative switch this is continuous, so it can be
+		// dialled against the real tube instead of chosen blind.
+		//
+		// Gated on the SAME settle flag as paper white and ramped an order slower. Both matter: the
+		// bootstrap takes the reference white from 1495 nits to 227 in the first seconds, and feeding
+		// that to the beam target would reproduce the startup flash the paper-white ramp exists to
+		// prevent. Human light adaptation runs in seconds to minutes, so a slow ramp is also the
+		// physically right shape, not merely a safety measure.
+		constexpr double ADAPTATION_TAU_S = 4.0;
+		constexpr float ADAPTATION_MIN = 0.5f;
+		constexpr float ADAPTATION_MAX = 2.0f;
+		if (m_edr_adaptation_exponent > 0.0f && m_edr_reference_nits > 0.0f)
+		{
+			// Anchored at edr_reference_white (the nominal 100-nit convention), so a calibration made
+			// at that white is unchanged by any adaptation setting and the option only describes what
+			// happens as the display moves AWAY from it.
+			const float target = std::clamp(
+					std::pow(reference_white / m_edr_reference_nits, m_edr_adaptation_exponent),
+					ADAPTATION_MIN, ADAPTATION_MAX);
+			if (!m_edr_paper_white_settled)
+				m_edr_adaptation_factor = 1.0f;
+			else if (dt > 0.0)
+			{
+				const float alpha = 1.0f - std::exp(-float(std::min(dt, 0.25) / ADAPTATION_TAU_S));
+				m_edr_adaptation_factor += (target - m_edr_adaptation_factor) * alpha;
+			}
+			// Report it. This factor multiplies every nits target, so a calibration figure read off a
+			// slider is not what the screen received unless this is 1.00 - exactly the kind of silent
+			// divergence that made one unchanged cfg land on two tone scales before. The ramp closes
+			// asymptotically, so log on a material move OR once it has stopped moving, the same pair of
+			// conditions the derived-scale line above needs for the same reason.
+			const bool adapt_jumped = std::abs(m_edr_adaptation_factor - m_edr_logged_adaptation) >= 0.02f;
+			const bool adapt_settled = !adapt_jumped
+				&& std::abs(m_edr_adaptation_factor - target) <= 0.002f
+				&& std::abs(m_edr_adaptation_factor - m_edr_logged_adaptation) > 0.002f;
+			if (adapt_jumped || adapt_settled)
+			{
+				m_edr_logged_adaptation = m_edr_adaptation_factor;
+				osd_printf_verbose(
+						"BGFX: EDR adaptation %.3fx on the nits targets (SDR white %.0f / %.0f nits, exponent %.2f)\n",
+						m_edr_adaptation_factor, reference_white, m_edr_reference_nits,
+						m_edr_adaptation_exponent);
+			}
+		}
+		else
+		{
+			m_edr_adaptation_factor = 1.0f;
 		}
 		// Report the derived scale, and again whenever it has moved materially. Without this the
 		// reconstruction was invisible: resolve_hdr_display_peak() logs only at init, where the
@@ -2814,11 +2886,17 @@ void renderer_bgfx::refresh_vec_slider_cache()
 // squashed highlights beats a dim one with perfect ratios.
 bool renderer_bgfx::vec_beam_nits_model(float &beam_nits, float &ceiling_nits) const
 {
-	const float peak_target = m_chains->slider_value(0, "hdr_peak_target_nits", 0.0f);
-	if (peak_target <= 0.0f)
+	const float peak_slider = m_chains->slider_value(0, "hdr_peak_target_nits", 0.0f);
+	if (peak_slider <= 0.0f)
 		return false;
-	const float beam_target = std::max(1.0f, m_chains->slider_value(0, "hdr_beam_target_nits", peak_target));
-	const float beam_floor = std::max(0.0f, m_chains->slider_value(0, "hdr_beam_floor_nits", 0.0f));
+	// Ambient adaptation scales the WHOLE model, not the beam alone. fraction below is
+	// beam_target / peak_target, so a common factor cancels out of it and the tone scale keeps its
+	// shape - in particular knee / beam, the linear room left above one ordinary stroke. Scaling only
+	// the beam would move that ratio and quietly recompress the overlaps and overdrive.
+	const float adapt = m_module().edr_adaptation_factor();
+	const float peak_target = peak_slider * adapt;
+	const float beam_target = std::max(1.0f, m_chains->slider_value(0, "hdr_beam_target_nits", peak_slider) * adapt);
+	const float beam_floor = std::max(0.0f, m_chains->slider_value(0, "hdr_beam_floor_nits", 0.0f) * adapt);
 	// 0 when the platform cannot say; the target then stands unclamped.
 	const float panel_peak = m_module().hdr_chain_peak_nits();
 	ceiling_nits = (panel_peak > 0.0f) ? std::min(peak_target, panel_peak) : peak_target;

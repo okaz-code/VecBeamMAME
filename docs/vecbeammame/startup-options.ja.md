@@ -593,7 +593,38 @@ macOS のみ。較正値（`hdr_peak_target_nits` など）をどの基準で読
 
 **Mac / Win で同じ較正値を使うのが目的なら `absolute` のままにする。**
 
+**`relative` が効くのは `bgfx_hdr_display_peak auto` のときだけ。** ピークに数値を
+指定すると絶対導出の経路に入り、この設定は読まれない(つまり `absolute` と同じ挙動になる)。
+
 詳細は [HDR 設定ガイド §3.7](hdr-settings.ja.md)。
+
+### `bgfx_macos_edr_adaptation`
+
+| | |
+|---|---|
+| 型 / 既定 | float / `0.5` |
+| 範囲 | `0.0`〜`1.0` |
+
+macOS のみ。**絶対 nits の目標値を、ディスプレイの導出 SDR 白にどこまで追従させるか。**
+`0` = 追従しない(純粋な絶対 nits)、`1` = 完全に追従(`relative` と等価)。
+中間値は不完全な視覚順応をモデル化する。
+
+```
+係数 = clamp((導出SDR白 / bgfx_macos_edr_reference_white) ^ この値, 0.5, 2.0)
+```
+
+この係数が `hdr_peak_target_nits` / `hdr_beam_target_nits` / `hdr_beam_floor_nits` の
+**全部に等しく掛かる**ので、`beam / peak` の比は保たれトーンスケールの形は変わらない。
+基準は `bgfx_macos_edr_reference_white`(既定 100nit)なので、そこで較正した値は
+この設定に関わらず不変で、ディスプレイがそこから離れたときだけ効く。
+
+導出 SDR 白は輝度スライダだけでなく自動輝度や True Tone でも動くため、輝度スライダの
+値を private API で読むより良い環境光信号になる。起動直後は導出値が激しく動く
+(実測 1495nit → 227nit)ので、paper white と同じ settle 判定を通し、時定数 4 秒で
+ゆっくり追従する。
+
+**較正時は `-bgfx_macos_edr_adaptation 0` を明示すること。** 既定が 0.5 なので、
+指定しないと機体ごとの SDR 白の違いがそのまま目標値に乗り、絶対 nits の再現性が失われる。
 
 ### `bgfx_macos_edr_reference_white`
 
