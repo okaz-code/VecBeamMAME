@@ -747,8 +747,17 @@ private:
 	// time before it is adopted: a genuine scene change persists and still crosses within a second,
 	// while frame-to-frame span noise never does.
 	double m_vec_window_span_peak = 0.0;        // longest sweep seen inside the hold window
-	double m_vec_window_elapsed_min = 0.0;      // shortest presentation time a recent pass received
-	int m_vec_window_min_age = 0;               // passes since that minimum was set
+	// Shortest presentation time a recent pass received - a TRUE minimum over a bounded ring. It used
+	// to be a running minimum with an age release: after eight passes without a new low it adopted
+	// whatever the current pass happened to be, which can be far ABOVE the real minimum. The rate is
+	// span/this, so an inflated divisor walks the window too slowly and the pass ends with part of its
+	// list never deposited - a region of the picture missing for that pass. A ring releases the same
+	// way (old values walk out on a scene change) without ever jumping upward.
+	static constexpr int VEC_WINDOW_ELAPSED_HISTORY = 16;
+	float m_vec_window_elapsed_hist[VEC_WINDOW_ELAPSED_HISTORY] = { };
+	int m_vec_window_elapsed_count = 0;
+	int m_vec_window_elapsed_next = 0;
+	double m_vec_window_elapsed_min = 0.0;
 	double m_vec_window_log_rate = 1.0;         // walk rate this pass used, for the BEAMWIN line
 	double m_vec_window_peak_age_ms = 0.0;      // how long the peak has stood unbeaten
 	int64_t m_vec_window_latch_hpc = 0;         // bx::getHPCounter() at the previous decision

@@ -5109,8 +5109,15 @@ int renderer_bgfx::draw(int update)
 			m_vec_window_base_time = -1.0;
 			m_vec_window_covered = -1.0;
 			m_vec_window_prev_now = -1.0;
-			m_vec_window_elapsed_min = 0.0;
-			m_vec_window_min_age = 0;
+			// The elapsed ring deliberately SURVIVES. Everything else here is tied to the content that
+			// was on screen and must not be carried across a jump, but how much presentation time a
+			// pass receives is a property of the machine's cadence and the host present loop - a seek
+			// does not change either. Clearing it restarted the rate predictor from its cold state
+			// (window_auto pinned at 1.0, then a minimum taken over a ring of one or two), which walks
+			// the window too slowly for a pass shorter than that, and the picture loses part of a list
+			// until the ring refills. Live pays that warm-up once at startup and settles - which is
+			// exactly the brief flicker seen at boot - while playback with the goto tool paid it again
+			// on every seek, so the two looked different for a reason that has nothing to do with MVEC.
 			m_vec_window_generation = ~uint32_t(0);
 			m_vec_persist_prev_t = -1.0;
 			m_vec_phosphor_budget = 1.0;
@@ -5210,8 +5217,20 @@ int renderer_bgfx::draw(int update)
 		// like. beam_window_scale stops being a per-game compensation and becomes a trim about 1.0.
 		const bool window_adaptive = window_wanted
 				&& m_chains->slider_value(0, "beam_window_adaptive", 1.0f) > 0.5f;
-		const double window_auto = (window_adaptive && m_vec_window_elapsed_min > 1e-6 && window_span > 0.0)
-				? std::clamp(window_span / m_vec_window_elapsed_min, 0.25, 4.0)
+		// Cold start: no pass has finished yet, so there is no measurement to divide by. Falling back
+		// to real time was the OPTIMISTIC choice and it is the wrong one - a first pass handed less
+		// presentation time than its sweep is long loses its tail, which is a region of the picture
+		// missing, and that is the flicker visible for the first moment after the window engages.
+		// Assume instead that a pass gets ONE present until a pass proves otherwise: the sweep is then
+		// laid down almost at once, which is what the un-windowed path does anyway and is the state
+		// the window is about to take over from. The first completed pass replaces this with a
+		// measurement, so the assumption costs a fraction of a second and cannot lose anything.
+		const double window_cold = std::max(1e-9,
+				window().machine().video().vector_present_period().as_double());
+		const double window_divisor = (m_vec_window_elapsed_min > 1e-6)
+				? m_vec_window_elapsed_min : window_cold;
+		const double window_auto = (window_adaptive && window_span > 0.0)
+				? std::clamp(window_span / window_divisor, 0.25, 4.0)
 				: 1.0;
 		const double window_rate = std::clamp(window_trim * window_auto, 0.25, 8.0);
 		// The engage yardstick stays on the TRIM alone, deliberately. It answers a different question -
@@ -5544,7 +5563,8 @@ int renderer_bgfx::draw(int update)
 		// one-frame step advances temporal effects by one recorded machine refresh.
 		// A host-rate repeat presents the same recorded MVEC frame and must not advance
 		// frame-domain effects a second time.
-		const double flicker_dt_ms = vstats.playback_active
+		const double flicker_dt_ms = (vstats.playback_active
+				&& (vstats.playback_paused || vstats.playback_decay_hold))
 			? (m_vec_frame_advanced ? double(vstats.playback_dt_ms) : 0.0)
 			: flicker_real_dt_ms;
 		m_flicker_last_hpc = flicker_hpc_now;
@@ -5607,17 +5627,14 @@ int renderer_bgfx::draw(int update)
 				// climb again when the scene changes instead of pinning the rate to a one-off.
 				if (m_vec_window_log_elapsed > 1e-6)
 				{
-					if (m_vec_window_log_elapsed <= m_vec_window_elapsed_min
-						|| m_vec_window_elapsed_min <= 0.0)
-					{
-						m_vec_window_elapsed_min = m_vec_window_log_elapsed;
-						m_vec_window_min_age = 0;
-					}
-					else if (++m_vec_window_min_age >= 8)
-					{
-						m_vec_window_elapsed_min = m_vec_window_log_elapsed;
-						m_vec_window_min_age = 0;
-					}
+					m_vec_window_elapsed_hist[m_vec_window_elapsed_next] = float(m_vec_window_log_elapsed);
+					m_vec_window_elapsed_next = (m_vec_window_elapsed_next + 1) % VEC_WINDOW_ELAPSED_HISTORY;
+					if (m_vec_window_elapsed_count < VEC_WINDOW_ELAPSED_HISTORY)
+						m_vec_window_elapsed_count++;
+					double lowest = m_vec_window_elapsed_hist[0];
+					for (int i = 1; i < m_vec_window_elapsed_count; i++)
+						lowest = std::min(lowest, double(m_vec_window_elapsed_hist[i]));
+					m_vec_window_elapsed_min = lowest;
 				}
 				m_vec_window_log_presents = 0;
 				m_vec_window_log_deposited = 0;
@@ -7640,11 +7657,22 @@ int renderer_bgfx::draw(int update)
 				// passes. (The retired chains' tail_accum / Flicker Persist / Scan Accumulate /
 				// Bloom Apply injections lived here; they went with those chains.)
 				const double persist_now = window().machine().time().as_double();
-				const double persist_dt = vstats.playback_active
+				// The frame domain is for the TOOL - paused, stepping, decay hold - where display time
+				// must stop or advance one recorded refresh at a time. While playback is simply
+				// running it is the wrong clock: the pool then decayed in single 24.4 ms lumps on the
+				// presents that carried a frame and not at all on the four or five between, against
+				// live's smooth 6.25 ms step every present. Both remove the same amount of light per
+				// second, so nothing in the per-pass accounting could see it, but the pool is what the
+				// beam window's slices accumulate into, and stepping it coarsely makes the parts of a
+				// list deposited earliest drop visibly when the lump lands. The emulated clock runs
+				// during playback exactly as it does live, so use it and the two paths match.
+				const bool persist_frame_domain = vstats.playback_active
+						&& (vstats.playback_paused || vstats.playback_decay_hold);
+				const double persist_dt = persist_frame_domain
 					? (m_vec_frame_advanced ? double(vstats.playback_dt_ms) / 1000.0 : 0.0)
 					: ((m_vec_persist_prev_t >= 0.0 && persist_now > m_vec_persist_prev_t)
 						? (persist_now - m_vec_persist_prev_t) : 0.0);
-				m_vec_persist_prev_t = vstats.playback_active ? -1.0 : persist_now;
+				m_vec_persist_prev_t = persist_frame_domain ? -1.0 : persist_now;
 				const float phos_vals[4] = {
 					float(persist_dt * 1000.0),
 					m_chains->slider_value(0, "phosphor_half_ms",  42.0f),
