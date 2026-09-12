@@ -639,6 +639,7 @@ private:
 	// already there, so Glow Combine mixes the two by how far the tube face has fallen away from the
 	// plate and gets a penumbra that widens toward the rim without a second blur chain. A lerp is not
 	// a convolution, but it is monotonic in softness, which is what this is for.
+	bgfx_target *m_vectrex_overlay_caster = nullptr;
 	bgfx_target *m_vectrex_overlay_shadow[2] = { nullptr, nullptr };
 	// The overlay is a still image. Blurring it every present would be two full-window passes at the
 	// host present rate; this key skips the work until the artwork, the radius or the size moves.

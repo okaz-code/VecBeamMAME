@@ -96,7 +96,8 @@ bgfx_chain_entry* chain_entry_reader::read_from_value(
 					// Runtime targets, not files: the Vectrex rear-ink masks and their penumbra copy,
 					// which Glow Combine reads to shadow the tube's ambient illumination.
 					&& texture_name != "vectrex_overlay_white"
-					&& texture_name != "vectrex_overlay_shadow")
+					&& texture_name != "vectrex_overlay_shadow"
+					&& texture_name != "vectrex_overlay_caster")
 				{
 					if (selection == "")
 					{

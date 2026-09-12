@@ -278,8 +278,10 @@ void main()
 		vec2 vx_dir=vec2(cos(u_vx_shadow.w),-sin(u_vx_shadow.w));
 		vec2 vx_uv=u_vx_screen_rect.xy+v_texcoord0*u_vx_screen_rect.zw
 			+vx_dir*vx_gap*u_vx_screen_rect.z;
-		// The mask targets are premultiplied, so for white ink any colour channel IS the coverage.
-		float vx_cover=clamp(mix(texture2D(s_vx_ink,vx_uv).r,texture2D(s_vx_shadow,vx_uv).r,vx_sag),0.0,1.0);
+		// ALPHA, not the premultiplied colour: the caster carries the surface print as well, whose
+		// dark areas hold an RGB of nearly zero however opaque they are. The mask blend accumulates
+		// true coverage in alpha, so that is the channel to read.
+		float vx_cover=clamp(mix(texture2D(s_vx_ink,vx_uv).a,texture2D(s_vx_shadow,vx_uv).a,vx_sag),0.0,1.0);
 		vx_shadow=mix(1.0,clamp(u_vx_shadow_ink.x,0.0,1.0),vx_cover*clamp(u_vx_shadow.x,0.0,1.0));
 	}
 	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette*vx_shadow;

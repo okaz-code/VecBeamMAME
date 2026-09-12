@@ -12,6 +12,9 @@ SAMPLER2D(s_white, 2);
 SAMPLER2D(s_color, 3);
 // Penumbra copy of the rear white ink. s_white above is the sharp one.
 SAMPLER2D(s_vx_shadow, 4);
+// Rear ink UNION surface print, the plate's full shadow caster. Kept apart from s_white, which is
+// the rear white ink alone and drives the optical model.
+SAMPLER2D(s_vx_caster, 5);
 
 uniform vec4 u_overlay_params0; // x=seed nits, y=white transmission, z=white reflectance, w=resin diffusion strength
 uniform vec4 u_overlay_params1; // x=ambient, y=paper white nits, z=colour optical density, w=colour resin glow
@@ -133,7 +136,7 @@ void main()
 		float vx_gap = u_vx_shadow.y * mix(1.0, u_vx_shadow.z, vx_sag);
 		vec2 vx_dir = vec2(cos(u_vx_shadow.w), -sin(u_vx_shadow.w));
 		vec2 vx_uv = v_texcoord0 + vx_dir * vx_gap * u_vx_screen_rect.z;
-		float vx_cover = clamp(mix(texture2D(s_white, vx_uv).r, texture2D(s_vx_shadow, vx_uv).r, vx_sag), 0.0, 1.0);
+		float vx_cover = clamp(mix(texture2D(s_vx_caster, vx_uv).a, texture2D(s_vx_shadow, vx_uv).a, vx_sag), 0.0, 1.0);
 		vx_shadow = mix(1.0, clamp(u_vx_shadow_ink.x, 0.0, 1.0), vx_cover * clamp(u_vx_shadow.x, 0.0, 1.0));
 	}
 	vec3 dark_resin = static_filter

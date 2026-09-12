@@ -131,6 +131,7 @@
             重ねてもアンチエイリアス縁が二重合成されて硬くなるだけだった。
         -->
         <element ref="overlay_front_print"
+                 optical-role="vectrex-front"
                  blend="alpha">
             <bounds x="0" y="0" width="1613" height="2060"/>
         </element>

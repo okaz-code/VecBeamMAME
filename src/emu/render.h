@@ -120,6 +120,10 @@ constexpr u32 PRIMFLAG_OPTICAL_ROLE_MASK = 3 << PRIMFLAG_OPTICAL_ROLE_SHIFT;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_NONE = 0;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE = 1;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR = 2;
+// Surface print. Unlike the two above this item is NOT consumed by the optical path - it is the
+// artwork a viewer sees in ambient light and still draws normally. The tag exists so the renderer
+// can also include it in the shadow the plate casts on the tube face.
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT = 3;
 
 //**************************************************************************
 //  MACROS

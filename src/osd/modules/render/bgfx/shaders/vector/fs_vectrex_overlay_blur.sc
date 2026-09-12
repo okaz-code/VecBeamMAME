@@ -17,14 +17,17 @@ void main()
 	// The nine-tap profile is supplied by the renderer, already normalised to sum to one over
 	// the symmetric kernel.  Building it on the CPU keeps the shape control free per pixel and
 	// makes the normalisation exact for any curve, which a per-pixel exp()/pow() would not.
-	vec3 value = texture2D(s_tex, v_texcoord0).rgb * u_overlay_blur_w0.x;
-	value += (texture2D(s_tex, v_texcoord0 + step_uv).rgb
-		+ texture2D(s_tex, v_texcoord0 - step_uv).rgb) * u_overlay_blur_w0.y;
-	value += (texture2D(s_tex, v_texcoord0 + step_uv * 2.0).rgb
-		+ texture2D(s_tex, v_texcoord0 - step_uv * 2.0).rgb) * u_overlay_blur_w0.z;
-	value += (texture2D(s_tex, v_texcoord0 + step_uv * 3.0).rgb
-		+ texture2D(s_tex, v_texcoord0 - step_uv * 3.0).rgb) * u_overlay_blur_w0.w;
-	value += (texture2D(s_tex, v_texcoord0 + step_uv * 4.0).rgb
-		+ texture2D(s_tex, v_texcoord0 - step_uv * 4.0).rgb) * u_overlay_blur_w1.x;
-	gl_FragColor = vec4(value, 1.0);
+	// Alpha is carried too. The shadow caster keeps its coverage there, because a premultiplied RGB
+	// reads as near zero under dark ink and would leave the surface print casting nothing at all.
+	// The resin diffusion target has no alpha channel, so this costs that path nothing.
+	vec4 value = texture2D(s_tex, v_texcoord0) * u_overlay_blur_w0.x;
+	value += (texture2D(s_tex, v_texcoord0 + step_uv)
+		+ texture2D(s_tex, v_texcoord0 - step_uv)) * u_overlay_blur_w0.y;
+	value += (texture2D(s_tex, v_texcoord0 + step_uv * 2.0)
+		+ texture2D(s_tex, v_texcoord0 - step_uv * 2.0)) * u_overlay_blur_w0.z;
+	value += (texture2D(s_tex, v_texcoord0 + step_uv * 3.0)
+		+ texture2D(s_tex, v_texcoord0 - step_uv * 3.0)) * u_overlay_blur_w0.w;
+	value += (texture2D(s_tex, v_texcoord0 + step_uv * 4.0)
+		+ texture2D(s_tex, v_texcoord0 - step_uv * 4.0)) * u_overlay_blur_w1.x;
+	gl_FragColor = value;
 }

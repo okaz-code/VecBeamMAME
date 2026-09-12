@@ -3243,7 +3243,7 @@ bool renderer_bgfx::blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h,
 			t1->set(weights, sizeof(weights)); t1->upload();
 		}
 		bgfx::setTexture(0, sampler->handle(), direction
-				? m_vectrex_overlay_shadow[0]->texture() : m_vectrex_overlay_white->texture());
+				? m_vectrex_overlay_shadow[0]->texture() : m_vectrex_overlay_caster->texture());
 		if (bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
 			return false;
 		bgfx::TransientVertexBuffer buffer;
@@ -3287,7 +3287,8 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
 		have_white = have_white || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE;
 		have_color = have_color || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR;
-		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
+		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
+			|| role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
 		{
 			// Do not activate the special path unless every marked item can be represented in its
 			// mask.  The ordinary artwork fallback must remain available as an all-or-nothing path.
@@ -3315,11 +3316,19 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	if (wrong_size(m_vectrex_overlay_color))
 		m_vectrex_overlay_color = m_targets->create_target("vectrex_overlay_color", bgfx::TextureFormat::BGRA8,
 			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	// The shadow caster: rear white ink UNION the surface print. Deliberately its own target rather
+	// than an addition to the white mask - the composite reads that one as the REAR white ink and
+	// drives transmission and the reflected-white term from it, so folding the surface print in would
+	// make the optical model treat a front-surface element as rear ink.
+	if (wrong_size(m_vectrex_overlay_caster))
+		m_vectrex_overlay_caster = m_targets->create_target("vectrex_overlay_caster", bgfx::TextureFormat::BGRA8,
+			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
 	auto usable = [](bgfx_target *target)
 	{
 		return target && bgfx::isValid(target->target()) && bgfx::isValid(target->texture());
 	};
-	if (!usable(m_vectrex_overlay_white) || !usable(m_vectrex_overlay_color))
+	if (!usable(m_vectrex_overlay_white) || !usable(m_vectrex_overlay_color)
+		|| !usable(m_vectrex_overlay_caster))
 		return bail("an overlay mask target could not be created");
 
 	float projection[16];
@@ -3329,8 +3338,10 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 		bgfx::getCaps()->homogeneousDepth);
 	uint16_t const white_view = uint16_t(s_current_view++);
 	uint16_t const color_view = uint16_t(s_current_view++);
+	uint16_t const caster_view = uint16_t(s_current_view++);
 	bgfx_view_profile::name(white_view, "vx_overlay_white");
 	bgfx_view_profile::name(color_view, "vx_overlay_color");
+	bgfx_view_profile::name(caster_view, "vx_overlay_caster");
 	auto setup_mask_view = [projection, width, height](uint16_t view, bgfx_target *target)
 	{
 		bgfx::setViewFrameBuffer(view, target->target());
@@ -3342,13 +3353,19 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	};
 	setup_mask_view(white_view, m_vectrex_overlay_white);
 	setup_mask_view(color_view, m_vectrex_overlay_color);
+	setup_mask_view(caster_view, m_vectrex_overlay_caster);
 	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
 	{
 		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
 		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE)
+		{
 			render_vectrex_overlay_quad(prim, white_view, window_index);
+			render_vectrex_overlay_quad(prim, caster_view, window_index);
+		}
 		else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
 			render_vectrex_overlay_quad(prim, color_view, window_index);
+		else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+			render_vectrex_overlay_quad(prim, caster_view, window_index);
 	}
 	m_vx_seen_role_quads = role_quads;
 	m_vx_seen_plain_quads = plain_quads;
@@ -3402,7 +3419,8 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 			^ uint64_t(std::lround(penumbra_px * 64.0f));
 	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
 	{
-		if (PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE)
+		const uint32_t r = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
+		if (r != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE && r != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
 			continue;
 		key = key * 1099511628211ull
 			^ uint64_t(reinterpret_cast<uintptr_t>(prim->texture.base))
@@ -3603,7 +3621,8 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		|| !bind(1, "s_diffused", m_vectrex_overlay_blur[1]->texture())
 		|| !bind(2, "s_white", m_vectrex_overlay_white->texture())
 		|| !bind(3, "s_color", m_vectrex_overlay_color->texture())
-		|| !bind(4, "s_vx_shadow", m_vectrex_overlay_shadow[1]->texture()))
+		|| !bind(4, "s_vx_shadow", m_vectrex_overlay_shadow[1]->texture())
+		|| !bind(5, "s_vx_caster", m_vectrex_overlay_caster->texture()))
 		return false;
 	// The same three the chain's Glow Combine is given, so the two shadows agree.
 	{
@@ -9132,10 +9151,13 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				break;
 
 			case render_primitive::QUAD:
-				// Optical-role elements were consumed by prepare_vectrex_overlay.  When that path is
+				// The two REAR inks were consumed by prepare_vectrex_overlay.  When that path is
 				// unavailable m_vectrex_overlay_active remains false and they render as normal artwork.
+				// The surface print is tagged as well but is never consumed: it is what a viewer sees
+				// in ambient light, and the tag only adds it to the plate's shadow caster.
 				if (m_vectrex_overlay_active
-					&& PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) != PRIMFLAG_OPTICAL_ROLE_NONE)
+					&& (PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE
+						|| PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR))
 					break;
 				// Skip the VECTORBUF background quad (the black background drawn by vector.cpp):
 				// it would overwrite the vec blit, which has already filled the backbuffer.
@@ -9382,9 +9404,12 @@ void renderer_bgfx::allocate_buffer(render_primitive *prim, uint32_t blend, bgfx
 				break;
 
 			case render_primitive::QUAD:
-				// Symmetric with buffer_primitives' optical-role skip.
+				// Symmetric with buffer_primitives' optical-role skip - and it MUST stay symmetric:
+				// this scan sizes the buffer the other one fills. The surface print is tagged but not
+				// consumed, so both have to keep it.
 				if (m_vectrex_overlay_active
-					&& PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) != PRIMFLAG_OPTICAL_ROLE_NONE)
+					&& (PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE
+						|| PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR))
 					break;
 				// Symmetric with the skip in buffer_primitives
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTORBUF(prim->flags))
