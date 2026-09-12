@@ -298,6 +298,7 @@
     "tube_face_scale",
     "ambient_color",
     "ambient_level",
+    "ambient_sdr_trim",
     "mglow_coefficient",
     "mglow_brightness",
     "mglow_center_edge_diff",

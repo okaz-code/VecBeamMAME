@@ -4,6 +4,7 @@
   "advanced_sliders": "On shows every detailed parameter below in the menu. Leave it off to work with the macros alone.",
   "ambient_color": "The bare colour of unexcited phosphor. A real tube with nothing drawn is not black but a grey-green or grey-blue.",
   "ambient_level": "How bright that is (x0.001). The default 1 means 0.001.",
+  "ambient_sdr_trim": "SDR-only trim on the ambient level. SDR has no room above the beam, so the same absolute ambient sits about ten times higher against the brightest thing on screen than it does in HDR; this pulls it back. 1.0 = the pre-trim behaviour. No effect in HDR.",
   "ambient_mask": "Whether ambient light goes through the mask. 1 = through it (on a real tube the unexcited phosphor is seen through the mask too), 0 = flat.",
   "analytic_glow": "Glow strength from the analytic line, applied to every vector whether overloaded or not. The single most effective slider in this chain.",
   "analytic_glow_width": "Its radius in pixels. The monochrome maximum of 160 is wide, to express the spread of a long-persistence tube.",

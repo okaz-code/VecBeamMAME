@@ -2938,6 +2938,34 @@ float renderer_bgfx::vec_beam_peak_ratio() const
 	return std::max(0.01f, m_chains->slider_value(0, "beam_peak_nits", 1000.0f) / white);
 }
 
+// Scale applied to the chain's ambient pedestal before the output seed. Ambient is reflected room
+// light, not beam emission: the SDR seed multiplies the completed chain by sdr_beam_level, so
+// dividing it out here holds ambient at an absolute level while beam, optical glow, monitor glow and
+// bezel reflection take the SDR exposure.
+//
+// ambient_sdr_trim then pulls that absolute level back down, because SDR has no room above the beam.
+// In nits the two output paths already agree (~0.2 either way), but what a viewer judges is ambient
+// against the BRIGHTEST thing on screen, and that is a few thousand nits in HDR against an SDR white
+// that clips at a couple of hundred - an order of magnitude less contrast for the same pedestal. The
+// peak cannot be recovered in SDR, so the ratio is restored from the other end. A second, smaller
+// effect is folded in as well: the HDR seed multiplies the WHOLE chain (ambient included) by
+// beam_peak, so ambient rides the beam exposure there while this path holds it absolute, leaving SDR
+// 1/sdr_beam_level stronger again - 1.39x at monochrome's 0.72 default, and more once
+// [M] Beam Brightness scales that slider down.
+//
+// ONE definition, called by both the uniform injection and the verbose ambient-nits line. Those were
+// two copies of the formula, and the log kept quoting the pre-trim figure.
+float renderer_bgfx::ambient_output_scale() const
+{
+	if (s_bgfx_hdr_active || s_bgfx_edr_active)
+		return 1.0f;
+	const float sdr_level = std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f);
+	// 1.0 for a chain without the slider (default-vector draws no ambient at all), which leaves
+	// those chains on their previous behaviour.
+	const float trim = std::max(m_chains->slider_value(0, "ambient_sdr_trim", 1.0f), 0.0f);
+	return trim / sdr_level;
+}
+
 float renderer_bgfx::vec_beam_peak_nits(float reference_white) const
 {
 	return vec_beam_peak_ratio() * std::max(1.0f, reference_white);
@@ -7690,13 +7718,12 @@ int renderer_bgfx::draw(int update)
 					m_chains->inject_entry_uniform(0, entry, "u_vec_res_scale", vec_res_vals, 4);
 				}
 
-				// Ambient is reflected room light, not beam emission. The SDR seed scales the
-				// completed chain by sdr_beam_level, so pre-compensate only ambient here; beam,
-				// optical glow, monitor glow and bezel reflection retain the SDR exposure.
+				// Ambient is reflected room light, not beam emission, and SDR has no room above the
+				// beam for it to sit under. ambient_output_scale() carries the reasoning and is the
+				// one definition the verbose ambient-nits line uses as well.
 				const bool hdr_present = s_bgfx_hdr_active || s_bgfx_edr_active;
-				const float sdr_level = std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f);
-				const float ambient_output_scale = hdr_present ? 1.0f : (1.0f / sdr_level);
-				const float ambient_scale_vals[4] = { ambient_output_scale, 0.0f, 0.0f, 0.0f };
+				const float ambient_scale = ambient_output_scale();
+				const float ambient_scale_vals[4] = { ambient_scale, 0.0f, 0.0f, 0.0f };
 				inject_primary_basis();
 				// The aux buffers now hold a whole pass at full strength (deposit_aux), so the
 				// window's ramp is applied where they are sampled. Only the first pyramid level is
@@ -8125,9 +8152,7 @@ int renderer_bgfx::draw(int update)
 				for (int c = 0; c < 3; c++)
 					amb_color = std::max(amb_color,
 							m_chains->slider_value_indexed(0, "ambient_color", c, 1.0f));
-				const float amb_scale = (s_bgfx_hdr_active || s_bgfx_edr_active)
-					? 1.0f
-					: (1.0f / std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f));
+				const float amb_scale = ambient_output_scale();
 				if (std::abs(output_reference_white - m_logged_reference_white) > 0.01f
 					|| std::abs(amb_level - m_logged_ambient_level) > 1.0e-4f)
 				{
