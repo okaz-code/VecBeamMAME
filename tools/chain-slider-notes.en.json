@@ -220,6 +220,7 @@
   "vector_linearity_y": "Deflection linearity (gain). 1.0 is ideal. A real machine differs slightly between X and Y, so a square reads as a rectangle.",
   "vector_pincushion_x_quad": "Asymmetric pincushion in X (quadratic). 0 is off. Where tube_distortion comes from the curvature of the face, this comes from non-linearity in the deflection.",
   "vertex_dwell": "Vertex brightness from the beam slowing at a corner - on a real machine the corners look brighter. Colour defaults to 0.5; monochrome and Vectrex use 0 and handle it by other means.",
+  "vertex_dwell_pile_falloff": "How far past the radius a pause keeps counting, as a multiple of it. The weight is 1 at the point and falls smoothly to 0 at radius x this, so a shrinking sprite ramps onto the term instead of stepping onto it. 1 = as tight as the radius; raise it to spread the transition.",
   "width_curve": "How the energy-to-width response bends. Above 1 the middle is thinner and reaches maximum later, below 1 the middle is thicker, 1.0 is linear.",
   "width_knee": "The fraction of the width already reached at the threshold T. Gentle up to T, then steep beyond it.",
   "width_over_curve": "How width grows past the threshold. 1.0 is a straight line; larger makes it swell late.",

@@ -2790,6 +2790,10 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "vertex_dwell_overlap", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap, 0.0f },
 	{ "vertex_dwell_overlap_radius", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap_radius, 3.0f },
 	{ "vertex_dwell_overlap_ref", &renderer_bgfx::vec_slider_cache::vertex_dwell_overlap_ref, 4.0f },
+	{ "vertex_dwell_pile", &renderer_bgfx::vec_slider_cache::vertex_dwell_pile, 0.0f },
+	{ "vertex_dwell_pile_radius", &renderer_bgfx::vec_slider_cache::vertex_dwell_pile_radius, 0.3f },
+	{ "vertex_dwell_pile_cap", &renderer_bgfx::vec_slider_cache::vertex_dwell_pile_cap, 0.0f },
+	{ "vertex_dwell_pile_falloff", &renderer_bgfx::vec_slider_cache::vertex_dwell_pile_falloff, 2.0f },
 	{ "overload_width_add", &renderer_bgfx::vec_slider_cache::overload_width_add, -1.0f },
 	{ "overload_width_bloom_link", &renderer_bgfx::vec_slider_cache::overload_width_bloom_link, 1.0f },
 	{ "overload_width_center", &renderer_bgfx::vec_slider_cache::overload_width_center, 0.65f },
@@ -3475,7 +3479,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	return true;
 }
 
-void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float end_gain_start, float end_gain_finish, float stroke_px_per_ms, float dwell_scale, float aux_scale, const float *body_rgb)
+void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex, AnalyticLineVertex *optical_vertex, AnalyticLineVertex *np_vertex, AnalyticLineVertex *ray_vertex, float start_cap, float end_cap, float round_start, float round_end, float end_gain_start, float end_gain_finish, float stroke_px_per_ms, float dwell_scale, float pile_dwell_us, float aux_scale, const float *body_rgb)
 {
 	// Start with the render core's unclipped endpoints.  Vector Image Scale represents the monitor
 	// board's X/Y SIZE adjustment, so it must act on beam coordinates before the phosphor face clips
@@ -3590,6 +3594,34 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 	{
 		const double dt_us = (prim->t1 - prim->t0) * 1e6;
 		n *= float(1.0 - std::exp(-dt_us / double(m_vs.z_rise_tau)));
+	}
+	// Terminus pile energy (vertex_dwell_pile). pile_dwell_us is the time the beam spends PARKED on
+	// this stroke's hottest terminus - the blanked gaps at that point, summed over every stroke that
+	// begins or ends there (the pre-pass in draw() only counts a gap as parking when the two strokes
+	// share the point; a gap between strokes that do NOT is the beam flying elsewhere). What sits on
+	// that spot is therefore a dwell dot, not a line end, so the level comes from the renderer's own
+	// parked-beam model - energy_dot_ref / _curve / _max, the same path a length-0 point takes -
+	// rather than from a scale invented for this term.
+	// Major Havoc's PYROID is the case this exists for: six rays drawn out and back from ONE centre,
+	// so the beam parks on that centre once per ray. ~28 us of sweep but ~27 us of parking on a single
+	// spot, which reads on the tube as a white-hot core. The commanded current cannot say any of this
+	// - the AVG tops out at intensity 15 = beam_energy 1.0 = exactly overload_threshold - so without
+	// this the pyroid is scored identically to a wall.
+	// Weighted by how much of THIS stroke the parked spot covers: a long line keeps a speck of light
+	// at its end and its body must not brighten (the per-end vertex_dwell_energy gain already covers
+	// that), while a stroke no longer than the spot itself IS the spot. Raises n and never lowers it,
+	// so continuous geometry (no gap -> no parking) is untouched.
+	if (m_vs.vertex_dwell_pile > 0.0f && pile_dwell_us > 0.0f && n > 0.0f)
+	{
+		const double x  = double(pile_dwell_us) / double(std::max(1.0f, m_vs.energy_dot_ref));
+		const double xg = std::pow(std::max(0.0, x), double(std::max(0.05f, m_vs.energy_dot_curve)));
+		const float  sat  = float(xg / (xg + 1.0));
+		const float  infl = std::clamp(m_vs.energy_infl, 0.0f, 1.0f);
+		const float  emax = std::max(1.0f, m_vs.energy_dot_max);
+		const float  n_parked = n * ((1.0f - infl) + infl * sat * emax);
+		const float  spot = std::max(0.5f, m_vs.beam_width_max) * vec_res_scale();
+		const float  cover = (seg_len > spot) ? (spot / seg_len) : 1.0f;
+		n += std::max(0.0f, n_parked - n) * cover * std::clamp(m_vs.vertex_dwell_pile, 0.0f, 4.0f);
 	}
 	// One control now applies energy and position instability together. Classification, length and
 	// direction continue to use the clean geometry above; only the final endpoints are displaced.
@@ -6135,6 +6167,24 @@ int renderer_bgfx::draw(int update)
 				? std::clamp(m_vs.vertex_dwell_overlap, 0.0f, 1.0f) : 0.0f;
 			struct dwell_terminus { float x, y; const render_primitive *prim; bool is_end; };
 			std::vector<dwell_terminus> dwell_terms;
+			// Terminus pile energy (vertex_dwell_pile). Separate from the term above on purpose: this
+			// one measures PARKED TIME rather than a dimensionless gap ratio, it counts length-0
+			// primitives (a parked beam is exactly what piles up, and those are excluded below
+			// because they have no direction for the width profile), and it feeds the beam energy
+			// instead of the endpoint width. vertex_dwell_energy's coincidence reference is tuned
+			// against a population that excludes both, so the two must not share a count.
+			const float pile_energy = m_line_analytic
+				? std::clamp(m_vs.vertex_dwell_pile, 0.0f, 4.0f) : 0.0f;
+			// The pile resolves PAUSES BY POINT and has its own, far tighter radius than the beam spot
+			// above: "the beam did not move" is an exact statement, and merging separate vertices of
+			// one small sprite into a single heap is what made this term fire on half the screen.
+			const float pile_radius = std::max(0.05f, m_vs.vertex_dwell_pile_radius * vec_res_scale());
+			// Most one pause may contribute. The deposit at a terminus is set by the Z transition,
+			// not by how long the beam then waits blanked, so capping turns a sum of waiting times
+			// into a count of pauses. 0 = uncapped (raw waiting time).
+			const float pile_cap = std::max(0.0f, m_vs.vertex_dwell_pile_cap);
+			pile_grid_begin(pile_energy > 0.0f, pile_radius,
+					m_vs.vertex_dwell_pile_falloff, vector_count);
 			if (deposit_vector_source && m_line_analytic)
 			{
 				vtx_boost.reserve(size_t(vector_count) * 2);
@@ -6147,12 +6197,42 @@ int renderer_bgfx::draw(int update)
 				}
 				const render_primitive *pv = nullptr;
 				float pdx = 0.0f, pdy = 0.0f;
+				// Own cursor, because the pile walks EVERY vector primitive: a length-0 dot is skipped
+				// below but it still holds the beam on its point, and letting the width profile's
+				// cursor skip over it would measure the next gap from the wrong stroke.
+				const render_primitive *pv_all = nullptr;
 				for (render_primitive *p = window().m_primlist->first(); p != nullptr; p = p->next())
 				{
 					if (p->type != render_primitive::LINE || !PRIMFLAG_GET_VECTOR(p->flags))
 						continue;
 					const float ddx = p->bounds.x1 - p->bounds.x0, ddy = p->bounds.y1 - p->bounds.y0;
 					const float len = sqrtf(ddx * ddx + ddy * ddy);
+					if (pile_energy > 0.0f)
+					{
+						// The beam is PARKED during a blanked gap only when the two strokes either
+						// side of it share the point. Without that test every jump between objects
+						// would read as dwell - Major Havoc leaves ~400 us between one object and the
+						// next, during which the beam is travelling, not standing still.
+						if (pv_all != nullptr && p->t0 >= 0.0 && pv_all->t1 >= 0.0)
+						{
+							const float jx = p->bounds.x0 - pv_all->bounds.x1;
+							const float jy = p->bounds.y0 - pv_all->bounds.y1;
+							const double gap = p->t0 - pv_all->t1;
+							// Weighted, not gated. The two strokes either side of a blanked gap share the
+							// point exactly when the beam stood still, and a hard radius here decided an
+							// entire pause in or out on a sub-pixel difference - the same step the read
+							// side had. Major Havoc's ~400 us jumps between objects land far outside the
+							// support and still score zero, which is what this test is for.
+							const float share = pile_weight(jx * jx + jy * jy);
+							if (gap > 0.0 && share > 0.0f)
+							{
+								const float us = float(gap * 1.0e6);
+								pile_grid_add(p->bounds.x0, p->bounds.y0,
+										((pile_cap > 0.0f) ? std::min(us, pile_cap) : us) * share);
+							}
+						}
+						pv_all = p;
+					}
 					if (len < 1.0f)
 						continue;  // dots have no direction; leave them transparent to the chain
 					const float ndx = ddx / len, ndy = ddy / len;
@@ -7002,7 +7082,11 @@ int renderer_bgfx::draw(int update)
 											gcap_e = 1.0f + vertex_dwell_energy * dit->second.second;
 										}
 									}
-									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, gcap_s, gcap_e, sps, dsc, 1.0f,
+									// Parked microseconds at this stroke's hottest terminus (vertex_dwell_pile).
+									const float pile_us = !m_pile_on ? 0.0f
+											: std::max(pile_grid_at(vprim->bounds.x0, vprim->bounds.y0),
+													   pile_grid_at(vprim->bounds.x1, vprim->bounds.y1));
+									put_analytic_line(vprim, body_ptr, gptr, optr, npptr, rptr, scap, ecap, rscap, recap, gcap_s, gcap_e, sps, dsc, pile_us, 1.0f,
 											vp_dimmed ? vp_body_rgb : nullptr);
 									if (gptr) glow_verts += m_glow_vpl;
 									if (optr) optical_verts += m_optical_vpl;

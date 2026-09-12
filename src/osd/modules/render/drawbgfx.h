@@ -416,6 +416,18 @@ public:
 		float vertex_dwell_overlap = 0.0f;
 		float vertex_dwell_overlap_radius = 3.0f;
 		float vertex_dwell_overlap_ref = 4.0f;
+		// Terminus pile energy: where the list ends one stroke and starts the next on the SAME point,
+		// the beam stands still there while Z is down. Several strokes meeting on one spot park it
+		// several times over, and the deposit is the sum of those pauses - a dwell dot, not a line end.
+		// Strength of the lift toward the parked-beam level (energy_dot_*); 0 = off.
+		float vertex_dwell_pile = 0.0f;
+		// Resolution at which two pauses count as the same POINT (reference px), and the most one
+		// pause may contribute (us). The cap turns a sum of waiting times into a count of pauses,
+		// which is what the physics says: the deposit per pause is set by the Z transition, not by
+		// how long the beam then waits blanked.
+		float vertex_dwell_pile_radius = 0.3f;
+		float vertex_dwell_pile_cap = 0.0f;
+		float vertex_dwell_pile_falloff = 2.0f;
 		float overload_width_add = -1.0f;
 		float overload_width_bloom_link = 1.0f;
 		float overload_width_center = 0.65f;
@@ -497,6 +509,9 @@ private:
 	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
 	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float end_gain_start = 1.0f, float end_gain_finish = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f,
+			// Microseconds the beam spends PARKED on this stroke's hottest terminus (vertex_dwell_pile
+			// pre-pass). 0 = nothing piled there.
+			float pile_dwell_us = 0.0f,
 			// Gain for the SCATTERED-LIGHT outputs only (overdrive flare, analytic glow, halation ring,
 			// starburst rays). Under the beam time window those routes are not windowed - they have no
 			// persistence of their own - so they would show a whole pass's scatter while the body shows
@@ -827,6 +842,151 @@ private:
 	// without changing the established landscape 4:3 defaults.
 	float m_vec_res_w = 0.0f;
 	float m_vec_res_h = 0.0f;
+	// --- vertex_dwell_pile: parked-microsecond accumulator -----------------------------------
+	// Pauses are keyed by POINT, not by beam spot. "The beam did not move" is an exact statement,
+	// and resolving it at spot size instead merges the separate vertices of any small sprite into
+	// one heap: at a 4.5 px radius the space wave of Major Havoc had 394 of 636 vectors lifted,
+	// at 0.5 px it has 5, and the pyroid is untouched either way.
+	//
+	// The grid stores the PAUSES THEMSELVES, not a per-cell sum, and the read weights each one by
+	// its true distance. The earlier form wrote a flat value into every cell the radius touched and
+	// read a single cell, which made "is this the same heap?" a question about CELL MEMBERSHIP
+	// rather than distance: two points 0.05 px apart in different cells did not merge and two 0.59
+	// px apart in one cell merged completely. A shrinking sprite crossed that boundary all at once
+	// and the line width stepped - Star Wars' TIE fighters are the case that showed it. Shrinking
+	// the radius only moved the step to smaller sprites; it takes an exact distance to remove it.
+	//
+	// Keeping positions also avoids the trap in the obvious fix. Evaluating a smooth kernel at CELL
+	// CENTRES and reading back bilinearly does not reconstruct the peak: a pause landing on a cell
+	// centre keeps its full value while one landing on a corner loses three quarters of it, so the
+	// step would have been traded for a sub-cell ripple. Evaluated against the real position there
+	// is nothing to reconstruct.
+	//
+	// Cost: a deposit touches ONE cell (it used to touch four) and a read walks the 3x3 around the
+	// terminus. Off, it is still a single branch.
+	struct pile_pause { float x, y, us; int32_t next; };
+	std::vector<pile_pause> m_pile_pauses;
+	struct pile_cell { uint64_t key; uint32_t stamp; int32_t head; };
+	std::vector<pile_cell> m_pile_tab;
+	uint32_t m_pile_mask = 0;
+	uint32_t m_pile_frame = 0;
+	float m_pile_inv_cell = 0.0f;
+	float m_pile_radius = 0.0f;
+	float m_pile_support = 0.0f;
+	float m_pile_inv_support2 = 0.0f;
+	bool m_pile_on = false;
+	static constexpr int PILE_PROBES = 8;
+	// One cell can be walked this far. A frame that parks the whole vector list on one point would
+	// otherwise be O(n^2); truncating is invisible because such a heap has long since saturated the
+	// dot-energy curve (sat = x^g/(x^g+1)), so the entries past the cap cannot change the result.
+	static constexpr int PILE_WALK_CAP = 64;
+	static uint64_t pile_key(int cx, int cy)
+	{
+		return (uint64_t(uint32_t(cx)) << 32) | uint64_t(uint32_t(cy));
+	}
+	static uint32_t pile_hash(uint64_t k)
+	{
+		k *= 0x9e3779b97f4a7c15ull; k ^= k >> 29; k *= 0xbf58476d1ce4e5b9ull; k ^= k >> 32;
+		return uint32_t(k);
+	}
+	// Smooth, compact falloff: 1 at the point, 0 value AND 0 slope at the support edge. Both the
+	// deposit gate (did the beam park, or was it travelling?) and the read use it, so neither can
+	// contribute a step.
+	float pile_weight(float d2) const
+	{
+		const float t = 1.0f - d2 * m_pile_inv_support2;
+		return (t > 0.0f) ? (t * t) : 0.0f;
+	}
+	float pile_support() const { return m_pile_support; }
+	void pile_grid_begin(bool enable, float radius, float falloff, int vector_count)
+	{
+		m_pile_on = enable;
+		if (!enable)
+			return;
+		m_pile_radius = std::max(1.0e-3f, radius);
+		// The radius keeps its meaning - the distance at which two termini are one heap - and the
+		// falloff only says how far past it the weight takes to reach zero. Existing calibrations
+		// (the pyroid parks at distance 0, where the weight is 1 whatever the falloff) do not move.
+		m_pile_support = m_pile_radius * std::max(1.0f, falloff);
+		m_pile_inv_support2 = 1.0f / (m_pile_support * m_pile_support);
+		// One cell per support radius, so a read covers the whole kernel in its 3x3 neighbourhood.
+		m_pile_inv_cell = 1.0f / m_pile_support;
+		size_t want = 4096;
+		while (want < size_t(std::max(0, vector_count)) * 4 && want < (size_t(1) << 16))
+			want <<= 1;
+		if (m_pile_tab.size() != want)
+		{
+			m_pile_tab.assign(want, pile_cell{ 0ull, 0u, -1 });
+			m_pile_mask = uint32_t(want - 1);
+			m_pile_frame = 0;
+		}
+		m_pile_pauses.clear();
+		m_pile_pauses.reserve(size_t(std::max(0, vector_count)));
+		// Retiring the previous frame by bumping the stamp keeps this O(1).
+		m_pile_frame++;
+	}
+	void pile_grid_add(float x, float y, float us)
+	{
+		if (us <= 0.0f)
+			return;
+		const int32_t idx = int32_t(m_pile_pauses.size());
+		const uint64_t k = pile_key(int(std::floor(x * m_pile_inv_cell)), int(std::floor(y * m_pile_inv_cell)));
+		uint32_t i = pile_hash(k) & m_pile_mask;
+		for (int probe = 0; probe < PILE_PROBES; probe++, i = (i + 1) & m_pile_mask)
+		{
+			pile_cell &c = m_pile_tab[i];
+			if (c.stamp != m_pile_frame)
+			{
+				c.stamp = m_pile_frame; c.key = k; c.head = idx;
+				m_pile_pauses.push_back(pile_pause{ x, y, us, -1 });
+				return;
+			}
+			if (c.key == k)
+			{
+				m_pile_pauses.push_back(pile_pause{ x, y, us, c.head });
+				c.head = idx;
+				return;
+			}
+			// A full run of probes drops the deposit rather than growing the table mid-frame.
+		}
+	}
+	float pile_grid_at(float x, float y) const
+	{
+		if (!m_pile_on)
+			return 0.0f;
+		const int cx0 = int(std::floor((x - m_pile_support) * m_pile_inv_cell));
+		const int cx1 = int(std::floor((x + m_pile_support) * m_pile_inv_cell));
+		const int cy0 = int(std::floor((y - m_pile_support) * m_pile_inv_cell));
+		const int cy1 = int(std::floor((y + m_pile_support) * m_pile_inv_cell));
+		float us = 0.0f;
+		for (int cy = cy0; cy <= cy1; cy++)
+		{
+			for (int cx = cx0; cx <= cx1; cx++)
+			{
+				const uint64_t k = pile_key(cx, cy);
+				uint32_t i = pile_hash(k) & m_pile_mask;
+				for (int probe = 0; probe < PILE_PROBES; probe++, i = (i + 1) & m_pile_mask)
+				{
+					const pile_cell &c = m_pile_tab[i];
+					if (c.stamp != m_pile_frame)
+						break;
+					if (c.key != k)
+						continue;
+					int32_t e = c.head;
+					for (int walk = 0; e >= 0 && walk < PILE_WALK_CAP; walk++)
+					{
+						const pile_pause &p = m_pile_pauses[size_t(e)];
+						const float dx = p.x - x, dy = p.y - y;
+						us += p.us * pile_weight(dx * dx + dy * dy);
+						e = p.next;
+					}
+					break;
+				}
+			}
+		}
+		return us;
+	}
+
 	float vec_res_scale()
 	{
 		const uint32_t si = window().index();
