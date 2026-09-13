@@ -162,6 +162,35 @@ rgb_t tempest_color(u8 data, u8 intensity)
 	return lut[intensity & 0xf][data & 0xf];
 }
 
+// Quantum: red R130 1.8K, green R134 3.3K, blue R132 1.8K with R136 6.8K trimming it. Note the
+// trim bit belongs to BLUE here, not green - 82S25 D0 runs to R136 at Q10's base.
+//
+colour_lut build_quantum_lut()
+{
+	colour_lut lut;
+	for (unsigned z = 0; z < 16; z++)
+	{
+		const double zref = z_reference(u8(z), 3300.0);
+		const double full = gun_volts(zref, 0.0);
+		for (unsigned c = 0; c < 16; c++)
+		{
+			const u8 red = BIT(~c, 3), blue = BIT(~c, 2), green = BIT(~c, 1), trim = BIT(~c, 0);
+			const double vb = blue ? gun_volts(zref, trim ? 0.0 : 6800.0) : 0.0;
+			lut[z][c] = rgb_t(
+					red ? 0xff : 0x00,
+					green ? 0xff : 0x00,
+					gun_level(vb, full));
+		}
+	}
+	return lut;
+}
+
+rgb_t quantum_color(u8 data, u8 intensity)
+{
+	static const colour_lut lut = build_quantum_lut();
+	return lut[intensity & 0xf][data & 0xf];
+}
+
 } // anonymous namespace
 
 
@@ -1375,14 +1404,7 @@ int avg_quantum_device::handler_7() // quantum_strobe3
 	if (!OP0() && !OP2())
 	{
 		const u16 data = m_colorram[m_color];
-		const u8 bit3 = BIT(~data, 3);
-		const u8 bit2 = BIT(~data, 2);
-		const u8 bit1 = BIT(~data, 1);
-		const u8 bit0 = BIT(~data, 0);
-
-		const u8 g = bit1 * 0xaa + bit0 * 0x54;
-		const u8 b = bit2 * 0xce;
-		const u8 r = bit3 * 0xce;
+		const u8 z = (m_int_latch == 2) ? m_intensity : m_int_latch;
 
 		cycles = 0x4000 - m_timer;
 		m_timer = 0;
@@ -1398,8 +1420,8 @@ int avg_quantum_device::handler_7() // quantum_strobe3
 		vg_add_point_buf(
 				y - m_ycenter + m_xcenter,
 				x - m_xcenter + m_ycenter,
-				rgb_t(r, g, b),
-				((m_int_latch == 2) ? m_intensity : m_int_latch) << 4);
+				quantum_color(u8(data), z),
+				z << 4);
 	}
 	if (OP2())
 	{
