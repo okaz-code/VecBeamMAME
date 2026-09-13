@@ -36,9 +36,9 @@
 #define VGCLIP 1
 
 // Commanded-intensity full scale for every non-Star-Wars generator: a 4-bit intensity field mapped
-// to 0..240 at each vg_add_point_buf call site - through the Z ladder's own weights where the
-// schematic has been read (see z_level), by a shift of 4 elsewhere. Star Wars latches 8 bits and
-// reports its own current instead, so it never uses this.
+// to 0..240 at each vg_add_point_buf call site - through the Z ladder's own weights for the AVG
+// generators (see z_level), by a shift of 4 for the DVG. Star Wars latches 8 bits and reports its
+// own current instead, so it never uses this.
 #define VG_MAX_INTENSITY 240
 
 
@@ -200,8 +200,8 @@ rgb_t quantum_color(u8 data, u8 intensity, bool bleed)
 }
 
 // The Z ladder is the same part in Tempest (R40/R37/R39/R38), Quantum (R140-R143), Gravitar
-// (R59/R57/R56/R58) and Major Havoc (R90-R93): 1.2K/2.2K/4.7K/10K, which is 8.33:4.55:2.13:1, not
-// the 8:4:2:1 a shift by four assumes. Endpoints are unchanged, so this does not move the display's
+// (R59/R57/R56/R58), Major Havoc (R90-R93) and Battlezone (R46/R45/R43/R44): 1.2K/2.2K/4.7K/10K,
+// which is 8.33:4.55:2.13:1, not the 8:4:2:1 a shift by four assumes. Endpoints are unchanged, so this does not move the display's
 // calibration - only the steps in between, by at most 4/240.
 //
 // Taking D=0 as black is what makes this a pure conductance ratio: the +5V pull-up each game sizes
@@ -209,8 +209,8 @@ rgb_t quantum_color(u8 data, u8 intensity, bool bleed)
 // raw output volts do NOT share one - Major Havoc's PNP adds 0.7V where the others subtract it -
 // but turning volts into brightness needs the monitor's gamma, which is a separate question.
 //
-// Star Wars is not in here: it multiplies an 8-bit STAT latch by a 3-bit VCTR reference in a
-// DAC-08 and reports beam current directly. Battlezone is left alone until its sheet is read.
+// Star Wars is the one that stays out: it multiplies an 8-bit STAT latch by a 3-bit VCTR reference
+// in a DAC-08 and reports beam current directly.
 u8 z_level(u8 intensity)
 {
 	static constexpr u8 LEVEL[16] =
@@ -1536,7 +1536,7 @@ int avg_bzone_device::handler_7() // bzone_strobe3
 				m_xpos,
 				m_ypos,
 				vector_device::color111(7),
-				(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
+				z_level(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe));
 	}
 
 	return cycles;
