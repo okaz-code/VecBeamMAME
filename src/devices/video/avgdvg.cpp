@@ -218,6 +218,64 @@ u8 z_level(u8 intensity)
 	return LEVEL[intensity & 0xf];
 }
 
+// Battlezone alone hangs four more resistors on that node. R30/R29/R31/R32 22K carry
+// DVY12^DVY11, DVY12^DVY10, DVX12^DVX11 and DVX12^DVX10 - in two's complement the sign bit
+// against the next one down reads as "this step is long" - so the ladder is pushed up exactly
+// when the beam has further to go and will therefore cross faster and paint dimmer. All four
+// legs are the same value, so only how many are high matters, and together they are worth 11%
+// of the ladder's own span.
+//
+// This belongs on the commanded intensity rather than in the beam model: the renderer dims a
+// fast beam, and this circuit exists to cancel that dimming, so the two have to meet.
+std::array<std::array<u8, 5>, 16> build_bzone_z_lut()
+{
+	constexpr double LADDER[4] = { 1.0 / 1200.0, 1.0 / 2200.0, 1.0 / 4700.0, 1.0 / 10000.0 };
+	constexpr double G_LEG = 1.0 / 22000.0;         // R30/R29/R31/R32
+	constexpr double G_PULLUP = 1.0 / 3900.0;       // R47
+	constexpr double G_PULLDOWN = 1.0 / 22000.0;    // R28
+
+	double g_ladder = 0.0;
+	for (double g : LADDER)
+		g_ladder += g;
+	const double g_switched = g_ladder + 4.0 * G_LEG;
+	const double denom = g_switched + G_PULLUP + G_PULLDOWN;
+
+	auto node = [&] (double g_high)
+	{
+		return (TTL_VOH * g_high + TTL_VOL * (g_switched - g_high) + 5.0 * G_PULLUP) / denom;
+	};
+
+	// Full scale stays where it was before the speed term existed - a bare ladder at 0xf - so
+	// the display's calibration does not move and a long vector simply overdrives past it.
+	const double black = node(0.0);
+	const double full = node(g_ladder);
+
+	std::array<std::array<u8, 5>, 16> lut;
+	for (unsigned i = 0; i < 16; i++)
+	{
+		double g_bits = 0.0;
+		for (unsigned b = 0; b < 4; b++)
+			if (BIT(i, 3 - b))
+				g_bits += LADDER[b];
+
+		for (unsigned legs = 0; legs < 5; legs++)
+		{
+			const double v = node(g_bits + legs * G_LEG);
+			lut[i][legs] = u8(std::min(255, int(240.0 * (v - black) / (full - black) + 0.5)));
+		}
+	}
+	return lut;
+}
+
+u8 z_level_bzone(u8 intensity, unsigned legs)
+{
+	static const std::array<std::array<u8, 5>, 16> lut = build_bzone_z_lut();
+
+	// A commanded zero is the emulator's blanked-beam marker, and ZBLANK kills the gun on the
+	// real machine regardless of what the ladder is doing, so the speed term must not light it.
+	return (intensity & 0xf) ? lut[intensity & 0xf][std::min(legs, 4u)] : 0;
+}
+
 } // anonymous namespace
 
 
@@ -1532,11 +1590,17 @@ int avg_bzone_device::handler_7() // bzone_strobe3
 
 	if (!OP0() && !OP2())
 	{
+		const unsigned legs =
+				unsigned(BIT(m_dvy, 12) ^ BIT(m_dvy, 11)) +
+				unsigned(BIT(m_dvy, 12) ^ BIT(m_dvy, 10)) +
+				unsigned(BIT(m_dvx, 12) ^ BIT(m_dvx, 11)) +
+				unsigned(BIT(m_dvx, 12) ^ BIT(m_dvx, 10));
+
 		vg_add_point_buf(
 				m_xpos,
 				m_ypos,
 				vector_device::color111(7),
-				z_level(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe));
+				z_level_bzone(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe, legs));
 	}
 
 	return cycles;
