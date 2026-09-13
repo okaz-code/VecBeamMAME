@@ -201,13 +201,21 @@ rgb_t quantum_color(u8 data, u8 intensity, bool bleed)
 
 // The Z ladder is the same part in Tempest (R40/R37/R39/R38), Quantum (R140-R143), Gravitar
 // (R59/R57/R56/R58), Major Havoc (R90-R93) and Battlezone (R46/R45/R43/R44): 1.2K/2.2K/4.7K/10K,
-// which is 8.33:4.55:2.13:1, not the 8:4:2:1 a shift by four assumes. Endpoints are unchanged, so this does not move the display's
-// calibration - only the steps in between, by at most 4/240.
+// which is 8.33:4.55:2.13:1, not the 8:4:2:1 a shift by four assumes. Endpoints are unchanged, so
+// this does not move the display's calibration - only the steps in between, by at most 4/240.
 //
 // Taking D=0 as black is what makes this a pure conductance ratio: the +5V pull-up each game sizes
-// differently and the follower's Vbe both divide out, so all four generators share one table. The
-// raw output volts do NOT share one - Major Havoc's PNP adds 0.7V where the others subtract it -
-// but turning volts into brightness needs the monitor's gamma, which is a separate question.
+// differently and the follower's Vbe both divide out, so all five generators share one table even
+// though their raw output volts do not agree (Major Havoc's PNP adds 0.7V where three of the others
+// subtract it, and Battlezone's PNP/NPN pair cancels).
+//
+// It is also why the monitor's gamma need not be modelled. Putting black at D=0 is what a brightness
+// control does to the CRT's cutoff, and brightness then goes as (V - Vcutoff)^gamma, where
+// (V - Vcutoff) is this same conductance ratio. The emulator's own output picks that gamma up again
+// at the viewer's display, so it stands on both sides and cancels. The ladder is only ever trying to
+// be a linear DAC - 8.33:4.55:2.13:1 is E24 parts reaching for 8:4:2:1 - and a gamma fitted to
+// linearise the raw volts lands anywhere between 1.16 and 1.62 depending on the machine, tracking
+// how large that machine's output pedestal is rather than anything anyone designed towards.
 //
 // Star Wars is the one that stays out: it multiplies an 8-bit STAT latch by a 3-bit VCTR reference
 // in a DAC-08 and reports beam current directly.
