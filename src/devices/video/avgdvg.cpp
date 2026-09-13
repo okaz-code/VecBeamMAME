@@ -35,9 +35,10 @@
 #define VGVECTOR 0
 #define VGCLIP 1
 
-// Commanded-intensity full scale for every non-Star-Wars generator: a 4-bit intensity field, scaled by
-// 16 at each vg_add_point_buf call site (0xf << 4). Star Wars latches 8 bits and reports its own
-// current instead, so it never uses this.
+// Commanded-intensity full scale for every non-Star-Wars generator: a 4-bit intensity field mapped
+// to 0..240 at each vg_add_point_buf call site - through the Z ladder's own weights where the
+// schematic has been read (see z_level), by a shift of 4 elsewhere. Star Wars latches 8 bits and
+// reports its own current instead, so it never uses this.
 #define VG_MAX_INTENSITY 240
 
 
@@ -196,6 +197,25 @@ rgb_t quantum_color(u8 data, u8 intensity, bool bleed)
 	static const colour_lut lut_bleed = build_quantum_lut(true);
 	static const colour_lut lut_clean = build_quantum_lut(false);
 	return (bleed ? lut_bleed : lut_clean)[intensity & 0xf][data & 0xf];
+}
+
+// The Z ladder is the same part in Tempest (R40/R37/R39/R38), Quantum (R140-R143), Gravitar
+// (R59/R57/R56/R58) and Major Havoc (R90-R93): 1.2K/2.2K/4.7K/10K, which is 8.33:4.55:2.13:1, not
+// the 8:4:2:1 a shift by four assumes. Endpoints are unchanged, so this does not move the display's
+// calibration - only the steps in between, by at most 4/240.
+//
+// Taking D=0 as black is what makes this a pure conductance ratio: the +5V pull-up each game sizes
+// differently and the follower's Vbe both divide out, so all four generators share one table. The
+// raw output volts do NOT share one - Major Havoc's PNP adds 0.7V where the others subtract it -
+// but turning volts into brightness needs the monitor's gamma, which is a separate question.
+//
+// Star Wars is not in here: it multiplies an 8-bit STAT latch by a 3-bit VCTR reference in a
+// DAC-08 and reports beam current directly. Battlezone is left alone until its sheet is read.
+u8 z_level(u8 intensity)
+{
+	static constexpr u8 LEVEL[16] =
+			{ 0, 15, 32, 47, 68, 83, 100, 115, 125, 140, 157, 172, 193, 208, 225, 240 };
+	return LEVEL[intensity & 0xf];
 }
 
 } // anonymous namespace
@@ -1023,7 +1043,7 @@ int avg_device::handler_7() // avg_strobe3
 				x,
 				y,
 				vector_device::color111(m_color),
-				(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
+				z_level(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe));
 	}
 
 	return cycles;
@@ -1069,7 +1089,7 @@ int avg_tempest_device::handler_7() // tempest_strobe3
 				y - m_ycenter + m_xcenter,
 				x - m_xcenter + m_ycenter,
 				tempest_color(data, z),
-				z << 4);
+				z_level(z));
 	}
 
 	return cycles;
@@ -1181,7 +1201,7 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 						x,
 						y,
 						mhavoc_color(data),
-						(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
+						z_level(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe));
 				m_spkl_shift = (BIT(m_spkl_shift, 6) ^ BIT(m_spkl_shift, 5) ^ 1) | (m_spkl_shift << 1);
 
 				if ((m_spkl_shift & 0x7f) == 0x7f)
@@ -1202,7 +1222,7 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 					x,
 					y,
 					mhavoc_color(data),
-					(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
+					z_level(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe));
 		}
 	}
 
@@ -1428,7 +1448,7 @@ int avg_quantum_device::handler_7() // quantum_strobe3
 				y - m_ycenter + m_xcenter,
 				x - m_xcenter + m_ycenter,
 				quantum_color(u8(data), z, m_color_bleed),
-				z << 4);
+				z_level(z));
 	}
 	if (OP2())
 	{
