@@ -17,6 +17,7 @@
 #include "emu.h"
 #include "avgdvg.h"
 
+#include "emuopts.h"
 #include "screen.h"
 
 #include <algorithm>
@@ -165,7 +166,10 @@ rgb_t tempest_color(u8 data, u8 intensity)
 // Quantum: red R130 1.8K, green R134 3.3K, blue R132 1.8K with R136 6.8K trimming it. Note the
 // trim bit belongs to BLUE here, not green - 82S25 D0 runs to R136 at Q10's base.
 //
-colour_lut build_quantum_lut()
+// The pull-downs are large enough that a dark gun is not actually cut off at high intensity: at
+// maximum Z the red/blue legs still sit at 37% and green at 54%. That is what the circuit does,
+// so it is the default; -novector_color_bleed clamps a dark gun to black for comparison.
+colour_lut build_quantum_lut(bool bleed)
 {
 	colour_lut lut;
 	for (unsigned z = 0; z < 16; z++)
@@ -175,20 +179,23 @@ colour_lut build_quantum_lut()
 		for (unsigned c = 0; c < 16; c++)
 		{
 			const u8 red = BIT(~c, 3), blue = BIT(~c, 2), green = BIT(~c, 1), trim = BIT(~c, 0);
-			const double vb = blue ? gun_volts(zref, trim ? 0.0 : 6800.0) : 0.0;
+			const double vr = red ? full : (bleed ? gun_volts(zref, 1800.0) : 0.0);
+			const double vg = green ? full : (bleed ? gun_volts(zref, 3300.0) : 0.0);
+			const double vb = gun_volts(zref, parallel_ohms(blue ? 0.0 : 1800.0, trim ? 0.0 : 6800.0));
 			lut[z][c] = rgb_t(
-					red ? 0xff : 0x00,
-					green ? 0xff : 0x00,
-					gun_level(vb, full));
+					gun_level(vr, full),
+					gun_level(vg, full),
+					gun_level((blue || bleed) ? vb : 0.0, full));
 		}
 	}
 	return lut;
 }
 
-rgb_t quantum_color(u8 data, u8 intensity)
+rgb_t quantum_color(u8 data, u8 intensity, bool bleed)
 {
-	static const colour_lut lut = build_quantum_lut();
-	return lut[intensity & 0xf][data & 0xf];
+	static const colour_lut lut_bleed = build_quantum_lut(true);
+	static const colour_lut lut_clean = build_quantum_lut(false);
+	return (bleed ? lut_bleed : lut_clean)[intensity & 0xf][data & 0xf];
 }
 
 } // anonymous namespace
@@ -1420,7 +1427,7 @@ int avg_quantum_device::handler_7() // quantum_strobe3
 		vg_add_point_buf(
 				y - m_ycenter + m_xcenter,
 				x - m_xcenter + m_ycenter,
-				quantum_color(u8(data), z),
+				quantum_color(u8(data), z, m_color_bleed),
 				z << 4);
 	}
 	if (OP2())
@@ -1793,6 +1800,13 @@ void avg_mhavoc_device::device_start()
 	save_item(NAME(m_spkl_shift));
 	save_item(NAME(m_map));
 	save_item(NAME(m_lst));
+}
+
+void avg_quantum_device::device_start()
+{
+	avg_device::device_start();
+
+	m_color_bleed = machine().options().vector_color_bleed();
 }
 
 void avg_bzone_device::device_start()

@@ -278,6 +278,8 @@ public:
 	avg_quantum_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
 
 protected:
+	virtual void device_start() override ATTR_COLD;
+
 	virtual int handler_0() override;
 	virtual int handler_1() override;
 	virtual int handler_2() override;
@@ -291,6 +293,7 @@ protected:
 
 private:
 	required_shared_ptr<u16> m_colorram;
+	bool m_color_bleed = true;
 };
 
 

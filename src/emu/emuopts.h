@@ -123,6 +123,7 @@
 #define OPTION_VECTOR_OVERSCAN_X    "vector_overscan_x"
 #define OPTION_VECTOR_OVERSCAN_Y    "vector_overscan_y"
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
+#define OPTION_VECTOR_COLOR_BLEED   "vector_color_bleed"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
 #define OPTION_VECTOR_BEAM_IDLE_MS  "vector_beam_idle_ms"
 #define OPTION_VECTOR_LIST_SYNC     "vector_list_sync"
@@ -432,6 +433,7 @@ public:
 	float vector_overscan_x() const { return float_value(OPTION_VECTOR_OVERSCAN_X); }
 	float vector_overscan_y() const { return float_value(OPTION_VECTOR_OVERSCAN_Y); }
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
+	bool vector_color_bleed() const { return bool_value(OPTION_VECTOR_COLOR_BLEED); }
 	bool vector_beam_window() const { return bool_value(OPTION_VECTOR_BEAM_WINDOW); }
 	// Milliseconds the beam may stay parked (no new list) before nothing more is deposited:
 	// < 0 = follow the chain's phosphor_total_ms, 0 = off. See vector_beam_idle_ms() in emuopts.cpp.
