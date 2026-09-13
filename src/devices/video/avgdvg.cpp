@@ -39,6 +39,44 @@
 
 /*************************************
  *
+ *  Colour output stages
+ *
+ *  Every Atari colour vector generator drives the monitor from a common reference voltage - the
+ *  Z intensity - through one emitter follower per gun, with the ColorRAM bits switching resistors
+ *  that pull the base down. The bits are NOT a current-summing DAC: they form a divider, so the
+ *  levels do not add and the ratios are not the conductance ratios of the switching resistors.
+ *  Values below are read off the factory schematics; see VecBeamMAME-docs/study for the working.
+ *
+ *************************************/
+
+namespace {
+
+// Major Havoc, SP-252 sheet 9A. Each 7407 output is pulled up to VR by 1K, and R103 5.6K (red MSB)
+// plus R106 10K (red LSB) meet at Q10's base; green and blue use R110 5.6K against a fixed R111 10K
+// to ground, which puts them at exactly the red "10" level. The output stage is Q10 (PNP) followed
+// by Q11 (NPN), so the two Vbe drops cancel and the ratios do not depend on VR - which is the Z
+// intensity here (R90-R93 ladder -> Q8), so no intensity term is needed.
+//
+//   00 -> 0        01 -> 5.6/16.6 = 0.337     10 -> 10/16.6 = 0.602     11 -> 1.000
+constexpr u8 MHAVOC_RED[4] = { 0x00, 0x56, 0x9a, 0xff };
+constexpr u8 MHAVOC_UNIT   = 0x9a;
+
+// The ColorRAM is a pair of 82S25s with inverting outputs, so a set bit is a dark gun.
+rgb_t mhavoc_color(u8 data)
+{
+	const u8 bit3 = BIT(~data, 3);  // red MSB, R103 5.6K
+	const u8 bit2 = BIT(~data, 2);  // red LSB, R106 10K
+	const u8 bit1 = BIT(~data, 1);  // green
+	const u8 bit0 = BIT(~data, 0);  // blue
+
+	return rgb_t(MHAVOC_RED[(bit3 << 1) | bit2], bit1 * MHAVOC_UNIT, bit0 * MHAVOC_UNIT);
+}
+
+} // anonymous namespace
+
+
+/*************************************
+ *
  *  Flipping
  *
  *************************************/
@@ -1010,14 +1048,9 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 			{
 				m_xpos += dx / 2;
 				m_ypos -= dy / 2;
-				const u8 data = m_colorram[0xf + bitswap<4>(m_spkl_shift, 0, 2, 4, 6)];
-				const u8 bit3 = BIT(~data, 3);
-				const u8 bit2 = BIT(~data, 2);
-				const u8 bit1 = BIT(~data, 1);
-				const u8 bit0 = BIT(~data, 0);
-				const u8 r = bit3 * 0xcb + bit2 * 0x34;
-				const u8 g = bit1 * 0xcb;
-				const u8 b = bit0 * 0xcb;
+				// SPKL selects the other ColorRAM bank: the LS157 (3K) drives 12J's CE directly and
+				// 12K's through an inverter (9J), so sparkle reads the second sixteen entries.
+				const u8 data = m_colorram[0x10 | bitswap<4>(m_spkl_shift, 0, 2, 4, 6)];
 
 				int x = m_xpos;
 				int y = m_ypos;
@@ -1026,7 +1059,7 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 				vg_add_point_buf(
 						x,
 						y,
-						rgb_t(r, g, b),
+						mhavoc_color(data),
 						(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
 				m_spkl_shift = (BIT(m_spkl_shift, 6) ^ BIT(m_spkl_shift, 5) ^ 1) | (m_spkl_shift << 1);
 
@@ -1040,14 +1073,6 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 			m_ypos -= (dy * cycles) >> 4;
 			const u8 data = m_colorram[m_color];
 
-			const u8 bit3 = BIT(~data, 3);
-			const u8 bit2 = BIT(~data, 2);
-			const u8 bit1 = BIT(~data, 1);
-			const u8 bit0 = BIT(~data, 0);
-			const u8 r = bit3 * 0xcb + bit2 * 0x34;
-			const u8 g = bit1 * 0xcb;
-			const u8 b = bit0 * 0xcb;
-
 			int x = m_xpos;
 			int y = m_ypos;
 			apply_flipping(x, y);
@@ -1055,7 +1080,7 @@ int avg_mhavoc_device::handler_7()  // mhavoc_strobe3
 			vg_add_point_buf(
 					x,
 					y,
-					rgb_t(r, g, b),
+					mhavoc_color(data),
 					(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
 		}
 	}
