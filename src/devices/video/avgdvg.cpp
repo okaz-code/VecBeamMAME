@@ -19,6 +19,9 @@
 
 #include "screen.h"
 
+#include <algorithm>
+#include <array>
+
 
 /*************************************
  *
@@ -70,6 +73,93 @@ rgb_t mhavoc_color(u8 data)
 	const u8 bit0 = BIT(~data, 0);  // blue
 
 	return rgb_t(MHAVOC_RED[(bit3 << 1) | bit2], bit1 * MHAVOC_UNIT, bit0 * MHAVOC_UNIT);
+}
+
+// Tempest (SP-170) and Quantum (SP-208) share one arrangement: the gun's base sits on a 2.2K
+// pull-up to the Z reference, and each ColorRAM bit switches a resistor that drags it towards the
+// 82S25's saturated low. A single emitter follower then loses a Vbe, so - unlike Major Havoc - the
+// ratio between levels moves with the intensity and cannot be baked into a constant.
+constexpr double TTL_VOH = 3.4;    // LS/82S25 high
+constexpr double TTL_VOL = 0.3;    // ...and saturated low
+constexpr double VBE     = 0.7;    // the follower's drop
+constexpr double R_GUN_PULLUP = 2200.0;
+
+// The Z ladder is the same part in every colour title: 1.2K/2.2K/4.7K/10K into a 22K to ground,
+// with a pull-up to +5V that differs per game (Tempest R41 3.9K, Quantum R145 3.3K).
+double z_reference(u8 intensity, double r_pullup)
+{
+	constexpr double LADDER[4] = { 1.0 / 1200.0, 1.0 / 2200.0, 1.0 / 4700.0, 1.0 / 10000.0 };
+
+	double g_all = 0.0, g_high = 0.0;
+	for (int i = 0; i < 4; i++)
+	{
+		g_all += LADDER[i];
+		if (BIT(intensity, 3 - i))
+			g_high += LADDER[i];
+	}
+
+	const double g_pullup = 1.0 / r_pullup;
+	const double g_pulldown = 1.0 / 22000.0;
+	return (TTL_VOH * g_high + TTL_VOL * (g_all - g_high) + 5.0 * g_pullup)
+			/ (g_all + g_pullup + g_pulldown);
+}
+
+// Two switched resistors in parallel. Zero means the bit is high, i.e. the open-collector output
+// is floating and that leg is simply not there.
+double parallel_ohms(double a, double b)
+{
+	if (a <= 0.0)
+		return b;
+	if (b <= 0.0)
+		return a;
+	return (a * b) / (a + b);
+}
+
+// Follower output for one gun. r_down is the switched leg (0 = none).
+double gun_volts(double zref, double r_down)
+{
+	const double g_up = 1.0 / R_GUN_PULLUP;
+	const double vbase = (r_down > 0.0)
+			? ((zref * g_up + TTL_VOL / r_down) / (g_up + 1.0 / r_down))
+			: zref;
+	return (vbase > VBE) ? (vbase - VBE) : 0.0;
+}
+
+u8 gun_level(double volts, double full_scale)
+{
+	if ((volts <= 0.0) || (full_scale <= 0.0))
+		return 0;
+	return u8(std::min(255, int(volts / full_scale * 255.0 + 0.5)));
+}
+
+using colour_lut = std::array<std::array<rgb_t, 16>, 16>;   // [intensity][ColorRAM nibble]
+
+// Tempest: green R53 330, blue R55 330, red R51 330 with R50 6.8K trimming it down a notch.
+// The trim bit is NOT a second DAC step - it divides against the 2.2K pull-up, so it lands near
+// 0.68 of full red rather than the 0.95 that a conductance ratio would suggest.
+colour_lut build_tempest_lut()
+{
+	colour_lut lut;
+	for (unsigned z = 0; z < 16; z++)
+	{
+		const double zref = z_reference(u8(z), 3900.0);
+		const double full = gun_volts(zref, 0.0);
+		for (unsigned c = 0; c < 16; c++)
+		{
+			const u8 green = BIT(~c, 3), blue = BIT(~c, 2), red = BIT(~c, 1), trim = BIT(~c, 0);
+			lut[z][c] = rgb_t(
+					gun_level(gun_volts(zref, parallel_ohms(red ? 0.0 : 330.0, trim ? 0.0 : 6800.0)), full),
+					gun_level(gun_volts(zref, green ? 0.0 : 330.0), full),
+					gun_level(gun_volts(zref, blue ? 0.0 : 330.0), full));
+		}
+	}
+	return lut;
+}
+
+rgb_t tempest_color(u8 data, u8 intensity)
+{
+	static const colour_lut lut = build_tempest_lut();
+	return lut[intensity & 0xf][data & 0xf];
 }
 
 } // anonymous namespace
@@ -930,14 +1020,9 @@ int avg_tempest_device::handler_7() // tempest_strobe3
 	if (!OP0() && !OP2())
 	{
 		const u8 data = m_colorram[m_color];
-		const u8 bit3 = BIT(~data, 3);
-		const u8 bit2 = BIT(~data, 2);
-		const u8 bit1 = BIT(~data, 1);
-		const u8 bit0 = BIT(~data, 0);
-
-		const u8 r = bit1 * 0xf3 + bit0 * 0x0c;
-		const u8 g = bit3 * 0xf3;
-		const u8 b = bit2 * 0xf3;
+		// The colour ratios ride on the Z reference, so the gun levels have to be resolved against
+		// the very intensity this point is drawn at.
+		const u8 z = ((m_int_latch >> 1) == 1) ? m_intensity : (m_int_latch & 0xe);
 
 		int x = m_xpos;
 		int y = m_ypos;
@@ -947,8 +1032,8 @@ int avg_tempest_device::handler_7() // tempest_strobe3
 		vg_add_point_buf(
 				y - m_ycenter + m_xcenter,
 				x - m_xcenter + m_ycenter,
-				rgb_t(r, g, b),
-				(((m_int_latch >> 1) == 1) ? m_intensity : m_int_latch & 0xe) << 4);
+				tempest_color(data, z),
+				z << 4);
 	}
 
 	return cycles;
