@@ -164,8 +164,8 @@ rgb_t tempest_color(u8 data, u8 intensity)
 	return lut[intensity & 0xf][data & 0xf];
 }
 
-// Quantum: red R130 1.8K, green R134 3.3K, blue R132 1.8K with R136 6.8K trimming it. Note the
-// trim bit belongs to BLUE here, not green - 82S25 D0 runs to R136 at Q10's base.
+// Quantum: red R130 1.8K and blue R132 1.8K, with green split across R134 3.3K and R136 6.8K -
+// both of those land on Q11's base, so green is the two-bit gun.
 //
 // The pull-downs are large enough that a dark gun is not actually cut off at high intensity: at
 // maximum Z the red/blue legs still sit at 37% and green at 54%. That is what the circuit does,
@@ -181,12 +181,12 @@ colour_lut build_quantum_lut(bool bleed)
 		{
 			const u8 red = BIT(~c, 3), blue = BIT(~c, 2), green = BIT(~c, 1), trim = BIT(~c, 0);
 			const double vr = red ? full : (bleed ? gun_volts(zref, 1800.0) : 0.0);
-			const double vg = green ? full : (bleed ? gun_volts(zref, 3300.0) : 0.0);
-			const double vb = gun_volts(zref, parallel_ohms(blue ? 0.0 : 1800.0, trim ? 0.0 : 6800.0));
+			const double vb = blue ? full : (bleed ? gun_volts(zref, 1800.0) : 0.0);
+			const double vg = gun_volts(zref, parallel_ohms(green ? 0.0 : 3300.0, trim ? 0.0 : 6800.0));
 			lut[z][c] = rgb_t(
 					gun_level(vr, full),
-					gun_level(vg, full),
-					gun_level((blue || bleed) ? vb : 0.0, full));
+					gun_level((green || bleed) ? vg : 0.0, full),
+					gun_level(vb, full));
 		}
 	}
 	return lut;
