@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 
 // render/bgfx
 #include "bgfx/effect.h"
@@ -3400,7 +3401,7 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	const float source_deg = std::clamp(m_chains->slider_value(0, "overlay_shadow_source_angle", 30.0f), 0.0f, 170.0f);
 	const float screen_px = std::max(1.0f, m_vx_screen_rect[2] * float(width));
 	const float penumbra_px = shadow_gap * shadow_edge * 2.0f
-			* std::tan(0.5f * source_deg * float(M_PI) / 180.0f) * screen_px;
+			* std::tan(0.5f * source_deg * std::numbers::pi_v<float> / 180.0f) * screen_px;
 
 	uint16_t const sh_w = std::max<uint16_t>(1, width / 4U);
 	uint16_t const sh_h = std::max<uint16_t>(1, height / 4U);
@@ -3632,7 +3633,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 			strength,
 			std::max(0.0f, m_chains->slider_value(0, "overlay_shadow_gap", 2.73f)) * 0.01f,
 			std::max(1.0f, m_chains->slider_value(0, "overlay_shadow_gap_edge", 2.14f)),
-			m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * float(M_PI) / 180.0f };
+			m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * std::numbers::pi_v<float> / 180.0f };
 		float ink[4] = {
 			std::clamp(m_chains->slider_value(0, "overlay_shadow_ink", 0.05f), 0.0f, 1.0f), 0.0f, 0.0f, 0.0f };
 		if (bgfx_uniform *const u = m_vectrex_overlay_composite_effect->uniform("u_vx_screen_rect"))
@@ -8127,7 +8128,7 @@ int renderer_bgfx::draw(int update)
 					vx_strength,
 					std::max(0.0f, m_chains->slider_value(0, "overlay_shadow_gap", 2.73f)) * 0.01f,
 					std::max(1.0f, m_chains->slider_value(0, "overlay_shadow_gap_edge", 2.14f)),
-					m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * float(M_PI) / 180.0f };
+					m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * std::numbers::pi_v<float> / 180.0f };
 				const float vx_ink_vals[4] = {
 					std::clamp(m_chains->slider_value(0, "overlay_shadow_ink", 0.05f), 0.0f, 1.0f),
 					0.0f, 0.0f, 0.0f };
