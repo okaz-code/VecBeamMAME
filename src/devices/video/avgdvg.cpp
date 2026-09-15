@@ -1757,6 +1757,13 @@ void avgdvg_device_base::go_w(u8 data)
 	if (new_list)
 		m_vector->mark_list_pending();
 
+	// A GO asserted while the generator is still running restarts it there and then: on the board
+	// VGGO clears the halt flip-flop directly, so the "halt becomes visible a few cycles later"
+	// timer armed by the run that is being cut short must not survive into the new one. Leaving it
+	// pending made DONE read back high in the middle of the new list, and Major Havoc's self-test
+	// interrupt - which explicitly skips the generator while DONE is low - then restarted it on its
+	// beam-park list and the frame was never drawn.
+	m_vg_halt_timer->adjust(attotime::never);
 	vg_set_halt(0);
 	m_vg_run_timer->adjust(attotime::zero);
 }
