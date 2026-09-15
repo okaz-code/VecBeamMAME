@@ -587,7 +587,7 @@ int mhavoc_state::alpha_xmtd_r()
 int alphaone_state::clock_r()
 {
 	// 2.4kHz (divide 2.5MHz by 1024)
-	return (m_alpha->total_cycles() & 0x400) ? 0 : 1;
+	return (m_alpha->total_cycles() & 0x200) ? 0 : 1;
 }
 
 
