@@ -39,12 +39,12 @@
 		// Room light on the plate. Drives the composite and, since the front print is ordinary
 		// artwork rather than a role-tagged layer, the artwork nits scale as well - so this one
 		// control dims the whole overlay, face included.
-		{"type":"float","name":"overlay_ambient_light","text":"Overlay Ambient Light","default":0.5,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
-		{"type":"float","name":"overlay_shadow","text":"Overlay Rear-Print Shadow","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_shadow_gap","text":"Overlay Shadow Gap (% of face)","default":2.73,"min":0.0,"max":10.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_shadow_gap_edge","text":"Overlay Shadow Gap Rim Scale","default":2.14,"min":1.0,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_ambient_light","text":"Overlay Ambient Light","default":0.8,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector"},
+		{"type":"float","name":"overlay_shadow","text":"Overlay Rear-Print Shadow","default":0.75,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_shadow_gap","text":"Overlay Shadow Gap (% of face)","default":2,"min":0.0,"max":10.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_shadow_gap_edge","text":"Overlay Shadow Gap Rim Scale","default":1.7,"min":1.0,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_shadow_source_angle","text":"Overlay Shadow Source Angle (deg)","default":30.0,"min":0.0,"max":170.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_shadow_azimuth","text":"Overlay Shadow Azimuth (deg)","default":45.0,"min":0.0,"max":360.0,"step":5.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_shadow_azimuth","text":"Overlay Shadow Azimuth (deg)","default":50,"min":0.0,"max":360.0,"step":5.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_shadow_ink","text":"Overlay Shadow Ink Transmission","default":0.05,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		// ---- Advanced 表示トグル。Off ではマクロだけが見える。以下は関連グループごと・重要な順 ----
 		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
@@ -147,7 +147,7 @@
 
 		// ---- Glow and bloom ----
 		{"type":"float","name":"analytic_glow","text":"Glow Source (per-line)","default":0.065,"min":0.0,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":15.0,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"analytic_glow_width","text":"Glow Source Width (px)","default":8,"min":1.0,"max":160.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_narrow","text":"Glow Narrow (full-res)","default":0.004,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.0002,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
 		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.82,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
@@ -226,11 +226,11 @@
 		// ---- Printed overlay ----
 		{"type":"float","name":"overlay_white_transmission","text":"Overlay White Transmission","default":0.65,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_white_diffusion","text":"Overlay Resin Diffusion Strength","default":0.1,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_diffusion_radius","text":"Overlay Resin Diffusion Radius (px)","default":12.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_diffusion_radius","text":"Overlay Resin Diffusion Radius (px)","default":11,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_diffusion_shape","text":"Overlay Resin Diffusion Curve","default":0.4,"min":0.2,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_white_reflectance","text":"Overlay White Reflectance","default":0.25,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_density","text":"Overlay Color Optical Density","default":2.5,"min":0.0,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overlay_color_glow","text":"Overlay Rear Resin Scatter","default":1.10,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_density","text":"Overlay Color Optical Density","default":1.5,"min":0.0,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overlay_color_glow","text":"Overlay Rear Resin Scatter","default":0.5,"min":0.0,"max":2.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_dark_level","text":"Overlay Resin Dark Level","default":0.15,"min":0.0,"max":1.6,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_bleach","text":"Overlay Highlight Color Release","default":0.0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"overlay_color_highlight_knee","text":"Overlay Highlight Release Knee","default":0.15,"min":0.0,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
@@ -242,7 +242,7 @@
 		{"type":"float","name":"hdr_shoulder_start","text":"HDR Shoulder Start (x display ceiling)","default":0.85,"min":0.05,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_headroom_override","text":"HDR Headroom Override (x SDR white, 0 = live)","default":0.0,"min":0.0,"max":16.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_peak_target_nits","text":"HDR Peak Target (nits)","default":3000.0,"min":0.0,"max":10000.0,"step":50.0,"format":"%5.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"hdr_beam_target_nits","text":"HDR Beam Target (nits)","default":375.0,"min":1.0,"max":2000.0,"step":5.0,"format":"%4.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"hdr_beam_target_nits","text":"HDR Beam Target (nits)","default":400,"min":1.0,"max":2000.0,"step":5.0,"format":"%4.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_beam_floor_nits","text":"HDR Beam Floor (nits)","default":250.0,"min":0.0,"max":2000.0,"step":5.0,"format":"%4.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_rolloff_max","text":"HDR Highlight Max (xpeak)","default":2.5,"min":0.5,"max":16.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"hdr_sat_protect","text":"HDR Saturated Color Protect","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
