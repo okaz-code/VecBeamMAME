@@ -125,6 +125,8 @@
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_COLOR_BLEED   "vector_color_bleed"
 #define OPTION_VECTOR_CLOCK_STRETCH "vector_clock_stretch"
+#define OPTION_VECTOR_CCPU_DWELL    "vector_ccpu_dwell"
+#define OPTION_VECTOR_CCPU_RATE     "vector_ccpu_rate"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
 #define OPTION_VECTOR_BEAM_IDLE_MS  "vector_beam_idle_ms"
 #define OPTION_VECTOR_LIST_SYNC     "vector_list_sync"
@@ -436,6 +438,8 @@ public:
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
 	bool vector_color_bleed() const { return bool_value(OPTION_VECTOR_COLOR_BLEED); }
 	float vector_clock_stretch() const { return float_value(OPTION_VECTOR_CLOCK_STRETCH); }
+	float vector_ccpu_dwell() const { return float_value(OPTION_VECTOR_CCPU_DWELL); }
+	float vector_ccpu_rate() const { return float_value(OPTION_VECTOR_CCPU_RATE); }
 	bool vector_beam_window() const { return bool_value(OPTION_VECTOR_BEAM_WINDOW); }
 	// Milliseconds the beam may stay parked (no new list) before nothing more is deposited:
 	// < 0 = follow the chain's phosphor_total_ms, 0 = off. See vector_beam_idle_ms() in emuopts.cpp.

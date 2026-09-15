@@ -19,7 +19,6 @@
 void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, int16_t ey, uint8_t shift)
 {
 	const rectangle &visarea = m_screen->visible_area();
-	int intensity = 0xff;
 
 	// Beam timing: stamp each vector with the machine time it is drawn (this callback runs during CCPU
 	// execution). The CCPU redraw is VBLANK-locked, so the timestamp is frame-grained. The t0/t1 span
@@ -32,34 +31,42 @@ void cinemat_state::cinemat_vector_callback(int16_t sx, int16_t sy, int16_t ex, 
 	sy -= visarea.top();
 	ey -= visarea.top();
 
-	/* point intensity / dwell is determined by the shift value */
+	// Sweep time: a fixed per-DV overhead plus the time the beam needs to cover the length. A
+	// Cinematronics monitor has no Z input - brightness IS sweep speed - so this is the whole of the
+	// game's control over how bright a stroke comes out, and the renderer's energy model reads it
+	// straight off the t0/t1 span.
 	//
-	// A degenerate vector (sx==ex && sy==ey) is a dwelling dot: the beam parks at the spot and its
-	// brightness comes from how long it dwells there, which the CCPU encodes in the DV timer register T
-	// (passed here as `shift`; see ccpu.cpp:482 DV, delta >> m_T). The stock code turned shift straight
-	// into a display intensity `0x1ff * shift / 8` (511*shift/8) - which overflows the 8-bit intensity
-	// field for shift > 3 (e.g. shift 4 -> 255, shift 5 -> 319 -> wraps to 63) and, being frame-grained
-	// (t0==t1), carries NO dwell information for the renderer's unified energy model.
+	// Both terms are needed. Without the length term every vector sweeps for the same time, so a long
+	// one is drawn proportionally faster and fades out: measured on QB-3, a 200px stroke came out at
+	// 0.09 against 1.16 for a 20px one. Without the overhead a degenerate vector takes no time at all
+	// and there is nothing to make a parked dot bright.
 	//
-	// Instead we (a) clamp the DISPLAY intensity to a valid 0..255 (removing the wrap bug) and (b) encode
-	// the dwell as a real time span t1-t0 so the renderer's per-dot energy model (drawbgfx generic_beam_energy,
-	// dot branch) derives the overdrive from it, in the unified convention.
+	// It used to be neither: only sx==ex && sy==ey was given a span, synthesised from the CCPU timer
+	// as shift * 30us, and every real stroke went out with t0 == t1, which the renderer reads as "no
+	// timing" and leaves at the plain intensity. That put a cliff at zero length - 3.06 against 1.00
+	// on QB-3 - and the dots bloomed into blobs several times the width of the strokes they belonged
+	// to. The timer needs no brightness term of its own either: the CPU core already draws
+	// delta >> T, so the timer sets the LENGTH, and the length now sets the speed.
 	//
-	// shift -> dwell time: the exact CCPU->CRT sweep time is not tracked by MAME (the DV op issues in one
-	// CPU cycle while the analog vector generator sweeps for a length/timer-dependent interval; see
-	// vector-engine-beam-timing-survey.md sec.5, which notes t0~=t1 for this hardware). We use the same
-	// LINEAR-in-shift relationship the stock brightness formula implied (brightness ~ dwell for a CRT dot),
-	// with an approximate base of DWELL_US_PER_SHIFT us per shift step chosen so the brightest dots
-	// (shift ~= 4) dwell ~120us, i.e. a few x the renderer's default dot reference (energy_dot_ref 30us) and
-	// thus read as genuine overdrive. This is an APPROXIMATION (base value, not a measured CCPU->sweep
-	// conversion); adjust DWELL_US_PER_SHIFT / the chain's energy_dot_ref to taste.
-	static constexpr double DWELL_US_PER_SHIFT = 30.0;
-	attotime t1 = now;
-	if (sx == ex && sy == ey)
-	{
-		intensity = std::min(0x1ff * shift / 8, 0xff);            // display intensity, clamped (was: 8-bit wrap bug)
-		t1 = now + attotime::from_usec(int(shift * DWELL_US_PER_SHIFT + 0.5)); // dwell span -> renderer dot energy
-	}
+	// Both figures are calibrations, not measurements - MAME does not model the CCPU's sweep, and the
+	// survey that catalogued these engines lists this one as needing a model added. The overhead is
+	// set where the renderer's two energy branches meet: a vanishing line's speed tends to zero, so
+	// the line branch tends to its own ceiling (energy_line_max), while a parked dot goes through the
+	// dot branch (energy_dot_ref, energy_dot_max), and with the shipped chain values the two agree at
+	// about 24us. The rate puts a long stroke near the chain's speed reference so it neither saturates
+	// nor fades. Together they give QB-3 a frame of 26.9ms against its 26.3ms period, i.e. a beam that
+	// is busy nearly all the time, which is what a machine that flickers when the scene gets busy
+	// should look like.
+	// -vector_ccpu_dwell / -vector_ccpu_rate, cached in machine_start.
+	const double dv_len = sqrt(double(ex - sx) * double(ex - sx) + double(ey - sy) * double(ey - sy));
+	const double dv_us = m_dv_dwell_us + dv_len / std::max(0.01, m_dv_rate_px_us);
+	const attotime t1 = now + attotime::from_usec(int(dv_us + 0.5));
+
+	// Display intensity. The stock code turned the timer into brightness as 0x1ff * shift / 8, which
+	// overflows the 8-bit field for shift > 3 (shift 5 -> 319 -> wraps to 63). The timer no longer
+	// carries brightness - it sets the length, and the length sets the speed - so this is just the
+	// clamp that stops the wrap.
+	int intensity = (sx == ex && sy == ey) ? std::min(0x1ff * shift / 8, 0xff) : 0xff;
 
 	/* move to the starting position if we're not there already */
 	if (sx != m_lastx || sy != m_lasty)

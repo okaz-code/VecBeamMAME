@@ -30,6 +30,8 @@
 ***************************************************************************/
 
 #include "emu.h"
+
+#include "emuopts.h"
 #include "cinemat.h"
 #include "speaker.h"
 
@@ -53,6 +55,11 @@
 
 void cinemat_state::machine_start()
 {
+	// Read once: cinemat_vector_callback runs per drawn vector, and these do not change while a
+	// machine is up.
+	m_dv_dwell_us = std::max(0.0, double(machine().options().vector_ccpu_dwell()));
+	m_dv_rate_px_us = std::max(0.01, double(machine().options().vector_ccpu_rate()));
+
 	save_item(NAME(m_coin_detected));
 	save_item(NAME(m_coin_last_reset));
 	save_item(NAME(m_mux_select));

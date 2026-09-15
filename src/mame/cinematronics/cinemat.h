@@ -62,6 +62,9 @@ public:
 	u8 m_mux_select = 0;
 	u8 m_gear = 0;
 	rgb_t m_vector_color;
+	// CCPU beam sweep, cached from the options in machine_start (this is read once per drawn vector).
+	double m_dv_dwell_us = 0.0;
+	double m_dv_rate_px_us = 1.0;
 	s16 m_lastx = 0;
 	s16 m_lasty = 0;
 
