@@ -5445,6 +5445,9 @@ int renderer_bgfx::draw(int update)
 			m_flicker_prev_t0 = -1.0;
 			m_flicker_prev_t1 = -1.0;
 			m_vec_window_base_time = -1.0;
+			m_vec_aux_carry = 0.0f;
+			m_vec_aux_pass_prev = -1.0;
+			m_vec_aux_gen = ~uint32_t(0);
 			m_vec_window_covered = -1.0;
 			m_vec_window_prev_now = -1.0;
 			// The elapsed ring deliberately SURVIVES. Everything else here is tied to the content that
@@ -5713,6 +5716,9 @@ int renderer_bgfx::draw(int update)
 		{
 			// Leave no half-counted pass behind for the next engagement to add to.
 			m_vec_window_base_time = -1.0;
+			m_vec_aux_carry = 0.0f;
+			m_vec_aux_pass_prev = -1.0;
+			m_vec_aux_gen = ~uint32_t(0);
 			m_vec_window_covered = -1.0;
 			m_vec_window_prev_now = -1.0;
 			m_vec_window_log_presents = 0;
@@ -5948,6 +5954,36 @@ int renderer_bgfx::draw(int update)
 		if (window_on)
 		{
 			const double now = window().machine().time().as_double();
+			// What the phosphor still has of a pass-old excitation, for the aux ramp below. Keyed on
+			// the list generation with its own bookkeeping: the window's own branch below also fires
+			// on a fresh base time, which is every present, so timing a PASS off it measured the
+			// presentation interval instead. Same curve as fs_vector_phosphor's phos_S - hold at full
+			// brightness, then the Hill falloff, both normalised to reach zero at total. One pow per
+			// pass, not per present.
+			if (vstats.list_generation != m_vec_aux_gen)
+			{
+				const double period = now - m_vec_aux_pass_prev;
+				if (m_vec_aux_pass_prev >= 0.0 && period > 1.0e-4)
+				{
+					const float hold = std::max(0.0f, m_chains->slider_value(0, "phosphor_hold_ms", 0.0f));
+					const float tau = std::max(0.001f, m_chains->slider_value(0, "phosphor_half_ms", 42.0f));
+					const float p_curve = m_chains->slider_value(0, "phosphor_curve", 1.2f);
+					const float total = std::max(0.001f, m_chains->slider_value(0, "phosphor_total_ms", 500.0f));
+					const float age = std::max(0.0f, float(period * 1000.0) - hold);
+					if (age >= total)
+					{
+						m_vec_aux_carry = 0.0f;
+					}
+					else
+					{
+						const float s = 1.0f / (1.0f + std::pow(age / tau, p_curve));
+						const float s1 = 1.0f / (1.0f + std::pow(total / tau, p_curve));
+						m_vec_aux_carry = std::clamp((s - s1) / std::max(1.0e-4f, 1.0f - s1), 0.0f, 1.0f);
+					}
+				}
+				m_vec_aux_pass_prev = now;
+				m_vec_aux_gen = vstats.list_generation;
+			}
 			if (vstats.list_generation != m_vec_window_generation || m_vec_window_base_time < 0.0)
 			{
 				// Report what the pass that just ended actually got (see m_vec_window_log_presents).
@@ -6041,7 +6077,16 @@ int renderer_bgfx::draw(int update)
 			// put a whole pass's halation on screen while the body still shows one slice of it - far
 			// too much scatter, worst exactly when a pass splits, which is every pass on Asteroids'
 			// high-score screen. Scaling them by this keeps scatter in step with the light it scatters.
-			window_aux_ramp = float(std::clamp((window_hi - vstats.sweep_t0) / window_span, 0.0, 1.0));
+			// The part of the sweep this present has NOT reached yet is not dark: it still carries the
+			// previous pass's light, one pass older. Crediting it with what the phosphor has left of
+			// that (m_vec_aux_carry) instead of treating it as black is what actually keeps the scatter
+			// in step with the light on the tube. The bare coverage fraction pulled the whole bloom
+			// down to 1/N at every pass boundary while the screen was still almost fully lit - a
+			// sawtooth at the source frame rate, and an irregular one whenever the sweep does not
+			// divide into a whole number of presents (Gravitar: 2.9 per sweep, so the ramp ran 0.33,
+			// 0.67, 1.00 with an occasional extra 1.00). At carry 0 this is exactly the old behaviour.
+			const float window_coverage = float(std::clamp((window_hi - vstats.sweep_t0) / window_span, 0.0, 1.0));
+			window_aux_ramp = window_coverage + (1.0f - window_coverage) * m_vec_aux_carry;
 		}
 		// Handed to the chain passes that sample the aux buffers; see m_vec_aux_ramp.
 		m_vec_aux_ramp = window_aux_ramp;

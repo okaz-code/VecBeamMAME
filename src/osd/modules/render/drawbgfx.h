@@ -555,6 +555,11 @@ private:
 	// be applied BEFORE the wide-glow pyramid's first level, which reshapes with a power curve -
 	// scaling after that is not the same thing.
 	float m_vec_aux_ramp = 1.0f;
+	// What the phosphor still has of light one pass old, and when the previous pass started, so the
+	// aux ramp can credit the part of the tube this pass has not reached yet (see window_aux_ramp).
+	float m_vec_aux_carry = 0.0f;
+	double m_vec_aux_pass_prev = -1.0;
+	uint32_t m_vec_aux_gen = ~uint32_t(0);
 	bool  m_glow_on = false;                    // analytic glow (extra wide gaussian quad) active this frame
 	bool  m_optical_separate = false;            // modern mono/Vectrex: explicit optics bypass glow shaping
 	uint32_t m_vec_vpl = 18;                    // analytic verts per line this frame (incl. deflection / glow)
