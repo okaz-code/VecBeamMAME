@@ -192,6 +192,8 @@
 
 #include "emu.h"
 
+#include "emuopts.h"
+
 #include "cpu/m6502/m6502.h"
 #include "machine/eeprompar.h"
 #include "machine/rescap.h"
@@ -305,6 +307,10 @@ private:
 	uint8_t m_gamma_irq_clock = 0;
 	emu_timer *m_gamma_sync_timer = nullptr;
 
+	// Alpha clock stretch: cycles a vector-RAM access costs, and the fractional carry between them.
+	double m_clock_stretch = 0.0;
+	double m_stretch_acc = 0.0;
+
 	void gamma_irq_ack_w(uint8_t data);
 	void gamma_w(uint8_t data);
 	uint8_t alpha_r();
@@ -408,6 +414,32 @@ void alphaone_state::machine_start()
 void mhavoc_state::machine_start()
 {
 	alphaone_state::machine_start();
+	// The Alpha (a) Clock sheet holds the alpha off whenever it addresses vector RAM: /VMEM ORs with
+	// STRETCHa into 3M LS74's D, the flip-flop is clocked by 2.5MD5M, and its /Q is STRETCHa, which
+	// 3H S32 ORs into F0a. Taking STRETCHa back into D clears the pulse after one period, so F0a is
+	// held high for one 2.5M period and the access costs the alpha one extra cycle - the same either
+	// way round the 2.5M / 2.5MD5M phase falls. The generator's state is not an input anywhere on
+	// that sheet, so this applies whether or not the AVG is running.
+	m_clock_stretch = machine().options().vector_clock_stretch();
+	if (m_clock_stretch > 0.0)
+	{
+		// The AVG fetches its list through this same space (set_memory below), and those accesses
+		// are the generator's own; /VMEM is the alpha's address decode.
+		address_space &sp = m_alpha->space(AS_PROGRAM);
+		auto tap = [this](offs_t, u8 &, u8) {
+			if (!m_alpha->executing())
+				return;
+			m_stretch_acc += m_clock_stretch;
+			while (m_stretch_acc >= 1.0)
+			{
+				m_alpha->eat_cycles(1);
+				m_stretch_acc -= 1.0;
+			}
+		};
+		sp.install_read_tap(0x4000, 0x4fff, "vmem_r", tap);
+		sp.install_write_tap(0x4000, 0x4fff, "vmem_w", tap);
+	}
+	save_item(NAME(m_stretch_acc));
 
 	save_item(NAME(m_alpha_data));
 	save_item(NAME(m_alpha_rcvd));
