@@ -1427,7 +1427,14 @@ VK_IMPORT_INSTANCE
 					, physicalDevices
 					);
 
-				if (VK_SUCCESS != result)
+				// The count was just clamped to the size of physicalDevices[], so a machine with more
+				// devices than that answers VK_INCOMPLETE: the array was filled, there were simply more
+				// left over. That is the documented success-with-truncation code and it is the outcome
+				// this call asked for, not a failure. Treating it as one made Vulkan unusable on any
+				// Windows 11 install carrying the Vulkan-on-D3D12 mapping layers, which push the device
+				// count past four on their own.
+				if (VK_SUCCESS != result
+				&&  VK_INCOMPLETE != result)
 				{
 					BX_TRACE("Init error: vkEnumeratePhysicalDevices failed %d: %s.", result, getName(result) );
 					goto error;
@@ -1473,13 +1480,24 @@ VK_IMPORT_INSTANCE
 					}
 					else
 					{
+						// Nothing was requested, so this is auto-selection and the first device of a kind
+						// is the one to keep. Overwriting on every later match hands the choice to whatever
+						// enumerates last, which on Windows 11 is a Vulkan-on-D3D12 mapping layer - it
+						// reports itself as discrete, so it displaced the real GPU and then crashed inside
+						// its own ICD. Real drivers come first; translation layers are appended after them.
 						if (pdp.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
 						{
-							fallbackPhysicalDeviceIdx = ii;
+							if (UINT32_MAX == fallbackPhysicalDeviceIdx)
+							{
+								fallbackPhysicalDeviceIdx = ii;
+							}
 						}
 						else if (pdp.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
 						{
-							physicalDeviceIdx = ii;
+							if (UINT32_MAX == physicalDeviceIdx)
+							{
+								physicalDeviceIdx = ii;
+							}
 						}
 					}
 
