@@ -342,7 +342,9 @@ VK_IMPORT_DEVICE
 			EXT_shader_viewport_index_layer,
 			EXT_custom_border_color,
 			KHR_draw_indirect_count,
-			
+			EXT_swapchain_colorspace,
+			EXT_hdr_metadata,
+
 #	if BX_PLATFORM_ANDROID
 			KHR_android_surface,
 #	elif BX_PLATFORM_LINUX
@@ -379,6 +381,8 @@ VK_IMPORT_DEVICE
 		{ "VK_EXT_shader_viewport_index_layer",     1, false, false, true                                                         , Layer::Count },
 		{ "VK_EXT_custom_border_color",             1, false, false, true                                                         , Layer::Count },
 		{ "VK_KHR_draw_indirect_count",             1, false, false, true                                                         , Layer::Count },
+		{ "VK_EXT_swapchain_colorspace",            1, false, false, true                                                         , Layer::Count },
+		{ "VK_EXT_hdr_metadata",                    1, false, false, true                                                         , Layer::Count },
 #	if BX_PLATFORM_ANDROID
 		{ VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,    1, false, false, true,                                                          Layer::Count },
 #	elif BX_PLATFORM_LINUX
@@ -1648,6 +1652,7 @@ VK_IMPORT_INSTANCE
 					| (s_extension[Extension::EXT_conservative_rasterization ].m_supported ? BGFX_CAPS_CONSERVATIVE_RASTER  : 0)
 					| (s_extension[Extension::EXT_shader_viewport_index_layer].m_supported ? BGFX_CAPS_VIEWPORT_LAYER_ARRAY : 0)
 					| (s_extension[Extension::KHR_draw_indirect_count        ].m_supported && indirectDrawSupport ? BGFX_CAPS_DRAW_INDIRECT_COUNT : 0)
+					| (s_extension[Extension::EXT_swapchain_colorspace       ].m_supported && !headless ? BGFX_CAPS_HDR10 : 0)
 					;
 
 				const uint32_t maxAttachments = bx::min<uint32_t>(m_deviceProperties.limits.maxFragmentOutputAttachments, m_deviceProperties.limits.maxColorAttachments);
@@ -6700,7 +6705,7 @@ VK_DESTROY
 		m_lastImageAcquiredSemaphore = VK_NULL_HANDLE;
 
 		const uint64_t recreateSurfaceMask     = BGFX_RESET_HIDPI;
-		const uint64_t recreateSwapchainMask   = BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER;
+		const uint64_t recreateSwapchainMask   = BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER | BGFX_RESET_HDR10;
 		const uint64_t recreateAttachmentsMask = BGFX_RESET_MSAA_MASK;
 
 		const bool recreateSurface = false
@@ -6964,10 +6969,50 @@ VK_DESTROY
 
 		const uint32_t swapBufferCount = bx::clamp<uint32_t>(m_resolution.numBackBuffers, minSwapBufferCount, maxSwapBufferCount);
 
-		const VkColorSpaceKHR surfaceColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		// HDR10: PQ / Rec.2020 in a 10-bit format. Needs VK_EXT_swapchain_colorspace, without it
+		// the driver only reports sRGB nonlinear. Falls back to SDR when the surface does not
+		// offer the (RGB10A2, HDR10_ST2084) pair.
+		const bool hdr10Requested = !!(m_resolution.reset & BGFX_RESET_HDR10)
+			&& s_extension[Extension::EXT_swapchain_colorspace].m_supported
+			;
 
-		const bool srgb = !!(m_resolution.reset & BGFX_RESET_SRGB_BACKBUFFER);
-		m_colorFormat = findSurfaceFormat(m_resolution.format, surfaceColorSpace, srgb);
+		VkColorSpaceKHR surfaceColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		m_colorFormat = TextureFormat::Count;
+		m_hdr10 = false;
+
+		if (hdr10Requested)
+		{
+			surfaceColorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+			m_colorFormat = findSurfaceFormat(TextureFormat::RGB10A2, surfaceColorSpace, false);
+			m_hdr10 = TextureFormat::Count != m_colorFormat;
+			m_hdr10VkFormat = VK_FORMAT_UNDEFINED;
+
+			if (m_hdr10)
+			{
+				// Channel order: bgfx's RGB10A2 maps to A2R10G10B10 (DRM AR30). NVIDIA's scanout
+				// planes only accept AB30/XB30 at 10 bits, so a Wayland compositor (Hyprland/
+				// aquamarine) cannot direct-scanout an AR30 buffer and falls back to compositing.
+				// Prefer A2B10G10R10 when the surface offers it: the shader writes RGBA, the
+				// driver packs the channels accordingly.
+				if (surfaceOffersFormat(VK_FORMAT_A2B10G10R10_UNORM_PACK32, surfaceColorSpace) )
+				{
+					m_hdr10VkFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+				}
+			}
+
+			if (!m_hdr10)
+			{
+				BX_TRACE("Create swapchain: HDR10 requested but surface offers no (RGB10A2, HDR10_ST2084) pair; falling back to SDR.");
+				surfaceColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+			}
+		}
+
+		const bool srgb = !!(m_resolution.reset & BGFX_RESET_SRGB_BACKBUFFER) && !m_hdr10;
+
+		if (TextureFormat::Count == m_colorFormat)
+		{
+			m_colorFormat = findSurfaceFormat(m_resolution.format, surfaceColorSpace, srgb);
+		}
 
 		if (TextureFormat::Count == m_colorFormat)
 		{
@@ -6975,9 +7020,16 @@ VK_DESTROY
 			return VK_ERROR_INITIALIZATION_FAILED;
 		}
 
-		const VkFormat surfaceFormat = srgb
-			? s_textureFormat[m_colorFormat].m_fmtSrgb
-			: s_textureFormat[m_colorFormat].m_fmt
+		BX_TRACE("Create swapchain: format %s, color space %s"
+			, bimg::getName(bimg::TextureFormat::Enum(m_colorFormat) )
+			, m_hdr10 ? "HDR10_ST2084" : "SRGB_NONLINEAR"
+			);
+
+		const VkFormat surfaceFormat = m_hdr10 && VK_FORMAT_UNDEFINED != m_hdr10VkFormat
+			? m_hdr10VkFormat
+			: srgb
+				? s_textureFormat[m_colorFormat].m_fmtSrgb
+				: s_textureFormat[m_colorFormat].m_fmt
 			;
 
 		const uint32_t width = bx::clamp<uint32_t>(
@@ -7052,6 +7104,26 @@ VK_DESTROY
 		}
 
 		m_sci.oldSwapchain = m_swapchain;
+
+		if (m_hdr10
+		&&  s_extension[Extension::EXT_hdr_metadata].m_supported
+		&&  NULL != vkSetHdrMetadataEXT)
+		{
+			// Rec.2020 primaries, D65. Mastering values are placeholders for a typical 1000-nit
+			// panel; the compositor makes its own tone-mapping decisions anyway.
+			VkHdrMetadataEXT metadata;
+			metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+			metadata.pNext = NULL;
+			metadata.displayPrimaryRed   = { 0.708f, 0.292f };
+			metadata.displayPrimaryGreen = { 0.170f, 0.797f };
+			metadata.displayPrimaryBlue  = { 0.131f, 0.046f };
+			metadata.whitePoint          = { 0.3127f, 0.3290f };
+			metadata.maxLuminance = 1000.0f;
+			metadata.minLuminance = 0.001f;
+			metadata.maxContentLightLevel = 1000.0f;
+			metadata.maxFrameAverageLightLevel = 400.0f;
+			vkSetHdrMetadataEXT(device, 1, &m_swapchain, &metadata);
+		}
 
 		result = vkGetSwapchainImagesKHR(device, m_swapchain, &m_numSwapchainImages, NULL);
 		if (VK_SUCCESS != result)
@@ -7364,6 +7436,34 @@ VK_DESTROY
 		}
 
 		return idx;
+	}
+
+
+	bool SwapChainVK::surfaceOffersFormat(VkFormat _format, VkColorSpaceKHR _colorSpace)
+	{
+		const VkPhysicalDevice physicalDevice = s_renderVK->m_physicalDevice;
+
+		uint32_t numSurfaceFormats;
+		if (VK_SUCCESS != vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, NULL) )
+		{
+			return false;
+		}
+
+		VkSurfaceFormatKHR* surfaceFormats = (VkSurfaceFormatKHR*)BX_ALLOC(g_allocator, numSurfaceFormats * sizeof(VkSurfaceFormatKHR) );
+		bool found = false;
+
+		if (VK_SUCCESS == vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, surfaceFormats) )
+		{
+			for (uint32_t ii = 0; ii < numSurfaceFormats && !found; ++ii)
+			{
+				found = _format == surfaceFormats[ii].format
+					&& _colorSpace == surfaceFormats[ii].colorSpace
+					;
+			}
+		}
+
+		BX_FREE(g_allocator, surfaceFormats);
+		return found;
 	}
 
 	TextureFormat::Enum SwapChainVK::findSurfaceFormat(TextureFormat::Enum _format, VkColorSpaceKHR _colorSpace, bool _srgb)
