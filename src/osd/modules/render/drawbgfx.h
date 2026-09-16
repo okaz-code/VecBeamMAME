@@ -19,6 +19,7 @@
 #include <bgfx/bgfx.h>
 
 #include <array>
+#include <climits>
 #include <map>
 #include <memory>
 #include <string>
