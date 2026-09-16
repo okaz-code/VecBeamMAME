@@ -106,10 +106,12 @@ private:
 
 	void render_textured_quad(render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int window_index);
 	// True while the frame is assembled in the linear nits work target and encoded by the HDR
-	// present pass - either from an HDR-type chain or, with no screen at all, from the UI alone.
-	// Everything that routes artwork/UI away from the plain sRGB gui effects keys on this.
-	bool hdr_composite() const { return m_vec_hdr_chain || m_hdr_ui_only; }
+	// present pass - either from an HDR-type chain, or from ordinary SDR content that has to reach
+	// an HDR swapchain intact. Everything that routes a draw away from the plain sRGB gui/screen
+	// effects keys on this.
+	bool hdr_composite() const { return m_vec_hdr_chain || m_hdr_sdr_composite; }
 	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
+	void set_hdr_screen_scale(bgfx_effect *effect, uint32_t blend);
 	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
 	bool blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h, const float *projection);
 	bool prepare_vectrex_overlay_masks(int window_index);
@@ -599,17 +601,28 @@ private:
 	// blend modes (alpha / multiply / add) in linear light - reproducing the half-mirror combine -
 	// and a final pass PQ-encodes the result (gamma on an SDR swapchain).
 	bool m_vec_hdr_chain = false;          // active chain is HDR-type (has a screen_hdr target)
-	// MAME's own UI can be the whole frame before any machine screen exists - the system selector,
-	// and the game-info / warning boxes shown before a system's CPU runs. There is no chain to
-	// declare screen_hdr then, so the composite above never engaged, yet the swapchain is already
-	// HDR10 (see the preflight in create()). The UI went out through the plain sRGB gui effects
-	// with no PQ encode and no Rec.709 -> Rec.2020 step, so menu white landed on PQ code 1.0 =
-	// 10000 nits (measured: 41.7x a 240-nit SDR white) and MAME's saturated colours came out of
-	// gamut. On macOS EDR the extended-linear layer did put white on the reference white, but the
-	// missing sRGB -> linear step still left midtones about 2.3x too bright. Composite the UI in
-	// linear nits and let the same present pass encode it. See the predicate in draw().
-	bool m_hdr_ui_only = false;            // HDR10/EDR output, no emulated screen: UI is the frame
+	// Everything else that reaches an HDR swapchain: a running raster system, and MAME's own UI
+	// before any system screen exists (the selector, and the game-info / warning boxes shown before
+	// a system's CPU runs). Neither has a chain declaring screen_hdr, so the composite above never
+	// engaged - yet the swapchain is HDR10 regardless of what kind of system is running (see the
+	// preflight in create()). The frame went out through the plain sRGB gui/screen effects with no
+	// PQ encode and no Rec.709 -> Rec.2020 step, so menu white landed on PQ code 1.0 = 10000 nits
+	// (measured: 41.7x a 240-nit SDR white) and saturated colours came out of gamut. On macOS EDR
+	// the extended-linear layer did put white on the reference white, but the missing sRGB ->
+	// linear step still left midtones about 2.3x too bright.
+	//
+	// The answer is not to make this content HDR. SDR content belongs at SDR white, looking as it
+	// does on an SDR display; composite it in linear nits at paper white and let the same present
+	// pass encode it. See the predicate in draw().
+	bool m_hdr_sdr_composite = false;      // HDR10/EDR output with no HDR chain: raster and/or UI
 	bgfx_target *m_hdr_work = nullptr;     // linear work target (absolute nits): vector + artwork
+	// RG11B10F for a chain composite and RGBA16F for the SDR one. The chain path is fill-bound and
+	// carries sparse strokes, where 11F's 1.6% relative steps (3.1% on blue's 5-bit mantissa) do not
+	// show. A raster screen is 8-bit sRGB source, and near white two adjacent codes are 0.89% apart
+	// in linear light - less than one 11F blue step, so a smooth gradient would come out of the
+	// composite coarser than it went in. Half float's 0.1% steps cost bandwidth the SDR path is not
+	// short of, having no chain to pay for.
+	bgfx::TextureFormat::Enum m_hdr_work_format = bgfx::TextureFormat::RG11B10F;
 	bgfx_target *m_hdr_present_work = nullptr; // encoded composite before optional output upscale
 	uint32_t m_hdr_work_view = UINT_MAX;   // per-frame view index the artwork/UI draws into
 	bgfx_effect *m_hdr_gui_effect[4] = { nullptr, nullptr, nullptr, nullptr }; // per blend mode
