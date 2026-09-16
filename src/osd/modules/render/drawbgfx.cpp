@@ -606,12 +606,32 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 	// which, so EDR/HDR10 can be verified from the log instead of by eye (-verbose). The display still
 	// has to grant headroom for HDR to actually show; that is a hardware/OS condition checkable via
 	// NSScreen.maximumExtendedDynamicRangeColorComponentValue > 1.0.
+	//
+	// Say how much the line is worth, because three separate things get conflated here: that HDR was
+	// asked for, that the backend advertises BGFX_CAPS_HDR10, and that the swapchain actually came
+	// back in an HDR colour space. bgfx reports the first two and does not report the third at all -
+	// bgfx::reset() keeps the cap set and silently leaves an sRGB surface in place when the requested
+	// format/colour-space pair is not offered. So what the cap is worth depends on the backend:
+	//
+	//   D3D11/12  dxgi.cpp sets it from the output's real DXGI colour space. Strong evidence.
+	//   Metal     a macOS 10.15 version check. The EDR headroom probe above is the confirmation.
+	//   Vulkan    instance-extension availability only, and the surface may refuse the exact
+	//             format bgfx pairs with HDR10_ST2084 - a 10-bit surface offered as A2B10G10R10
+	//             when RGB10A2 asks for A2R10G10B10 is enough to end up sRGB with the cap still on.
+	//
+	// An unqualified "= HDR10" on the Vulkan path is therefore a claim nothing can contradict, and
+	// the encode stages downstream act on it regardless. Mark it as a request, not a measurement.
 	if (m_options->bgfx_hdr())
 	{
+		const char *const renderer_name = bgfx::getRendererName(renderer_type);
 		if (s_bgfx_edr_active)
 			osd_printf_verbose("BGFX: HDR present path = macOS EDR (Metal, extended-linear RGBA16F)\n");
+		else if (s_bgfx_hdr_active && renderer_type == bgfx::RendererType::Vulkan)
+			osd_printf_verbose("BGFX: HDR present path = HDR10 requested (PQ / Rec.2020, RGB10A2) on %s;"
+					" bgfx does not report the swapchain colour space back, so this is not a confirmation\n",
+					renderer_name);
 		else if (s_bgfx_hdr_active)
-			osd_printf_verbose("BGFX: HDR present path = HDR10 (PQ / Rec.2020, RGB10A2)\n");
+			osd_printf_verbose("BGFX: HDR present path = HDR10 (PQ / Rec.2020, RGB10A2) on %s\n", renderer_name);
 		else
 			osd_printf_verbose("BGFX: HDR present path = SDR fallback (HDR requested but unavailable)\n");
 	}
