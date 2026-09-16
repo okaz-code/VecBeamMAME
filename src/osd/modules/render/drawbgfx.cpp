@@ -485,6 +485,9 @@ static id macos_metal_layer_for_window(void *nwh);
 static bool detect_windows_hdr_active(void *nwh);
 static float detect_windows_refresh_hz(void *nwh);
 #endif
+#if defined(SDLMAME_LINUX)
+static float detect_linux_refresh_hz(osd_window const &window);
+#endif
 
 //============================================================
 //  video_bgfx::init_bgfx_library
@@ -508,13 +511,15 @@ bool video_bgfx::init_bgfx_library(osd_window &window)
 		osd_printf_error("Setting BGFX platform data failed\n");
 		return false;
 	}
-#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS) || defined(__APPLE__)
+#if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS) || defined(__APPLE__) || defined(SDLMAME_LINUX)
 	// Publish the active monitor refresh to the core render target. This is
 	// consumed by vector_present_rate=auto after the renderer is initialized.
 #if defined(SDLMAME_WIN32) || defined(OSD_WINDOWS)
 	const float monitor_refresh = detect_windows_refresh_hz(init.platformData.nwh);
-#else
+#elif defined(__APPLE__)
 	const float monitor_refresh = detect_macos_refresh_hz(init.platformData.nwh);
+#else
+	const float monitor_refresh = detect_linux_refresh_hz(window);
 #endif
 	if (monitor_refresh > 1.0f && window.target())
 	{
@@ -991,6 +996,46 @@ static uintptr_t detect_hdr_display_id(void *nwh)
 }
 
 #endif
+
+#if defined(SDLMAME_LINUX)
+
+// Return the refresh of the display this window is on.  SDL is the portable source
+// here: Wayland exposes no client-side mode query of its own, and going to X11 or
+// DRM directly would mean a separate path per windowing system.
+static float detect_linux_refresh_hz(osd_window const &window)
+{
+	SDL_Window *const sdl_window = dynamic_cast<sdl_window_info const &>(window).platform_window();
+	if (sdl_window == nullptr)
+		return 0.0f;
+#if defined(SDLMAME_SDL3)
+	const SDL_DisplayID display = SDL_GetDisplayForWindow(sdl_window);
+	if (display == 0)
+		return 0.0f;
+	const SDL_DisplayMode *const mode = SDL_GetDesktopDisplayMode(display);
+	if (mode == nullptr)
+		return 0.0f;
+	// Prefer the exact rate.  refresh_rate is rounded to two decimals, and the
+	// difference matters: the presentation timer is scheduled against this value,
+	// so a rounded rate drifts against the display.
+	const float refresh = (mode->refresh_rate_numerator > 0 && mode->refresh_rate_denominator > 0)
+			? float(double(mode->refresh_rate_numerator) / double(mode->refresh_rate_denominator))
+			: mode->refresh_rate;
+#else
+	// SDL2 reports whole Hz only, so a 119.879 Hz mode arrives as 120.  Still far
+	// better than the 60 assumed without this call, but it leaves about 0.1 % of
+	// error for anything scheduling against it.
+	const int display = SDL_GetWindowDisplayIndex(sdl_window);
+	if (display < 0)
+		return 0.0f;
+	SDL_DisplayMode mode = {};
+	if (SDL_GetDesktopDisplayMode(display, &mode) != 0)
+		return 0.0f;
+	const float refresh = float(mode.refresh_rate);
+#endif
+	return (refresh > 1.0f && refresh <= 1000.0f) ? refresh : 0.0f;
+}
+
+#endif // defined(SDLMAME_LINUX)
 
 void video_bgfx::resolve_hdr_display_peak(void *nwh)
 {
