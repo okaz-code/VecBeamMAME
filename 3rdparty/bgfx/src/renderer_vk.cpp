@@ -7444,7 +7444,8 @@ VK_DESTROY
 		const VkPhysicalDevice physicalDevice = s_renderVK->m_physicalDevice;
 
 		uint32_t numSurfaceFormats;
-		if (VK_SUCCESS != vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, NULL) )
+		if (VK_SUCCESS != vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, NULL)
+		||  0 == numSurfaceFormats)
 		{
 			return false;
 		}
