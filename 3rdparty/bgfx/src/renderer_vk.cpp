@@ -1243,13 +1243,23 @@ VK_IMPORT
 						BX_TRACE("\t%s", layer.m_name);
 					}
 				}
-#if BX_PLATFORM_OSX || defined(WL_EGL_PLATFORM)
-				uint32_t numEnabledExtensions = headless ? 0 : 3;
-
-				const char* enabledExtension[Extension::Count + 3] =
+				// Count what the initialiser below actually fills, which is one entry everywhere and a
+				// second on macOS. It used to be three here because the list carried a platform surface
+				// extension as well; that was dropped when Wayland moved to the extension registry
+				// (upstream #3358, cherry-picked as ba6f5853e93), and only the non-Apple count came
+				// down with it. The leftover slots stay NULL, and the loader strcmps every name it is
+				// handed while scanning for direct drivers, so vkCreateInstance segfaults the moment a
+				// real ICD is installed - which is why this never showed up: with no MoltenVK present
+				// the dlopen of libvulkan.dylib fails first and bgfx falls back to Metal.
+#if BX_PLATFORM_OSX
+				uint32_t numEnabledExtensions = headless ? 0 : 2;
 #else
 				uint32_t numEnabledExtensions = headless ? 0 : 1;
+#endif
 
+#if BX_PLATFORM_OSX || defined(WL_EGL_PLATFORM)
+				const char* enabledExtension[Extension::Count + 3] =
+#else
 				const char* enabledExtension[Extension::Count + 1] =
 #endif
 				{
