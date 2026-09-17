@@ -388,16 +388,6 @@ public:
 		float intensity_overdrive_curve = 2.0f;
 		float mask_overdrive_flare = 0.0f; // colour chain: route hot core through shadow mask
 		float z_rise_tau = 0.0f;   // Z rise-time (us); 0 = off. Dims brief-dwell dots (see put_analytic_line).
-		float line_cap_brightness = 1.0f;
-		float line_cap_intensity_curve = 0.0f;
-		float line_cap_mode = 0.0f;        // 0 legacy, 1 blank transitions, 2 RAMP flags, 3 off
-		float line_cap_min_size = 0.0f;
-		float line_cap_size = 2.0f;         // = LINE_CAP_SIZE_PX
-		float line_cap_width = 1.5f;
-		float line_cap_overload_add = 0.0f; // overload-only full-width addition at the endpoint
-		float line_cap_overload_curve = 4.0f; // >1 delays endpoint growth until near max overload
-		float line_cap_transition = 8.0f;   // endpoint-width taper length at 1920-ref
-		float line_cap_curve = 1.5f;        // endpoint-width taper power
 		float line_point_threshold = 2.0f;  // = LINE_POINT_THRESHOLD
 		float overdrive_core = 0.0f;
 		float overdrive_sat_curve = 1.0f;
@@ -506,7 +496,7 @@ private:
 	// -bgfx_vec_line_shader analytic: gaussian line integral renderer (erf closed form,
 	// one 6-vertex body quad per line on AnalyticLineVertex).
 	bool m_line_analytic = false;
-	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float start_cap = 1.0f, float end_cap = 1.0f, float round_start = 1.0f, float round_end = 1.0f, float end_gain_start = 1.0f, float end_gain_finish = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f,
+	void put_analytic_line(render_primitive *prim, AnalyticLineVertex *vertex, AnalyticLineVertex *glow_vertex = nullptr, AnalyticLineVertex *optical_vertex = nullptr, AnalyticLineVertex *np_vertex = nullptr, AnalyticLineVertex *ray_vertex = nullptr, float round_start = 1.0f, float round_end = 1.0f, float end_gain_start = 1.0f, float end_gain_finish = 1.0f, float stroke_px_per_ms = -1.0f, float dwell_scale = 1.0f,
 			// Microseconds the beam spends PARKED on this stroke's hottest terminus (vertex_dwell_pile
 			// pre-pass). 0 = nothing piled there.
 			float pile_dwell_us = 0.0f,

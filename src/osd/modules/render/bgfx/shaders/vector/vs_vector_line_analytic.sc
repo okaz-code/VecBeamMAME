@@ -30,8 +30,8 @@ void main()
 	// Spare vertex component carries the CPU-side Long-line classification.
 	// The fragment shader writes classified Long light to a second MRT target.
 	v_texcoord2 = vec2(a_texcoord0.y, 0.0);
-	// Per-line endpoint-width profile: start amount, finish amount, fully-active flat-core
-	// half-width, and transition distance. It remains constant across each line quad.
+	// Per-line terminus data: x/y are the start and finish terminus flags (negative = rounded),
+	// w < 0 marks a HALO quad. z is spare. It remains constant across each line quad.
 	v_texcoord3 = a_texcoord2;
 	// Terminus dwell gain (start, finish). 1 = no boost; above 1 the fragment raises the deposit
 	// near that end, weighted by the same endpoint profile the width uses.

@@ -25,7 +25,7 @@ uniform vec4 u_line_params;
 #define QUAD_EDGE_PEDESTAL 0.0021874911
 #define QUAD_EDGE_RENORM   1.0021922
 
-// Halo quads (end_transition < 0) may be cut closer in than 3.5 sigma to save fill - their sigma is
+// Halo quads (a_texcoord2.w < 0) may be cut closer in than 3.5 sigma to save fill - their sigma is
 // tens of pixels, so the quad area is what the wide glow actually costs. Their pedestal and
 // renormalisation therefore arrive from the renderer, which knows the extent it padded them to.
 // .x = pedestal, .y = renormalisation. At extent 3.5 these equal the two constants above.
@@ -139,42 +139,26 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		// for long lines (no change) and restores the full dwell-dot peak as len -> 0.
 		float lpk = erf_approx((a - b) * 0.5 * inv_s_sqrt2);
 		axial /= max(mix(1.0, lpk, u_line_params.z), 1e-3);
-		// Flat core: carve a SOLID band out of the cross-section. Endpoint thickness is evaluated
-		// inside the true [p0,p1] stroke instead of drawing additive dots over its ends. The start/end
-		// profiles taper to the ordinary body width over the requested distance; max (not sum) prevents
-		// short strokes whose profiles overlap from becoming twice as wide in the middle.
+		// Flat core: carve a SOLID band out of the cross-section. tc3.xy carry the terminus flags,
+		// negative = rounded; the width of the band is the body's own, the same from end to end.
 		float start_round = (tc3.x < 0.0) ? 1.0 : 0.0;
 		float finish_round = (tc3.y < 0.0) ? 1.0 : 0.0;
-		float start_amount = (tc3.x < 0.0) ? (-tc3.x - 1.0) : tc3.x;
-		float finish_amount = (tc3.y < 0.0) ? (-tc3.y - 1.0) : tc3.y;
-		// The solid part of the same cross-section, so it takes the same additive share. `transition`
-		// below is untouched - it is the axial distance over which an endpoint returns to the body
-		// width, a property of the stroke's geometry rather than of the gun's focus.
+		// The solid part of the same cross-section, so it takes the same additive share.
 		float core_extra = tc4.w * spot_extra;
 		float body_core = max(max(tc0.y, 0.0) + core_extra, 0.0);
-		float end_core = max(max(tc3.z, 0.0) + core_extra, 0.0);
-		float transition = max(tc3.w, 1e-4);
-		float end_curve = max(u_line_params.x, 0.1);
-		float start_profile = start_amount * pow(clamp(1.0 - max(a, 0.0) / transition, 0.0, 1.0), end_curve);
-		float finish_profile = finish_amount * pow(clamp(1.0 - max(-b, 0.0) / transition, 0.0, 1.0), end_curve);
-		float end_profile = clamp(max(start_profile, finish_profile), 0.0, 1.0);
-		float local_core = mix(body_core, end_core, end_profile);
-		float start_radius = mix(body_core, end_core, clamp(start_amount, 0.0, 1.0));
-		float finish_radius = mix(body_core, end_core, clamp(finish_amount, 0.0, 1.0));
 		// Round only the enabled stroke termini, centred on the exact p0/p1 coordinates. The commanded
-		// line remains the complete [p0,p1] body and each enabled semicircular LINE END extends outward
-		// by its radius. This deliberately makes the visible length line_length + start_radius +
-		// finish_radius, instead of consuming that radius inside the commanded line length.
-		float core_sd = abs(d) - local_core;
-		float start_round_zone = start_round * step(1e-4, start_radius) * (1.0 - step(start_radius, a));
-		float finish_round_zone = finish_round * step(1e-4, finish_radius) * (1.0 - step(finish_radius, -b));
+		// line remains the complete [p0,p1] body and each enabled semicircular terminus extends outward
+		// by the body radius. This deliberately makes the visible length line_length + 2 * body_core,
+		// instead of consuming that radius inside the commanded line length.
+		float core_sd = abs(d) - body_core;
+		float start_round_zone = start_round * step(1e-4, body_core) * (1.0 - step(body_core, a));
+		float finish_round_zone = finish_round * step(1e-4, body_core) * (1.0 - step(body_core, -b));
 		// A connected endpoint must not receive a circular cap, but it must still meet the next
 		// segment at full beam coverage. With MAX composition, the two 0.5 axial end roll-offs no
 		// longer add to one and produced a visible dotted/gapped glyph. Give non-rounded endpoints a
 		// short square support overlap instead: it suppresses the axial roll-off across the join while
 		// preserving a straight (non-circular) edge. Two sigma also covers coreless Gaussian strokes.
-		// HALO quads (analytic glow, overload halo, optical rays, edge glow) set end_transition < 0 to
-		// opt out. The support below is a hard step: inside it the axial roll-off is replaced by 1.0,
+		// HALO quads (analytic glow, overload halo, optical rays, edge glow) set tc3.w < 0 to opt out. The support below is a hard step: inside it the axial roll-off is replaced by 1.0,
 		// outside it the erf roll-off applies, and at 2 sigma that erf is only ~0.023 - a 40x jump. For a
 		// CORE segment that step sits 2 sigma (a few px) past the endpoint and is covered by the next
 		// segment, which is the point of it. For a halo with sigma of tens of pixels it instead holds the
@@ -190,21 +174,18 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		// already the correct single pass, continuous and seamless. u_join_extend scales the zone so
 		// the old behaviour is still reachable: 1.0 = legacy (double-counted), 0.0 = corrected.
 		float join_allowed = step(0.0, tc3.w) * clamp(u_join_extend.x, 0.0, 1.0);
-		float start_join_support = max(start_radius, 2.0 * sg);
-		float finish_join_support = max(finish_radius, 2.0 * sg);
+		float start_join_support = max(body_core, 2.0 * sg);
+		float finish_join_support = max(body_core, 2.0 * sg);
 		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
 		float finish_join_zone = join_allowed * (1.0 - finish_round) * step(-finish_join_support, b) * (1.0 - step(finish_join_support, b));
 		// Terminate the core as a CAPSULE rather than replacing the band with a disc. The round zones
-		// deliberately reach start_radius / finish_radius INSIDE the stroke - endpoint_zone below needs
-		// that reach to suppress the axial roll-off near the terminus - so substituting a disc centred
-		// on the endpoint threw the band away over that stretch. The disc's half-width falls to zero at
-		// a = start_radius while the band is still about start_radius wide there, which cut a crescent
-		// out of both edges and left a step where the cap met the body: on a 5 px cap over a 2 px body
-		// the profile jumped 2.7x at 4 px off-axis and 5.8x at 5 px, and it grows with the cap radius,
-		// which is why it showed on thick lines. Clamping the axial coordinate to the outward side
-		// keeps the band inside the stroke (cap_out = 0 gives length(vec2(0, d)) = abs(d)) and sweeps it
-		// into a circle beyond the terminus. local_core is the radius, and it equals start_radius /
-		// finish_radius exactly at the endpoint, so band and cap agree there by construction.
+		// deliberately reach body_core INSIDE the stroke - endpoint_zone below needs that reach to
+		// suppress the axial roll-off near the terminus - so substituting a disc centred on the
+		// endpoint threw the band away over that stretch: the disc's half-width falls to zero at
+		// a = body_core while the band is still that wide there, which cut a crescent out of both
+		// edges and left a step where the cap met the body. Clamping the axial coordinate to the
+		// outward side keeps the band inside the stroke (cap_out = 0 gives length(vec2(0, d)) =
+		// abs(d)) and sweeps it into a circle beyond the terminus.
 		// One expression covers both ends: a < 0 and b > 0 cannot hold for the same fragment, and a
 		// stroke shorter than its two caps keeps its band because cap_out stays 0 inside.
 		float cap_out = 0.0;
@@ -213,7 +194,7 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		if (finish_round_zone > 0.0)
 			cap_out = max(cap_out, max(b, 0.0));
 		if (max(start_round_zone, finish_round_zone) > 0.0)
-			core_sd = length(vec2(cap_out, d)) - local_core;
+			core_sd = length(vec2(cap_out, d)) - body_core;
 		float dc = max(core_sd, 0.0);
 		// Perpendicular profile integrated over the fragment's footprint instead of point-sampled.
 		// d is the perpendicular distance in pixels. Point sampling let H/V lines land their peak on
