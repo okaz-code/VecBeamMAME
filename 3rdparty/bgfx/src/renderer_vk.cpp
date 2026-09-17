@@ -6983,26 +6983,38 @@ VK_DESTROY
 		if (hdr10Requested)
 		{
 			surfaceColorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
-			m_colorFormat = findSurfaceFormat(TextureFormat::RGB10A2, surfaceColorSpace, false);
-			m_hdr10 = TextureFormat::Count != m_colorFormat;
-			m_hdr10VkFormat = VK_FORMAT_UNDEFINED;
 
-			if (m_hdr10)
+			// Channel order: bgfx's RGB10A2 maps to A2R10G10B10 (DRM AR30). NVIDIA's scanout
+			// planes only accept AB30/XB30 at 10 bits, so a Wayland compositor (Hyprland/
+			// aquamarine) cannot direct-scanout an AR30 buffer and falls back to compositing.
+			// Prefer A2B10G10R10 when the surface offers it: the shader writes RGBA, the
+			// driver packs the channels accordingly.
+			//
+			// This has to be asked before HDR10 is decided, not after: a surface may offer
+			// HDR10_ST2084 with the reversed packing alone, and then findSurfaceFormat() below
+			// finds nothing while the surface is perfectly capable of HDR10.
+			m_hdr10VkFormat = surfaceOffersFormat(VK_FORMAT_A2B10G10R10_UNORM_PACK32, surfaceColorSpace)
+				? VK_FORMAT_A2B10G10R10_UNORM_PACK32
+				: VK_FORMAT_UNDEFINED
+				;
+
+			m_colorFormat = findSurfaceFormat(TextureFormat::RGB10A2, surfaceColorSpace, false);
+			m_hdr10 = TextureFormat::Count != m_colorFormat
+				|| VK_FORMAT_UNDEFINED != m_hdr10VkFormat
+				;
+
+			if (m_hdr10
+			&&  TextureFormat::Count == m_colorFormat)
 			{
-				// Channel order: bgfx's RGB10A2 maps to A2R10G10B10 (DRM AR30). NVIDIA's scanout
-				// planes only accept AB30/XB30 at 10 bits, so a Wayland compositor (Hyprland/
-				// aquamarine) cannot direct-scanout an AR30 buffer and falls back to compositing.
-				// Prefer A2B10G10R10 when the surface offers it: the shader writes RGBA, the
-				// driver packs the channels accordingly.
-				if (surfaceOffersFormat(VK_FORMAT_A2B10G10R10_UNORM_PACK32, surfaceColorSpace) )
-				{
-					m_hdr10VkFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-				}
+				// Reversed packing only. The swapchain uses m_hdr10VkFormat either way; name the
+				// format bgfx has for ten bits so the generic lookup below is skipped and the
+				// backbuffer is described as what it is.
+				m_colorFormat = TextureFormat::RGB10A2;
 			}
 
 			if (!m_hdr10)
 			{
-				BX_TRACE("Create swapchain: HDR10 requested but surface offers no (RGB10A2, HDR10_ST2084) pair; falling back to SDR.");
+				BX_TRACE("Create swapchain: HDR10 requested but surface offers HDR10_ST2084 with neither ten-bit packing; falling back to SDR.");
 				surfaceColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 			}
 		}
