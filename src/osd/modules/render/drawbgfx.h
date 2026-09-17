@@ -327,12 +327,6 @@ public:
 		float bright_normal_cap = 1.0f;
 		float bright_sigmoid = 0.0f;
 		float bright_sigmoid_center = 0.5f;
-		// Per-channel brightness transfer exponent. The shared transfer above (bright_threshold /
-		// bright_sigmoid) is one curve for all three guns; a real colour tube's guns do not share one.
-		// 1 = off, and the default, so nothing is spent until a channel is actually bent.
-		float bright_curve_red = 1.0f;
-		float bright_curve_green = 1.0f;
-		float bright_curve_blue = 1.0f;
 		// Per-channel spot size (the exact, per-channel rasterisation path). Width multipliers plus an
 		// explicit enable, so turning the cost off leaves the tuned scales intact.
 		float spot_scale_red = 1.0f;

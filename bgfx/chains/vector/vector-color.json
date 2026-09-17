@@ -75,9 +75,6 @@
 		// ---- Brightness transfer ----
 		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"bright_curve_red","text":"Brightness Curve Red","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"bright_curve_green","text":"Brightness Curve Green","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"bright_curve_blue","text":"Brightness Curve Blue","default":1.0,"min":0.25,"max":4.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"rgb_spot_beam","text":"RGB Spot Width (per channel)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"spot_scale_red","text":"RGB Spot Scale Red (x)","default":0.85,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"spot_scale_green","text":"RGB Spot Scale Green (x)","default":0.7,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
