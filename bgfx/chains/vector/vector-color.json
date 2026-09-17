@@ -57,6 +57,62 @@
 		// ---- Advanced 表示トグル。Off ではマクロだけが見える。以下は関連グループごと・重要な順 ----
 		{"type":"int_enum","name":"advanced_sliders","text":"Advanced Parameters","default":0,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","strings":["Off (hide [-] group)","On (show all)"]},
 
+		// ---- Color adjustment ----
+		{"type":"intenum","name":"primary_color_mode","text":"Color Adjustment Mode","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["CIE xy/Y (Advanced)","Direct Primary"]},
+		{"type":"float","name":"primary_red_hue","text":"Red Hue Shift (deg)","default":-1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_red_saturation","text":"Red Saturation","default":0.97,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_red_brightness","text":"Red Brightness","default":1.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_green_hue","text":"Green Hue Shift (deg)","default":-15,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_green_brightness","text":"Green Brightness","default":1,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_blue_hue","text":"Blue Hue Shift (Violet +)","default":1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_blue_saturation","text":"Blue Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"primary_blue_brightness","text":"Blue Brightness","default":1.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"chroma_a","text":"Phosphor A Chromaticity ","default":[0.63,0.34],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"chroma_b","text":"Phosphor B Chromaticity ","default":[0.31,0.595],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"vec2","name":"chroma_c","text":"Phosphor C Chromaticity ","default":[0.17,0.07],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"color","name":"chroma_y_gain","text":"Phosphor Gain, ","default":[0.2124,0.62,0.1],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.001,"format":"%1.4f","screen":"vector","advanced":true},
+		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+
+		// ---- Glow and bloom ----
+		{"type":"float","name":"analytic_glow","text":"Glow Source Strength (all vectors)","default":0.13,"min":0.0,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"analytic_glow_width","text":"Glow Source Radius (all vectors)","default":26,"min":1.0,"max":80.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_narrow","text":"Glow Narrow Strength","default":0.012,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_core_gain","text":"Overload Hot Core Gain","default":0.015,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.0028,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide_reach","text":"Glow Wide Reach","default":8.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide_pivot","text":"Glow Wide Pivot (source level)","default":1.0,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_wide_curve","text":"Glow Wide Curve (above pivot up)","default":0.8,"min":0.5,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"int_enum","name":"glow_wide_smooth","text":"Glow Wide Downsample","default":1,"min":0,"max":2,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Box (legacy)","Tent (smoother)","Tent + deep blur"]},
+		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":1.02,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":12,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.44,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.4,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"halo_quad_extent","text":"Halo Quad Extent (sigma, perf)","default":2.5,"min":2.0,"max":3.5,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+
+		// ---- Overload and overdrive ----
+		{"type":"float","name":"overload_threshold","text":"Overload Threshold","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_ramp","text":"Overload Ramp (n span)","default":0.75,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"intensity_overdrive","text":"Overdrive (hot core)","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"intensity_overdrive_curve","text":"Overdrive Curve","default":1.0,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"mask_overdrive_flare","text":"Mask Overdrive Hot Core","default":1.0,"min":0.0,"max":1.0,"step":1.0,"format":"%1.0f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_dot_gain","text":"Overdrive Dot Gain","default":2.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_max","text":"Overdrive Max (x peak)","default":3.0,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"overdrive_core","text":"Overdrive to Core","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_bloom","text":"Overload Defocus (blur)","default":0.2,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_width_add","text":"Overload Core Width Add (px)","default":5.0,"min":0.0,"max":12.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_width_steepness","text":"Overload Width Steepness","default":6.0,"min":1.0,"max":20.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_width_center","text":"Overload Width Center","default":0.4,"min":0.05,"max":0.99,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"overload_display_compression","text":"Overload Display Compression","default":0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
+
+		// ---- Brightness transfer ----
+		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
+		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"intenum","name":"rgb_spot_beam","text":"RGB Spot Width (per channel)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
+		{"type":"float","name":"spot_scale_red","text":"RGB Spot Scale Red (x)","default":0.85,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"spot_scale_green","text":"RGB Spot Scale Green (x)","default":0.7,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+		{"type":"float","name":"spot_scale_blue","text":"RGB Spot Scale Blue (x)","default":1.5,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
+
 		// ---- Phosphor persistence and decay ----
 		{"type":"float","name":"phosphor_half_ms","text":"Phosphor Half-life (ms)","default":16.0,"min":1.0,"max":300.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_hold_ms","text":"Phosphor Hold (ms, full brightness)","default":12,"min":0.0,"max":80.0,"step":1.0,"format":"%2.0f","screen":"vector","advanced":true},
@@ -69,15 +125,6 @@
 		{"type":"float","name":"phosphor_rgb_combination_width","text":"Phosphor RGB Combination Width","default":0,"min":0.0,"max":1.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"phosphor_energy_decay","text":"Phosphor Energy Decay (bright faster)","default":4.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"color","name":"phosphor_rgb_decay","text":"Phosphor RGB Decay (halflife x)","default":[1.15,1.05,0.95],"max":[3.0,3.0,3.0],"min":[0.2,0.2,0.2],"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"color","name":"phosphor_color","text":"Phosphor Color ","default":[1.0,1.0,1.0],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-
-		// ---- Brightness transfer ----
-		{"type":"float","name":"bright_sigmoid","text":"Brightness Sigmoid","default":0,"min":-4.0,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"bright_sigmoid_center","text":"Brightness Sigmoid Center","default":0.4,"min":0.05,"max":0.95,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"intenum","name":"rgb_spot_beam","text":"RGB Spot Width (per channel)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
-		{"type":"float","name":"spot_scale_red","text":"RGB Spot Scale Red (x)","default":0.85,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"spot_scale_green","text":"RGB Spot Scale Green (x)","default":0.7,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"spot_scale_blue","text":"RGB Spot Scale Blue (x)","default":1.5,"min":0.25,"max":3.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
 
 		// ---- Beam width ----
 		{"type":"float","name":"beam_width_min","text":"Beam Width Minimum","default":3.7,"min":0.1,"max":24.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -111,7 +158,6 @@
 		{"type":"float","name":"edge_defocus","text":"Edge Defocus","default":0.1,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"float","name":"edge_defocus_curve","text":"Edge Defocus Curve","default":3.0,"min":0.5,"max":4.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 
-
 		// ---- Beam energy model ----
 		{"type":"intenum","name":"energy_model","text":"Energy Model (speed/dwell)","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
 		{"type":"float","name":"energy_infl","text":"Energy Influence (no-current src)","default":1.0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
@@ -125,37 +171,6 @@
 		{"type":"float","name":"energy_dot_curve","text":"Energy Dot Curve","default":1.6,"min":0.2,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"energy_dot_max","text":"Energy Dot Max / Density Cap","default":3.2,"min":1.0,"max":16.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 		{"type":"intenum","name":"energy_stroke_agg","text":"Energy Stroke Aggregation","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Off","On"]},
-
-		// ---- Overload and overdrive ----
-		{"type":"float","name":"overload_threshold","text":"Overload Threshold","default":1.0,"min":0.1,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_ramp","text":"Overload Ramp (n span)","default":0.75,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"intensity_overdrive","text":"Overdrive (hot core)","default":1.0,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"intensity_overdrive_curve","text":"Overdrive Curve","default":1.0,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"mask_overdrive_flare","text":"Mask Overdrive Hot Core","default":1.0,"min":0.0,"max":1.0,"step":1.0,"format":"%1.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_dot_gain","text":"Overdrive Dot Gain","default":2.0,"min":1.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_max","text":"Overdrive Max (x peak)","default":3.0,"min":0.0,"max":8.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"overdrive_core","text":"Overdrive to Core","default":0.5,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_bloom","text":"Overload Defocus (blur)","default":0.2,"min":0.0,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_width_add","text":"Overload Core Width Add (px)","default":5.0,"min":0.0,"max":12.0,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_width_steepness","text":"Overload Width Steepness","default":6.0,"min":1.0,"max":20.0,"step":0.5,"format":"%2.1f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_width_center","text":"Overload Width Center","default":0.4,"min":0.05,"max":0.99,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_display_compression","text":"Overload Display Compression","default":0,"min":0.0,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-
-		// ---- Glow and bloom ----
-		{"type":"float","name":"analytic_glow","text":"Glow Source Strength (all vectors)","default":0.13,"min":0.0,"max":1.0,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"analytic_glow_width","text":"Glow Source Radius (all vectors)","default":26,"min":1.0,"max":80.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_narrow","text":"Glow Narrow Strength","default":0.012,"min":0.0,"max":0.2,"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_core_gain","text":"Overload Hot Core Gain","default":0.015,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide","text":"Glow Wide (low-res)","default":0.0028,"min":0.0,"max":0.02,"step":0.0001,"format":"%1.4f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide_reach","text":"Glow Wide Reach","default":8.0,"min":0.0,"max":16.0,"step":0.25,"format":"%2.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide_pivot","text":"Glow Wide Pivot (source level)","default":1.0,"min":0.05,"max":4.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_wide_curve","text":"Glow Wide Curve (above pivot up)","default":0.8,"min":0.5,"max":3.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"int_enum","name":"glow_wide_smooth","text":"Glow Wide Downsample","default":1,"min":0,"max":2,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["Box (legacy)","Tent (smoother)","Tent + deep blur"]},
-		{"type":"float","name":"overload_glow_gain","text":"Overload Glow (bloom)","default":1.02,"min":0.0,"max":2.0,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"overload_glow_width","text":"Overload Glow Width (px)","default":12,"min":4.0,"max":200.0,"step":2.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_tail_curve","text":"Glow Tail Curve","default":1.44,"min":0.4,"max":2.5,"step":0.02,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"glow_fbo_scale","text":"Glow FBO Scale (perf)","default":0.4,"min":0.1,"max":1.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"halo_quad_extent","text":"Halo Quad Extent (sigma, perf)","default":2.5,"min":2.0,"max":3.5,"step":0.1,"format":"%1.1f","screen":"vector","advanced":true},
 
 		// ---- Convergence ----
 		{"type":"float","name":"convergence_global_gain","text":"Convergence Global Bloom","default":0.01,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
@@ -192,22 +207,6 @@
 		{"type":"float","name":"beam_jitter_saturation_range","text":"Beam Jitter Saturation Range","default":1.5,"min":0.1,"max":6.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_saturation_curve","text":"Beam Jitter Saturation Curve","default":2.0,"min":0.25,"max":8.0,"step":0.05,"format":"%1.2f","screen":"vector","advanced":true},
 		{"type":"float","name":"beam_jitter_floor","text":"Beam Jitter Noise Floor","default":0.02,"min":0.0,"max":0.5,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
-
-		// ---- Color adjustment ----
-		{"type":"intenum","name":"primary_color_mode","text":"Color Adjustment Mode","default":1,"min":0,"max":1,"step":1,"format":"%s","screen":"vector","advanced":true,"strings":["CIE xy/Y (Advanced)","Direct Primary"]},
-		{"type":"float","name":"primary_red_hue","text":"Red Hue Shift (deg)","default":-1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_red_saturation","text":"Red Saturation","default":0.97,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_red_brightness","text":"Red Brightness","default":1.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_green_hue","text":"Green Hue Shift (deg)","default":-15,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_green_saturation","text":"Green Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_green_brightness","text":"Green Brightness","default":1,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_blue_hue","text":"Blue Hue Shift (Violet +)","default":1,"min":-60.0,"max":60.0,"step":1.0,"format":"%3.0f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_blue_saturation","text":"Blue Saturation","default":0.9,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"float","name":"primary_blue_brightness","text":"Blue Brightness","default":1.3,"min":0.0,"max":2.0,"step":0.01,"format":"%1.2f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"chroma_a","text":"Phosphor A Chromaticity ","default":[0.63,0.34],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"chroma_b","text":"Phosphor B Chromaticity ","default":[0.31,0.595],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"vec2","name":"chroma_c","text":"Phosphor C Chromaticity ","default":[0.17,0.07],"max":[1.0,1.0],"min":[0.0,0.0],"step":0.001,"format":"%1.3f","screen":"vector","advanced":true},
-		{"type":"color","name":"chroma_y_gain","text":"Phosphor Gain, ","default":[0.2124,0.62,0.1],"max":[1.0,1.0,1.0],"min":[0.0,0.0,0.0],"step":0.001,"format":"%1.4f","screen":"vector","advanced":true},
 
 		// ---- Vector geometry ----
 		{"type":"float","name":"vector_linearity_x","text":"Vector Linearity X (gain)","default":1.0,"min":0.8,"max":1.2,"step":0.005,"format":"%1.3f","screen":"vector","advanced":true},
