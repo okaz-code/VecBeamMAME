@@ -26,10 +26,10 @@ uniform vec4 u_overlay_ds; // xy = near tap offset (source UV), zw = far tap off
 
 // the four sign combinations of one offset pair
 #define VXO_TAP4(dx, dy) ( \
-	texture2D(s_tex, v_texcoord0 + vec2(-(dx), -(dy))).rgb + \
-	texture2D(s_tex, v_texcoord0 + vec2( (dx), -(dy))).rgb + \
-	texture2D(s_tex, v_texcoord0 + vec2(-(dx),  (dy))).rgb + \
-	texture2D(s_tex, v_texcoord0 + vec2( (dx),  (dy))).rgb)
+	texture2D(s_tex, v_texcoord0 + vec2(-(dx), -(dy))) + \
+	texture2D(s_tex, v_texcoord0 + vec2( (dx), -(dy))) + \
+	texture2D(s_tex, v_texcoord0 + vec2(-(dx),  (dy))) + \
+	texture2D(s_tex, v_texcoord0 + vec2( (dx),  (dy))))
 
 void main()
 {
@@ -38,9 +38,9 @@ void main()
 	float far_x = u_overlay_ds.z;
 	float far_y = u_overlay_ds.w;
 
-	vec3 value = VXO_TAP4(near_x, near_y);
+	vec4 value = VXO_TAP4(near_x, near_y);
 	value += VXO_TAP4(far_x, near_y);
 	value += VXO_TAP4(near_x, far_y);
 	value += VXO_TAP4(far_x, far_y);
-	gl_FragColor = vec4(value * 0.0625, 1.0);
+	gl_FragColor = value * 0.0625;
 }

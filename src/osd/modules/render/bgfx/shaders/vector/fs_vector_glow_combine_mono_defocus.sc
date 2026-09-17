@@ -55,7 +55,7 @@ uniform vec4 u_room_ambient;
 uniform vec4 u_ambient_output_scale;
 uniform vec4 u_vx_screen_rect;  // xy = tube face origin in window UV, zw = its size
 uniform vec4 u_vx_shadow;       // x = strength, y = centre gap (fraction of face width), z = rim scale, w = azimuth (radians)
-uniform vec4 u_vx_shadow_ink;   // x = rear white transmission
+uniform vec4 u_vx_shadow_ink;   // x = rear white transmission, y = rim gain on the strength
 uniform vec4 u_hdr_glow_compensation;
 uniform vec4 u_convergence_global;
 uniform vec4 u_convergence_global_color;
@@ -282,7 +282,7 @@ void main()
 		// dark areas hold an RGB of nearly zero however opaque they are. The mask blend accumulates
 		// true coverage in alpha, so that is the channel to read.
 		float vx_cover=clamp(mix(texture2D(s_vx_ink,vx_uv).a,texture2D(s_vx_shadow,vx_uv).a,vx_sag),0.0,1.0);
-		vx_shadow=mix(1.0,clamp(u_vx_shadow_ink.x,0.0,1.0),vx_cover*clamp(u_vx_shadow.x,0.0,1.0));
+		vx_shadow=mix(1.0,clamp(u_vx_shadow_ink.x,0.0,1.0),clamp(vx_cover*clamp(u_vx_shadow.x,0.0,1.0)*mix(1.0,max(u_vx_shadow_ink.y,0.0),vx_sag),0.0,1.0));
 	}
 	vec3 ambient=u_ambient_level.x*max(u_room_ambient.x,0.0)*0.001*u_ambient_color.rgb*u_ambient_output_scale.x*face*vignette*vx_shadow;
 	vec3 glow=vec3_splat(0.0),optical=vec3_splat(0.0);bool emit_outside=emit_uv.x<0.0||emit_uv.x>1.0||emit_uv.y<0.0||emit_uv.y>1.0;

@@ -21,7 +21,7 @@ uniform vec4 u_overlay_params1; // x=ambient, y=paper white nits, z=colour optic
 uniform vec4 u_overlay_params2; // x=dark level, y=highlight bleach, z=highlight knee, w=highlight curve
 uniform vec4 u_vx_screen_rect;  // xy = tube face origin in window UV, zw = its size
 uniform vec4 u_vx_shadow;       // x = strength, y = centre gap (fraction of face width), z = rim scale, w = azimuth
-uniform vec4 u_vx_shadow_ink;   // x = rear white transmission
+uniform vec4 u_vx_shadow_ink;   // x = rear white transmission, y = rim gain on the strength
 
 void main()
 {
@@ -137,7 +137,9 @@ void main()
 		vec2 vx_dir = vec2(cos(u_vx_shadow.w), -sin(u_vx_shadow.w));
 		vec2 vx_uv = v_texcoord0 + vx_dir * vx_gap * u_vx_screen_rect.z;
 		float vx_cover = clamp(mix(texture2D(s_vx_caster, vx_uv).a, texture2D(s_vx_shadow, vx_uv).a, vx_sag), 0.0, 1.0);
-		vx_shadow = mix(1.0, clamp(u_vx_shadow_ink.x, 0.0, 1.0), vx_cover * clamp(u_vx_shadow.x, 0.0, 1.0));
+		vx_shadow = mix(1.0, clamp(u_vx_shadow_ink.x, 0.0, 1.0),
+			clamp(vx_cover * clamp(u_vx_shadow.x, 0.0, 1.0)
+				* mix(1.0, max(u_vx_shadow_ink.y, 0.0), vx_sag), 0.0, 1.0));
 	}
 	vec3 dark_resin = static_filter
 		* (u_overlay_params1.y * u_overlay_params1.x * u_overlay_params2.x * resin_coverage) * vx_shadow;

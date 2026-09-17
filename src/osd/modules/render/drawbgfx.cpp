@@ -2924,6 +2924,7 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "overlay_shadow_azimuth", &renderer_bgfx::vec_slider_cache::overlay_shadow_azimuth, 45.0f },
 	{ "overlay_shadow_gap", &renderer_bgfx::vec_slider_cache::overlay_shadow_gap, 2.73f },
 	{ "overlay_shadow_gap_edge", &renderer_bgfx::vec_slider_cache::overlay_shadow_gap_edge, 2.14f },
+	{ "overlay_shadow_rim_gain", &renderer_bgfx::vec_slider_cache::overlay_shadow_rim_gain, 1.0f },
 	{ "overlay_shadow_ink", &renderer_bgfx::vec_slider_cache::overlay_shadow_ink, 0.05f },
 	{ "overlay_shadow_source_angle", &renderer_bgfx::vec_slider_cache::overlay_shadow_source_angle, 30.0f },
 	{ "overlay_white_diffusion", &renderer_bgfx::vec_slider_cache::overlay_white_diffusion, 0.10f },
@@ -3298,6 +3299,71 @@ void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t
 	m_vectrex_overlay_mask_effect->submit(view);
 }
 
+// Taps per unit of penumbra. The nine-tap kernel's weights are a Gaussian with a sigma of 2.5
+// taps, so this puts sigma at half the penumbra and the soft edge, at 2.56 sigma from ten to
+// ninety percent, at about the penumbra's own width. The blur used to run a sigma of 1.77
+// penumbras - three and a half times too wide - which went unnoticed while the taps were far
+// enough apart to keep the caster's contrast in nine sharp copies rather than spreading it.
+static constexpr float kVxShadowTapsPerPenumbra = 5.0f;
+
+// Fill the shadow blur's input by averaging the block each of its texels covers.
+//
+// The blur wants the radius to land on one texel, and the shadow's radius is tens of window pixels,
+// so its buffer ends up tens of times coarser than the window. Point-sampling the caster into that
+// would hand the blur a comb of its own: a printed line one pixel wide is hit or missed depending
+// on where it falls. The resin diffusion has the same problem and the same prefilter; this is that
+// prefilter pointed at the caster, in two steps because one pass of it spans at most eight.
+bool renderer_bgfx::decimate_overlay_caster(uint16_t scale, const float *projection)
+{
+	if (m_vectrex_overlay_downsample_effect == nullptr || m_vectrex_overlay_caster == nullptr
+		|| m_vectrex_overlay_caster_lo == nullptr)
+		return false;
+	bgfx_uniform *const sampler = m_vectrex_overlay_downsample_effect->uniform("s_tex");
+	bgfx_uniform *const params = m_vectrex_overlay_downsample_effect->uniform("u_overlay_ds");
+	if (sampler == nullptr || params == nullptr)
+		return false;
+	const float logical_width = float(s_width[0]);
+	const float logical_height = float(s_height[0]);
+	auto step = [&](bgfx_target *dst, bgfx_target *src, uint16_t factor) -> bool
+	{
+		const uint16_t view = uint16_t(s_current_view++);
+		bgfx_view_profile::name(view, "vx_shadow_decimate");
+		bgfx::setViewFrameBuffer(view, dst->target());
+		bgfx::setViewRect(view, 0, 0, dst->width(), dst->height());
+		bgfx::setViewClear(view, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+		bgfx::setViewTransform(view, nullptr, projection);
+		// Bilinear fetches on the odd source-texel positions inside the covered block, exactly as
+		// the diffusion's own use of this pass: each straddles a boundary and returns a pair mean.
+		const float near_tap = (factor >= 4U) ? 1.0f : 0.0f;
+		const float far_tap = (factor >= 8U) ? 3.0f : near_tap;
+		const float inv_w = 1.0f / float(std::max<uint16_t>(1, src->width()));
+		const float inv_h = 1.0f / float(std::max<uint16_t>(1, src->height()));
+		float values[4] = { near_tap * inv_w, near_tap * inv_h, far_tap * inv_w, far_tap * inv_h };
+		params->set(values, sizeof(values)); params->upload();
+		bgfx::setTexture(0, sampler->handle(), src->texture(),
+			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP);
+		if (bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
+			return false;
+		bgfx::TransientVertexBuffer buffer;
+		bgfx::allocTransientVertexBuffer(&buffer, 6, ScreenVertex::ms_decl);
+		auto *v = reinterpret_cast<ScreenVertex *>(buffer.data);
+		vertex(&v[0], 0,0,0,0xffffffff,0,0); vertex(&v[1], logical_width,0,0,0xffffffff,1,0); vertex(&v[2], logical_width,logical_height,0,0xffffffff,1,1);
+		vertex(&v[3], 0,0,0,0xffffffff,0,0); vertex(&v[4], logical_width,logical_height,0,0xffffffff,1,1); vertex(&v[5], 0,logical_height,0,0xffffffff,0,1);
+		bgfx::setVertexBuffer(0, &buffer);
+		m_vectrex_overlay_downsample_effect->submit(view);
+		return true;
+	};
+	if (scale > 8U)
+	{
+		if (m_vectrex_overlay_shadow_ds == nullptr)
+			return false;
+		return step(m_vectrex_overlay_shadow_ds, m_vectrex_overlay_caster, 8U)
+			&& step(m_vectrex_overlay_caster_lo, m_vectrex_overlay_shadow_ds, uint16_t(scale / 8U));
+	}
+	return step(m_vectrex_overlay_caster_lo, m_vectrex_overlay_caster, scale);
+}
+
 // The ink masks are built BEFORE the screen chain runs, because the chain is what needs them: the
 // rear print's shadow falls on the tube's ambient illumination, and that pedestal exists as its own
 // term only inside Glow Combine.  By the time the optical composite runs, s_screen carries beam and
@@ -3309,7 +3375,7 @@ void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t
 // PREMULTIPLIED - vectrex_overlay_mask writes alpha x ink - so for white ink the RGB it holds is the
 // coverage itself, and the existing diffusion blur, which carries RGB, can be used unchanged. No
 // shader of its own is needed for this.
-bool renderer_bgfx::blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h, const float *projection)
+bool renderer_bgfx::blur_overlay_shadow(float radius_px, uint16_t scale, uint16_t w, uint16_t h, const float *projection)
 {
 	if (m_vectrex_overlay_blur_effect == nullptr)
 		return false;
@@ -3331,8 +3397,12 @@ bool renderer_bgfx::blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h,
 		for (float &t : tap)
 			t /= sum;
 	}
-	// The blur runs at quarter resolution, so the radius is in those texels.
-	const float pass_radius = std::max(0.0f, radius_px) * 0.25f / std::sqrt(2.0f);
+	// One texel between taps. The nine taps are spaced by the radius, so a radius of more than a
+	// texel stops being a blur and becomes nine copies of the caster - the same sampling comb the
+	// resin diffusion keeps its own prefilter for. The scale is chosen to put the radius here, and
+	// the caster arrives already averaged over the block each of these texels covers.
+	const float pass_radius = std::max(0.0f, radius_px)
+		/ (float(std::max<uint16_t>(1, scale)) * kVxShadowTapsPerPenumbra);
 	const float logical_width = float(s_width[0]);
 	const float logical_height = float(s_height[0]);
 	for (uint32_t pass = 0; pass < 2U; ++pass)
@@ -3361,7 +3431,7 @@ bool renderer_bgfx::blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h,
 			t1->set(weights, sizeof(weights)); t1->upload();
 		}
 		bgfx::setTexture(0, sampler->handle(), direction
-				? m_vectrex_overlay_shadow[0]->texture() : m_vectrex_overlay_caster->texture());
+				? m_vectrex_overlay_shadow[0]->texture() : m_vectrex_overlay_caster_lo->texture());
 		if (bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
 			return false;
 		bgfx::TransientVertexBuffer buffer;
@@ -3520,8 +3590,19 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	const float penumbra_px = shadow_gap * shadow_edge * 2.0f
 			* std::tan(0.5f * source_deg * std::numbers::pi_v<float> / 180.0f) * screen_px;
 
-	uint16_t const sh_w = std::max<uint16_t>(1, width / 4U);
-	uint16_t const sh_h = std::max<uint16_t>(1, height / 4U);
+	// Coarse enough that the blur's taps land one texel apart. The kernel spaces its nine taps by
+	// the radius, so the buffer has to be about that many pixels per texel or the shadow comes back
+	// as nine copies of the print. A penumbra of tens of pixels therefore asks for a buffer tens of
+	// times coarser than the window, which is no loss: what it holds is a shadow that soft.
+	uint16_t sh_scale = 4U;
+	for (float const want = penumbra_px / kVxShadowTapsPerPenumbra;
+		sh_scale < 64U && want > float(sh_scale); )
+		sh_scale = uint16_t(sh_scale * 2U);
+	uint16_t const sh_w = std::max<uint16_t>(1, (width + sh_scale - 1U) / sh_scale);
+	uint16_t const sh_h = std::max<uint16_t>(1, (height + sh_scale - 1U) / sh_scale);
+	// Halfway house for the decimation when one pass of the prefilter cannot span the whole drop.
+	uint16_t const ds_w = std::max<uint16_t>(1, (width + 7U) / 8U);
+	uint16_t const ds_h = std::max<uint16_t>(1, (height + 7U) / 8U);
 	auto wrong_sh = [sh_w, sh_h](bgfx_target *t) { return t == nullptr || t->width() != sh_w || t->height() != sh_h; };
 	if (wrong_sh(m_vectrex_overlay_shadow[0]))
 		m_vectrex_overlay_shadow[0] = m_targets->create_target("vectrex_overlay_shadow0", bgfx::TextureFormat::BGRA8,
@@ -3531,6 +3612,20 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 			sh_w, sh_h, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
 	if (!usable(m_vectrex_overlay_shadow[0]) || !usable(m_vectrex_overlay_shadow[1]))
 		return bail("an overlay shadow target could not be created");
+	if (wrong_sh(m_vectrex_overlay_caster_lo))
+		m_vectrex_overlay_caster_lo = m_targets->create_target("vectrex_overlay_caster_lo", bgfx::TextureFormat::BGRA8,
+			sh_w, sh_h, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+	if (sh_scale > 8U)
+	{
+		auto wrong_ds = [ds_w, ds_h](bgfx_target *t) { return t == nullptr || t->width() != ds_w || t->height() != ds_h; };
+		if (wrong_ds(m_vectrex_overlay_shadow_ds))
+			m_vectrex_overlay_shadow_ds = m_targets->create_target("vectrex_overlay_shadow_ds", bgfx::TextureFormat::BGRA8,
+				ds_w, ds_h, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+		if (!usable(m_vectrex_overlay_shadow_ds))
+			return bail("an overlay shadow decimation target could not be created");
+	}
+	if (!usable(m_vectrex_overlay_caster_lo))
+		return bail("the overlay shadow blur input could not be created");
 
 	// Key the cached blur on what can actually change it.
 	uint64_t key = (uint64_t(sh_w) << 48) ^ (uint64_t(sh_h) << 32)
@@ -3547,7 +3642,8 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	}
 	if (key != m_vx_shadow_key)
 	{
-		if (blur_overlay_shadow(penumbra_px, sh_w, sh_h, projection))
+		if (decimate_overlay_caster(sh_scale, projection)
+			&& blur_overlay_shadow(penumbra_px, sh_scale, sh_w, sh_h, projection))
 			m_vx_shadow_key = key;
 	}
 	return true;
@@ -3752,7 +3848,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 			std::max(1.0f, m_vs.overlay_shadow_gap_edge),
 			m_vs.overlay_shadow_azimuth * std::numbers::pi_v<float> / 180.0f };
 		float ink[4] = {
-			std::clamp(m_vs.overlay_shadow_ink, 0.0f, 1.0f), 0.0f, 0.0f, 0.0f };
+			std::clamp(m_vs.overlay_shadow_ink, 0.0f, 1.0f), std::max(0.0f, m_vs.overlay_shadow_rim_gain), 0.0f, 0.0f };
 		if (bgfx_uniform *const u = m_vectrex_overlay_composite_effect->uniform("u_vx_screen_rect"))
 			{ u->set(m_vx_screen_rect, sizeof(float) * 4); u->upload(); }
 		if (bgfx_uniform *const u = m_vectrex_overlay_composite_effect->uniform("u_vx_shadow"))
@@ -7855,6 +7951,29 @@ int renderer_bgfx::draw(int update)
 				render_w, render_h,
 				m_vec_fb_w, m_vec_fb_h,
 				content_w, content_h);
+
+			// One line for the glow cascade's real pixel sizes. How far the bloom reaches is set by how
+			// many of these texels its blur radius covers, so comparing two machines slider for slider
+			// only means something with this in hand: the levels are sized from a fixed reference width
+			// over the content fraction, which is neither the window's size nor the picture's.
+			{
+				uint64_t glow_key = 0;
+				std::string glow_line;
+				for (int level = 0; level < 4; ++level)
+				{
+					bgfx_target *const level_target = m_targets->target(0, "glow_lo" + std::to_string(level));
+					uint16_t const gw = (level_target != nullptr) ? level_target->width() : 0;
+					uint16_t const gh = (level_target != nullptr) ? level_target->height() : 0;
+					glow_key = glow_key * 1099511628211ull ^ (uint64_t(gw) << 16) ^ uint64_t(gh);
+					glow_line += (level ? ", " : "") + std::to_string(gw) + "x" + std::to_string(gh);
+				}
+				if (glow_key != m_vec_logged_glow_key)
+				{
+					m_vec_logged_glow_key = glow_key;
+					osd_printf_verbose("BGFX: glow cascade %s; content %ux%u of output %ux%u\n",
+						glow_line.c_str(), m_vec_cached_content_w, m_vec_cached_content_h, render_w, render_h);
+				}
+			}
 			// Expose the analytic-glow FBO as "glow0" for the chain's post-mask glow composite pass.
 			if (bgfx::isValid(m_vec_glow_fb))
 			{
@@ -8180,7 +8299,7 @@ int renderer_bgfx::draw(int update)
 					m_vs.overlay_shadow_azimuth * std::numbers::pi_v<float> / 180.0f };
 				const float vx_ink_vals[4] = {
 					std::clamp(m_vs.overlay_shadow_ink, 0.0f, 1.0f),
-					0.0f, 0.0f, 0.0f };
+					std::max(0.0f, m_vs.overlay_shadow_rim_gain), 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_vx_screen_rect", m_vx_screen_rect, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_vx_shadow", vx_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_vx_shadow_ink", vx_ink_vals, 4);

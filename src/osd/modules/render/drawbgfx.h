@@ -113,7 +113,8 @@ private:
 	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
 	void set_hdr_screen_scale(bgfx_effect *effect, uint32_t blend);
 	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
-	bool blur_overlay_shadow(float radius_px, uint16_t w, uint16_t h, const float *projection);
+	bool blur_overlay_shadow(float radius_px, uint16_t scale, uint16_t w, uint16_t h, const float *projection);
+	bool decimate_overlay_caster(uint16_t scale, const float *projection);
 	bool prepare_vectrex_overlay_masks(int window_index);
 	bool prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_peak, float paper_white, int window_index);
 	void render_post_screen_quad(int view, render_primitive* prim, bgfx::TransientVertexBuffer* buffer, int32_t screen, int window_index);
@@ -441,6 +442,10 @@ public:
 		float overlay_shadow_gap = 2.73f;
 		float overlay_shadow_gap_edge = 2.14f;
 		float overlay_shadow_ink = 0.05f;
+		// Multiplies the shadow's strength at the rim, where the plate stands furthest off the
+		// tube. The gap has its own rim scale; this is the same idea for how much light the
+		// shadow takes out, because a penumbra that wide spreads a thin print thin.
+		float overlay_shadow_rim_gain = 1.0f;
 		float overlay_shadow_source_angle = 30.0f;
 		float overlay_white_diffusion = 0.10f;
 		float overlay_white_reflectance = 0.25f;
@@ -714,6 +719,10 @@ private:
 	// a convolution, but it is monotonic in softness, which is what this is for.
 	bgfx_target *m_vectrex_overlay_caster = nullptr;
 	bgfx_target *m_vectrex_overlay_shadow[2] = { nullptr, nullptr };
+	// The shadow blur's input, decimated to the blur resolution, and the halfway step the
+	// decimation needs when that resolution is more than eight times coarser than the window.
+	bgfx_target *m_vectrex_overlay_caster_lo = nullptr;
+	bgfx_target *m_vectrex_overlay_shadow_ds = nullptr;
 	// The overlay is a still image. Blurring it every present would be two full-window passes at the
 	// host present rate; this key skips the work until the artwork, the radius or the size moves.
 	uint64_t m_vx_shadow_key = 0;
@@ -929,6 +938,7 @@ private:
 	float m_vec_bezel_threshold_drawn = -1.0f;
 	int m_vec_cached_vector_count = 0; // retained-list count reused by host-rate re-presents
 	uint16_t m_vec_cached_content_w = 0;
+	uint64_t m_vec_logged_glow_key = 0;
 	uint16_t m_vec_cached_content_h = 0;
 	uint32_t m_vec_playback_reset = 0; // last MVEC discontinuity serial whose temporal history was cleared
 	// Exact VECTORBUF face dimensions after layout, rotation and aspect-fit transforms. Spot-size
