@@ -211,6 +211,8 @@
 			/* VK_KHR_draw_indirect_count */                                \
 			VK_IMPORT_DEVICE_FUNC(true,  vkCmdDrawIndirectCountKHR);        \
 			VK_IMPORT_DEVICE_FUNC(true,  vkCmdDrawIndexedIndirectCountKHR); \
+			/* VK_EXT_hdr_metadata */                                       \
+			VK_IMPORT_DEVICE_FUNC(true,  vkSetHdrMetadataEXT);              \
 
 #define VK_DESTROY                                \
 			VK_DESTROY_FUNC(Buffer);              \
@@ -705,6 +707,7 @@ VK_DESTROY_FUNC(DescriptorSet);
 
 		uint32_t findPresentMode(bool _vsync);
 		TextureFormat::Enum findSurfaceFormat(TextureFormat::Enum _format, VkColorSpaceKHR _colorSpace, bool _srgb);
+		bool surfaceOffersFormat(VkFormat _format, VkColorSpaceKHR _colorSpace);
 
 		bool acquire(VkCommandBuffer _commandBuffer);
 		void present();
@@ -718,6 +721,8 @@ VK_DESTROY_FUNC(DescriptorSet);
 		Resolution m_resolution;
 
 		TextureFormat::Enum m_colorFormat;
+		bool m_hdr10 = false;
+		VkFormat m_hdr10VkFormat = VK_FORMAT_UNDEFINED;
 		TextureFormat::Enum m_depthFormat;
 
 		VkSurfaceKHR   m_surface;
