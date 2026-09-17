@@ -2875,6 +2875,74 @@ const vec_slider_def VEC_SLIDER_DEFS[] = {
 	{ "width_sigmoid", &renderer_bgfx::vec_slider_cache::width_sigmoid, 0.0f },
 	{ "width_sigmoid_center", &renderer_bgfx::vec_slider_cache::width_sigmoid_center, 0.5f },
 	{ "z_rise_tau", &renderer_bgfx::vec_slider_cache::z_rise_tau, 0.0f },
+	{ "ambient_level", &renderer_bgfx::vec_slider_cache::ambient_level, 0.0f },
+	{ "ambient_sdr_trim", &renderer_bgfx::vec_slider_cache::ambient_sdr_trim, 1.0f },
+	{ "beam_flash_gain", &renderer_bgfx::vec_slider_cache::beam_flash_gain, 1.0f },
+	{ "beam_flash_ms", &renderer_bgfx::vec_slider_cache::beam_flash_ms, 0.0f },
+	{ "beam_peak_nits", &renderer_bgfx::vec_slider_cache::beam_peak_nits, 1000.0f },
+	{ "beam_peak_ratio", &renderer_bgfx::vec_slider_cache::beam_peak_ratio, 0.0f },
+	{ "beam_window", &renderer_bgfx::vec_slider_cache::beam_window, 0.0f },
+	{ "beam_window_adaptive", &renderer_bgfx::vec_slider_cache::beam_window_adaptive, 1.0f },
+	{ "beam_window_latch_ms", &renderer_bgfx::vec_slider_cache::beam_window_latch_ms, 0.0f },
+	{ "beam_window_scale", &renderer_bgfx::vec_slider_cache::beam_window_scale, 1.0f },
+	{ "cap_no_persist", &renderer_bgfx::vec_slider_cache::cap_no_persist, 0.0f },
+	{ "edge_glow", &renderer_bgfx::vec_slider_cache::edge_glow, 0.0f },
+	{ "edge_glow_length", &renderer_bgfx::vec_slider_cache::edge_glow_length, 80.0f },
+	{ "edge_glow_persist", &renderer_bgfx::vec_slider_cache::edge_glow_persist, 120.0f },
+	{ "edge_glow_sensitivity", &renderer_bgfx::vec_slider_cache::edge_glow_sensitivity, 1.0f },
+	{ "edge_glow_threshold", &renderer_bgfx::vec_slider_cache::edge_glow_threshold, 0.0f },
+	{ "edge_glow_width", &renderer_bgfx::vec_slider_cache::edge_glow_width, 10.0f },
+	{ "flicker_blue_depth", &renderer_bgfx::vec_slider_cache::flicker_blue_depth, 1.0f },
+	{ "flicker_buckets", &renderer_bgfx::vec_slider_cache::flicker_buckets, 6.0f },
+	{ "flicker_green_depth", &renderer_bgfx::vec_slider_cache::flicker_green_depth, 1.0f },
+	{ "flicker_period_ms", &renderer_bgfx::vec_slider_cache::flicker_period_ms, 16.7f },
+	{ "flicker_red_depth", &renderer_bgfx::vec_slider_cache::flicker_red_depth, 1.0f },
+	{ "flicker_thresh_ms", &renderer_bgfx::vec_slider_cache::flicker_thresh_ms, 12.0f },
+	{ "glow_fbo_scale", &renderer_bgfx::vec_slider_cache::glow_fbo_scale, 1.0f },
+	{ "halo_quad_extent", &renderer_bgfx::vec_slider_cache::halo_quad_extent, 3.5f },
+	{ "hdr_beam_floor_nits", &renderer_bgfx::vec_slider_cache::hdr_beam_floor_nits, 0.0f },
+	{ "hdr_glow_stability", &renderer_bgfx::vec_slider_cache::hdr_glow_stability, 1.0f },
+	{ "hdr_headroom_override", &renderer_bgfx::vec_slider_cache::hdr_headroom_override, 0.0f },
+	{ "hdr_peak_target_nits", &renderer_bgfx::vec_slider_cache::hdr_peak_target_nits, 0.0f },
+	{ "hdr_rolloff_max", &renderer_bgfx::vec_slider_cache::hdr_rolloff_max, 1.3f },
+	{ "hdr_sat_protect", &renderer_bgfx::vec_slider_cache::hdr_sat_protect, 0.0f },
+	{ "hdr_shoulder_start", &renderer_bgfx::vec_slider_cache::hdr_shoulder_start, 0.85f },
+	{ "join_extend", &renderer_bgfx::vec_slider_cache::join_extend, 1.0f },
+	{ "mglow_coefficient", &renderer_bgfx::vec_slider_cache::mglow_coefficient, 0.0f },
+	{ "mglow_coverage_full", &renderer_bgfx::vec_slider_cache::mglow_coverage_full, 0.85f },
+	{ "mglow_min_distance", &renderer_bgfx::vec_slider_cache::mglow_min_distance, 0.30f },
+	{ "overlay_ambient_light", &renderer_bgfx::vec_slider_cache::overlay_ambient_light, 0.50f },
+	{ "overlay_color_dark_level", &renderer_bgfx::vec_slider_cache::overlay_color_dark_level, 0.15f },
+	{ "overlay_color_density", &renderer_bgfx::vec_slider_cache::overlay_color_density, 2.5f },
+	{ "overlay_color_glow", &renderer_bgfx::vec_slider_cache::overlay_color_glow, 1.10f },
+	{ "overlay_color_highlight_bleach", &renderer_bgfx::vec_slider_cache::overlay_color_highlight_bleach, 0.0f },
+	{ "overlay_color_highlight_curve", &renderer_bgfx::vec_slider_cache::overlay_color_highlight_curve, 0.55f },
+	{ "overlay_color_highlight_knee", &renderer_bgfx::vec_slider_cache::overlay_color_highlight_knee, 0.15f },
+	{ "overlay_diffusion_radius", &renderer_bgfx::vec_slider_cache::overlay_diffusion_radius, 12.0f },
+	{ "overlay_diffusion_shape", &renderer_bgfx::vec_slider_cache::overlay_diffusion_shape, 0.4f },
+	{ "overlay_shadow", &renderer_bgfx::vec_slider_cache::overlay_shadow, 0.0f },
+	{ "overlay_shadow_azimuth", &renderer_bgfx::vec_slider_cache::overlay_shadow_azimuth, 45.0f },
+	{ "overlay_shadow_gap", &renderer_bgfx::vec_slider_cache::overlay_shadow_gap, 2.73f },
+	{ "overlay_shadow_gap_edge", &renderer_bgfx::vec_slider_cache::overlay_shadow_gap_edge, 2.14f },
+	{ "overlay_shadow_ink", &renderer_bgfx::vec_slider_cache::overlay_shadow_ink, 0.05f },
+	{ "overlay_shadow_source_angle", &renderer_bgfx::vec_slider_cache::overlay_shadow_source_angle, 30.0f },
+	{ "overlay_white_diffusion", &renderer_bgfx::vec_slider_cache::overlay_white_diffusion, 0.10f },
+	{ "overlay_white_reflectance", &renderer_bgfx::vec_slider_cache::overlay_white_reflectance, 0.25f },
+	{ "overlay_white_transmission", &renderer_bgfx::vec_slider_cache::overlay_white_transmission, 0.65f },
+	{ "phosphor_curve", &renderer_bgfx::vec_slider_cache::phosphor_curve, 1.2f },
+	{ "phosphor_energy_decay", &renderer_bgfx::vec_slider_cache::phosphor_energy_decay, 0.0f },
+	{ "phosphor_half_ms", &renderer_bgfx::vec_slider_cache::phosphor_half_ms, 42.0f },
+	{ "phosphor_hold_ms", &renderer_bgfx::vec_slider_cache::phosphor_hold_ms, 0.0f },
+	{ "phosphor_total_ms", &renderer_bgfx::vec_slider_cache::phosphor_total_ms, 500.0f },
+	{ "point_roundness", &renderer_bgfx::vec_slider_cache::point_roundness, 0.4f },
+	{ "ray_count", &renderer_bgfx::vec_slider_cache::ray_count, 6.0f },
+	{ "room_ambient", &renderer_bgfx::vec_slider_cache::room_ambient, 1.0f },
+	{ "sdr_beam_level", &renderer_bgfx::vec_slider_cache::sdr_beam_level, 1.0f },
+	{ "sdr_rolloff_ceiling", &renderer_bgfx::vec_slider_cache::sdr_rolloff_ceiling, 1.0f },
+	{ "sdr_rolloff_knee", &renderer_bgfx::vec_slider_cache::sdr_rolloff_knee, 1.0f },
+	{ "sdr_shadow_curve", &renderer_bgfx::vec_slider_cache::sdr_shadow_curve, 1.0f },
+	{ "vertex_dwell_energy", &renderer_bgfx::vec_slider_cache::vertex_dwell_energy, 0.0f },
+	{ "vertex_dwell_width", &renderer_bgfx::vec_slider_cache::vertex_dwell_width, 1.0f },
 };
 } // anonymous namespace
 
@@ -2939,7 +3007,7 @@ void renderer_bgfx::refresh_vec_slider_cache()
 // squashed highlights beats a dim one with perfect ratios.
 bool renderer_bgfx::vec_beam_nits_model(float &beam_nits, float &ceiling_nits) const
 {
-	const float peak_slider = m_chains->slider_value(0, "hdr_peak_target_nits", 0.0f);
+	const float peak_slider = m_vs.hdr_peak_target_nits;
 	if (peak_slider <= 0.0f)
 		return false;
 	// Ambient adaptation scales the WHOLE model, not the beam alone. fraction below is
@@ -2948,8 +3016,9 @@ bool renderer_bgfx::vec_beam_nits_model(float &beam_nits, float &ceiling_nits) c
 	// the beam would move that ratio and quietly recompress the overlaps and overdrive.
 	const float adapt = m_module().edr_adaptation_factor();
 	const float peak_target = peak_slider * adapt;
+	// Its fallback is another slider's value, which a fixed cache default cannot express.
 	const float beam_target = std::max(1.0f, m_chains->slider_value(0, "hdr_beam_target_nits", peak_slider) * adapt);
-	const float beam_floor = std::max(0.0f, m_chains->slider_value(0, "hdr_beam_floor_nits", 0.0f) * adapt);
+	const float beam_floor = std::max(0.0f, m_vs.hdr_beam_floor_nits * adapt);
 	// 0 when the platform cannot say; the target then stands unclamped.
 	const float panel_peak = m_module().hdr_chain_peak_nits();
 	ceiling_nits = (panel_peak > 0.0f) ? std::min(peak_target, panel_peak) : peak_target;
@@ -2982,13 +3051,13 @@ float renderer_bgfx::vec_beam_peak_ratio() const
 				? m_module().edr_reference_white_nits() : m_module().paper_white_nits());
 		return std::max(0.01f, beam_nits / white);
 	}
-	const float ratio = m_chains->slider_value(0, "beam_peak_ratio", 0.0f);
+	const float ratio = m_vs.beam_peak_ratio;
 	if (ratio > 0.0f)
 		return ratio;
 	// Legacy chain: a nits target only means something against a white, and the configured paper
 	// white is the one it was authored against.
 	const float white = std::max(1.0f, m_module().paper_white_nits());
-	return std::max(0.01f, m_chains->slider_value(0, "beam_peak_nits", 1000.0f) / white);
+	return std::max(0.01f, m_vs.beam_peak_nits / white);
 }
 
 // Scale applied to the chain's ambient pedestal before the output seed. Ambient is reflected room
@@ -3012,10 +3081,10 @@ float renderer_bgfx::ambient_output_scale() const
 {
 	if (s_bgfx_hdr_active || s_bgfx_edr_active)
 		return 1.0f;
-	const float sdr_level = std::max(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.01f);
+	const float sdr_level = std::max(m_vs.sdr_beam_level, 0.01f);
 	// 1.0 for a chain without the slider (default-vector draws no ambient at all), which leaves
 	// those chains on their previous behaviour.
-	const float trim = std::max(m_chains->slider_value(0, "ambient_sdr_trim", 1.0f), 0.0f);
+	const float trim = std::max(m_vs.ambient_sdr_trim, 0.0f);
 	return trim / sdr_level;
 }
 
@@ -3444,9 +3513,9 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	// the room's light: an extended source is what makes this a soft band rather than a displaced
 	// silhouette, and with a 3.5 mm gap at the centre opening to 7.5 mm at the rim the two are the
 	// same order, so the softness cannot be left out.
-	const float shadow_gap = std::max(0.0f, m_chains->slider_value(0, "overlay_shadow_gap", 2.73f)) * 0.01f;
-	const float shadow_edge = std::max(1.0f, m_chains->slider_value(0, "overlay_shadow_gap_edge", 2.14f));
-	const float source_deg = std::clamp(m_chains->slider_value(0, "overlay_shadow_source_angle", 30.0f), 0.0f, 170.0f);
+	const float shadow_gap = std::max(0.0f, m_vs.overlay_shadow_gap) * 0.01f;
+	const float shadow_edge = std::max(1.0f, m_vs.overlay_shadow_gap_edge);
+	const float source_deg = std::clamp(m_vs.overlay_shadow_source_angle, 0.0f, 170.0f);
 	const float screen_px = std::max(1.0f, m_vx_screen_rect[2] * float(width));
 	const float penumbra_px = shadow_gap * shadow_edge * 2.0f
 			* std::tan(0.5f * source_deg * std::numbers::pi_v<float> / 180.0f) * screen_px;
@@ -3502,7 +3571,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		|| !bgfx::isValid(screen_hdr->texture()))
 		return false;
 
-	float const radius = std::max(0.0f, m_chains->slider_value(0, "overlay_diffusion_radius", 12.0f));
+	float const radius = std::max(0.0f, m_vs.overlay_diffusion_radius);
 	uint32_t const blur_iterations = radius >= 12.0f ? 3U : (radius >= 7.0f ? 2U : 1U);
 	// optional box prefilter + repeated blur H/V pairs + composite
 	uint32_t const required_vertices = (blur_iterations * 2U + 2U) * 6U;
@@ -3599,7 +3668,7 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	// the heavy floor survives the repeated H/V passes because an exponential tail stays
 	// exponential under self-convolution, unlike the Gaussian it replaces.  Building the
 	// weights here keeps the control free per pixel and the normalisation exact.
-	float const blur_shape = std::clamp(m_chains->slider_value(0, "overlay_diffusion_shape", 0.4f), 0.2f, 6.0f);
+	float const blur_shape = std::clamp(m_vs.overlay_diffusion_shape, 0.2f, 6.0f);
 	float blur_tap[5];
 	{
 		float sum = 0.0f;
@@ -3676,14 +3745,14 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 	// The same three the chain's Glow Combine is given, so the two shadows agree.
 	{
 		const float strength = m_vx_screen_rect_valid
-				? std::clamp(m_chains->slider_value(0, "overlay_shadow", 0.0f), 0.0f, 1.0f) : 0.0f;
+				? std::clamp(m_vs.overlay_shadow, 0.0f, 1.0f) : 0.0f;
 		float sh[4] = {
 			strength,
-			std::max(0.0f, m_chains->slider_value(0, "overlay_shadow_gap", 2.73f)) * 0.01f,
-			std::max(1.0f, m_chains->slider_value(0, "overlay_shadow_gap_edge", 2.14f)),
-			m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * std::numbers::pi_v<float> / 180.0f };
+			std::max(0.0f, m_vs.overlay_shadow_gap) * 0.01f,
+			std::max(1.0f, m_vs.overlay_shadow_gap_edge),
+			m_vs.overlay_shadow_azimuth * std::numbers::pi_v<float> / 180.0f };
 		float ink[4] = {
-			std::clamp(m_chains->slider_value(0, "overlay_shadow_ink", 0.05f), 0.0f, 1.0f), 0.0f, 0.0f, 0.0f };
+			std::clamp(m_vs.overlay_shadow_ink, 0.0f, 1.0f), 0.0f, 0.0f, 0.0f };
 		if (bgfx_uniform *const u = m_vectrex_overlay_composite_effect->uniform("u_vx_screen_rect"))
 			{ u->set(m_vx_screen_rect, sizeof(float) * 4); u->upload(); }
 		if (bgfx_uniform *const u = m_vectrex_overlay_composite_effect->uniform("u_vx_shadow"))
@@ -3698,24 +3767,24 @@ bool renderer_bgfx::prepare_vectrex_overlay(bgfx_target *screen_hdr, float seed_
 		return false;
 	float values0[4] = {
 		seed_peak,
-		std::clamp(m_chains->slider_value(0, "overlay_white_transmission", 0.65f), 0.0f, 1.0f),
-		std::max(0.0f, m_chains->slider_value(0, "overlay_white_reflectance", 0.25f)),
-		std::clamp(m_chains->slider_value(0, "overlay_white_diffusion", 0.10f), 0.0f, 1.0f) };
-	const float ambient_product = std::max(0.0f, m_chains->slider_value(0, "overlay_ambient_light", 0.50f))
-			* std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
+		std::clamp(m_vs.overlay_white_transmission, 0.0f, 1.0f),
+		std::max(0.0f, m_vs.overlay_white_reflectance),
+		std::clamp(m_vs.overlay_white_diffusion, 0.0f, 1.0f) };
+	const float ambient_product = std::max(0.0f, m_vs.overlay_ambient_light)
+			* std::max(0.0f, m_vs.room_ambient);
 	m_vx_seen_seed_peak = seed_peak;
 	m_vx_seen_paper_white = paper_white;
 	m_vx_seen_ambient = ambient_product;
 	float values1[4] = {
 		ambient_product,
 		paper_white,
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_density", 2.5f)),
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_glow", 1.10f)) };
+		std::max(0.0f, m_vs.overlay_color_density),
+		std::max(0.0f, m_vs.overlay_color_glow) };
 	float values2[4] = {
-		std::max(0.0f, m_chains->slider_value(0, "overlay_color_dark_level", 0.15f)),
-		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_bleach", 0.0f), 0.0f, 1.0f),
-		std::clamp(m_chains->slider_value(0, "overlay_color_highlight_knee", 0.15f), 0.0f, 0.99f),
-		std::max(0.05f, m_chains->slider_value(0, "overlay_color_highlight_curve", 0.55f)) };
+		std::max(0.0f, m_vs.overlay_color_dark_level),
+		std::clamp(m_vs.overlay_color_highlight_bleach, 0.0f, 1.0f),
+		std::clamp(m_vs.overlay_color_highlight_knee, 0.0f, 0.99f),
+		std::max(0.05f, m_vs.overlay_color_highlight_curve) };
 	params0->set(values0, sizeof(values0)); params0->upload();
 	params1->set(values1, sizeof(values1)); params1->upload();
 	params2->set(values2, sizeof(values2)); params2->upload();
@@ -5153,6 +5222,8 @@ int renderer_bgfx::draw(int update)
 	// list. MAME polls get_slider_list() and repopulates, the same way a chain change is picked up.
 	if (window_index == 0)
 	{
+		// Read live, not from m_vs: this sits above refresh_vec_slider_cache() in draw(), so the
+		// cache still holds the previous frame here and the menu would repopulate one frame late.
 		const bool advanced = m_chains->slider_value(0, "advanced_sliders", 0.0f) > 0.5f;
 		if (advanced != m_advanced_sliders_shown)
 		{
@@ -5293,9 +5364,12 @@ int renderer_bgfx::draw(int update)
 		// analytic gaussians computed from interpolated line-local varyings, so a reduced raster only
 		// samples the same function at lower density. Tracked separately so a chain switch that changes
 		// only this factor recreates the FBOs.
-		const float glow_scale = std::clamp(m_chains->slider_value(0, "glow_fbo_scale", 1.0f), 0.1f, 1.0f);
+		const float glow_scale = std::clamp(m_vs.glow_fbo_scale, 0.1f, 1.0f);
 		const uint16_t target_glow_w = std::max<uint16_t>(1, uint16_t(target_fb_w * glow_scale));
 		const uint16_t target_glow_h = std::max<uint16_t>(1, uint16_t(target_fb_h * glow_scale));
+		// slider_value(), not the cache: a negative sentinel is how these ask whether the chain
+		// DEFINES the slider at all, and the cache answers an absent slider with its code default -
+		// which is exactly the information being probed for.
 		const bool optical_supported = m_chains->slider_value(0, "glow_tail_curve", -1.0f) >= 0.0f
 			&& (m_chains->slider_value(0, "ring_gain", -1.0f) >= 0.0f
 				|| m_chains->slider_value(0, "ring_fill", -1.0f) >= 0.0f
@@ -5484,7 +5558,7 @@ int renderer_bgfx::draw(int update)
 		// turns the presentation timer on by itself), the chain's Beam Time Window slider is the
 		// live per-chain control. Either one off means off.
 		const bool window_asked = window().machine().options().vector_beam_window()
-				&& int(m_chains->slider_value(0, "beam_window", 0.0f) + 0.5f) != 0;
+				&& int(m_vs.beam_window + 0.5f) != 0;
 		const bool window_available = vstats.timed
 				&& window().machine().video().vector_present_rate() > 0
 				&& window_asked;
@@ -5518,7 +5592,7 @@ int renderer_bgfx::draw(int update)
 		// with the latch it also feeds.
 		const double window_span = vstats.sweep_t1 - vstats.sweep_t0;
 		const double window_trim = window_wanted
-				? double(std::clamp(m_chains->slider_value(0, "beam_window_scale", 1.0f), 0.25f, 4.0f))
+				? double(std::clamp(m_vs.beam_window_scale, 0.25f, 4.0f))
 				: 1.0;
 		// The rate the window walks the sweep at, in multiples of real time.
 		//
@@ -5539,7 +5613,7 @@ int renderer_bgfx::draw(int update)
 		// short ones by running slow, which is also what a machine that never stops drawing looks
 		// like. beam_window_scale stops being a per-game compensation and becomes a trim about 1.0.
 		const bool window_adaptive = window_wanted
-				&& m_chains->slider_value(0, "beam_window_adaptive", 1.0f) > 0.5f;
+				&& m_vs.beam_window_adaptive > 0.5f;
 		// Cold start: no pass has finished yet, so there is no measurement to divide by. Falling back
 		// to real time was the OPTIMISTIC choice and it is the wrong one - a first pass handed less
 		// presentation time than its sweep is long loses its tail, which is a region of the picture
@@ -5604,7 +5678,7 @@ int renderer_bgfx::draw(int update)
 			// is now how long a peak stands before it is allowed to fall back, so 0 still means "this
 			// pass only" and the bare hysteresis.
 			const double hold_ms = std::max(0.0,
-					double(m_chains->slider_value(0, "beam_window_latch_ms", 0.0f)));
+					double(m_vs.beam_window_latch_ms));
 			if (window_span >= m_vec_window_span_peak)
 			{
 				m_vec_window_span_peak = window_span;
@@ -5765,7 +5839,7 @@ int renderer_bgfx::draw(int update)
 			// measured gap, and still 37x shorter than the 9.24 s the Star Wars self-test parks the
 			// AVG for. An explicit -vector_beam_idle_ms overrides the floor.
 			beam_idle_ms = std::max(BEAM_IDLE_AUTO_FLOOR_MS,
-					double(m_chains->slider_value(0, "phosphor_total_ms", 500.0f)));
+					double(m_vs.phosphor_total_ms));
 		}
 		const double beam_idle_now = window().machine().time().as_double();
 		if (vstats.list_generation != m_vec_idle_generation || !vstats.list_stale
@@ -5806,7 +5880,7 @@ int renderer_bgfx::draw(int update)
 		int aux_count = 0;
 		int aux_point_count = 0;
 		const float pt_thresh = m_line_analytic
-				? m_chains->slider_value(0, "line_point_threshold", LINE_POINT_THRESHOLD) : 0.0f;
+				? m_vs.line_point_threshold : 0.0f;
 		// Cyclic per-vector flicker (real AVG/DVG only, see render_vector_stats::timed): reproduces the
 		// effect lost when the windowed beam-event draw mode was retired - real vector hardware re-traces EVERY
 		// vector EVERY refresh (there is no "static image"), so a busy scene (more vectors than the
@@ -5851,15 +5925,15 @@ int renderer_bgfx::draw(int update)
 				flicker_on ? "active - the beam time window is not available" : "off",
 				window_available ? "available" : "unavailable");
 		}
-		const int flicker_n = flicker_on ? std::clamp(int(m_chains->slider_value(0, "flicker_buckets", 6.0f) + 0.5f), 1, 32) : 1;
+		const int flicker_n = flicker_on ? std::clamp(int(m_vs.flicker_buckets + 0.5f), 1, 32) : 1;
 		const double first_t0 = m_flicker_prev_t0, last_t1 = m_flicker_prev_t1;
 		// Read the actual channel depths before deciding whether cyclic flicker is active. All-zero
 		// depths are a hard off switch: no bucket exclusion, dimming or phase accumulation may occur.
 		// Monochrome/Vectrex omit the per-channel controls and use the unity defaults.
 		const float fl_rgb[3] = {
-			std::clamp(m_chains->slider_value(0, "flicker_red_depth",   1.0f), 0.0f, 1.0f),
-			std::clamp(m_chains->slider_value(0, "flicker_green_depth", 1.0f), 0.0f, 1.0f),
-			std::clamp(m_chains->slider_value(0, "flicker_blue_depth",  1.0f), 0.0f, 1.0f) };
+			std::clamp(m_vs.flicker_red_depth, 0.0f, 1.0f),
+			std::clamp(m_vs.flicker_green_depth, 0.0f, 1.0f),
+			std::clamp(m_vs.flicker_blue_depth, 0.0f, 1.0f) };
 		const bool flicker_has_depth = fl_rgb[0] > 0.0005f || fl_rgb[1] > 0.0005f || fl_rgb[2] > 0.0005f;
 		// "Busy" is judged by the REAL DRAW-TIME SPAN this present's list took to sweep (last_t1 -
 		// first_t0, already tracked below for the bucket span anyway), not raw vector count: a
@@ -5869,7 +5943,7 @@ int renderer_bgfx::draw(int update)
 		// doesn't track the physical constraint (how much of a refresh period the beam spent drawing)
 		// that this feature is meant to approximate, and is not comparable across games with very
 		// different average line lengths. flicker_thresh_ms is in real elapsed ms (t0/t1 are seconds).
-		const double flicker_thresh_ms = flicker_on ? double(m_chains->slider_value(0, "flicker_thresh_ms", 12.0f)) : 1e18;
+		const double flicker_thresh_ms = flicker_on ? double(m_vs.flicker_thresh_ms) : 1e18;
 		const double flicker_draw_ms = (last_t1 > first_t0) ? (last_t1 - first_t0) * 1000.0 : 0.0;
 		const bool flicker_busy = flicker_on && flicker_has_depth && flicker_draw_ms > flicker_thresh_ms;
 		// Real-time-paced cycling (not once-per-PRESENT): advancing by a fixed +1 per present ties the
@@ -5897,7 +5971,7 @@ int renderer_bgfx::draw(int update)
 		if (flicker_busy)
 		{
 			m_flicker_accum_ms += flicker_dt_ms;
-			const double flicker_period_ms = std::max(1.0, double(m_chains->slider_value(0, "flicker_period_ms", 16.7f)));
+			const double flicker_period_ms = std::max(1.0, double(m_vs.flicker_period_ms));
 			while (m_flicker_accum_ms >= flicker_period_ms)
 			{
 				m_flicker_accum_ms -= flicker_period_ms;
@@ -5947,10 +6021,10 @@ int renderer_bgfx::draw(int update)
 				const double period = now - m_vec_aux_pass_prev;
 				if (m_vec_aux_pass_prev >= 0.0 && period > 1.0e-4)
 				{
-					const float hold = std::max(0.0f, m_chains->slider_value(0, "phosphor_hold_ms", 0.0f));
-					const float tau = std::max(0.001f, m_chains->slider_value(0, "phosphor_half_ms", 42.0f));
-					const float p_curve = m_chains->slider_value(0, "phosphor_curve", 1.2f);
-					const float total = std::max(0.001f, m_chains->slider_value(0, "phosphor_total_ms", 500.0f));
+					const float hold = std::max(0.0f, m_vs.phosphor_hold_ms);
+					const float tau = std::max(0.001f, m_vs.phosphor_half_ms);
+					const float p_curve = m_vs.phosphor_curve;
+					const float total = std::max(0.001f, m_vs.phosphor_total_ms);
 					const float age = std::max(0.0f, float(period * 1000.0) - hold);
 					if (age >= total)
 					{
@@ -6369,7 +6443,7 @@ int renderer_bgfx::draw(int update)
 			// the body's peak brightness, so this is the only path for it. Scaled by how long the beam
 			// waited relative to the stroke it just drew, which the recorded timing gives directly.
 			const float vertex_dwell_energy = m_line_analytic
-				? m_chains->slider_value(0, "vertex_dwell_energy", 0.0f) : 0.0f;
+				? m_vs.vertex_dwell_energy : 0.0f;
 			std::unordered_map<const render_primitive*, std::pair<float, float>> round_terminus;
 			// Blanked gap either side of each endpoint, relative to vertex_dwell_ref (or, at 0, to
 			// the stroke's own sweep time).
@@ -6999,14 +7073,14 @@ int renderer_bgfx::draw(int update)
 			// DEFL_NOUT-quad polyline following the simulated beam trajectory, so the body grows from 6 to
 			// DEFL_NOUT*6 verts. The beam integrator state is reset at the start of each frame's draw.
 			// Needs the analytic path; 0 = off (exact straight lines, 6 verts).
-			m_defl_on = m_line_analytic && (m_chains->slider_value(0, "deflection_dynamics", 0.0f) > 0.0f);
+			m_defl_on = m_line_analytic && (m_vs.deflection_dynamics > 0.0f);
 			// Halo quad extent. 3.5 sigma truncates the profile at 0.22% of its peak, which is what
 			// the pedestal subtraction was written for; pulling in to 2.5 cuts it at 4.4% instead and
 			// the same subtraction still lands it on exactly zero at the quad edge, so no rectangular
 			// step appears - what changes is that the outer tail is compressed and the visible halo
 			// gets smaller. That is a look decision, so it is a slider and the default changes nothing.
 			m_halo_quad_extent = std::clamp(
-					m_chains->slider_value(0, "halo_quad_extent", 3.5f), 2.0f, 3.5f);
+					m_vs.halo_quad_extent, 2.0f, 3.5f);
 			m_beam_valid = false;
 			m_lin_valid = false;
 
@@ -7019,18 +7093,18 @@ int renderer_bgfx::draw(int update)
 			// Pack the glow buffer: give a 6-vertex slot only to the components active this frame, so a
 			// chain that uses just analytic_glow emits 6 verts/line instead of the full 24 (the other
 			// three were written as degenerate quads but still cost vertex processing).
-			const bool g_glow  = m_chains->slider_value(0, "analytic_glow", 0.0f) > 0.0f;
-			const bool g_halation = m_chains->slider_value(0, "halation_gain", 1.0f) > 0.0f;
-			const bool g_ring  = g_halation && m_chains->slider_value(0, "ring_gain", 0.0f) > 0.0f;
-			const bool g_fill  = g_halation && m_chains->slider_value(0, "ring_fill", 0.0f) > 0.0f;
-			const bool g_flare = m_chains->slider_value(0, "intensity_overdrive", 0.0f) > 0.0f;
-			const bool g_oglow = g_flare && m_chains->slider_value(0, "overload_glow_gain", 0.0f) > 0.0f;
+			const bool g_glow  = m_vs.analytic_glow > 0.0f;
+			const bool g_halation = m_vs.halation_gain > 0.0f;
+			const bool g_ring  = g_halation && m_vs.ring_gain > 0.0f;
+			const bool g_fill  = g_halation && m_vs.ring_fill > 0.0f;
+			const bool g_flare = m_vs.intensity_overdrive > 0.0f;
+			const bool g_oglow = g_flare && m_vs.overload_glow_gain > 0.0f;
 			const bool g_conv = !conv_blooms.empty();
-			const int  g_rays  = (m_chains->slider_value(0, "ray_gain", 0.0f) > 0.0f)
-					? int(std::clamp(m_chains->slider_value(0, "ray_count", 6.0f), 1.0f, 12.0f)) : 0;
+			const int  g_rays  = (m_vs.ray_gain > 0.0f)
+					? int(std::clamp(m_vs.ray_count, 1.0f, 12.0f)) : 0;
 			// cap_no_persist: short-dwell junction dots move to a buffer composited AFTER the phosphor
 			// pool, so they remain visible at the drawing instant but leave no dotted afterimage.
-			m_caps_glow = m_chains->slider_value(0, "cap_no_persist", 0.0f) > 0.0f;
+			m_caps_glow = m_vs.cap_no_persist > 0.0f;
 			m_optical_separate = bgfx::isValid(m_vec_optical_fb);
 			m_glow_on = m_line_analytic && bgfx::isValid(m_vec_glow_fb)
 				&& (g_glow || g_flare || g_oglow || g_conv || (!m_optical_separate && (g_ring || g_fill || g_rays > 0)));
@@ -7336,14 +7410,14 @@ int renderer_bgfx::draw(int update)
 				{
 					float vals[4] = { 0.0f,
 									  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
-									  1.0f, m_chains->slider_value(0, "point_roundness", 0.4f) };
+									  1.0f, m_vs.point_roundness };
 					lp->set(vals, sizeof(float) * 4);
 					lp->upload();
 				}
 				bgfx_uniform* dsh = line_eff->uniform("u_dwell_shape");
 				if (dsh)
 				{
-					float vals[4] = { m_chains->slider_value(0, "vertex_dwell_width", 1.0f), 0.0f, 0.0f, 0.0f };
+					float vals[4] = { m_vs.vertex_dwell_width, 0.0f, 0.0f, 0.0f };
 					dsh->set(vals, sizeof(float) * 4);
 					dsh->upload();
 				}
@@ -7357,10 +7431,10 @@ int renderer_bgfx::draw(int update)
 				if (ssc)
 				{
 					float vals[4] = {
-						std::max(0.05f, m_chains->slider_value(0, "spot_scale_red", 1.0f)),
-						std::max(0.05f, m_chains->slider_value(0, "spot_scale_green", 1.0f)),
-						std::max(0.05f, m_chains->slider_value(0, "spot_scale_blue", 1.0f)),
-						(m_chains->slider_value(0, "rgb_spot_beam", 0.0f) > 0.5f) ? 1.0f : 0.0f };
+						std::max(0.05f, m_vs.spot_scale_red),
+						std::max(0.05f, m_vs.spot_scale_green),
+						std::max(0.05f, m_vs.spot_scale_blue),
+						(m_vs.rgb_spot_beam > 0.5f) ? 1.0f : 0.0f };
 					ssc->set(vals, sizeof(float) * 4);
 					ssc->upload();
 				}
@@ -7371,7 +7445,7 @@ int renderer_bgfx::draw(int update)
 				bgfx_uniform* jex = line_eff->uniform("u_join_extend");
 				if (jex)
 				{
-					float vals[4] = { m_chains->slider_value(0, "join_extend", 1.0f), 0.0f, 0.0f, 0.0f };
+					float vals[4] = { m_vs.join_extend, 0.0f, 0.0f, 0.0f };
 					jex->set(vals, sizeof(float) * 4);
 					jex->upload();
 				}
@@ -7402,7 +7476,7 @@ int renderer_bgfx::draw(int update)
 			bgfx::TransientVertexBuffer edge_tvb = {};
 			int edge_quads = 0;
 			bool edge_alloc = false;
-			const float edge_gain = m_chains->slider_value(0, "edge_glow", 0.0f);
+			const float edge_gain = m_vs.edge_glow;
 			static_assert(sizeof(m_edge_smooth) == sizeof(render_vector_stats::edge_energy));
 			if (deposit_aux && edge_gain > 0.0f && bgfx::isValid(m_vec_glow_fb)
 				&& m_edge_box_max_x > m_edge_box_min_x + 8.0f && m_edge_box_max_y > m_edge_box_min_y + 8.0f)
@@ -7410,7 +7484,7 @@ int renderer_bgfx::draw(int update)
 				// Temporal smoothing (instant attack, exponential release over edge_glow_persist ms of
 				// real time): the raw bins follow the frame's exact sweep pattern and flicker hard;
 				// phosphor/scatter persistence and the eye smooth the real thing. 0 = off (raw bins).
-				const float persist_ms = m_chains->slider_value(0, "edge_glow_persist", 120.0f);
+				const float persist_ms = m_vs.edge_glow_persist;
 				const bool advance_edge_time = vstats.playback_active
 					? m_vec_frame_advanced
 					: (m_vec_frame_advanced
@@ -7439,10 +7513,10 @@ int renderer_bgfx::draw(int update)
 			if (edge_alloc)
 			{
 				const float res_scale = vec_res_scale();
-				const float sig  = std::max(1.0f, m_chains->slider_value(0, "edge_glow_width", 10.0f) * res_scale);
-				const float half = std::max(4.0f, 0.5f * m_chains->slider_value(0, "edge_glow_length", 80.0f) * res_scale);
-				const float edge_threshold = std::max(0.0f, m_chains->slider_value(0, "edge_glow_threshold", 0.0f));
-				const float edge_sensitivity = std::max(0.01f, m_chains->slider_value(0, "edge_glow_sensitivity", 1.0f));
+				const float sig  = std::max(1.0f, m_vs.edge_glow_width * res_scale);
+				const float half = std::max(4.0f, 0.5f * m_vs.edge_glow_length * res_scale);
+				const float edge_threshold = std::max(0.0f, m_vs.edge_glow_threshold);
+				const float edge_sensitivity = std::max(0.01f, m_vs.edge_glow_sensitivity);
 				const float epad = m_halo_quad_extent * sig + 0.5f;
 				AnalyticLineVertex *ev = reinterpret_cast<AnalyticLineVertex *>(edge_tvb.data);
 				int vi = 0;
@@ -7567,14 +7641,14 @@ int renderer_bgfx::draw(int update)
 					bgfx_uniform* dsh = line_eff->uniform("u_dwell_shape");
 					if (dsh)
 					{
-						float vals[4] = { m_chains->slider_value(0, "vertex_dwell_width", 1.0f), 0.0f, 0.0f, 0.0f };
+						float vals[4] = { m_vs.vertex_dwell_width, 0.0f, 0.0f, 0.0f };
 						dsh->set(vals, sizeof(float) * 4);
 						dsh->upload();
 					}
 					bgfx_uniform* jex = line_eff->uniform("u_join_extend");
 					if (jex)
 					{
-						float vals[4] = { m_chains->slider_value(0, "join_extend", 1.0f), 0.0f, 0.0f, 0.0f };
+						float vals[4] = { m_vs.join_extend, 0.0f, 0.0f, 0.0f };
 						jex->set(vals, sizeof(float) * 4);
 						jex->upload();
 					}
@@ -7718,7 +7792,7 @@ int renderer_bgfx::draw(int update)
 					{
 						float vals[4] = { 0.0f,
 										  1.0f,   // edge sharpness fixed (the line_sharpness knob was retired)
-										  1.0f, m_chains->slider_value(0, "point_roundness", 0.4f) };
+										  1.0f, m_vs.point_roundness };
 						lp->set(vals, sizeof(float) * 4);
 						lp->upload();
 					}
@@ -7881,7 +7955,8 @@ int renderer_bgfx::draw(int update)
 				// chain's coefficient then scales the sum. On a stale frame the per-frame energy
 				// can dip and make the glow flicker against vsync - the monitor glow physically
 				// persists, so track the peak and decay it gently.
-				const float mglow_min_dist = m_chains->slider_value(0, "mglow_min_distance", 0.30f);
+				const float mglow_min_dist = m_vs.mglow_min_distance;
+				// Sentinel probe again: absent slider = older chain, so it must not read as 0.
 				const float coverage_start = m_chains->slider_value(0, "mglow_coverage_start", -1.0f);
 				float mglow_energy = 0.0f;
 				if (coverage_start >= 0.0f)
@@ -7912,7 +7987,7 @@ int renderer_bgfx::draw(int update)
 							quadrant_energy[2], quadrant_energy[3] }) / QUADRANT_BINS;
 					const float coverage = float(covered) / float(render_vector_stats::MONITOR_GLOW_ANGLE_BINS);
 					const float coverage_full = std::max(coverage_start + 0.01f,
-							m_chains->slider_value(0, "mglow_coverage_full", 0.85f));
+							m_vs.mglow_coverage_full);
 					const float x = std::clamp((coverage - coverage_start) /
 							(coverage_full - coverage_start), 0.0f, 1.0f);
 					const float coverage_gain = x * x * (3.0f - 2.0f * x);
@@ -7929,7 +8004,7 @@ int renderer_bgfx::draw(int update)
 						mglow_energy += vstats.offscreen_energy[mb] * keep;
 					}
 				}
-				const float mglow_gain = m_chains->slider_value(0, "mglow_coefficient", 0.0f);
+				const float mglow_gain = m_vs.mglow_coefficient;
 				const float mglow_amount = mglow_energy * mglow_gain;
 				// The 0.8 release smooths CONTENT changes - the energy legitimately falls to zero
 				// whenever no beam is off-screen, and that is exactly what it is there for. It must
@@ -8006,7 +8081,7 @@ int renderer_bgfx::draw(int update)
 				// against a hard-coded nits figure would re-import the fiction this replaced.
 				constexpr float HDR_GLOW_REFERENCE_RATIO = 1.2f;
 				const float beam_ratio = std::max(0.01f, vec_beam_peak_ratio());
-				const float glow_stability = std::clamp(m_chains->slider_value(0, "hdr_glow_stability", 1.0f), 0.0f, 1.0f);
+				const float glow_stability = std::clamp(m_vs.hdr_glow_stability, 0.0f, 1.0f);
 				const float glow_compensation = hdr_present
 					? std::pow(HDR_GLOW_REFERENCE_RATIO / beam_ratio, glow_stability)
 					: 1.0f;
@@ -8039,9 +8114,9 @@ int renderer_bgfx::draw(int update)
 				m_vec_persist_prev_t = persist_frame_domain ? -1.0 : persist_now;
 				const float phos_vals[4] = {
 					float(persist_dt * 1000.0),
-					m_chains->slider_value(0, "phosphor_half_ms",  42.0f),
-					m_chains->slider_value(0, "phosphor_curve",    1.2f),
-					m_chains->slider_value(0, "phosphor_total_ms", 500.0f) };
+					m_vs.phosphor_half_ms,
+					m_vs.phosphor_curve,
+					m_vs.phosphor_total_ms };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos", phos_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos", phos_vals, 4);
 				// Energy-dependent decay rate: high-excitation phosphor saturates (second-order /
@@ -8060,14 +8135,14 @@ int renderer_bgfx::draw(int update)
 				// deposit instead: the pool is a peak holder, so a boosted deposit burns into the
 				// afterimage and, once the pass has been walked, has boosted every segment equally.
 				const float flash_ms = m_vec_window_mode
-					? std::max(0.0f, m_chains->slider_value(0, "beam_flash_ms", 0.0f)) : 0.0f;
+					? std::max(0.0f, m_vs.beam_flash_ms) : 0.0f;
 				const float phos2_vals[4] = {
-					m_chains->slider_value(0, "phosphor_energy_decay", 0.0f),
+					m_vs.phosphor_energy_decay,
 				// .y = hold_ms: the afterglow holds full brightness this long before the decay curve
 				// starts (default ~one present closes the moving-bright-line seams; 0 = old behaviour)
-				m_chains->slider_value(0, "phosphor_hold_ms", 0.0f),
+				m_vs.phosphor_hold_ms,
 				flash_ms,
-				(flash_ms > 0.0f) ? m_chains->slider_value(0, "beam_flash_gain", 1.0f) : 1.0f };
+				(flash_ms > 0.0f) ? m_vs.beam_flash_gain : 1.0f };
 				m_chains->inject_entry_uniform(0, "Phosphor",       "u_phos2", phos2_vals, 4);
 				m_chains->inject_entry_uniform(0, "Phosphor Apply", "u_phos2", phos2_vals, 4);
 				// Per-channel (RGB) phosphor decay: each colour phosphor has its own half-life (blue
@@ -8097,14 +8172,14 @@ int renderer_bgfx::draw(int update)
 				// what keeps every non-Vectrex chain sharing this effect unaffected.
 				const bool vx_shadow_ready = m_vx_masks_ready && m_vx_screen_rect_valid;
 				const float vx_strength = vx_shadow_ready
-						? std::clamp(m_chains->slider_value(0, "overlay_shadow", 0.0f), 0.0f, 1.0f) : 0.0f;
+						? std::clamp(m_vs.overlay_shadow, 0.0f, 1.0f) : 0.0f;
 				const float vx_vals[4] = {
 					vx_strength,
-					std::max(0.0f, m_chains->slider_value(0, "overlay_shadow_gap", 2.73f)) * 0.01f,
-					std::max(1.0f, m_chains->slider_value(0, "overlay_shadow_gap_edge", 2.14f)),
-					m_chains->slider_value(0, "overlay_shadow_azimuth", 45.0f) * std::numbers::pi_v<float> / 180.0f };
+					std::max(0.0f, m_vs.overlay_shadow_gap) * 0.01f,
+					std::max(1.0f, m_vs.overlay_shadow_gap_edge),
+					m_vs.overlay_shadow_azimuth * std::numbers::pi_v<float> / 180.0f };
 				const float vx_ink_vals[4] = {
-					std::clamp(m_chains->slider_value(0, "overlay_shadow_ink", 0.05f), 0.0f, 1.0f),
+					std::clamp(m_vs.overlay_shadow_ink, 0.0f, 1.0f),
 					0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_vx_screen_rect", m_vx_screen_rect, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_vx_shadow", vx_vals, 4);
@@ -8219,7 +8294,7 @@ int renderer_bgfx::draw(int update)
 			// the common defaults, clipping it before useful SDR-only shaping could occur.
 			// Chains without the new slider retain unity SDR seeding for compatibility.
 			const bool hdr_present = s_bgfx_hdr_active || s_bgfx_edr_active;
-			const float sdr_beam_level = std::clamp(m_chains->slider_value(0, "sdr_beam_level", 1.0f), 0.0f, 1.0f);
+			const float sdr_beam_level = std::clamp(m_vs.sdr_beam_level, 0.0f, 1.0f);
 			const float seed_peak = hdr_present ? beam_peak : paper_white * sdr_beam_level;
 			prepare_vectrex_overlay(screen_hdr, seed_peak, paper_white, window_index);
 
@@ -8265,7 +8340,7 @@ int renderer_bgfx::draw(int update)
 			}
 			}
 
-			const float room_ambient = std::max(0.0f, m_chains->slider_value(0, "room_ambient", 1.0f));
+			const float room_ambient = std::max(0.0f, m_vs.room_ambient);
 			// The Vectrex front-print element - the bezel frame, the MineStorm label, the
 			// ESCAPE/THRUST/FIRE panel - is untagged artwork. The overlay composite consumes only the
 			// role-tagged white and colour layers, so Overlay Ambient Light reached everything behind
@@ -8278,7 +8353,7 @@ int renderer_bgfx::draw(int update)
 			// value back as the default and come out at unity, leaving them untouched.
 			constexpr float overlay_ambient_reference = 0.5f;
 			const float overlay_ambient = std::max(0.0f,
-					m_chains->slider_value(0, "overlay_ambient_light", overlay_ambient_reference));
+					m_vs.overlay_ambient_light);
 			m_hdr_ui_nits_scale = paper_white;
 			m_hdr_art_nits_scale = m_hdr_ui_nits_scale * room_ambient
 					* (overlay_ambient / overlay_ambient_reference);
@@ -8445,7 +8520,7 @@ int renderer_bgfx::draw(int update)
 				// value lands at a different level on each. Anything quoted in normalised units
 				// (ambient especially, which is a flat pedestal) therefore has to be compared with
 				// this line in hand, not slider for slider. Logged when it moves, not per frame.
-				const float amb_level = m_chains->slider_value(0, "ambient_level", 0.0f);
+				const float amb_level = m_vs.ambient_level;
 				// The shader multiplies by u_ambient_color per channel and a capture is compared
 				// channel-max, so the brightest component bounds the pedestal. Leaving it out
 				// overstated the ceiling by 1/0.35 with the stock colour.
@@ -8488,16 +8563,16 @@ int renderer_bgfx::draw(int update)
 				// paper-white option, and both divide by it. It is mainly a macOS control - on Windows
 				// hdr_present_headroom() is a fixed panel peak over that white and barely moves.
 				const bool hdr_out = s_bgfx_edr_active || s_bgfx_hdr_active;
-				const float hdr_headroom_fixed = m_chains->slider_value(0, "hdr_headroom_override", 0.0f);
+				const float hdr_headroom_fixed = m_vs.hdr_headroom_override;
 				const float hdr_headroom = !hdr_out ? 0.0f
 					: ((hdr_headroom_fixed > 0.0f) ? hdr_headroom_fixed : m_module().hdr_present_headroom());
 				float rov[4] = {
 					// Fraction of the display ceiling at which the shoulder starts. Below it the
 					// reproduction is linear, so the ratio between a plain stroke and a dense
 					// additive overlap survives to the screen instead of being compressed away.
-					m_chains->slider_value(0, "hdr_shoulder_start", 0.85f),
-					vec_hdr_ceiling_ratio(m_chains->slider_value(0, "hdr_rolloff_max", 1.3f)),
-					m_chains->slider_value(0, "hdr_sat_protect", 0.0f),
+					m_vs.hdr_shoulder_start,
+					vec_hdr_ceiling_ratio(m_vs.hdr_rolloff_max),
+					m_vs.hdr_sat_protect,
 					hdr_headroom };
 				ro->set(rov, sizeof(float) * 4);
 				ro->upload();
@@ -8509,9 +8584,9 @@ int renderer_bgfx::draw(int update)
 			if (sr)
 			{
 				float srv[4] = {
-					m_chains->slider_value(0, "sdr_rolloff_knee", 1.0f),
-					m_chains->slider_value(0, "sdr_rolloff_ceiling", 1.0f),
-					m_chains->slider_value(0, "sdr_shadow_curve", 1.0f), 0.0f };
+					m_vs.sdr_rolloff_knee,
+					m_vs.sdr_rolloff_ceiling,
+					m_vs.sdr_shadow_curve, 0.0f };
 				sr->set(srv, sizeof(float) * 4);
 				sr->upload();
 			}
