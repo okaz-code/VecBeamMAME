@@ -13,7 +13,6 @@ SAMPLER2D(s_mask,  2);
 SAMPLER2D(s_bezel_source, 3);
 SAMPLER2D(s_bezel_length, 4);
 SAMPLER2D(s_flare, 5);
-SAMPLER2D(s_overlap, 6);
 
 // Scales the post-pool aux buffers (analytic glow, halation, no-persist dots, rays) by the beam
 // window's deposited fraction. The renderer used to bake this into their vertices, but their
@@ -46,8 +45,6 @@ uniform vec4 u_masked_core_peak;
 // decides whether structure ABOVE one calibrated beam - a stroke terminus where the beam stopped -
 // survives to the screen. 0 = off.
 uniform vec4 u_masked_core_peak_emit;
-uniform vec4 u_overlap_white_strength;
-uniform vec4 u_overlap_white_brightness;
 uniform vec4 u_shadow_mask_strength;
 uniform vec4 u_shadow_mask_brightboost;
 uniform vec4 u_shadow_mask_scale;
@@ -407,22 +404,6 @@ void main()
 	float core_peak = max(base.r, max(base.g, base.b));
 	if (core_limit > 0.0 && core_peak > core_limit)
 		base *= core_limit / core_peak;
-
-	// A single overloaded vector keeps its source hue. Only several overloaded vectors occupying
-	// the same pixel generate a white-hot direct-emission component. The overlap texture stores
-	// sum(h) and sum(h^2), with every individual contribution bounded to h <= 1; their ratio gives
-	// an effective contributor count and cannot mistake one extremely hot vector for many lines.
-	if (!flare_outside && u_overlap_white_strength.x > 0.0)
-	{
-		float white_amount = clamp(u_overlap_white_strength.x, 0.0, 1.0)
-			* clamp(texture2D(s_overlap, emit_uv).a, 0.0, 1.0);
-		if (white_amount > 0.0)
-		{
-			float limited_peak = max(base.r, max(base.g, base.b));
-			float white_peak = limited_peak * (1.0 + max(u_overlap_white_brightness.x, 0.0) * white_amount);
-			base = mix(base, vec3_splat(white_peak), white_amount);
-		}
-	}
 
 	vec2 tube_aspect_v = tube_aspect();
 	vec2 tube_q = tube_quad_coord(v_texcoord0, tube_active);

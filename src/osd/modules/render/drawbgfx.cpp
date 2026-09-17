@@ -5397,13 +5397,12 @@ int renderer_bgfx::draw(int update)
 			bgfx::TextureHandle td = bgfx::createTexture2D(m_vec_fb_w, m_vec_fb_h, false, 1, bgfx::TextureFormat::D32F, cf);
 			bgfx::TextureHandle at[2] = { tc, td };
 			m_vec_fb = bgfx::createFrameBuffer(2, at, true);
-			bgfx::TextureHandle gc[4] = {
+			bgfx::TextureHandle gc[3] = {
 				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
 				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
-				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf),
-				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG16F, cf)
+				bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf)
 			};
-			m_vec_glow_fb = bgfx::createFrameBuffer(4, gc, true);
+			m_vec_glow_fb = bgfx::createFrameBuffer(3, gc, true);
 			if (optical_supported)
 			{
 				bgfx::TextureHandle oc = bgfx::createTexture2D(m_vec_glow_fb_w, m_vec_glow_fb_h, false, 1, bgfx::TextureFormat::RG11B10F, cf);
@@ -7910,15 +7909,12 @@ int renderer_bgfx::draw(int update)
 				bgfx::TextureHandle glow_color = bgfx::getTexture(m_vec_glow_fb, 0);
 				bgfx::TextureHandle bezel_length = bgfx::getTexture(m_vec_glow_fb, 1);
 				bgfx::TextureHandle flare_color = bgfx::getTexture(m_vec_glow_fb, 2);
-				bgfx::TextureHandle overlap_stats = bgfx::getTexture(m_vec_glow_fb, 3);
 				if (bgfx::isValid(glow_color))
 					m_chains->inject_vector_glow(glow_color, m_vec_fb_w, m_vec_fb_h);
 				if (bgfx::isValid(bezel_length))
 					m_chains->inject_vector_bezel_length(bezel_length, m_vec_glow_fb_w, m_vec_glow_fb_h);
 				if (bgfx::isValid(flare_color))
 					m_chains->inject_vector_flare(flare_color, m_vec_glow_fb_w, m_vec_glow_fb_h);
-				if (bgfx::isValid(overlap_stats))
-					m_chains->inject_vector_overlap(overlap_stats, m_vec_glow_fb_w, m_vec_glow_fb_h);
 			}
 			// Expose explicit optical effects separately so the final composite can bypass tail shaping.
 			if (bgfx::isValid(m_vec_optical_fb))

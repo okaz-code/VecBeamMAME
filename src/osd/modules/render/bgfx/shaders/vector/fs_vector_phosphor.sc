@@ -14,13 +14,10 @@ $input v_color0, v_texcoord0
 #include "common.sh"
 
 // Metal bakes these unit numbers into [[texture(N)]] while a chain binds its input list
-// positionally, so a sampler MUST sit at its declared index in EVERY chain that uses this
-// pass. s_overlap is last because only vector-color has an overlap field: the monochrome and
-// vectrex chains bind the first three and stop.
+// positionally, so a sampler MUST sit at its declared index in EVERY chain that uses this pass.
 SAMPLER2D(s_prev, 0);   // pool attachment 0, previous frame: rgb = peak colour
 SAMPLER2D(s_prev_age, 2); // pool attachment 1, previous frame: rgb = per-channel age (ms)
 SAMPLER2D(s_tex,  1);   // current fresh excitation frame (rgb)
-SAMPLER2D(s_overlap, 3); // packed local light: rgb=density bloom, a=overload white heat
 
 uniform vec4 u_phos;    // x = dt_ms, y = half_ms (tau), z = curve (p), w = total_ms
 uniform vec4 u_phos2;   // x = energy-decay k (0 = off, uniform), y = hold_ms (no decay for this long)
@@ -40,8 +37,6 @@ uniform vec4 u_phos_radiant; // x = RGB combination brightness: 0 peak-normalise
 // as though they would not decay. Content at or below one beam is untouched, so an ordinary
 // unoverlapped stroke does not move. 1.0 = off (linear, previous behaviour).
 uniform vec4 u_tube_gamma;
-uniform vec4 u_overlap_white_strength;
-uniform vec4 u_overlap_white_brightness;
 
 float phos_S(float age, float tau, float p, float total, float s1)
 {
@@ -98,20 +93,6 @@ void main()
 	}
 	if (u_phos_peak.x > 0.0 && raw_cur_peak > u_phos_peak.x)
 		cur *= u_phos_peak.x / raw_cur_peak;
-	// Store the white-hot colour in the phosphor pool as well as showing its immediate direct flash.
-	// This lets a dense explosion decay from white naturally, while a single overloaded vector has
-	// effective count one and therefore retains its original colour throughout its afterimage.
-	if (u_overlap_white_strength.x > 0.0)
-	{
-		float white_amount = clamp(u_overlap_white_strength.x, 0.0, 1.0)
-			* clamp(texture2D(s_overlap, v_texcoord0).a, 0.0, 1.0);
-		if (white_amount > 0.0)
-		{
-			float limited_peak = max(cur.r, max(cur.g, cur.b));
-			float white_peak = limited_peak * (1.0 + max(u_overlap_white_brightness.x, 0.0) * white_amount);
-			cur = mix(cur, vec3_splat(white_peak), white_amount);
-		}
-	}
 	vec3  peakP = texture2D(s_prev, v_texcoord0).rgb;
 	// One age PER CHANNEL. A pixel excited green and then blue has two different excitation times,
 	// and a single age cannot express that: the old pool had to throw the green away to take the

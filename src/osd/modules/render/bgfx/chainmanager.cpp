@@ -1081,15 +1081,6 @@ void chain_manager::inject_vector_flare(bgfx::TextureHandle color_tex, uint16_t 
 	m_textures.add_provider("flare0", std::move(prov));
 }
 
-void chain_manager::inject_vector_overlap(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
-{
-	// R=sum of bounded overload coverage, G=sum of its square. Kept separate from the
-	// visible core so Direct Core Overlap=Uniform Maximum does not erase overlap count.
-	m_textures.remove_provider("overlap0");
-	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
-	m_textures.add_provider("overlap0", std::move(prov));
-}
-
 void chain_manager::inject_vector_optical(bgfx::TextureHandle color_tex, uint16_t vec_fb_w, uint16_t vec_fb_h)
 {
 	m_textures.remove_provider("optical0");

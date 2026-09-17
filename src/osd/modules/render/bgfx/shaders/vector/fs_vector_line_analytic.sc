@@ -305,12 +305,11 @@ void main()
 	fade3 = max(vec3_splat(0.0), fade3 - vec3_splat(quad_pedestal)) * quad_renorm;
 	float over_mult = max(0.0, 1.0 + v_texcoord0.x);
 	vec3 coverage3 = v_color0.rgb * (v_color0.a * over_mult) * fade3;
-	// The alpha channel stays SCALAR. It is the Long-line weight and the overlap-statistics input,
-	// both of which are per-primitive quantities, so the widest channel is the honest representative:
-	// a narrow channel must not be able to under-report a stroke's presence.
+	// The alpha channel stays SCALAR. It is the Long-line weight, a per-primitive quantity, so the
+	// widest channel is the honest representative: a narrow channel must not be able to under-report
+	// a stroke's presence.
 	float coverage = v_color0.a * max(fade3.r, max(fade3.g, fade3.b)) * over_mult;
 	vec4 deposit = vec4(coverage3, coverage);
-	float fade = max(fade3.r, max(fade3.g, fade3.b));
 	// v_texcoord2.x < -0.5 marks the overdrive hot core for chains that mask it as direct phosphor
 	// emission. Keep it out of the ordinary unmasked glow attachment and route it through MRT 2.
 	float separated_flare = step(v_texcoord2.x, -0.5);
@@ -319,13 +318,4 @@ void main()
 	// CPU-classified Long contribution. Other views leave target 1 unbound.
 	gl_FragData[1] = vec4(deposit.rgb * clamp(v_texcoord2.x, 0.0, 1.0), deposit.a) * (1.0 - separated_flare);
 	gl_FragData[2] = deposit * separated_flare;
-	// Overload-overlap statistics, accumulated independently of the visible core's optional MAX
-	// blend. Each vector contributes a bounded h, so even an arbitrarily hot single vector has
-	// effective count one. MRT 3 is RG16F in the analytic glow framebuffer.
-	// Count occupied overloaded strokes, not their raw current. Star Wars deliberately changes the
-	// VCTR current around explosion circles; using coverage here made the high-current quadrant reach
-	// white first even though the real monitor compresses those current steps. fade preserves the
-	// spatial beam profile while giving every qualifying vector the same unit peak contribution.
-	float h = clamp(fade, 0.0, 1.0) * separated_flare;
-	gl_FragData[3] = vec4(h, h * h, 0.0, 1.0);
 }

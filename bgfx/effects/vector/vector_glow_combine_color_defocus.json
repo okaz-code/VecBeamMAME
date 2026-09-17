@@ -63,13 +63,6 @@
       ]
     },
     {
-      "name": "s_overlap",
-      "type": "int",
-      "values": [
-        6.0
-      ]
-    },
-    {
       "name": "u_defocus",
       "type": "vec4",
       "values": [
@@ -130,46 +123,6 @@
       ]
     },
     { "name": "u_masked_core_peak_emit", "type": "vec4", "values": [ 0.0, 0.0, 0.0, 0.0 ] },
-    {
-      "name": "u_overlap_white_strength",
-      "type": "vec4",
-      "values": [
-        0.8,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_overlap_white_count",
-      "type": "vec4",
-      "values": [
-        3.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_overlap_white_brightness",
-      "type": "vec4",
-      "values": [
-        0.5,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
-    {
-      "name": "u_overlap_white_spread",
-      "type": "vec4",
-      "values": [
-        2.0,
-        0.0,
-        0.0,
-        0.0
-      ]
-    },
     {
       "name": "u_shadow_mask_brightboost",
       "type": "vec4",
