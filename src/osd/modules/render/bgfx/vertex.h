@@ -49,10 +49,11 @@ struct AnalyticLineVertex
 	float m_b;      // signed axial distance from p1 (= a - len)
 	float m_d;      // perpendicular distance (line) / second axis offset (point)
 	float m_sigma;  // gaussian sigma in pixels; negative flags point mode
-	float m_end_start;      // start-end width profile amount (0..1)
-	float m_end_finish;     // finish-end width profile amount (0..1)
-	float m_end_core;       // flat-core half-width at a fully active endpoint
-	float m_end_transition; // distance over which endpoint width returns to the body width
+	// Terminus kind, one slot per end: -1 = rounded (an unshared stroke end), 0 = square (a joint
+	// the next segment meets). A HALO quad has no termini at all and says so with m_term_start = +1,
+	// which also opts it out of the joint support - see fs_vector_line_analytic.
+	float m_term_start;
+	float m_term_finish;
 	// Terminus dwell gain: 1 = no boost. The beam sitting still while Z transitions at a stroke
 	// terminus deposits energy there, which the width profile alone cannot express (it keeps the
 	// body's peak brightness by design). See vertex-dwell-energy-plan.md.
@@ -73,7 +74,7 @@ struct AnalyticLineVertex
 			.add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
 			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
-			.add(bgfx::Attrib::TexCoord2, 4, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord2, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::TexCoord3, 4, bgfx::AttribType::Float)
 			.end();
 	}

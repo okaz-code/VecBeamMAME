@@ -25,7 +25,7 @@ uniform vec4 u_line_params;
 #define QUAD_EDGE_PEDESTAL 0.0021874911
 #define QUAD_EDGE_RENORM   1.0021922
 
-// Halo quads (a_texcoord2.w < 0) may be cut closer in than 3.5 sigma to save fill - their sigma is
+// Halo quads (a_texcoord2.x > 0) may be cut closer in than 3.5 sigma to save fill - their sigma is
 // tens of pixels, so the quad area is what the wide glow actually costs. Their pedestal and
 // renormalisation therefore arrive from the renderer, which knows the extent it padded them to.
 // .x = pedestal, .y = renormalisation. At extent 3.5 these equal the two constants above.
@@ -71,7 +71,7 @@ float erf_approx(float x)
 // overloaded stroke. Edge defocus and HV droop stay common for the same reason. At scale = 1.0 every
 // term is an exact + 0.0, so the single-channel path is bit-identical to what it was before.
 // bgfx exposes the $input varyings only inside main(), so they are passed in explicitly.
-float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
+float beam_fade(float scale, vec2 tc0, vec4 tc1, vec2 tc3, vec4 tc4)
 {
 	float a  = tc1.x;
 	float b  = tc1.y;
@@ -141,8 +141,8 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		axial /= max(mix(1.0, lpk, u_line_params.z), 1e-3);
 		// Flat core: carve a SOLID band out of the cross-section. tc3.xy carry the terminus flags,
 		// negative = rounded; the width of the band is the body's own, the same from end to end.
-		float start_round = (tc3.x < 0.0) ? 1.0 : 0.0;
-		float finish_round = (tc3.y < 0.0) ? 1.0 : 0.0;
+		float start_round = step(0.5, -tc3.x);
+		float finish_round = step(0.5, -tc3.y);
 		// The solid part of the same cross-section, so it takes the same additive share.
 		float core_extra = tc4.w * spot_extra;
 		float body_core = max(max(tc0.y, 0.0) + core_extra, 0.0);
@@ -158,7 +158,7 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		// longer add to one and produced a visible dotted/gapped glyph. Give non-rounded endpoints a
 		// short square support overlap instead: it suppresses the axial roll-off across the join while
 		// preserving a straight (non-circular) edge. Two sigma also covers coreless Gaussian strokes.
-		// HALO quads (analytic glow, overload halo, optical rays, edge glow) set tc3.w < 0 to opt out. The support below is a hard step: inside it the axial roll-off is replaced by 1.0,
+		// HALO quads (analytic glow, overload halo, optical rays, edge glow) set tc3.x = +1 to opt out. The support below is a hard step: inside it the axial roll-off is replaced by 1.0,
 		// outside it the erf roll-off applies, and at 2 sigma that erf is only ~0.023 - a 40x jump. For a
 		// CORE segment that step sits 2 sigma (a few px) past the endpoint and is covered by the next
 		// segment, which is the point of it. For a halo with sigma of tens of pixels it instead holds the
@@ -173,7 +173,7 @@ float beam_fade(float scale, vec2 tc0, vec4 tc1, vec4 tc3, vec4 tc4)
 		// segment ending there contributes 0.5 and the one starting there contributes 0.5, which is
 		// already the correct single pass, continuous and seamless. u_join_extend scales the zone so
 		// the old behaviour is still reachable: 1.0 = legacy (double-counted), 0.0 = corrected.
-		float join_allowed = step(0.0, tc3.w) * clamp(u_join_extend.x, 0.0, 1.0);
+		float join_allowed = (1.0 - step(0.5, tc3.x)) * clamp(u_join_extend.x, 0.0, 1.0);
 		float start_join_support = max(body_core, 2.0 * sg);
 		float finish_join_support = max(body_core, 2.0 * sg);
 		float start_join_zone = join_allowed * (1.0 - start_round) * step(-start_join_support, a) * (1.0 - step(start_join_support, a));
@@ -280,7 +280,7 @@ void main()
 	// square frame once a broad low-amplitude halo is dialled up, because then 0.22% of the peak is a
 	// large fraction of everything on screen at that radius. Subtract the pedestal and renormalise so
 	// the profile reaches exactly zero at the quad edge instead; nothing else moves by more than 0.22%.
-	bool halo_quad = v_texcoord3.w < 0.0;
+	bool halo_quad = v_texcoord3.x > 0.5;
 	float quad_pedestal = halo_quad ? u_halo_quad_edge.x : QUAD_EDGE_PEDESTAL;
 	float quad_renorm   = halo_quad ? u_halo_quad_edge.y : QUAD_EDGE_RENORM;
 	fade3 = max(vec3_splat(0.0), fade3 - vec3_splat(quad_pedestal)) * quad_renorm;

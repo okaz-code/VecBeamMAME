@@ -2657,6 +2657,12 @@ uint32_t renderer_bgfx::u32Color(uint32_t r, uint32_t g, uint32_t b, uint32_t a 
 static constexpr int   LINE_CAP_SEGMENTS      = 8;
 static constexpr int   LINE_VERTICES_PER_LINE = 6 + 2 * LINE_CAP_SEGMENTS * 3;
 static constexpr float LINE_CAP_SIZE_PX       = 2.0f;  // cap radius (px at a 1920px-wide window)
+// Terminus kind written into AnalyticLineVertex::m_term_start / m_term_finish. The shader reads the
+// sign, so these three values are the whole vocabulary: a rounded end, a joint, and "this quad is a
+// halo and has neither" (which also opts it out of the joint support).
+static constexpr float VEC_TERM_ROUND  = -1.0f;
+static constexpr float VEC_TERM_SQUARE =  0.0f;
+static constexpr float VEC_TERM_HALO   =  1.0f;
 static constexpr float LINE_POINT_THRESHOLD   = 2.0f;  // segments shorter than this are drawn as points
 
 // Analytic gaussian line integral: emit one expanded quad (6 vertices) carrying the
@@ -4321,9 +4327,8 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 		vertex[i].m_u = wcore; vertex[i].m_v = 0.0f;
 		vertex[i].m_a = a; vertex[i].m_b = b; vertex[i].m_d = d; vertex[i].m_sigma = sg;
 		// Negative marks a rounded terminus; 0 leaves the end square (a joint the next segment meets).
-		vertex[i].m_end_start = rounded_start > 0.5f ? -1.0f : 0.0f;
-		vertex[i].m_end_finish = rounded_finish > 0.5f ? -1.0f : 0.0f;
-		vertex[i].m_end_core = wcore; vertex[i].m_end_transition = 0.0f;
+		vertex[i].m_term_start = rounded_start > 0.5f ? VEC_TERM_ROUND : VEC_TERM_SQUARE;
+		vertex[i].m_term_finish = rounded_finish > 0.5f ? VEC_TERM_ROUND : VEC_TERM_SQUARE;
 		vertex[i].m_end_gain_start = dwell_gain_start; vertex[i].m_end_gain_finish = dwell_gain_finish;
 		vertex[i].m_spot_norm_sigma = spot_norm_sigma; vertex[i].m_spot_norm_core = spot_norm_core;
 	};
@@ -4339,8 +4344,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_rgba = drgba;
 			tgt[i].m_u = wc; tgt[i].m_v = 0.0f;
 			tgt[i].m_a = a; tgt[i].m_b = 0.0f; tgt[i].m_d = d; tgt[i].m_sigma = sg;
-			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
-			tgt[i].m_end_core = wc; tgt[i].m_end_transition = 0.0f;
+			tgt[i].m_term_start = VEC_TERM_SQUARE; tgt[i].m_term_finish = VEC_TERM_SQUARE;
 			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f; tgt[i].m_spot_norm_sigma = 0.0f; tgt[i].m_spot_norm_core = 0.0f;
 		};
 		dv(base + 0, cx - p, cy - p, -p, -p);
@@ -4357,8 +4361,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[base + i].m_rgba = 0;
 			tgt[base + i].m_u = 0.0f; tgt[base + i].m_v = 0.0f;
 			tgt[base + i].m_a = 0.0f; tgt[base + i].m_b = 0.0f; tgt[base + i].m_d = 0.0f; tgt[base + i].m_sigma = -1.0f;
-			tgt[base + i].m_end_start = 0.0f; tgt[base + i].m_end_finish = 0.0f;
-			tgt[base + i].m_end_core = 0.0f; tgt[base + i].m_end_transition = 0.0f;
+			tgt[base + i].m_term_start = VEC_TERM_SQUARE; tgt[base + i].m_term_finish = VEC_TERM_SQUARE;
 			tgt[base + i].m_end_gain_start = 1.0f; tgt[base + i].m_end_gain_finish = 1.0f; tgt[base + i].m_spot_norm_sigma = 0.0f; tgt[base + i].m_spot_norm_core = 0.0f;
 		}
 	};
@@ -4374,8 +4377,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			tgt[i].m_rgba = rrgba;
 			tgt[i].m_u = 0.0f; tgt[i].m_v = 0.0f;
 			tgt[i].m_a = a; tgt[i].m_b = radius; tgt[i].m_d = d; tgt[i].m_sigma = sg;
-			tgt[i].m_end_start = 0.0f; tgt[i].m_end_finish = 0.0f;
-			tgt[i].m_end_core = 0.0f; tgt[i].m_end_transition = 0.0f;
+			tgt[i].m_term_start = VEC_TERM_SQUARE; tgt[i].m_term_finish = VEC_TERM_SQUARE;
 			tgt[i].m_end_gain_start = 1.0f; tgt[i].m_end_gain_finish = 1.0f; tgt[i].m_spot_norm_sigma = 0.0f; tgt[i].m_spot_norm_core = 0.0f;
 		};
 		rv(base + 0, cx - p, cy - p, -p, -p);
@@ -4655,8 +4657,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 							ray_vertex[i].m_rgba = srgba;
 							ray_vertex[i].m_u = 0.0f; ray_vertex[i].m_v = 0.0f;
 							ray_vertex[i].m_a = a; ray_vertex[i].m_b = a - slen; ray_vertex[i].m_d = d; ray_vertex[i].m_sigma = ssig;
-							ray_vertex[i].m_end_start = 0.0f; ray_vertex[i].m_end_finish = 0.0f;
-							ray_vertex[i].m_end_core = 0.0f; ray_vertex[i].m_end_transition = -1.0f;   // halo quad
+							ray_vertex[i].m_term_start = VEC_TERM_HALO; ray_vertex[i].m_term_finish = VEC_TERM_SQUARE;
 							ray_vertex[i].m_end_gain_start = 1.0f; ray_vertex[i].m_end_gain_finish = 1.0f; ray_vertex[i].m_spot_norm_sigma = 0.0f; ray_vertex[i].m_spot_norm_core = 0.0f;
 						};
 						rvv(rbase + 0, sx0 + rnx * rpad, sy0 + rny * rpad, a0,  rpad);
@@ -4748,12 +4749,12 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 			glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = 0.0f; glow_vertex[i].m_rgba = glow_rgba;
 			glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 			glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = glow_sig;
-			glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
+			glow_vertex[i].m_term_start = VEC_TERM_HALO; glow_vertex[i].m_term_finish = VEC_TERM_SQUARE;
 			// end_transition < 0 marks a HALO quad: no endpoint join support (see fs_vector_line_analytic).
 			// A halo's sigma is tens of pixels, so the core's 2-sigma square join support would hold it at
 			// full strength that far past the line end and then drop it in one step - a hard rectangular
 			// edge around every primitive.
-			glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;
+
 			glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 		};
 		gv(m_glow_off_glow + 0, gsx0 + nx * gpad, gsy0 + ny * gpad, ga0, ga0 - seg_len,  gpad);
@@ -4776,8 +4777,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_u = wcore;
 				glow_vertex[i].m_v = m_vs.mask_overdrive_flare > 0.5f ? -1.0f : bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = sigma;
-				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
-				glow_vertex[i].m_end_core = wcore; glow_vertex[i].m_end_transition = 0.0f;
+				glow_vertex[i].m_term_start = VEC_TERM_SQUARE; glow_vertex[i].m_term_finish = VEC_TERM_SQUARE;
 				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 			};
 			fv(m_glow_off_flare + 0, fsx0 + nx * fpad, fsy0 + ny * fpad, fa0, fa0 - seg_len,  fpad);
@@ -4799,8 +4799,7 @@ void renderer_bgfx::put_analytic_line(render_primitive *prim, AnalyticLineVertex
 				glow_vertex[i].m_x = x; glow_vertex[i].m_y = y; glow_vertex[i].m_z = oglow_z; glow_vertex[i].m_rgba = oglow_rgba;
 				glow_vertex[i].m_u = 0.0f; glow_vertex[i].m_v = bezel_long_mix;
 				glow_vertex[i].m_a = a; glow_vertex[i].m_b = b; glow_vertex[i].m_d = d; glow_vertex[i].m_sigma = oglow_sig;
-				glow_vertex[i].m_end_start = 0.0f; glow_vertex[i].m_end_finish = 0.0f;
-				glow_vertex[i].m_end_core = 0.0f; glow_vertex[i].m_end_transition = -1.0f;   // halo quad
+				glow_vertex[i].m_term_start = VEC_TERM_HALO; glow_vertex[i].m_term_finish = VEC_TERM_SQUARE;
 				glow_vertex[i].m_end_gain_start = 1.0f; glow_vertex[i].m_end_gain_finish = 1.0f; glow_vertex[i].m_spot_norm_sigma = 0.0f; glow_vertex[i].m_spot_norm_core = 0.0f;
 			};
 			ov(m_glow_off_oglow + 0, osx0 + nx * opad, osy0 + ny * opad, oa0, oa0 - seg_len,  opad);
@@ -7164,8 +7163,7 @@ int renderer_bgfx::draw(int update)
 										bv[n].m_x=x; bv[n].m_y=y; bv[n].m_z=z; bv[n].m_rgba=rgba;
 										bv[n].m_u=0.0f; bv[n].m_v=0.0f; bv[n].m_a=a; bv[n].m_b=bloom.radius;
 										bv[n].m_d=d; bv[n].m_sigma=-falloff;
-										bv[n].m_end_start=0.0f; bv[n].m_end_finish=0.0f;
-										bv[n].m_end_core=0.0f; bv[n].m_end_transition=0.0f;
+										bv[n].m_term_start=VEC_TERM_SQUARE; bv[n].m_term_finish=VEC_TERM_SQUARE;
 										bv[n].m_end_gain_start = 1.0f; bv[n].m_end_gain_finish = 1.0f; bv[n].m_spot_norm_sigma = 0.0f; bv[n].m_spot_norm_core = 0.0f;
 									};
 									cvtx(0,bloom.x-pad,bloom.y-pad,-pad,-pad); cvtx(1,bloom.x+pad,bloom.y-pad,pad,-pad);
@@ -7500,8 +7498,7 @@ int renderer_bgfx::draw(int update)
 							ev[i].m_x = x; ev[i].m_y = y; ev[i].m_z = 0.0f; ev[i].m_rgba = ergba;
 							ev[i].m_u = 0.0f; ev[i].m_v = 0.0f;
 							ev[i].m_a = aa; ev[i].m_b = bb; ev[i].m_d = d; ev[i].m_sigma = sig;
-							ev[i].m_end_start = 0.0f; ev[i].m_end_finish = 0.0f;
-							ev[i].m_end_core = 0.0f; ev[i].m_end_transition = -1.0f;   // halo quad
+							ev[i].m_term_start = VEC_TERM_HALO; ev[i].m_term_finish = VEC_TERM_SQUARE;
 							ev[i].m_end_gain_start = 1.0f; ev[i].m_end_gain_finish = 1.0f; ev[i].m_spot_norm_sigma = 0.0f; ev[i].m_spot_norm_core = 0.0f;
 						};
 						const float sx0 = ex0 - edx * epad, sy0 = ey0 - edy * epad;
