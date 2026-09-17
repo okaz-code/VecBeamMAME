@@ -8195,15 +8195,41 @@ int renderer_bgfx::draw(int update)
 				// beam-derived glow near its 240-nit chain calibration while leaving core luminance and Energy
 				// Beam geometry untouched. Stability 0 reproduces the old coupled exposure; 1 keeps glow nits
 				// constant. SDR has its own exposure controls and deliberately bypasses this HDR-only factor.
-				// 240 nits against the 200-nit paper white this calibration was authored at, i.e. 1.2x
-				// SDR white. Expressed as a ratio because the beam target is one: comparing a ratio
-				// against a hard-coded nits figure would re-import the fiction this replaced.
+				// The calibration this pulls toward is 240 nits of beam. It used to be quoted as a ratio -
+				// 1.2x the 200-nit paper white it was authored against - on the grounds that the beam target
+				// is a ratio too. That reasoning does not survive contact with the reference white: on Windows
+				// it is whatever the user set Windows' SDR content brightness to, and on macOS it is the panel
+				// peak over a headroom that drifts for half a minute after launch. So the compensation moved
+				// when nothing about the light had - the chain is seeded in absolute nits and had not shifted
+				// a hair - and the glow changed size because the display's normalisation changed. The beam is
+				// in nits and the reference is in nits; compare those two directly and the white is left to do
+				// the one job it should, which is scaling the picture at present.
+				//
+				// At the 200-nit white this was authored against the two forms agree exactly, so the pictures
+				// that set the calibration still read the same.
+				constexpr float HDR_GLOW_REFERENCE_NITS = 240.0f;
 				constexpr float HDR_GLOW_REFERENCE_RATIO = 1.2f;
-				const float beam_ratio = std::max(0.01f, vec_beam_peak_ratio());
 				const float glow_stability = std::clamp(m_vs.hdr_glow_stability, 0.0f, 1.0f);
-				const float glow_compensation = hdr_present
-					? std::pow(HDR_GLOW_REFERENCE_RATIO / beam_ratio, glow_stability)
-					: 1.0f;
+				float glow_beam_nits = 0.0f, glow_ceiling_nits = 0.0f;
+				float glow_compensation = 1.0f;
+				if (hdr_present)
+				{
+					// A chain without the nits model has no absolute beam to compare, so it keeps the ratio.
+					if (vec_beam_nits_model(glow_beam_nits, glow_ceiling_nits) && glow_beam_nits > 0.0f)
+						glow_compensation = std::pow(HDR_GLOW_REFERENCE_NITS / glow_beam_nits, glow_stability);
+					else
+						glow_compensation = std::pow(
+							HDR_GLOW_REFERENCE_RATIO / std::max(0.01f, vec_beam_peak_ratio()), glow_stability);
+				}
+				// What the glow is actually being scaled by, and the absolute beam it came from. The two
+				// machines quote their own reference white in the line above; this is the number meant to be
+				// the same on both, and the first thing to check when a glow does not match.
+				if (std::abs(glow_compensation - m_logged_glow_compensation) > 1.0e-4f)
+				{
+					m_logged_glow_compensation = glow_compensation;
+					osd_printf_verbose("BGFX: glow compensation %.3f (beam %.0f nits against the %.0f-nit calibration, stability %.2f)\n",
+						glow_compensation, glow_beam_nits, HDR_GLOW_REFERENCE_NITS, glow_stability);
+				}
 				const float glow_compensation_vals[4] = { glow_compensation, 0.0f, 0.0f, 0.0f };
 				m_chains->inject_entry_uniform(0, "add_mglow",   "u_hdr_glow_compensation", glow_compensation_vals, 4);
 				m_chains->inject_entry_uniform(0, "Glow Combine", "u_hdr_glow_compensation", glow_compensation_vals, 4);
