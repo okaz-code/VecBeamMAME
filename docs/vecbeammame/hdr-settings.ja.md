@@ -15,13 +15,14 @@ HDR 経路はフレームを **nits 基準**のワーキングバッファへ合
 Windows HDR10 の ST.2084 PQ と SDR のガンマ OETF は RGB 各成分へ個別に適用する。変換後のコード値比率ではなく、ディスプレイが逆変換した後の線形 RGB 比率を Win HDR・Mac EDR・SDR で一致させるためである。色相保持と高輝度圧縮は OETF の前段にある線形領域のロールオフで行う。
 
 - **Windows HDR10** — Rec.2020 原色＋ST.2084（PQ）、HDR10 スワップチェイン。**Windows の HDR モード有効＋d3d11/d3d12 バックエンド**が必要。コンテンツは絶対 nits を出力し、パネル側が自分のピークへトーンマップする。
+- **Linux HDR10** — Windows と同じ Rec.2020 原色＋ST.2084（PQ）出力を Vulkan バックエンドで行う。**`-bgfx_backend vulkan` と HDR モードのコンポジタ**が必要。bgfx の GL バックエンドには HDR10 が無い。デスクトップの SDR 白を問い合わせる手段が無いため、reference white は `bgfx_hdr_paper_white` の値そのものになる（§5.5）。
 - **macOS EDR** — 拡張リニア出力。`1.0` ＝その時点のディスプレイの SDR 基準白で、それを超えるビームが HDR ヘッドルームを使う。NSScreen が返すのは絶対 nit ではなくこの比率だが、**ヘッドルームは固定 100nit を基準に報告される**ので、そこから絶対 nits を復元できる（§3.5）。
 - **SDR フォールバック** — HDR 無効時は同じ内容を通常バックバッファ向けにトーンマップ。絶対 nits が定義できないため、SDR は独立した正規化系（`sdr_*`）を使う。
 
 ワーキングバッファへの書き込み:
 
 - ベクター画は **`beam_nits`**（較正から導出、§3）で書き込まれる → フル強度の線 1 本 = `beam_nits`
-- UI / アートワーク / 背景は **reference white** で書き込まれる。EDR ではその時点の SDR 基準白、Windows HDR10 では OS 報告の SDR 白
+- UI / アートワーク / 背景は **reference white** で書き込まれる。EDR ではその時点の SDR 基準白、Windows HDR10 では OS 報告の SDR 白、Linux では `bgfx_hdr_paper_white` の値
 
 ---
 
@@ -215,9 +216,48 @@ BGFX: macOS EDR absolute scale: panel peak 1600 nits (potential headroom x refer
 
 ---
 
+## 5.5 Linux の注意
+
+Linux は macOS 側ではなく **Windows HDR10 と同じ分岐**を通る。Rec.2020 原色、ST.2084 PQ、絶対 nits で、§3 はそのまま当てはまる。違うのは**プラットフォームに何を問い合わせられるか**である。
+
+### 必要なもの
+
+- **`-bgfx_backend vulkan`。** bgfx が HDR10 を実装しているのは D3D / Metal / Vulkan で、**GL バックエンドには無い**。GL ビルドは黙って SDR のままになる。
+- **`VK_EXT_swapchain_colorspace`。** このインスタンス拡張が無いとドライバは `SRGB_NONLINEAR` しか報告せず、どう要求しても `HDR10_ST2084` は見えない。
+- **コンポジタが HDR モードであること。** 確認は Wayland（Hyprland）＋ NVIDIA。
+
+スワップチェインは `HDR10_ST2084` を、surface が提供する 10bit パッキングのうち `A2B10G10R10_UNORM_PACK32` を優先して選ぶ。NVIDIA のスキャンアウトプレーンが 10bit では AB30/XB30 しか受け付けず、逆順を渡されたコンポジタは direct scanout できずコンポジット経路へ落ちるためである。どちらのパッキングも提供されない surface では SDR へフォールバックする。
+
+### 挙動が変わるオプションが 2 つある
+
+- **`bgfx_hdr_paper_white` は Linux では実際に効く。** Windows は OS の SDR 白で、macOS は導出した reference white で上書きするため §6 では「効かない」と書いているが、**Linux はどちらの問い合わせも存在せず、値がそのまま使われる**。UI・アートワーク・背景の明るさを決めるので、200 のままにせずデスクトップが SDR 白として扱っている値に合わせる価値がある。
+- **`bgfx_hdr_display_peak auto` は非対応。** 警告を出してチェイン既定値のままになる。パネルのピークを nits で明示すること。
+
+### リフレッシュレート
+
+Present タイマーはモニタのリフレッシュレートに対してスケジュールされ、その値は SDL 経由で検出する。これが効いて初めて `-vector_present_rate auto` が正しく解決する。検出が無かった頃は、ディスプレイの設定に関わらず初期値の 60 のままだった。
+
+**MAME の Linux 既定は今も SDL2 API** で、SDL2 は整数 Hz しか報告しないため 119.879 Hz のモードは 120 として届く。60 よりははるかに良いが、これを基準にスケジュールするものには約 0.1% の誤差が残る。`OSD=sdl3` でビルドすると `refresh_rate_numerator/denominator` から正確な値を取る。
+
+その誤差がどこに見えるかについて一つ注意がある。**VRR と direct scanout が効いていると、Present 間隔とディスプレイが互いに調整し合う**ため、エミュレート速度が 1 秒に 1 回ほど緩んでは戻る。フレーム落ちではなく（MAME 自身の数字は 99.98% のまま）、要求レートを変えると**拍が変わるだけで消えはしない**。VRR を切って裏を取ることは、どの環境でもまだできていない。
+
+### HDR が実際に届いているかの確認
+
+**`BGFX: HDR present path = HDR10` は確認にならない。** あの行は bgfx のケーパビリティを報告しているだけで、`bgfx::reset()` は要求した形式とカラースペースの組が提供されない場合、**ケーパビリティを立てたまま sRGB の surface を残す**。計測器なしで決着をつけられるのは**パネル側**である。入力信号を表示する機種なら、ゲーム実行中に「4K RGB 10 bit HDR10」のような表示が出る。送り手が「要求した」と言っているのではなく、受け手が「届いた」を測っている。
+
+### HDR とは無関係の性能の罠
+
+SDL3 の HIDAPI ジョイスティック経路は、HID デバイスがジョイスティックに見えると**毎フレーム `/sys/bus/usb` を読み直す**。マウス 1 つで足りる。実測で 37% まで落ちた。環境変数 `SDL_JOYSTICK_HIDAPI=0` で直る。
+
+### 未確認
+
+**NVIDIA ＋ Wayland 以外は誰も動かしていない。** Intel 内蔵 GPU、フルスクリーン、`A2B10G10R10` でのアルファの扱いは、いずれも未検証である。
+
+---
+
 ## 6. 補足
 
 - 較正値は**出発点**。パネルのトーンマップ特性で見え方に差が出るので、最終的な明るさ感は実機で詰めること。
-- **`bgfx_hdr_paper_white` は実質的に効かない。** Windows HDR10 では OS の SDR 白が、macOS EDR では導出した reference white が上書きする。SDR では `seed_peak = paper_white × sdr_beam_level` を Present で `paper_white` で割るため約分されて消える。残っているのは互換のためで、較正には使わない。
+- **`bgfx_hdr_paper_white` は実質的に効かない。ただし Linux は例外。** Windows HDR10 では OS の SDR 白が、macOS EDR では導出した reference white が上書きする。SDR では `seed_peak = paper_white × sdr_beam_level` を Present で `paper_white` で割るため約分されて消える。**Linux はどちらの問い合わせも無く、値がそのまま使われる**（§5.5）。それ以外の環境で残っているのは互換のためで、較正には使わない。
 - ビームの明るさは較正 3 値、線の太さは `beam_width_*`、白飛び具合はショルダー、という役割分担で調整する。
 - 過去に存在した `beam_peak_nits` / `hdr_rolloff_knee` / `hdr_diagnostics` / `phosphor_gamut` / `edr_sdr_level` は廃止済み。`beam_peak_nits` はチェインが較正 3 値を持たない場合のフォールバックとしてコード上にのみ残る。

@@ -24,6 +24,11 @@ Hue-preserving highlight compression happens before the OETF, in linear light.
 - **Windows HDR10** — Rec.2020 primaries, ST.2084 (PQ), HDR10 swapchain.
   Requires Windows HDR mode on and a d3d11/d3d12 backend.  The content emits
   absolute nits and the panel tone-maps to its own peak.
+- **Linux HDR10** — the same Rec.2020 / PQ output as Windows, through the
+  Vulkan backend.  Requires `-bgfx_backend vulkan` and a compositor in HDR
+  mode; there is no HDR10 in bgfx's GL backend.  Nothing queries the desktop's
+  SDR white here, so the reference white is `bgfx_hdr_paper_white` as given
+  (§5.5).
 - **macOS EDR** — extended-linear output.  `1.0` is the display's current SDR
   reference white and anything above it uses the HDR headroom.  NSScreen
   reports that ratio and never absolute nits, but **the headroom is reported
@@ -38,7 +43,8 @@ What lands in the working buffer:
 - the vector image at **`beam_nits`** (derived from the calibration, §3), so one
   full-intensity line is `beam_nits`
 - UI, artwork and background at the **reference white** — the current SDR white
-  on EDR, the OS-reported SDR white on Windows HDR10
+  on EDR, the OS-reported SDR white on Windows HDR10, and the
+  `bgfx_hdr_paper_white` value on Linux
 
 ---
 
@@ -285,15 +291,89 @@ diagnostics log and the Metal HUD.
 
 ---
 
+## 5.5 Notes on Linux
+
+Linux takes the **Windows HDR10 branch**, not the macOS one: Rec.2020 primaries,
+ST.2084 PQ, absolute nits.  Everything in §3 applies unchanged.  What differs is
+what the platform can be asked.
+
+### Requirements
+
+- **`-bgfx_backend vulkan`.**  bgfx implements HDR10 for D3D, Metal and Vulkan;
+  its GL backend has none, so a GL build silently stays SDR.
+- **`VK_EXT_swapchain_colorspace`.**  Without that instance extension the driver
+  reports only `SRGB_NONLINEAR` and `HDR10_ST2084` is invisible however it is
+  asked for.
+- **The compositor in HDR mode.**  Verified on Wayland (Hyprland) with NVIDIA.
+
+The swapchain takes `HDR10_ST2084` with whichever ten-bit packing the surface
+offers, preferring `A2B10G10R10_UNORM_PACK32`: NVIDIA's scanout planes accept
+only AB30/XB30 at ten bits, so a compositor handed the reversed packing cannot
+direct-scanout and falls back to compositing.  A surface offering neither drops
+to SDR.
+
+### Two options behave differently here
+
+- **`bgfx_hdr_paper_white` is a real control on Linux.**  Windows overrides it
+  with the OS SDR white and macOS with the derived reference white, so §6 calls
+  it inert - on Linux neither query exists and the value is used as given.  It
+  sets the level of the UI, artwork and background, so it is worth setting to
+  whatever the desktop treats as SDR white rather than leaving it at 200.
+- **`bgfx_hdr_display_peak auto` is not supported.**  It warns and keeps the
+  chain defaults.  Give it the panel's peak in nits.
+
+### Refresh rate
+
+The presentation timer schedules against the monitor refresh, which is detected
+through SDL.  `-vector_present_rate auto` resolves correctly once that works;
+before it existed the rate stayed at the initial 60 on Linux however the display
+was configured.
+
+**MAME's Linux default is still the SDL2 API**, and SDL2 reports whole Hz only,
+so a 119.879 Hz mode arrives as 120.  That is far better than 60 but leaves
+about 0.1% of error for anything scheduling against it.  Building with
+`OSD=sdl3` takes the exact rate from `refresh_rate_numerator/denominator`.
+
+A caution about where that error is visible: with VRR and direct scanout the
+present interval and the display regulate against each other, and the emulated
+speed eases off and picks up again about once a second.  It is not frame loss -
+MAME's own figure stays at 99.98% - and changing the requested rate changes the
+beat rather than removing it.  Turning VRR off to confirm this has not been
+achieved on any machine here.
+
+### Confirming HDR actually arrives
+
+**`BGFX: HDR present path = HDR10` does not confirm it.**  That line reports a
+bgfx capability, and `bgfx::reset()` leaves an sRGB surface in place, with the
+capability still set, when the format and colour space it wants are not offered
+together.  What settles it without instrumentation is the panel: a display that
+reports its incoming signal shows something like "4K RGB 10 bit HDR10" while a
+game is running.  That is the sink measuring what arrived rather than the source
+stating what it asked for.
+
+### Performance trap, unrelated to HDR
+
+SDL3's HIDAPI joystick path re-reads `/sys/bus/usb` every frame when a HID
+device looks like a joystick - a mouse is enough.  Measured at 37% speed with
+one attached.  `SDL_JOYSTICK_HIDAPI=0` in the environment fixes it.
+
+### Not verified
+
+NVIDIA on Wayland is the only combination anyone has run.  Intel integrated
+graphics, fullscreen, and alpha handling with `A2B10G10R10` are all untested.
+
+---
+
 ## 6. Notes
 
 - The calibration values are a **starting point**.  Panels differ in their own
   tone mapping, so settle the final impression on the actual hardware.
-- **`bgfx_hdr_paper_white` is effectively inert.**  Windows HDR10 overrides it
-  with the OS SDR white and macOS EDR with the derived reference white; in SDR
-  `seed_peak = paper_white * sdr_beam_level` is divided by `paper_white` at
-  present, so it cancels.  It remains for compatibility and is not a
-  calibration control.
+- **`bgfx_hdr_paper_white` is effectively inert, except on Linux.**  Windows
+  HDR10 overrides it with the OS SDR white and macOS EDR with the derived
+  reference white; in SDR `seed_peak = paper_white * sdr_beam_level` is divided
+  by `paper_white` at present, so it cancels.  **Linux queries neither and uses
+  the value as given** (§5.5).  Elsewhere it remains for compatibility and is
+  not a calibration control.
 - Brightness comes from the three calibration values, thickness from
   `beam_width_*`, and how highlights blow out from the shoulder.
 - `beam_peak_nits`, `hdr_rolloff_knee`, `hdr_diagnostics`, `phosphor_gamut` and
