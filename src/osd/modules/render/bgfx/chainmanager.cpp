@@ -947,6 +947,21 @@ void chain_manager::inject_vector_screen(bgfx::TextureHandle color_tex,
 	if (content_changed && !dims_changed)
 		m_targets.rebuild_reference_targets(0, m_user_prescale, m_max_prescale_size);
 
+	// Either rebuild above replaces the target objects under the names they already had, which
+	// leaves the raw pointers a chain keeps in its own target list aimed at freed memory. The
+	// other two rebuild sites repopulate for exactly this reason. Nothing reads those pointers
+	// again while the machine runs - the chain works through the manager by name - so the damage
+	// stayed invisible until ~bgfx_chain walked the list to destroy the targets, one screen tear-
+	// down later, and asked a freed bgfx_target for its name.
+	if (dims_changed || content_changed)
+	{
+		for (bgfx_chain* chain : m_screen_chains)
+		{
+			if (chain != nullptr)
+				chain->repopulate_targets();
+		}
+	}
+
 	// (2) Register FBO color attachment as "screen0" in the chain texture manager.
 	m_textures.remove_provider("screen0");
 	auto prov = std::make_unique<bgfx_fbo_texture_provider>(color_tex, vec_fb_w, vec_fb_h);
