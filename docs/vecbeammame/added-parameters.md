@@ -19,15 +19,15 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `bright_threshold` | Brightness Threshold (T) | The drive at which brightness saturates; energy above it goes into width instead. Colour's 0.9 barely saturates, monochrome and Vectrex at 0.5 send half of it to width. | color: 0.7 [0.05, 1] /0.01<br>mono: 0.5 [0.05, 1] /0.01<br>vectrex: 0.5 [0.05, 1] /0.01 | color/mono/vectrex | — |
 | `macro_overload` | [M] Overload Amount | How burnt-in a draw that pins the Z axis (an explosion, a bullet) looks. Moves three sliders together along a curve, starting with overload_threshold, the energy above which something counts as overloaded. | 1 [0, 2] /0.05 | color | — |
 | `macro_bloom` | [M] Bloom Strength | A single multiplier over the three glow stages (glow_wide, glow_narrow, analytic_glow). 1.0 is the shipped look. | 1 [0, 3] /0.05 | color/mono/vectrex | — |
-| `macro_beam_width` | [M] Beam Width | Line thickness. Scales beam_width_min and beam_width_max (the widths of a dim and a bright line) and overload_width_add (the extra width when overdriven) together. | color: 1 [0.25, 3] /0.05<br>mono: 0.7 [0.25, 3] /0.05<br>vectrex: 1 [0.25, 3] /0.05 | color/mono/vectrex | — |
+| `macro_beam_width` | [M] Beam Width | Line thickness. Scales beam_width_min and beam_width_max (the widths of a dim and a bright line) and overload_width_add (the extra width when overdriven) together. | 1 [0.25, 3] /0.05 | color/mono/vectrex | — |
 | `macro_point_size` | [M] Point Size | The size of points: point_width_scale, and on Vectrex isolated_dot_min_size, the minimum size in pixels of an isolated dwell dot. | 1 [0.25, 3] /0.05 | color/mono/vectrex | — |
 | `macro_point_bright` | [M] Point Brightness | The brightness of points (point_brightness_scale). A point covers little area and gets lost at the same luminance, so it is controlled separately from size. | 1 [0, 2] /0.05 | color/mono/vectrex | — |
 | `macro_defocus` | [M] Defocus | How much focus is lost. Scales defocus (across the face), edge_defocus (astigmatism at the edges from deflection angle) and overload_bloom (blur under overload) together. | 1 [0, 3] /0.05 | color/mono/vectrex | — |
-| `macro_persistence` | [M] Phosphor Persistence | How long the afterglow lasts. Scales phosphor_half_ms (the half-life) and phosphor_total_ms (until it is fully gone) together, so the decay curve keeps its shape and only its time axis stretches. | color: 1 [0.1, 4] /0.05<br>mono: 1.05 [0.1, 4] /0.05<br>vectrex: 1 [0.1, 4] /0.05 | color/mono/vectrex | — |
+| `macro_persistence` | [M] Phosphor Persistence | How long the afterglow lasts. Scales phosphor_half_ms (the half-life) and phosphor_total_ms (until it is fully gone) together, so the decay curve keeps its shape and only its time axis stretches. | 1 [0.1, 4] /0.05 | color/mono/vectrex | — |
 | `macro_monitor_sim` | [M] Monitor/Glass Sim | A 0/1 toggle that removes the optics that are not the beam - the tube face, the glass and the bezel - wholesale. | 1 [0, 1] /1 | color/mono/vectrex | — |
-| `macro_bezel` | [M] Bezel Reflection | How much light the bezel - outside the edge of the tube face - returns. Default 0 is off; at 1.0, bezel_glow_strength and monitor_bezel_reflection take their JSON defaults. | 1 [0, 3] /0.05 | color/mono/vectrex | — |
+| `macro_bezel` | [M] Bezel Reflection | How much light the bezel - outside the edge of the tube face - returns. Scales the reflection strengths (bezel_glow_strength, monitor_bezel_reflection) and the band width (bezel_glow_width) together, so it broadens as it brightens. At the default 1.0 each target holds its JSON default; at the maximum 3.0 the colour chain width reaches its 60px ceiling. | 1 [0, 3] /0.05 | color/mono/vectrex | — |
 | `macro_beam_sim` | [M] Beam/Supply Sim | A 0/1 toggle that removes the supply and deflection imperfections wholesale: beam jitter, HV droop, per-RGB flicker depth, the beam time window. | 1 [0, 1] /1 | color | — |
-| `macro_halation` | [M] Halation Amount | A single multiplier over halation (reflection rings inside the tube face) and starburst (the radial rays). | mono: 0.5 [0, 5] /0.05<br>vectrex: 1 [0, 5] /0.05 | mono/vectrex | — |
+| `macro_halation` | [M] Halation Amount | A single multiplier over halation (reflection rings inside the tube face) and starburst (the radial rays). | 1 [0, 5] /0.05 | mono/vectrex | — |
 | `advanced_sliders` | Advanced Parameters | On shows every detailed parameter below in the menu. Leave it off to work with the macros alone. | 0 [0, 1] /1 | color/mono/vectrex | — |
 
 ## Phosphor persistence and decay
@@ -35,13 +35,13 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
 | `phosphor_half_ms` | Phosphor Half-life (ms) | How long the afterglow takes to fall to half brightness - the main determinant of how long persistence feels. Colour's 16 ms is an AVG colour tube, monochrome's 24 ms a P4, Vectrex's 16 ms measured. | 16 [1, 300] /1 | color/mono/vectrex | scale: [M] Phosphor Persistence |
-| `phosphor_hold_ms` | Phosphor Hold (ms, full brightness) | How long full brightness is held before the decay begins. With a short half-life calibrated for a trail-like look, the afterglow falls to about 27% within one present interval, leaving seams between the successive positions of a slow bright line. | color: 14 [0, 80] /1<br>mono: 8 [0, 80] /1<br>vectrex: 16 [0, 80] /1 | color/mono/vectrex | — |
+| `phosphor_hold_ms` | Phosphor Hold (ms, full brightness) | How long full brightness is held before the decay begins. With a short half-life calibrated for a trail-like look, the afterglow falls to about 27% within one present interval, leaving seams between the successive positions of a slow bright line. | color: 12 [0, 80] /1<br>mono: 8 [0, 80] /1<br>vectrex: 16 [0, 80] /1 | color/mono/vectrex | — |
 | `phosphor_curve` | Phosphor Decay Curve | The shape of the decay curve (the Hill exponent p). Larger means bright for a while, then a sudden fall. | color: 5 [0.4, 8] /0.05<br>mono: 3 [0.4, 4] /0.05<br>vectrex: 3 [0.4, 4] /0.05 | color/mono/vectrex | — |
 | `phosphor_total_ms` | Phosphor Total (ms) | How long until it reaches zero. Its ratio to the half-life sets how stretched the curve really is. Monochrome's 800 ms assumes a long-persistence tube. | color: 100 [20, 1500] /10<br>mono: 800 [20, 1500] /10<br>vectrex: 500 [20, 1500] /10 | color/mono/vectrex | scale: [M] Phosphor Persistence |
 | `phosphor_hit_reset` | Phosphor Hit Reset Floor | The floor above which new light counts as re-excitation and resets the age to 0. | 0.02 [0, 0.5] /0.005 | color | — |
 | `phosphor_weak_hit_composite` | Phosphor Weak Hit Composite | Keeps a weak redraw from darkening brighter afterglow that is still there. | 1 [0, 1] /1 | color | — |
 | `phosphor_rgb_combination` | Phosphor RGB Combination Brightness | How bright RGB is when combined in one place. 0 normalises to peak, 1 adds physically. | 1 [0, 2] /0.05 | color | — |
-| `phosphor_rgb_combination_width` | Phosphor RGB Combination Width | How much a line appears to thicken where RGB combines. | 0.15 [0, 1] /0.01 | color | — |
+| `phosphor_rgb_combination_width` | Phosphor RGB Combination Width | How much a line appears to thicken where RGB combines. | 0 [0, 1] /0.01 | color | — |
 | `phosphor_energy_decay` | Phosphor Energy Decay (bright faster) | Two-phase decay. The normal part (<= 1) uses the base half-life and the overrange part (> 1) decays this many times faster; the two are summed. | color: 4 [0, 4] /0.05<br>mono: 3 [0, 4] /0.05<br>vectrex: 0 [0, 4] /0.05 | color/mono/vectrex | — |
 | `phosphor_rgb_decay` | Phosphor RGB Decay (halflife x) | Per-channel multipliers on phosphor persistence, expressing blue being short and green long. | [1.15, 1.05, 0.95] [[0.2, 0.2, 0.2], [3.0, 3.0, 3.0]] /0.05 | color | — |
 | `phosphor_color` | Phosphor Color  | The emission colour of the phosphor. Monochrome's [0.9, 0.9, 1] is a slightly blue P4; Vectrex's [0.5, 0.7, 1] is the real machine's blue-green tube. | color: [1.0, 1.0, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>mono: [0.9, 0.9, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>vectrex: [0.3, 0.6, 1.0] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01 | color/mono/vectrex | — |
@@ -50,17 +50,17 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
-| `bright_sigmoid` | Brightness Sigmoid | An S-curve applied on top of the power curve. Positive = sharper contrast, negative = gentler, 0 = off. | color: -2 [-4, 4] /0.1<br>mono: 0 [-4, 4] /0.1<br>vectrex: 0.4 [-4, 4] /0.1 | color/mono/vectrex | — |
+| `bright_sigmoid` | Brightness Sigmoid | An S-curve applied on top of the power curve. Positive = sharper contrast, negative = gentler, 0 = off. | color: 0 [-4, 4] /0.1<br>mono: 0 [-4, 4] /0.1<br>vectrex: 0.4 [-4, 4] /0.1 | color/mono/vectrex | — |
 | `bright_sigmoid_center` | Brightness Sigmoid Center | The inflection point of the S-curve. Vectrex's 0.8 confines the effect to the bright end. | color: 0.4 [0.05, 0.95] /0.01<br>mono: 0.4 [0.05, 0.95] /0.01<br>vectrex: 0.8 [0.05, 0.95] /0.01 | color/mono/vectrex | — |
 
 ## Beam width
 
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
-| `beam_width_min` | Beam Width Minimum | The widths, in pixels, of a dim line and a bright line. Energy moves between these two. | color: 3.7 [0.1, 24] /0.05<br>mono: 2 [0.1, 24] /0.05<br>vectrex: 0.15 [0.1, 24] /0.05 | color/mono/vectrex | scale: [M] Beam Width |
-| `beam_width_max` | Beam Width Maximum | The widths, in pixels, of a dim line and a bright line. Energy moves between these two. | color: 4 [0.1, 24] /0.1<br>mono: 2 [0.1, 24] /0.1<br>vectrex: 0.8 [0.1, 24] /0.1 | color/mono/vectrex | scale: [M] Beam Width |
-| `width_curve` | Width Curve | How the energy-to-width response bends. Above 1 the middle is thinner and reaches maximum later, below 1 the middle is thicker, 1.0 is linear. | color: 2 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
-| `core_flat` | Line Core Flatness | Breaks the link between width and blur. Normally sigma = width/3.2, so a beam widened by overdrive becomes one broad soft mass. | color: 0.4 [0, 0.98] /0.05<br>mono: 0.5 [0, 0.98] /0.05<br>vectrex: 0.5 [0, 0.98] /0.05 | color/mono/vectrex | — |
+| `beam_width_min` | Beam Width Minimum | The widths, in pixels, of a dim line and a bright line. Energy moves between these two. | color: 3.7 [0.1, 24] /0.05<br>mono: 1.35 [0.1, 24] /0.05<br>vectrex: 0.15 [0.1, 24] /0.05 | color/mono/vectrex | scale: [M] Beam Width |
+| `beam_width_max` | Beam Width Maximum | The widths, in pixels, of a dim line and a bright line. Energy moves between these two. | color: 4 [0.1, 24] /0.1<br>mono: 1.5 [0.1, 24] /0.1<br>vectrex: 0.8 [0.1, 24] /0.1 | color/mono/vectrex | scale: [M] Beam Width |
+| `width_curve` | Width Curve | How the energy-to-width response bends. Above 1 the middle is thinner and reaches maximum later, below 1 the middle is thicker, 1.0 is linear. | color: 4 [0.2, 4] /0.05<br>mono: 1 [0.2, 4] /0.05<br>vectrex: 1 [0.2, 4] /0.05 | color/mono/vectrex | — |
+| `core_flat` | Line Core Flatness | Breaks the link between width and blur. Normally sigma = width/3.2, so a beam widened by overdrive becomes one broad soft mass. | color: 0.15 [0, 0.98] /0.05<br>mono: 0.5 [0, 0.98] /0.05<br>vectrex: 0.5 [0, 0.98] /0.05 | color/mono/vectrex | — |
 | `width_knee` | Width at Threshold | The fraction of the width already reached at the threshold T. Gentle up to T, then steep beyond it. | 0.8 [0, 1] /0.01 | mono/vectrex | — |
 | `width_sigmoid` | Width Sigmoid | An S-curve applied on top of the width curve. Positive is sharper, negative gentler, 0 off. | 0 [-4, 4] /0.1 | mono/vectrex | — |
 | `width_sigmoid_center` | Width Sigmoid Center | The inflection point of the width S-curve. | 0.5 [0.05, 0.95] /0.01 | mono/vectrex | — |
@@ -76,7 +76,6 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `point_width_scale` | Point Width Scale | The width multiplier for points. Colour's 1.8 makes points read thicker than lines; monochrome's 0.6 does the opposite. | color: 1.8 [0.05, 4] /0.05<br>mono: 0.6 [0.05, 4] /0.05<br>vectrex: 1.3 [0.05, 4] /0.05 | color/mono/vectrex | scale: [M] Point Size |
 | `point_brightness_scale` | Point Brightness Scale | The brightness multiplier for points. A point covers little area and is lost at the same luminance; this compensates. | color: 2 [0, 4] /0.05<br>mono: 2.25 [0, 4] /0.05<br>vectrex: 2.25 [0, 4] /0.05 | color/mono/vectrex | scale: [M] Point Brightness |
 | `point_roundness` | Point Roundness | How round a point is. 0 is the same cross-section as a line, 1 a perfect circle. | color: 0.25 [0, 1] /0.05<br>mono: 0.4 [0, 1] /0.05<br>vectrex: 0.4 [0, 1] /0.05 | color/mono/vectrex | — |
-| `vertex_dwell` | Vertex Dwell (corner dots) | Vertex brightness from the beam slowing at a corner - on a real machine the corners look brighter. Colour defaults to 0.5; monochrome and Vectrex use 0 and handle it by other means. | color: 0.5 [0, 1] /0.05<br>mono: 0 [0, 1] /0.05<br>vectrex: 0 [0, 1] /0.05 | color/mono/vectrex | — |
 | `cap_no_persist` | Short-Dwell Dots: No Persistence | At 1, short-dwell junction dots go to a dedicated no-persist buffer instead of the phosphor pool. | color: 0 [0, 1] /1<br>mono: 1 [0, 1] /1<br>vectrex: 1 [0, 1] /1 | color/mono/vectrex | — |
 | `dot_no_persist_dwell` | Dot No-Persist Dwell (us) | The dwell threshold in microseconds used by the test above. Anything shorter is routed to the no-persistence path. | color: 10 [0, 60] /1<br>mono: 20 [0, 60] /1<br>vectrex: 0 [0, 60] /1 | color/mono/vectrex | — |
 | `z_rise_tau` | Z Rise Time (us) | The rise time of the Z amplifier. A draw with a short dwell ends before Z has risen, so it is dim. | color: 0.2 [0, 20] /0.01<br>mono: 0 [0, 20] /0.01<br>vectrex: 10 [0, 20] /0.01 | color/mono/vectrex | — |
@@ -89,18 +88,6 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `defocus` | Defocus (beam blur),  | Blur amount per axis (a vec2), applied uniformly across the face. The electron beam's spot size itself. | color: [0.3, 0.3] [[0.0, 0.0], [2.0, 2.0]] /0.1<br>mono: [0.2, 0.2] [[0.0, 0.0], [2.0, 2.0]] /0.1<br>vectrex: [0.4, 0.4] [[0.0, 0.0], [2.0, 2.0]] /0.1 | color/mono/vectrex | scale: [M] Defocus |
 | `edge_defocus` | Edge Defocus | Astigmatism from deflection angle. The further from centre, the more obliquely the beam lands, so the spot stretches into an ellipse and blurs. | color: 0.1 [0, 8] /0.1<br>mono: 0.2 [0, 8] /0.1<br>vectrex: 0.1 [0, 8] /0.1 | color/mono/vectrex | scale: [M] Defocus<br>on/off: [M] Monitor/Glass Sim |
 | `edge_defocus_curve` | Edge Defocus Curve | How the effect bends with distance from centre. Larger means nothing near the middle and a sudden onset at the edges. | 3 [0.5, 4] /0.1 | color/mono/vectrex | — |
-
-## Line ends
-
-| Name | Label | Description | Value | Chains | Driven by |
-|---|---|---|---|---|---|
-| `line_cap_width` | Line End Width (x body) | The end width as a multiple of the body width. Above 1 the end swells, as a real tube's ends round off. | color: 1.1 [0.1, 4] /0.05<br>mono: 1.25 [0.1, 4] /0.05<br>vectrex: 1.25 [0.1, 4] /0.05 | color/mono/vectrex | — |
-| `line_cap_overload_add` | Line End Overload Add (px) | The width in pixels added to the ends when overdriven - the way the ends of an explosion's lines swell in particular. | color: 2 [0, 12] /0.1<br>mono: 1 [0, 12] /0.1<br>vectrex: 1 [0, 12] /0.1 | color/mono/vectrex | — |
-| `line_cap_overload_curve` | Line End Overload Curve | How that addition bends. Colour's 0.25 and monochrome/Vectrex's 4 are opposites: colour comes on early, the others late. | color: 0.25 [0.25, 8] /0.25<br>mono: 4 [0.25, 8] /0.25<br>vectrex: 4 [0.25, 8] /0.25 | color/mono/vectrex | — |
-| `line_cap_transition` | Line End Transition (px) | The distance in pixels over which the body turns into the end. Longer makes the end swell more gradually. | color: 10 [0.5, 64] /0.5<br>mono: 8 [0.5, 64] /0.5<br>vectrex: 8 [0.5, 64] /0.5 | color/mono/vectrex | — |
-| `line_cap_curve` | Line End Transition Curve | How that transition bends. | color: 0.5 [0.25, 4] /0.05<br>mono: 1.5 [0.25, 4] /0.05<br>vectrex: 1.5 [0.25, 4] /0.05 | color/mono/vectrex | — |
-| `line_cap_mode` | Line End Mode | The shape of the line end (0 to 3). Every chain differs: colour 0, monochrome 1, Vectrex 2. | color: 3 [0, 3] /1<br>mono: 3 [0, 3] /1<br>vectrex: 2 [0, 3] /1 | color/mono/vectrex | — |
-| `cap_ramp_only` | Line End: RAMP termini only | Limits line-end treatment to the termini the driver flagged as RAMP. | 1 [0, 1] /1 | vectrex | — |
 
 ## Beam energy model
 
@@ -137,11 +124,7 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `overload_bloom` | Overload Defocus (blur) | Extra blur under overload. Scaled by [M] Defocus. | color: 0.2 [0, 4] /0.05<br>mono: 0.7 [0, 4] /0.05<br>vectrex: 0.3 [0, 4] /0.05 | color/mono/vectrex | scale: [M] Defocus |
 | `overload_width_add` | Overload Core Width Add (px) | The width in pixels added to the core under overload. | color: 5 [0, 12] /0.1<br>vectrex: 1.7 [0, 12] /0.1 | color/vectrex | scale: [M] Beam Width |
 | `overload_width_steepness` | Overload Width Steepness | How sharply the overload width comes on. | 6 [1, 20] /0.5 | color/vectrex | — |
-| `overload_width_center` | Overload Width Center | The centre of the overload width's onset. | color: 0.2 [0.05, 0.99] /0.01<br>vectrex: 0.65 [0.05, 0.99] /0.01 | color/vectrex | — |
-| `overlap_white_strength` | Overlap White Strength | How strongly a place where lines cross goes white-hot. It responds to several lines overlapping, not to one very bright line. | 0 [0, 1] /0.05 | color | — |
-| `overlap_white_count` | Overlap White Count | Roughly how many overlapping lines it takes to count as white-hot. | 50 [1, 50] /0.25 | color | — |
-| `overlap_white_brightness` | Overlap White Brightness | The brightness of the overlap white-out. | 1.5 [0, 2] /0.05 | color | — |
-| `overlap_white_spread` | Overlap White Spread | How far the overlap white-out spreads. | 12 [0, 12] /0.25 | color | — |
+| `overload_width_center` | Overload Width Center | The centre of the overload width's onset. | color: 0.4 [0.05, 0.99] /0.01<br>vectrex: 0.65 [0.05, 0.99] /0.01 | color/vectrex | — |
 | `overload_display_compression` | Overload Display Compression | How much overloaded energy is compressed on the display side. | 0 [0, 1] /0.05 | color | — |
 | `phosphor_overdrive` | Overdrive (white at peak) | How far peak excitation swings to white - strong excitation losing its colour and going white-hot. | 0.5 [0, 1] /0.05 | mono | scale: [M] Halation Amount |
 | `overdrive_knee` | Overdrive Knee/Ceiling (xpeak)  | The overdrive knee and ceiling, as multiples of peak. | [0.6, 0.6] [[0.0, 0.0], [4.0, 4.0]] /0.05 | mono | — |
@@ -153,17 +136,17 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
-| `analytic_glow` | Glow Source Strength (all vectors) | Glow strength from the analytic line, applied to every vector whether overloaded or not. The single most effective slider in this chain. | color: 0.095 [0, 1] /0.005<br>mono: 0.03 [0, 1] /0.001<br>vectrex: 0.065 [0, 1] /0.005 | color/mono/vectrex | scale: [M] Bloom Strength |
-| `analytic_glow_width` | Glow Source Radius (all vectors) | Its radius in pixels. The monochrome maximum of 160 is wide, to express the spread of a long-persistence tube. | color: 26 [1, 80] /1<br>mono: 15 [1, 160] /1<br>vectrex: 15 [1, 160] /1 | color/mono/vectrex | — |
-| `glow_narrow` | Glow Narrow Strength | The strength of the narrow bloom stage. The defaults of 0.003 to 0.005 are tiny because bloom adds, so a little is enough. | color: 0.004 [0, 0.2] /0.001<br>mono: 0.005 [0, 0.2] /0.001<br>vectrex: 0.004 [0, 0.2] /0.001 | color/mono/vectrex | scale: [M] Bloom Strength |
+| `analytic_glow` | Glow Source Strength (all vectors) | Glow strength from the analytic line, applied to every vector whether overloaded or not. The single most effective slider in this chain. | color: 0.13 [0, 1] /0.005<br>mono: 0.03 [0, 1] /0.001<br>vectrex: 0.065 [0, 1] /0.005 | color/mono/vectrex | scale: [M] Bloom Strength |
+| `analytic_glow_width` | Glow Source Radius (all vectors) | Its radius in pixels. The monochrome maximum of 160 is wide, to express the spread of a long-persistence tube. | color: 26 [1, 80] /1<br>mono: 15 [1, 160] /1<br>vectrex: 8 [1, 160] /1 | color/mono/vectrex | — |
+| `glow_narrow` | Glow Narrow Strength | The strength of the narrow bloom stage. The defaults of 0.003 to 0.005 are tiny because bloom adds, so a little is enough. | color: 0.008 [0, 0.2] /0.001<br>mono: 0.002 [0, 0.2] /0.001<br>vectrex: 0.004 [0, 0.2] /0.001 | color/mono/vectrex | scale: [M] Bloom Strength |
 | `overload_core_gain` | Overload Hot Core Gain | The strength of the white-hot core under overload - what is added to the core as direct emission. | 0.015 [0, 0.5] /0.005 | color | — |
-| `glow_wide` | Glow Wide (low-res) | The wide bloom stage, computed on a low-resolution target so it is cheap. The default is tiny - 0.00018 on monochrome. | color: 0.003 [0, 0.02] /0.0001<br>mono: 0.00013 [0, 0.02] /1e-05<br>vectrex: 0.0002 [0, 0.02] /0.0001 | color/mono/vectrex | scale: [M] Bloom Strength |
+| `glow_wide` | Glow Wide (low-res) | The wide bloom stage, computed on a low-resolution target so it is cheap. The default is tiny - 0.00018 on monochrome. | color: 0.0015 [0, 0.02] /0.0001<br>mono: 0.00016 [0, 0.02] /1e-05<br>vectrex: 0.0002 [0, 0.02] /0.0001 | color/mono/vectrex | scale: [M] Bloom Strength |
 | `glow_wide_reach` | Glow Wide Reach | How far the wide glow reaches - how many pyramid levels are used. | 8 [0, 16] /0.25 | color | — |
 | `glow_wide_pivot` | Glow Wide Pivot (source level) | The reference level of that shaping. This level does not move; only above and below it bend. | 1 [0.05, 4] /0.05 | color | — |
 | `glow_wide_curve` | Glow Wide Curve (above pivot up) | The shaping curve of the wide glow. Above 1 it crushes dim glow and keeps only the bright parts. | 0.8 [0.5, 3] /0.05 | color | — |
 | `glow_wide_smooth` | Glow Wide Downsample | How smooth the wide glow's downsampling is. | 1 [0, 2] /1 | color | — |
-| `overload_glow_gain` | Overload Glow (bloom) | How much glow overload adds. | color: 1.06 [0, 2] /0.02<br>mono: 0.5 [0, 2] /0.02<br>vectrex: 0 [0, 2] /0.02 | color/mono/vectrex | curve: [M] Overload Amount |
-| `overload_glow_width` | Overload Glow Width (px) | How far that glow spreads, in pixels. | color: 26 [4, 200] /2<br>mono: 10 [4, 200] /2<br>vectrex: 16 [4, 200] /2 | color/mono/vectrex | — |
+| `overload_glow_gain` | Overload Glow (bloom) | How much glow overload adds. | color: 1.12 [0, 2] /0.02<br>mono: 0.5 [0, 2] /0.02<br>vectrex: 0 [0, 2] /0.02 | color/mono/vectrex | curve: [M] Overload Amount |
+| `overload_glow_width` | Overload Glow Width (px) | How far that glow spreads, in pixels. | color: 12 [4, 200] /2<br>mono: 10 [4, 200] /2<br>vectrex: 16 [4, 200] /2 | color/mono/vectrex | — |
 | `glow_tail_curve` | Glow Tail Curve | How the glow's tail falls. Below 1 (monochrome's 0.6) the tail lingers; above 1 (colour's 1.44) it drops away quickly. | color: 1.44 [0.4, 2.5] /0.02<br>mono: 0.6 [0.4, 2.5] /0.02<br>vectrex: 1.82 [0.4, 2.5] /0.02 | color/mono/vectrex | — |
 | `glow_fbo_scale` | Glow FBO Scale (perf) | The resolution multiplier of the glow FBO - a performance control. 0.4 is 16% of the area. Glow is blurred to begin with, so lowering it costs little visually. | color: 0.4 [0.1, 1] /0.05<br>mono: 0.5 [0.1, 1] /0.05<br>vectrex: 0.4 [0.1, 1] /0.05 | color/mono/vectrex | — |
 | `glow_black_toe` | Glow Black Toe | A floor that cuts the dark end of the glow, removing weak glow to keep black tight. | 0.002 [0, 0.05] /0.001 | mono/vectrex | — |
@@ -172,9 +155,9 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
-| `halation_gain` | Halation Gain | The overall halation gain. The monochrome maximum is 5 because that turned out to be the real ceiling when [M] Halation Amount went from 3 to 5. | mono: 1 [0, 5] /0.001<br>vectrex: 0.66 [0, 2] /0.001 | mono/vectrex | scale: [M] Halation Amount |
+| `halation_gain` | Halation Gain | The overall halation gain. The monochrome maximum is 5 because that turned out to be the real ceiling when [M] Halation Amount went from 3 to 5. | mono: 0.05 [0, 5] /0.001<br>vectrex: 0.66 [0, 2] /0.001 | mono/vectrex | scale: [M] Halation Amount |
 | `ring_over_gain` | Halation from Overdrive | How the ring responds to overdrive. The maximum of 20 is large because a strong ring is sometimes wanted on explosions alone. | mono: 20 [0, 20] /0.05<br>vectrex: 1 [0, 20] /0.05 | mono/vectrex | — |
-| `ring_gain` | Halation Rim | The strength of the ring's outline. | mono: 0.005 [0, 0.2] /0.001<br>vectrex: 0.033 [0, 0.2] /0.001 | mono/vectrex | scale: [M] Halation Amount |
+| `ring_gain` | Halation Rim | The strength of the ring's outline. | mono: 0.003 [0, 0.2] /0.001<br>vectrex: 0.033 [0, 0.2] /0.001 | mono/vectrex | scale: [M] Halation Amount |
 | `ring_fill` | Halation Fill | The strength of the fill inside the ring. Outline and fill are separate because a real tube shows a thin bright ring and a faint disc inside it as two things. | mono: 0.02 [0, 0.2] /0.001<br>vectrex: 0.077 [0, 0.2] /0.001 | mono/vectrex | scale: [M] Halation Amount |
 | `ring_radius` | Halation Radius (px) | The radius of the ring - 44 px on monochrome, 30 px on Vectrex. It corresponds to the thickness of the glass. | mono: 44 [4, 80] /1<br>vectrex: 30 [4, 80] /1 | mono/vectrex | — |
 | `ring_width` | Halation Width (px) | How thick the ring is. | mono: 12 [0.75, 12] /0.25<br>vectrex: 1.25 [0.75, 12] /0.25 | mono/vectrex | — |
@@ -247,15 +230,15 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | Name | Label | Description | Value | Chains | Driven by |
 |---|---|---|---|---|---|
 | `primary_color_mode` | Color Adjustment Mode | 0 = specified as chromaticity (chroma_*), 1 = specified as HSB (primary_*). | 1 [0, 1] /1 | color | — |
-| `primary_red_hue` | Red Hue Shift (deg) | Red hue shift in degrees, saturation and brightness. The default saturation of 0.85 is shallower than sRGB: a real red phosphor is not as saturated as the sRGB primary. | 1 [-60, 60] /1 | color | — |
+| `primary_red_hue` | Red Hue Shift (deg) | Red hue shift in degrees, saturation and brightness. The default saturation of 0.85 is shallower than sRGB: a real red phosphor is not as saturated as the sRGB primary. | -1 [-60, 60] /1 | color | — |
 | `primary_red_saturation` | Red Saturation | Red hue shift in degrees, saturation and brightness. The default saturation of 0.85 is shallower than sRGB: a real red phosphor is not as saturated as the sRGB primary. | 0.97 [0, 2] /0.01 | color | — |
-| `primary_red_brightness` | Red Brightness | Red hue shift in degrees, saturation and brightness. The default saturation of 0.85 is shallower than sRGB: a real red phosphor is not as saturated as the sRGB primary. | 0.85 [0, 2] /0.01 | color | — |
+| `primary_red_brightness` | Red Brightness | Red hue shift in degrees, saturation and brightness. The default saturation of 0.85 is shallower than sRGB: a real red phosphor is not as saturated as the sRGB primary. | 1.3 [0, 2] /0.01 | color | — |
 | `primary_green_hue` | Green Hue Shift (deg) | Green. Default saturation 0.8. | -15 [-60, 60] /1 | color | — |
-| `primary_green_saturation` | Green Saturation | Green. Default saturation 0.8. | 0.85 [0, 2] /0.01 | color | — |
-| `primary_green_brightness` | Green Brightness | Green. Default saturation 0.8. | 0.5 [0, 2] /0.01 | color | — |
+| `primary_green_saturation` | Green Saturation | Green. Default saturation 0.8. | 0.9 [0, 2] /0.01 | color | — |
+| `primary_green_brightness` | Green Brightness | Green. Default saturation 0.8. | 1 [0, 2] /0.01 | color | — |
 | `primary_blue_hue` | Blue Hue Shift (Violet +) | Blue. The label reads Blue Hue Shift (Violet +), so positive is toward violet. | 1 [-60, 60] /1 | color | — |
 | `primary_blue_saturation` | Blue Saturation | Blue. The label reads Blue Hue Shift (Violet +), so positive is toward violet. | 0.9 [0, 2] /0.01 | color | — |
-| `primary_blue_brightness` | Blue Brightness | Blue. The label reads Blue Hue Shift (Violet +), so positive is toward violet. | 1 [0, 2] /0.01 | color | — |
+| `primary_blue_brightness` | Blue Brightness | Blue. The label reads Blue Hue Shift (Violet +), so positive is toward violet. | 1.3 [0, 2] /0.01 | color | — |
 | `chroma_a` | Phosphor A Chromaticity  | Primaries given as CIE xy chromaticity (when primary_color_mode is 0). | [0.63, 0.34] [[0.0, 0.0], [1.0, 1.0]] /0.001 | color | — |
 | `chroma_b` | Phosphor B Chromaticity  | Primaries given as CIE xy chromaticity (when primary_color_mode is 0). | [0.31, 0.595] [[0.0, 0.0], [1.0, 1.0]] /0.001 | color | — |
 | `chroma_c` | Phosphor C Chromaticity  | Primaries given as CIE xy chromaticity (when primary_color_mode is 0). | [0.17, 0.07] [[0.0, 0.0], [1.0, 1.0]] /0.001 | color | — |
@@ -277,7 +260,7 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `shadow_mask_strength` | Shadow Mask Strength | How dense the shadow mask is. 0 is no mask. Gated 0/1 by [M] Monitor/Glass Sim. | 0.3 [0, 1] /0.01 | color | on/off: [M] Monitor/Glass Sim |
 | `shadow_mask_scale` | Shadow Mask Size (px @1080p) | The mask pitch, in pixels referred to 1080p. | 0.65 [0.25, 8] /0.05 | color | — |
 | `shadow_mask_brightboost` | Shadow Mask Brightness Boost | Compensation for the brightness the mask costs. Default 0, so none. | 0 [0, 2] /0.05 | color | — |
-| `masked_core_peak` | Masked Core Peak Limit | The peak limit on the core as seen through the mask. | color: 1 [0, 16] /0.05<br>mono: 0 [0, 8] /0.05<br>vectrex: 0 [0, 8] /0.05 | color/mono/vectrex | — |
+| `masked_core_peak` | Masked Core Peak Limit | The peak limit on the core as seen through the mask. | color: 8 [0, 16] /0.05<br>mono: 0 [0, 8] /0.05<br>vectrex: 0 [0, 8] /0.05 | color/mono/vectrex | — |
 | `core_overlap_max` | Direct Core Overlap | How direct overlap of cores is handled (0/1). | 1 [0, 1] /1 | color | — |
 | `ambient_mask` | Ambient Shadow-Mask (0=flat,1=masked) | Whether ambient light goes through the mask. 1 = through it (on a real tube the unexcited phosphor is seen through the mask too), 0 = flat. | 1 [0, 1] /0.05 | color | — |
 
@@ -290,7 +273,7 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `tube_vignetting` | Tube Vignetting | Falloff toward the edges. | 0.8 [0, 2] /0.01 | color/mono/vectrex | on/off: [M] Monitor/Glass Sim |
 | `tube_face_scale` | Tube Face Scale | The size of the tube face (the glass) as a fraction of the window. vector_image_scale is how much of that the vector image occupies, so the two nest. | color: 0.98 [0.8, 1] /0.005<br>mono: 0.99 [0.8, 1] /0.005<br>vectrex: 0.98 [0.8, 1] /0.005 | color/mono/vectrex | curve: [M] Monitor/Glass Sim |
 | `ambient_color` | Ambient Color  | The bare colour of unexcited phosphor. A real tube with nothing drawn is not black but a grey-green or grey-blue. | color: [0.35, 0.35, 0.35] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>mono: [0.35, 0.45, 0.38] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01<br>vectrex: [0.35, 0.45, 0.38] [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]] /0.01 | color/mono/vectrex | — |
-| `ambient_level` | Ambient Level (x0.001) | How bright that is (x0.001). The default 1 means 0.001. | color: 1 [0, 200] /0.5<br>mono: 1 [0, 200] /0.5<br>vectrex: 2 [0, 200] /0.5 | color/mono/vectrex | on/off: [M] Monitor/Glass Sim |
+| `ambient_level` | Ambient Level (x0.001) | How bright that is (x0.001). The default 1 means 0.001. | color: 2.5 [0, 200] /0.5<br>mono: 1 [0, 200] /0.5<br>vectrex: 2 [0, 200] /0.5 | color/mono/vectrex | on/off: [M] Monitor/Glass Sim |
 | `ambient_sdr_trim` | Ambient SDR Trim | SDR-only trim on the ambient level. SDR has no room above the beam, so the same absolute ambient sits about ten times higher against the brightest thing on screen than it does in HDR; this pulls it back. 1.0 = the pre-trim behaviour. No effect in HDR. | 0.05 [0, 2] /0.05 | color/mono/vectrex | — |
 | `mglow_coefficient` | Monitor Glow Coefficient | The coefficient for monitor glow strength. | 0.4 [0, 10] /0.05 | color | — |
 | `mglow_brightness` | Monitor Glow Brightness | Brightness. Outside the gate for the same reason. | 0.15 [0, 2] /0.01 | color | — |
@@ -305,7 +288,7 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `bezel_long_reflection` | Bezel Long-Line Reflection | How much of a long stroke's light the bezel returns. | 1 [0, 2] /0.05 | color | — |
 | `bezel_short_reflection` | Bezel Short-Line Reflection | How much of a short stroke's light the bezel returns. The default 0.1 is there to keep text out of the bezel. | 0.1 [0, 1] /0.02 | color | — |
 | `bezel_long_threshold` | Bezel Long-Line Threshold (px) | The boundary between long and short, in window pixels. A segment longer than this counts as long. | 160 [40, 400] /10 | color | — |
-| `bezel_glow_width` | Bezel Glow Width (px) | The width and falloff of the bezel emission. | color: 10 [2, 60] /1<br>mono: 32 [2, 200] /1<br>vectrex: 32 [2, 200] /1 | color/mono/vectrex | — |
+| `bezel_glow_width` | Bezel Glow Width (px) | The width and falloff of the bezel emission. Moves with the strengths under [M] Bezel Reflection. | color: 20 [2, 60] /1<br>mono: 32 [2, 200] /1<br>vectrex: 32 [2, 200] /1 | color/mono/vectrex | scale: [M] Bezel Reflection |
 | `bezel_glow_curve` | Bezel Glow Curve | The width and falloff of the bezel emission. | 2 [0.25, 4] /0.05 | color/mono/vectrex | — |
 | `room_ambient` | Room Ambient (Overlay/Bezel) | How bright the room is. It affects how the overlay and the bezel look. | 0.25 [0, 2] /0.05 | vectrex | — |
 
@@ -315,16 +298,16 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 |---|---|---|---|---|---|
 | `overlay_white_transmission` | Overlay White Transmission | Transmission through the white areas. The default 0.65 is a measured value. | 0.65 [0, 1] /0.01 | vectrex | — |
 | `overlay_white_diffusion` | Overlay Resin Diffusion Strength | How strongly the white resin diffuses - the beam bleeds as it passes through the overlay. | 0.1 [0, 1] /0.01 | vectrex | — |
-| `overlay_diffusion_radius` | Overlay Resin Diffusion Radius (px) | The diffusion radius, in pixels. | 12 [0, 16] /0.25 | vectrex | — |
+| `overlay_diffusion_radius` | Overlay Resin Diffusion Radius (px) | The diffusion radius, in pixels. | 11 [0, 16] /0.25 | vectrex | — |
 | `overlay_diffusion_shape` | Overlay Resin Diffusion Curve | The shape of the diffusion. The default 0.4 is concentrated close in with a short tail. | 0.4 [0.2, 6] /0.05 | vectrex | — |
 | `overlay_white_reflectance` | Overlay White Reflectance | The reflectance of the white areas: the component that makes the overlay itself look bright by reflecting room light. | 0.25 [0, 1] /0.01 | vectrex | — |
-| `overlay_color_density` | Overlay Color Optical Density | The optical density of the coloured resin. Higher is a deeper colour and passes less light. Default 1.75. | 2.5 [0, 6] /0.05 | vectrex | — |
-| `overlay_color_glow` | Overlay Rear Resin Scatter | Scatter from the resin's back face - light spreads behind the coloured resin too. Default 1.1. | 1.1 [0, 2] /0.05 | vectrex | — |
+| `overlay_color_density` | Overlay Color Optical Density | The optical density of the coloured resin. Higher is a deeper colour and passes less light. Default 1.75. | 1.5 [0, 6] /0.05 | vectrex | — |
+| `overlay_color_glow` | Overlay Rear Resin Scatter | Scatter from the resin's back face - light spreads behind the coloured resin too. Default 1.1. | 0.5 [0, 2] /0.05 | vectrex | — |
 | `overlay_color_dark_level` | Overlay Resin Dark Level | The dark level of the coloured resin - the floor below which it does not go fully black. | 0.15 [0, 1.6] /0.005 | vectrex | — |
 | `overlay_color_highlight_bleach` | Overlay Highlight Color Release | Colour draining out in bright areas: strong light through coloured resin saturates and reads as white. bleach is how much drains (default 0 = off), knee where it starts, curve how it bends. | 0 [0, 1] /0.01 | vectrex | — |
 | `overlay_color_highlight_knee` | Overlay Highlight Release Knee | Colour draining out in bright areas: strong light through coloured resin saturates and reads as white. bleach is how much drains (default 0 = off), knee where it starts, curve how it bends. | 0.15 [0, 0.95] /0.01 | vectrex | — |
 | `overlay_color_highlight_curve` | Overlay Highlight Release Curve | Colour draining out in bright areas: strong light through coloured resin saturates and reads as white. bleach is how much drains (default 0 = off), knee where it starts, curve how it bends. | 0.55 [0.2, 3] /0.05 | vectrex | — |
-| `overlay_ambient_light` | Overlay Ambient Light | Ambient light falling on the overlay. Gated by [M] Monitor/Glass Sim. | 0.5 [0, 1] /0.01 | vectrex | — |
+| `overlay_ambient_light` | Overlay Ambient Light | Ambient light falling on the overlay. Gated by [M] Monitor/Glass Sim. | 0.8 [0, 1] /0.01 | vectrex | — |
 
 ## HDR / SDR presentation
 
@@ -347,24 +330,28 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `beam_peak_ratio` | HDR Beam Peak (x SDR white) | — | color: 2.5 [0.25, 30] /0.05<br>mono: 1.2 [0.25, 30] /0.05<br>vectrex: 0.96 [0.25, 30] /0.05 | color/mono/vectrex | scale: [M] Beam Brightness |
 | `beam_window_adaptive` | Beam Time Window Adaptive Rate | — | 1 [0, 1] /1 | color/mono/vectrex | — |
 | `beam_window_latch_ms` | Beam Time Window Latch Hold (ms) | — | 750 [0, 5000] /50 | color/mono/vectrex | — |
-| `bright_curve_blue` | Brightness Curve Blue | — | 1 [0.25, 4] /0.01 | color | — |
-| `bright_curve_green` | Brightness Curve Green | — | 1 [0.25, 4] /0.01 | color | — |
-| `bright_curve_red` | Brightness Curve Red | — | 1 [0.25, 4] /0.01 | color | — |
 | `dwell_energy_curve` | Dwell Energy Curve (0=off) | — | 0 [0, 2] /0.05 | color | — |
 | `dwell_energy_max` | Dwell Energy Max (x) | — | 8 [1, 32] /0.5 | color | — |
 | `dwell_energy_norm` | Dwell Energy Reference (widths/ms) | — | 0.03 [0.005, 4] /0.005 | color | — |
 | `fresh_hit_gain` | Fresh Excitation Gain (newest hit) | — | 1 [1, 24] /0.25 | color/mono/vectrex | — |
 | `hdr_beam_floor_nits` | HDR Beam Floor (nits) | — | 250 [0, 2000] /5 | color/mono/vectrex | — |
-| `hdr_beam_target_nits` | HDR Beam Target (nits) | — | 375 [1, 2000] /5 | color/mono/vectrex | — |
+| `hdr_beam_target_nits` | HDR Beam Target (nits) | — | color: 400 [1, 2000] /5<br>mono: 375 [1, 2000] /5<br>vectrex: 400 [1, 2000] /5 | color/mono/vectrex | — |
 | `hdr_headroom_override` | HDR Headroom Override (x SDR white, 0 = live) | — | 0 [0, 16] /0.05 | color/mono/vectrex | — |
 | `hdr_peak_target_nits` | HDR Peak Target (nits) | — | 3000 [0, 10000] /50 | color/mono/vectrex | — |
 | `hdr_shoulder_start` | HDR Shoulder Start (x display ceiling) | — | 0.85 [0.05, 1] /0.05 | color/mono/vectrex | — |
 | `join_extend` | Polyline Joint Seam Extend | — | 1 [0, 1] /0.05 | color | — |
-| `masked_core_peak_emit` | Masked Core Peak Limit (emission) | — | color: 1 [0, 8] /0.05<br>mono: 0 [0, 8] /0.05<br>vectrex: 0 [0, 8] /0.05 | color/mono/vectrex | — |
-| `rgb_spot_beam` | RGB Spot Width (per channel) | — | 0 [0, 1] /1 | color | — |
-| `spot_scale_blue` | RGB Spot Scale Blue (x) | — | 1 [0.25, 3] /0.01 | color | — |
-| `spot_scale_green` | RGB Spot Scale Green (x) | — | 1 [0.25, 3] /0.01 | color | — |
-| `spot_scale_red` | RGB Spot Scale Red (x) | — | 1 [0.25, 3] /0.01 | color | — |
+| `masked_core_peak_emit` | Masked Core Peak Limit (emission) | — | color: 8 [0, 8] /0.05<br>mono: 0 [0, 8] /0.05<br>vectrex: 0 [0, 8] /0.05 | color/mono/vectrex | — |
+| `overlay_shadow` | Overlay Rear-Print Shadow | — | 0.75 [0, 1] /0.05 | vectrex | — |
+| `overlay_shadow_azimuth` | Overlay Shadow Azimuth (deg) | — | 50 [0, 360] /5 | vectrex | — |
+| `overlay_shadow_gap` | Overlay Shadow Gap (% of face) | — | 2 [0, 10] /0.01 | vectrex | — |
+| `overlay_shadow_gap_edge` | Overlay Shadow Gap Rim Scale | — | 1.7 [1, 4] /0.01 | vectrex | — |
+| `overlay_shadow_ink` | Overlay Shadow Ink Transmission | — | 0.05 [0, 1] /0.01 | vectrex | — |
+| `overlay_shadow_rim_gain` | Overlay Shadow Rim Gain | — | 1 [0, 4] /0.05 | vectrex | — |
+| `overlay_shadow_source_angle` | Overlay Shadow Source Angle (deg) | — | 30 [0, 170] /1 | vectrex | — |
+| `rgb_spot_beam` | RGB Spot Width (per channel) | — | 1 [0, 1] /1 | color | — |
+| `spot_scale_blue` | RGB Spot Scale Blue (x) | — | 1.5 [0.25, 3] /0.01 | color | — |
+| `spot_scale_green` | RGB Spot Scale Green (x) | — | 0.7 [0.25, 3] /0.01 | color | — |
+| `spot_scale_red` | RGB Spot Scale Red (x) | — | 0.85 [0.25, 3] /0.01 | color | — |
 | `tube_gamma` | Tube Transfer Gamma (overlap) | — | 1 [0.2, 1] /0.01 | color/mono | — |
 | `vertex_dwell_drive_curve` | Vertex Dwell Drive Curve | — | color: 1 [0, 8] /0.1<br>mono: 0 [0, 8] /0.1<br>vectrex: 0 [0, 8] /0.1 | color/mono/vectrex | — |
 | `vertex_dwell_drive_onset` | Vertex Dwell Drive Onset (0 = overload) | — | 0 [0, 4] /0.05 | color/mono/vectrex | — |
@@ -375,7 +362,7 @@ Legend: the value column is `default [min, max] /step`.  Where the chains differ
 | `vertex_dwell_pile` | Vertex Dwell Pile Energy (0 = off) | — | color: 1 [0, 4] /0.05<br>mono: 0 [0, 4] /0.05<br>vectrex: 0 [0, 4] /0.05 | color/mono/vectrex | — |
 | `vertex_dwell_pile_cap` | Vertex Dwell Pile Pause Cap (us, 0 = off) | — | 6 [0, 60] /0.5 | color/mono/vectrex | — |
 | `vertex_dwell_pile_falloff` | Vertex Dwell Pile Falloff (x radius) | How far past the radius a pause keeps counting, as a multiple of it. The weight is 1 at the point and falls smoothly to 0 at radius x this, so a shrinking sprite ramps onto the term instead of stepping onto it. 1 = as tight as the radius; raise it to spread the transition. | 2 [1, 8] /0.25 | color/mono/vectrex | — |
-| `vertex_dwell_pile_radius` | Vertex Dwell Pile Radius (px) | — | 0.3 [0.1, 8] /0.1 | color/mono/vectrex | — |
+| `vertex_dwell_pile_radius` | Vertex Dwell Pile Radius (px) | — | color: 0.4 [0.1, 8] /0.1<br>mono: 0.3 [0.1, 8] /0.1<br>vectrex: 0.3 [0.1, 8] /0.1 | color/mono/vectrex | — |
 | `vertex_dwell_ref` | Vertex Dwell Reference (us, 0 = stroke sweep) | — | 0 [0, 200] /0.5 | color/mono/vectrex | — |
 | `vertex_dwell_width` | Vertex Dwell Width (x beam sigma) | — | color: 1.5 [0.1, 2] /0.05<br>mono: 1 [0.1, 2] /0.05<br>vectrex: 1 [0.1, 2] /0.05 | color/mono/vectrex | — |
 
