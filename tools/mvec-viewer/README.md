@@ -68,11 +68,30 @@ of these columns show `—`; `len` is still computed.
 
 ## Supported formats
 
-MVEC **1.0 / 1.1** can be read (`MVEC_VERSION_MAJOR/MINOR` in `vector.cpp`). 1.1 only adds the
-**recorded frame period (attoseconds, i64)** after the header's system / device strings; the
-frame chunks and the 66-byte vector records are identical to 1.0. When the period is present
-the status line shows the recording rate, e.g. `1.1 ... 60.000Hz` (1.0 has no period, so
-nothing is shown). Files with a minor version of 2 or above are rejected outright.
+MVEC **1.0 / 1.1 / 1.2** can be read (`MVEC_VERSION_MAJOR/MINOR` in `vector.cpp`). Files with a
+minor version of 3 or above are rejected outright.
+
+- **1.1** only adds the **recorded frame period (attoseconds, i64)** after the header's system /
+  device strings; the frame chunks are identical to 1.0. When the period is present the status
+  line shows the recording rate, e.g. `60.000Hz` (1.0 has no period, so nothing is shown).
+- **1.2** puts a **publication time (i32 seconds + i64 attoseconds)** in every frame header,
+  which grows it from 36 to 48 bytes. Only the offsets after `generation` shift by 12; the
+  **66-byte vector record is unchanged from 1.0**.
+
+### Out-of-band frames in 1.2
+
+1.2 records **every** publication, not only the ones that landed on an emulated screen update.
+The extra ones carry bit 2 of the frame flags, and the viewer reports them in the status line as
+`213 out of band (35.5%)` and on that frame's meta line as `out of band`. They hold an ordinary,
+complete beam list - the renderer paces its beam time window from them - so they are shown rather
+than hidden.
+
+`Play` runs **on the publication clock** whenever the file carries one (the status line then says
+`real-time play`). Stepping one data frame per display refresh instead makes playback slower by
+the out-of-band share - starwars3 plays at 0.60x that way. When several publications fall inside
+one refresh, **only the last of them is drawn**: an MVEC frame is a complete beam list, not a
+delta, so drawing the ones in between would just repeat vectors. It is per recording rather than
+per version - sundance is 1.2 with almost no out-of-band frames and plays correctly either way.
 
 This viewer is for inspecting primitive vector data with additive blending. It does not
 reproduce the BGFX chain's afterglow, glow, shadow mask, HDR/EDR or anything similar.

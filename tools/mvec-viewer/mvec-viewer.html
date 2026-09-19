@@ -998,6 +998,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     selected: -1,
     playing: false,
     lastTick: 0,
+    playOrigin: 0,
+    headerSize: 36,   // 48 from MVEC 1.2; where a frame payload&#x27;s vector records start
+    outOfBandCount: 0,
+    paced: false,     // play by publication time instead of one data frame per 1/60s
     system: &#x27;&#x27;,
     device: &#x27;&#x27;,
     fileName: &#x27;&#x27;,
@@ -1027,7 +1031,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     return (c ^ 0xffffffff) &gt;&gt;&gt; 0;
   }
 
-  // Scan window. A frame payload is at most 36 + 20000*66 = about 1.3MB, so 16MB
+  // Scan window. A frame payload is at most 48 + 20000*66 = about 1.3MB, so 16MB
   // always holds a whole frame. We never read the entire file at once because
   // recordings over 2GB (starwars / mhavoc) hit the ArrayBuffer limit and fail
   // with NotReadableError.
@@ -1057,7 +1061,12 @@ html&gt;body{padding:0}&lt;/style&gt;
     const major = view.getUint16(rel(pos), true); pos += 2;
     const minor = view.getUint16(rel(pos), true); pos += 2;
     const endian = view.getUint32(rel(pos), true); pos += 4;
-    if (major !== 1 || minor &gt; 1 || endian !== 0x12345678) throw new Error(`Unsupported MVEC format (${major}.${minor}).`);
+    if (major !== 1 || minor &gt; 2 || endian !== 0x12345678) throw new Error(`Unsupported MVEC format (${major}.${minor}).`);
+    // 1.2 inserts the publication time (i32 seconds + i64 attoseconds) after the generation field,
+    // so the frame header grows 36 -&gt; 48 and every offset past it shifts by 12. The 66-byte vector
+    // record is unchanged from 1.0 (vector.cpp record_frame).
+    const headerSize = minor &gt;= 2 ? 48 : 36;
+    const visOffset = minor &gt;= 2 ? 28 : 16;
 
     const decoder = new TextDecoder(&#x27;utf-8&#x27;);
     async function readString() {
@@ -1086,7 +1095,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       if (magic !== 0x4d415246) throw new Error(`Frame ${frames.length + 1} has a bad FRAM marker.`);
       const payloadSize = view.getUint32(rel(pos) + 4, true);
       const payload = pos + 8;
-      if (payloadSize &lt; 36) throw new Error(`Frame ${frames.length + 1} has a payload that is too short.`);
+      if (payloadSize &lt; headerSize) throw new Error(`Frame ${frames.length + 1} has a payload that is too short.`);
       // The window may shift here, so never reuse a rel() result taken before this call.
       await need(payload, payloadSize + 4, `Frame ${frames.length + 1}`);
       const storedCrc = view.getUint32(rel(payload) + payloadSize, true);
@@ -1096,9 +1105,9 @@ html&gt;body{padding:0}&lt;/style&gt;
       const id = view.getBigUint64(rel(payload), true);
       const flags = view.getUint32(rel(payload) + 8, true);
       const stale = (flags &amp; 1) !== 0;
-      const pointCount = view.getUint32(rel(payload) + 32, true);
+      const pointCount = view.getUint32(rel(payload) + visOffset + 16, true);
       if (progress &amp;&amp; (frames.length &amp; 511) === 0) progress(pos, file.size);
-      const expectedSize = 36 + pointCount * 66;
+      const expectedSize = headerSize + pointCount * 66;
       if (expectedSize !== payloadSize) throw new Error(`Frame ${frames.length + 1} has a vector count that disagrees with its size.`);
       if (stale &amp;&amp; pointCount !== 0) throw new Error(`Stale frame ${frames.length + 1} stores vectors.`);
       if (!stale) lastContent = frames.length;
@@ -1109,12 +1118,20 @@ html&gt;body{padding:0}&lt;/style&gt;
         id,
         stale,
         timed: (flags &amp; 2) !== 0,
+        // 1.2 records EVERY publication, not only the ones that landed on an emulated screen
+        // update; the extra ones carry this flag. They are real, complete beam lists - the
+        // renderer paces its beam time window from them - so they are shown, not hidden.
+        outOfBand: (flags &amp; 4) !== 0,
+        // Machine-clock time of the publication, in seconds. NaN before 1.2.
+        publish: minor &gt;= 2
+          ? view.getInt32(rel(payload) + 16, true) + Number(view.getBigInt64(rel(payload) + 20, true)) / 1e18
+          : NaN,
         generation: view.getUint32(rel(payload) + 12, true),
         vis: {
-          minX: view.getInt32(rel(payload) + 16, true),
-          maxX: view.getInt32(rel(payload) + 20, true),
-          minY: view.getInt32(rel(payload) + 24, true),
-          maxY: view.getInt32(rel(payload) + 28, true)
+          minX: view.getInt32(rel(payload) + visOffset, true),
+          maxX: view.getInt32(rel(payload) + visOffset + 4, true),
+          minY: view.getInt32(rel(payload) + visOffset + 8, true),
+          maxY: view.getInt32(rel(payload) + visOffset + 12, true)
         },
         storedCount: pointCount,
         contentFrame: stale ? lastContent : frames.length
@@ -1142,8 +1159,18 @@ html&gt;body{padding:0}&lt;/style&gt;
     state.device = deviceName;
     state.fileName = name;
     state.version = `${major}.${minor}`;
+    state.headerSize = headerSize;
+    state.outOfBandCount = frames.reduce((n, f) =&gt; n + (f.outOfBand ? 1 : 0), 0);
     state.framePeriodAs = framePeriodAs;
     state.frameHz = framePeriodAs &gt; 0 ? 1e18 / framePeriodAs : 0;
+    // Play on the publication clock when the recording carries one. One data frame per 1/60s is
+    // only right while a frame IS a screen update; from 1.2 a third of them can be out-of-band
+    // publications, and giving those a refresh each stretches playback (starwars3 runs at 0.60x
+    // that way). It is per recording, not per version: sundance is 1.2 with almost no out-of-band
+    // frames and plays correctly either way.
+    state.paced = minor &gt;= 2 &amp;&amp; frames.length &gt; 1
+      &amp;&amp; Number.isFinite(frames[0].publish)
+      &amp;&amp; frames[frames.length - 1].publish &gt; frames[0].publish;
   }
 
   // Read only the payload of the frame we need to show; never keep the whole file.
@@ -1165,7 +1192,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     const payload = state.payloads.get(sourceIndex);
     if (!payload) return [];              // ensureContent has not fetched it yet
     const view = new DataView(payload);
-    let pos = 36;                         // relative to the start of the payload
+    let pos = state.headerSize;           // relative to the start of the payload
     const points = new Array(source.storedCount);
     for (let i = 0; i &lt; points.length; i++) {
       const x0 = view.getInt32(pos, true); pos += 4;
@@ -1496,7 +1523,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     range.value = String(human);
     count.textContent = `Data ${human} / ${state.frames.length}`;
     const sourceText = frame.stale &amp;&amp; frame.contentFrame &gt;= 0 ? ` · stale (content from data ${frame.contentFrame + 1})` : &#x27;&#x27;;
-    meta.textContent = `Recorded frame ID ${frame.id.toString()} · generation ${frame.generation} · vectors ${points.length}${sourceText}`;
+    const bandText = frame.outOfBand ? &#x27; · out of band&#x27; : &#x27;&#x27;;
+    const publishText = Number.isFinite(frame.publish) ? ` · published ${frame.publish.toFixed(6)}s` : &#x27;&#x27;;
+    meta.textContent = `Recorded frame ID ${frame.id.toString()} · generation ${frame.generation} · vectors ${points.length}${bandText}${publishText}${sourceText}`;
     if (referenceMode.checked) {
       renderReferenceRows(points);
       vectorDetail(state.selected);
@@ -1516,8 +1545,21 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   function tick(time) {
     if (!state.playing) return;
-    if (!state.lastTick) state.lastTick = time;
-    if (time - state.lastTick &gt;= 1000 / 60) {
+    if (!state.lastTick) {
+      state.lastTick = time;
+      state.playOrigin = state.frames[state.current].publish;
+    }
+    if (state.paced) {
+      // Walk the publication clock rather than the frame count. Several publications can fall
+      // inside one display refresh; only the last of them is drawn, because an MVEC frame is a
+      // complete beam list and not a delta - drawing the ones in between would repeat vectors.
+      const elapsed = (time - state.lastTick) / 1000;
+      let next = state.current;
+      while (next + 1 &lt; state.frames.length
+          &amp;&amp; state.frames[next + 1].publish - state.playOrigin &lt;= elapsed) next++;
+      if (next !== state.current) updateFrame(next);
+      if (state.current &gt;= state.frames.length - 1) setPlaying(false);
+    } else if (time - state.lastTick &gt;= 1000 / 60) {
       state.lastTick = time;
       if (state.current &gt;= state.frames.length - 1) setPlaying(false);
       else updateFrame(state.current + 1);
@@ -1536,7 +1578,10 @@ html&gt;body{padding:0}&lt;/style&gt;
       transport.forEach(control =&gt; control.disabled = false);
       number.max = String(total);
       range.max = String(total);
-      status.textContent = `${file.name} · MVEC ${state.version} · system ${state.system} · device ${state.device} · ${total} frames${state.frameHz ? ` · ${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;} (CRC OK)`;
+      const oobText = state.outOfBandCount
+        ? ` · ${state.outOfBandCount} out of band (${(state.outOfBandCount / total * 100).toFixed(1)}%)`
+        : &#x27;&#x27;;
+      status.textContent = `${file.name} · MVEC ${state.version} · system ${state.system} · device ${state.device} · ${total} frames${oobText}${state.frameHz ? ` · ${state.frameHz.toFixed(3)}Hz` : &#x27;&#x27;}${state.paced ? &#x27; · real-time play&#x27; : &#x27;&#x27;} (CRC OK)`;
       await updateFrame(0);
       updateZoomUi();
     } catch (error) {
