@@ -3546,26 +3546,35 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	const float composite_scale = m_hdr_sdr_composite ? 1.0f : m_output_scale;
 	uint16_t const width = std::max<uint16_t>(1, uint16_t(float(s_width[0]) * composite_scale + 0.5f));
 	uint16_t const height = std::max<uint16_t>(1, uint16_t(float(s_height[0]) * composite_scale + 0.5f));
-	if (bgfx::getAvailTransientVertexBuffer(role_quads * 6U, ScreenVertex::ms_decl) != role_quads * 6U)
-		return bail("transient vertex buffer exhausted before the overlay masks could be drawn");
 
 	auto wrong_size = [width, height](bgfx_target *target)
 	{
 		return target == nullptr || target->width() != width || target->height() != height;
 	};
+	// A recreated target starts empty, so the cache below cannot be trusted across one.
+	bool remade = false;
 	if (wrong_size(m_vectrex_overlay_white))
+	{
 		m_vectrex_overlay_white = m_targets->create_target("vectrex_overlay_white", bgfx::TextureFormat::BGRA8,
 			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+		remade = true;
+	}
 	if (wrong_size(m_vectrex_overlay_color))
+	{
 		m_vectrex_overlay_color = m_targets->create_target("vectrex_overlay_color", bgfx::TextureFormat::BGRA8,
 			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+		remade = true;
+	}
 	// The shadow caster: rear white ink UNION the surface print. Deliberately its own target rather
 	// than an addition to the white mask - the composite reads that one as the REAR white ink and
 	// drives transmission and the reflected-white term from it, so folding the surface print in would
 	// make the optical model treat a front-surface element as rear ink.
 	if (wrong_size(m_vectrex_overlay_caster))
+	{
 		m_vectrex_overlay_caster = m_targets->create_target("vectrex_overlay_caster", bgfx::TextureFormat::BGRA8,
 			width, height, 1, 1, TARGET_STYLE_CUSTOM, false, true, 1.0f, 0);
+		remade = true;
+	}
 	auto usable = [](bgfx_target *target)
 	{
 		return target && bgfx::isValid(target->target()) && bgfx::isValid(target->texture());
@@ -3574,41 +3583,81 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 		|| !usable(m_vectrex_overlay_caster))
 		return bail("an overlay mask target could not be created");
 
+	// The ink masks are the printed overlay, not the picture: the same three artwork quads in the same
+	// place every frame for the whole session. Rasterising them per frame was three clears and four
+	// textured quads at composite resolution for a result that never differed - on a fill-limited part
+	// that is the overlay's largest avoidable cost. Key on everything render_vectrex_overlay_quad
+	// reads, so anything that would draw a different mask still redraws it. The targets keep their
+	// contents while no view writes to them, which is what makes skipping the views enough.
+	// The shadow blur below is cached the same way (m_vx_shadow_key) and for the same reason.
+	uint64_t mask_key = (uint64_t(width) << 48) ^ (uint64_t(height) << 32) ^ uint64_t(role_quads);
+	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
+	{
+		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
+		if (role != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE && role != PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
+			&& role != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+			continue;
+		auto const mix = [&mask_key] (uint64_t v) { mask_key = (mask_key * 1099511628211ull) ^ v; };
+		auto const mixf = [&mix] (float v) { mix(uint64_t(int64_t(std::lround(double(v) * 4096.0)))); };
+		mix(role);
+		mix(uint64_t(prim->flags));
+		mix(uint64_t(reinterpret_cast<uintptr_t>(prim->texture.base)));
+		mix(uint64_t(prim->texture.seqid));
+		mixf(prim->bounds.x0); mixf(prim->bounds.y0);
+		mixf(prim->bounds.x1); mixf(prim->bounds.y1);
+		mixf(prim->texcoords.tl.u); mixf(prim->texcoords.tl.v);
+		mixf(prim->texcoords.br.u); mixf(prim->texcoords.br.v);
+		mixf(prim->color.r); mixf(prim->color.g); mixf(prim->color.b); mixf(prim->color.a);
+	}
+
+	// Shared with the screen-rect scan and the shadow blur below, so not scoped to the rebuild.
 	float projection[16];
 	float const logical_width = float(s_width[window_index]);
 	float const logical_height = float(s_height[window_index]);
 	bx::mtxOrtho(projection, 0.0f, logical_width, logical_height, 0.0f, 0.0f, 100.0f, 0.0f,
 		bgfx::getCaps()->homogeneousDepth);
-	uint16_t const white_view = uint16_t(s_current_view++);
-	uint16_t const color_view = uint16_t(s_current_view++);
-	uint16_t const caster_view = uint16_t(s_current_view++);
-	bgfx_view_profile::name(white_view, "vx_overlay_white");
-	bgfx_view_profile::name(color_view, "vx_overlay_color");
-	bgfx_view_profile::name(caster_view, "vx_overlay_caster");
-	auto setup_mask_view = [projection, width, height](uint16_t view, bgfx_target *target)
+
+	if (remade || mask_key != m_vx_mask_key)
 	{
-		bgfx::setViewFrameBuffer(view, target->target());
-		bgfx::setViewRect(view, 0, 0, width, height);
-		bgfx::setViewClear(view, BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
-		bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
-		bgfx::setViewTransform(view, nullptr, projection);
-		bgfx::touch(view);
-	};
-	setup_mask_view(white_view, m_vectrex_overlay_white);
-	setup_mask_view(color_view, m_vectrex_overlay_color);
-	setup_mask_view(caster_view, m_vectrex_overlay_caster);
-	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
-	{
-		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
-		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE)
+		if (bgfx::getAvailTransientVertexBuffer(role_quads * 6U, ScreenVertex::ms_decl) != role_quads * 6U)
+			return bail("transient vertex buffer exhausted before the overlay masks could be drawn");
+
+		uint16_t const white_view = uint16_t(s_current_view++);
+		uint16_t const color_view = uint16_t(s_current_view++);
+		uint16_t const caster_view = uint16_t(s_current_view++);
+		bgfx_view_profile::name(white_view, "vx_overlay_white");
+		bgfx_view_profile::name(color_view, "vx_overlay_color");
+		bgfx_view_profile::name(caster_view, "vx_overlay_caster");
+		auto setup_mask_view = [projection, width, height](uint16_t view, bgfx_target *target)
 		{
-			render_vectrex_overlay_quad(prim, white_view, window_index);
-			render_vectrex_overlay_quad(prim, caster_view, window_index);
+			bgfx::setViewFrameBuffer(view, target->target());
+			bgfx::setViewRect(view, 0, 0, width, height);
+			bgfx::setViewClear(view, BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
+			bgfx::setViewMode(view, bgfx::ViewMode::Sequential);
+			bgfx::setViewTransform(view, nullptr, projection);
+			bgfx::touch(view);
+		};
+		setup_mask_view(white_view, m_vectrex_overlay_white);
+		setup_mask_view(color_view, m_vectrex_overlay_color);
+		setup_mask_view(caster_view, m_vectrex_overlay_caster);
+		for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
+		{
+			uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
+			if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE)
+			{
+				render_vectrex_overlay_quad(prim, white_view, window_index);
+				render_vectrex_overlay_quad(prim, caster_view, window_index);
+			}
+			else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
+				render_vectrex_overlay_quad(prim, color_view, window_index);
+			else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+				render_vectrex_overlay_quad(prim, caster_view, window_index);
 		}
-		else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR)
-			render_vectrex_overlay_quad(prim, color_view, window_index);
-		else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
-			render_vectrex_overlay_quad(prim, caster_view, window_index);
+		m_vx_mask_key = mask_key;
+		// One line per rebuild, not per frame - a stream of these means the key is picking up
+		// something that moves every frame and the cache is doing nothing.
+		osd_printf_verbose("BGFX: Vectrex overlay ink masks rasterised (%u quads at %ux%u)\n",
+			unsigned(role_quads), unsigned(width), unsigned(height));
 	}
 	m_vx_seen_role_quads = role_quads;
 	m_vx_seen_plain_quads = plain_quads;

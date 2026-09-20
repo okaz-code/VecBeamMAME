@@ -731,6 +731,9 @@ private:
 	bgfx_target *m_vectrex_overlay_shadow_ds = nullptr;
 	// The overlay is a still image. Blurring it every present would be two full-window passes at the
 	// host present rate; this key skips the work until the artwork, the radius or the size moves.
+	// Cache keys: the ink masks and the shadow blur are both artwork, redrawn only when the artwork,
+	// its placement or the target size changes. See prepare_vectrex_overlay_masks().
+	uint64_t m_vx_mask_key = 0;
 	uint64_t m_vx_shadow_key = 0;
 	// Where the tube face sits inside the window, in window UV. The masks are rasterised in window
 	// space and Glow Combine works in chain space, so it needs this to look the ink up at all.
