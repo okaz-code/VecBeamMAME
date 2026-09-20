@@ -110,18 +110,34 @@ cfg に保存されたチェイン選択を読まず、また cfg へ書き戻�
 | 型 / 既定 | string / **未設定(何も変えない)** |
 | 値 | `high` / `medium`(別名 `middle`) / `low` |
 
-**描画負荷を決める4つの設定をまとめて指定するプリセット。** 個別に
+**描画負荷を決める5つの設定をまとめて指定するプリセット。** 個別に
 `bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` / `vector_present_rate`
 を覚えていなくても、機体の余力に合わせて1語で選べる。
 
-| 値 | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` |
-|---|---|---|---|---|
-| `high` | `1.0` | `1.0` | オン | `auto` |
-| `medium` | `0.75` | `0.75` | オン | **`60`** |
-| `low` | `0.5` | `0.5` | **オフ** | `0`(present ループ自体が回らない) |
+| 値 | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` | RGB Spot Width |
+|---|---|---|---|---|---|
+| `high` | `1.0` | `1.0` | オン | `auto` | チェインの設定どおり |
+| `medium` | `0.75` | `0.75` | オン | **`60`** | チェインの設定どおり |
+| `low` | `0.5` | `0.5` | **オフ** | `0`(present ループ自体が回らない) | **オフ** |
 
 実際に効くのは解像度スケールの2本で、ビーム窓はその上に乗る演出。**余力が無い機体で
 最初に落とすのが窓**なので `low` だけ窓を切る。
+
+**RGB Spot Width だけは解像度で届かない項目。** RGB 別のビームスポット径
+(`rgb_spot_beam`、カラーチェインでは既定オン)は、チェインで一番重いフラグメント
+シェーダの中で、ラインのカバレッジを1回ではなく銃ごとに3回評価する。さらに3本の
+スケールのうち一番太いものが、ビームが描く全クアッドを膨らませる。つまりコストは
+ストロークあたりの ALU とフィルであって、描画先を小さくしても減らない。Intel HD 520
+では、カラーチェインが実速度 100% に届くかどうかがこれ1つで決まった。`low` で切る。
+
+プリセットの中で唯一これだけ対応する起動オプションが無いので、スライダーに書き込む
+のではなく**クランプとして**適用している。較正済みの `spot_scale_red` / `green` /
+`blue` はそのまま残るので、quality を上げれば較正をやり直さずに絵が戻る。
+起動ログに出る。
+
+```
+BGFX: analytic vector render scale 0.50, output limit 0.50, supersample 1 (effective raster scale 0.50), per-channel beam spot off
+```
 
 **present レートを含めているのは、60 Hz を超えるモニタ対策。** 窓がオンだと present レートは
 `auto`(モニタのリフレッシュ)に昇格するので、144 Hz のパネルでは蛍光体・モニタチェインが
@@ -133,14 +149,16 @@ cfg に保存されたチェイン選択を読まず、また cfg へ書き戻�
 そもそも生成されない**(レンダラとして一番安い状態)。ここにレートを書くと、今は存在しない
 ループを新設することになり、かえって重くなる。
 
-**プリセットは出発点なので、明示指定に負ける。** 上表の4項目のうち、**まだ誰も触って
-いないもの(優先度 0 = 組み込みの既定値のまま)だけ**を埋める。ini(101 以上)でも
+**プリセットは出発点なので、明示指定に負ける。** 上表のうちオプションを持つ4項目に
+ついて、**まだ誰も触っていないもの(優先度 0 = 組み込みの既定値のまま)だけ**を埋める。ini(101 以上)でも
 コマンドライン(151)でも、一度書かれた値はそのまま残る
 (→ [1-2](#1-2-ini-の探索場所と優先順位))。つまり
 `-vector_quality low -vector_beam_window` は「解像度は半分、窓はオン」になり
 (このとき窓が働くよう present レートは `auto` へ昇格する)、`vbmame.ini` に
 `bgfx_render_scale 1.0` と書いてあれば `low` でも解像度は下がらない。
 `-vector_quality medium -vector_present_rate 120` なら 120 Hz がそのまま通る。
+RGB Spot Width には上書きできるオプションが無いので、`low` では必ずオフになる。
+解像度を落としつつこれを残したいときは `medium` を使う。
 
 起動時のログでどれが効いたか分かる。
 
@@ -150,13 +168,13 @@ Vector presentation timer enabled at auto, initial 60 Hz (requested by vector_be
 ```
 
 `high` / `medium` / `low` 以外を渡すと警告を出して**プリセットごと無視**する
-(4項目とも設定どおりのまま)。
+(5項目とも設定どおりのまま)。
 
 ```
 Unknown -vector_quality 'ultra'; expected high, medium or low. Ignoring.
 ```
 
-なお `vector_quality` 自体は `src/emu` のオプションだが、埋める4項目のうち2つは
+なお `vector_quality` 自体は `src/emu` のオプションだが、埋める5項目のうち3つは
 BGFX 側(→ [4](#4-bgfx-レンダラ-オプションvecbeam-追加分))なので、**BGFX 以外の
 レンダラでは窓と present レートの指定だけが効く。**
 

@@ -454,7 +454,7 @@ namespace
 //  -vector_quality stands for
 //-------------------------------------------------
 
-bool emu_options::vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate) const
+bool emu_options::vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate, bool &rgb_spot) const
 {
 	const char *const name = vector_quality();
 	if (!name || !*name)
@@ -468,17 +468,24 @@ bool emu_options::vector_quality_preset(float &render_scale, float &output_scale
 	// So medium pins the rate at 60 rather than letting the monitor decide how much work to ask for.
 	// low leaves it at 0: with the window off nothing promotes it, and the present loop does not run
 	// at all, which is the cheapest the renderer gets. Naming a rate there would build that loop back.
+	//
+	// The per-channel beam spot is the one setting here that resolution cannot reach. It evaluates the
+	// analytic line's coverage once per gun instead of once, in the heaviest fragment shader in the
+	// chain, and the widest of the three scales also inflates every quad - so its cost is ALU and fill
+	// per stroke, unchanged by how small the target is. Measured on an Intel HD 520 it is the whole
+	// gap between the colour chains running full speed and not: low turns it off, and the tuned scales
+	// stay where they are for the moment quality goes back up.
 	if (!core_stricmp(name, "high"))
 	{
-		render_scale = 1.0f; output_scale = 1.0f; beam_window = true; present_rate = -1;
+		render_scale = 1.0f; output_scale = 1.0f; beam_window = true; present_rate = -1; rgb_spot = true;
 	}
 	else if (!core_stricmp(name, "medium") || !core_stricmp(name, "middle"))
 	{
-		render_scale = 0.75f; output_scale = 0.75f; beam_window = true; present_rate = 60;
+		render_scale = 0.75f; output_scale = 0.75f; beam_window = true; present_rate = 60; rgb_spot = true;
 	}
 	else if (!core_stricmp(name, "low"))
 	{
-		render_scale = 0.5f; output_scale = 0.5f; beam_window = false; present_rate = 0;
+		render_scale = 0.5f; output_scale = 0.5f; beam_window = false; present_rate = 0; rgb_spot = false;
 	}
 	else
 	{

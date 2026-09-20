@@ -270,13 +270,19 @@ There are options for running on a slow PC.  One word gets you started:
 ```
 
 `low` / `medium` / `high` set internal resolution, output resolution, the beam
-time window and the present rate together.
+time window, the present rate and the per-channel beam spot together.
 
-| | Internal | Output | Beam time window | Present rate |
-|---|---|---|---|---|
-| `high` | 1.0 | 1.0 | on | the monitor's refresh |
-| `medium` | 0.75 | 0.75 | on | **pinned at 60 Hz** |
-| `low` | 0.5 | 0.5 | **off** | none (no present loop at all) |
+| | Internal | Output | Beam time window | Present rate | RGB Spot Width |
+|---|---|---|---|---|---|
+| `high` | 1.0 | 1.0 | on | the monitor's refresh | as the chain has it |
+| `medium` | 0.75 | 0.75 | on | **pinned at 60 Hz** | as the chain has it |
+| `low` | 0.5 | 0.5 | **off** | none (no present loop at all) | **off** |
+
+**RGB Spot Width is the one of those that resolution cannot reach**, and on a
+slow GPU it is often the largest single item.  Drawing the beam once per gun
+instead of once triples the work in the heaviest shader in the chain, per
+stroke, however small the target is - so `low` turns it off.  The tuned scales
+are kept, and going back to `medium` or `high` restores the look.
 
 On the slowest Windows PC here, a **Surface Pro 4** (Intel HD 520), settings
 equivalent to `-vector_quality low` hold 41-42 presents per second and 100%

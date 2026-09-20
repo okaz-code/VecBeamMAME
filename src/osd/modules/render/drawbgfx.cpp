@@ -1880,7 +1880,8 @@ int renderer_bgfx::create()
 			float preset_render = 0.0f, preset_output = 0.0f;
 			bool preset_window = false;
 			int preset_present_rate = 0;
-			if (window().machine().options().vector_quality_preset(preset_render, preset_output, preset_window, preset_present_rate))
+			bool preset_rgb_spot = true;
+			if (window().machine().options().vector_quality_preset(preset_render, preset_output, preset_window, preset_present_rate, preset_rgb_spot))
 			{
 				auto const untouched = [this] (const char *name)
 				{
@@ -1891,11 +1892,15 @@ int renderer_bgfx::create()
 					m_output_scale = std::clamp(preset_output, 0.25f, 1.0f);
 				if (untouched(OSDOPTION_BGFX_RENDER_SCALE))
 					m_vec_render_scale = std::clamp(preset_render, 0.1f, 1.0f);
+				// No command-line option to leave alone, so there is nothing to outrank: the preset
+				// clamps the chain slider in refresh_vec_slider_cache() instead.
+				m_vec_quality_rgb_spot = preset_rgb_spot;
 			}
 		}
 		m_vec_effective_scale = std::min(m_vec_render_scale, m_output_scale);
-		osd_printf_verbose("BGFX: analytic vector render scale %.2f, output limit %.2f, supersample %u (effective raster scale %.2f)\n",
-			m_vec_render_scale, m_output_scale, unsigned(m_vec_supersample), m_vec_effective_scale * float(m_vec_supersample));
+		osd_printf_verbose("BGFX: analytic vector render scale %.2f, output limit %.2f, supersample %u (effective raster scale %.2f)%s\n",
+			m_vec_render_scale, m_output_scale, unsigned(m_vec_supersample), m_vec_effective_scale * float(m_vec_supersample),
+			m_vec_quality_rgb_spot ? "" : ", per-channel beam spot off");
 	}
 
 	// load the analytic-AA vector line effect
@@ -3033,6 +3038,11 @@ void renderer_bgfx::refresh_vec_slider_cache()
 	}
 	for (const auto &entry : m_vs_map)
 		m_vs.*entry.first = entry.second->value();
+	// -vector_quality low switches the per-channel beam spot off. A clamp rather than a slider write:
+	// the tuned scales and the slider's own value survive untouched, so raising the quality gives the
+	// look back without the calibration having to be re-entered. See vector_quality_preset().
+	if (!m_vec_quality_rgb_spot)
+		m_vs.rgb_spot_beam = 0.0f;
 	m_vs.overdrive_knee = (m_vs_knee0 != nullptr) ? m_vs_knee0->value() : 0.6f;
 	// Ceiling component: absent on a chain still carrying a plain float knee - fall back to
 	// knee + eps, reproducing that chain's original hard-step (division-guard-only) behaviour.

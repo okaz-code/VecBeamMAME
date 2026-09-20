@@ -448,11 +448,13 @@ public:
 	// screen update; see screen_device::vector_present_refresh.
 	bool vector_list_sync() const { return bool_value(OPTION_VECTOR_LIST_SYNC); }
 	const char *vector_quality() const { return value(OPTION_VECTOR_QUALITY); }
-	// Fills the four settings -vector_quality stands for and returns true, or returns false when no
+	// Fills the five settings -vector_quality stands for and returns true, or returns false when no
 	// preset is named. Callers apply a value only where the underlying option is still at its default,
 	// so naming a preset and then overriding one of its parts on the command line does what it reads like.
 	// present_rate follows vector_present_rate's own convention: -1 is auto, 0 is off, otherwise Hz.
-	bool vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate) const;
+	// rgb_spot is the per-channel beam spot: it has no command-line option of its own, so the renderer
+	// applies it as a clamp on the chain slider.
+	bool vector_quality_preset(float &render_scale, float &output_scale, bool &beam_window, int &present_rate, bool &rgb_spot) const;
 	bool vector_window_scatter() const { return bool_value(OPTION_VECTOR_WINDOW_SCATTER); }
 	float vector_window_droop() const { return float_value(OPTION_VECTOR_WINDOW_DROOP); }
 	float vector_window_memory() const { return float_value(OPTION_VECTOR_WINDOW_MEMORY); }

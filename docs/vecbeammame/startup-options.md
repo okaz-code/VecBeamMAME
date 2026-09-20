@@ -120,20 +120,38 @@ So:
 | Type / default | string / **unset (changes nothing)** |
 | Values | `high` / `medium` (alias `middle`) / `low` |
 
-**A preset that sets the four options governing drawing cost together.**  It
+**A preset that sets the five settings governing drawing cost together.**  It
 lets you pick a load in one word, without having to remember
 `bgfx_render_scale` / `bgfx_output_scale` / `vector_beam_window` /
 `vector_present_rate` individually.
 
-| Value | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` |
-|---|---|---|---|---|
-| `high` | `1.0` | `1.0` | on | `auto` |
-| `medium` | `0.75` | `0.75` | on | **`60`** |
-| `low` | `0.5` | `0.5` | **off** | `0` (no present loop at all) |
+| Value | `bgfx_render_scale` | `bgfx_output_scale` | `vector_beam_window` | `vector_present_rate` | RGB Spot Width |
+|---|---|---|---|---|---|
+| `high` | `1.0` | `1.0` | on | `auto` | as the chain has it |
+| `medium` | `0.75` | `0.75` | on | **`60`** | as the chain has it |
+| `low` | `0.5` | `0.5` | **off** | `0` (no present loop at all) | **off** |
 
 What actually costs is the two resolution scales; the beam window rides on top
 of them.  **The window is the first thing to drop on a machine without room to
 spare**, so only `low` turns it off.
+
+**RGB Spot Width is the one setting here that resolution cannot reach.**  The
+per-channel beam spot (`rgb_spot_beam`, on by default in the colour chain)
+evaluates the analytic line's coverage once per gun instead of once, in the
+heaviest fragment shader in the chain, and the widest of the three scales also
+inflates every quad the beam draws.  That cost is ALU and fill per stroke, so a
+smaller target does not reduce it: on an Intel HD 520 it was the whole gap
+between the colour chains running at full speed and not.  `low` switches it off.
+
+It is the only member of the preset with no option of its own, so it is applied
+as a clamp on the chain slider rather than by writing to it: the tuned
+`spot_scale_red` / `green` / `blue` stay exactly where they are, and raising the
+quality gives the look back without the calibration having to be re-entered.
+The startup log names it.
+
+```
+BGFX: analytic vector render scale 0.50, output limit 0.50, supersample 1 (effective raster scale 0.50), per-channel beam spot off
+```
 
 **The present rate is in there for monitors above 60 Hz.**  With the window on
 the rate is promoted to `auto`, the monitor's refresh, so a 144 Hz panel runs
@@ -149,7 +167,7 @@ renderer gets.  Naming a rate there would build back a loop that currently does
 not exist, and make `low` slower.
 
 **A preset is a starting point, so anything explicit beats it.**  It fills in
-**only those of the four that nobody has touched** (priority 0, still the
+**only those of the four options that nobody has touched** (priority 0, still the
 built-in default).  A value written anywhere - an ini (101 and up) or the
 command line (151) - stays as written (see
 [1-2](#1-2-where-ini-files-are-looked-for-and-what-wins)).  So
@@ -157,7 +175,8 @@ command line (151) - stays as written (see
 (and the present rate is promoted to `auto` so the window has slices to work
 with), and with `bgfx_render_scale 1.0` in `vbmame.ini` even `low` will not
 lower the resolution.  `-vector_quality medium -vector_present_rate 120` gets
-120 Hz.
+120 Hz.  RGB Spot Width has no option to outrank it, so `low` always switches it
+off; use `medium` if you want it at a reduced resolution.
 
 The startup log says which one applied.
 
@@ -167,13 +186,13 @@ Vector presentation timer enabled at auto, initial 60 Hz (requested by vector_be
 ```
 
 Anything other than `high` / `medium` / `low` warns and **the whole preset is
-ignored** (all four stay as configured).
+ignored** (all five stay as configured).
 
 ```
 Unknown -vector_quality 'ultra'; expected high, medium or low. Ignoring.
 ```
 
-`vector_quality` is itself an `src/emu` option, but two of the four things it
+`vector_quality` is itself an `src/emu` option, but three of the five things it
 fills in are on the BGFX side (see
 [4](#4-bgfx-renderer-options-added-by-vecbeam)), so **on renderers other than
 BGFX only the window and the present rate have any effect.**

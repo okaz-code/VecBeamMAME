@@ -39,7 +39,8 @@ static bool beam_window_wanted(running_machine &machine)
 	float render_scale = 0.0f, output_scale = 0.0f;
 	bool preset_window = false;
 	int preset_present_rate = 0;
-	if (machine.options().vector_quality_preset(render_scale, output_scale, preset_window, preset_present_rate))
+	bool preset_rgb_spot = true;
+	if (machine.options().vector_quality_preset(render_scale, output_scale, preset_window, preset_present_rate, preset_rgb_spot))
 	{
 		auto const entry = machine.options().get_entry(OPTION_VECTOR_BEAM_WINDOW);
 		if (entry && (entry->priority() <= OPTION_PRIORITY_DEFAULT))
@@ -216,7 +217,8 @@ video_manager::video_manager(running_machine &machine)
 			float preset_render = 0.0f, preset_output = 0.0f;
 			bool preset_window = false;
 			int preset_rate = 0;
-			if (machine.options().vector_quality_preset(preset_render, preset_output, preset_window, preset_rate))
+			bool preset_rgb_spot = true;
+			if (machine.options().vector_quality_preset(preset_render, preset_output, preset_window, preset_rate, preset_rgb_spot))
 			{
 				configured_present_rate = preset_rate;
 				present_rate_from_preset = true;

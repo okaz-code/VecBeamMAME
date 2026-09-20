@@ -277,6 +277,10 @@ private:
 	// The analytic vector path uses min(render, output), avoiding accidental double scaling.
 	float m_output_scale = 1.0f;
 	float m_vec_effective_scale = 1.0f;
+	// Whether -vector_quality allows the per-channel beam spot. Unlike the scales it has no option of
+	// its own to defer to, so it is applied as a clamp on the chain slider (refresh_vec_slider_cache).
+	// true with no preset named: absent -vector_quality, nothing here overrides the chain.
+	bool m_vec_quality_rgb_spot = true;
 	// m_vec_supersample is applied after m_vec_render_scale (both dimensions).
 	uint16_t m_vec_supersample = 1;
 	bgfx::FrameBufferHandle m_vec_fb = BGFX_INVALID_HANDLE;
