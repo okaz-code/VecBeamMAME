@@ -116,7 +116,7 @@ constexpr u32 PRIMFLAG_PACKABLE = 1 << PRIMFLAG_PACKABLE_SHIFT;
 // Optional optical interpretation for artwork quads.  Stock renderers ignore
 // these bits and use the ordinary blend mode as a fallback.
 constexpr int PRIMFLAG_OPTICAL_ROLE_SHIFT = 22;
-constexpr u32 PRIMFLAG_OPTICAL_ROLE_MASK = 3 << PRIMFLAG_OPTICAL_ROLE_SHIFT;
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_MASK = 7 << PRIMFLAG_OPTICAL_ROLE_SHIFT;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_NONE = 0;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE = 1;
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR = 2;
@@ -124,6 +124,13 @@ constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR = 2;
 // artwork a viewer sees in ambient light and still draws normally. The tag exists so the renderer
 // can also include it in the shadow the plate casts on the tube face.
 constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT = 3;
+// A hole in the plate: the shape the overlay was cut away at, not something printed on it. Where
+// this item is opaque there is no plate at all, so it is subtracted from every mask the others
+// built - the rear white ink, the resin, and the shadow the plate casts on the tube face. It is
+// consumed rather than drawn: what a viewer sees at a hole is whatever the surface print puts
+// there. Without it a cut-out drawn as black ink on the surface print is a plate that blocks room
+// light, and its shadow lands on the tube beside it.
+constexpr u32 PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE = 4;
 
 //**************************************************************************
 //  MACROS

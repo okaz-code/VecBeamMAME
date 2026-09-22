@@ -1254,6 +1254,8 @@ layout_optical_role get_optical_role(emu::render::detail::view_environment &env,
 		return layout_optical_role::VECTREX_COLOR;
 	if (role == "vectrex-front")
 		return layout_optical_role::VECTREX_FRONT;
+	if (role == "vectrex-hole")
+		return layout_optical_role::VECTREX_HOLE;
 	throw layout_syntax_error(util::string_format("unknown optical role %s", role));
 }
 

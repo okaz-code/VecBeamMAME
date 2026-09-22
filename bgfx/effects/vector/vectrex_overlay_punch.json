@@ -1,0 +1,18 @@
+// license:BSD-3-Clause
+// copyright-holders:okaz-code
+// Erase a layout element from an ink-mask target: dst *= 1 - src.a, colour and alpha alike.
+// Same fragment shader as vectrex_overlay_mask - only the blend differs - so this adds no shader
+// bytecode to bake.  Used for the plate's cut-outs, which have to be subtracted from every mask the
+// printed layers built.
+{
+	"blend": { "equation": "add", "srcColor": "zero", "dstColor": "1-srcalpha", "srcAlpha": "zero", "dstAlpha": "1-srcalpha" },
+	"depth": { "function": "always" },
+	"cull": { "mode": "none" },
+	"write": { "rgb": true, "alpha": true },
+	"vertex": "vs_gui",
+	"fragment": "vector/fs_vectrex_overlay_mask",
+	"uniforms": [
+		{ "name": "s_tex",           "type": "int",  "values": [ 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

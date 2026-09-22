@@ -67,6 +67,22 @@
         </rect>
     </element>
 
+    <!--
+        板の切り欠き。印刷ではなく「そこに板が無い」形状。
+        mine_holes.png は mine_front.png から機械的に作った: 「不透明 (alpha>=250) かつ
+        ほぼ黒 (RGB<=16) で、画像の縁につながっている」画素を塗りつぶし判定で拾ったもの。
+        連結成分はちょうど5つ (上部中央の半丸 x693..922/y0..108 と四隅の角丸) で 23,344 画素。
+
+        RGB は全面白にしてある。alpha だけが穴を表すので、光学パスが使えず通常アートワークとして
+        multiply で描かれた場合に dst*1 = 無変化になり、フォールバックを壊さない。
+    -->
+    <element name="overlay_holes">
+        <image file="mine_holes.png">
+            <bounds x="0" y="0" width="1" height="1"/>
+            <color red="1" green="1" blue="1" alpha="1"/>
+        </image>
+    </element>
+
     <!-- 表面カラー印刷。外周ベゼルもこの1枚に含む -->
     <element name="overlay_front_print">
         <image file="mine_front.png">
@@ -133,6 +149,26 @@
         <element ref="overlay_front_print"
                  optical-role="vectrex-front"
                  blend="alpha">
+            <bounds x="0" y="0" width="1613" height="2060"/>
+        </element>
+
+        <!--
+            切り欠き。裏面白インク・樹脂・影のキャスタの3枚すべてから引き算される。
+            順序は問わない (レンダラが専用のパスで最後にまとめて抜く)。
+
+            これが無いと、表面印刷が切り欠きを不透明な黒で描いているせいで、そこが
+            「室内光を遮る板」として影のキャスタに入ってしまう。影は板と管面の隙間ぶん
+            ずれて落ちるので (既定で管面幅の2%×リム倍率1.7 ≒ 51px)、上部半丸のすぐ下から
+            始まる可視域に 230x51 程度の暗い半月が出る。裏面白印刷も半丸の内側に白が
+            残っているが、これも同じキャスタに入るので一緒に抜ける。
+
+            要素自体は光学パスに消費されて通常描画されない。切り欠きが黒く見えるのは
+            表面印刷がそう描いているからで、この要素は見た目には関与しない。
+            blend は光学パスが使えないときのフォールバック専用 (全面白なので multiply は無変化)。
+        -->
+        <element ref="overlay_holes"
+                 optical-role="vectrex-hole"
+                 blend="multiply">
             <bounds x="0" y="0" width="1613" height="2060"/>
         </element>
 

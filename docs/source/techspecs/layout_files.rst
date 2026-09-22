@@ -819,6 +819,29 @@ lighten unlit areas.  The white-ink mask must stay on ``alpha``, because
 ``multiply`` reduces opaque white ink to an identity factor and makes the print
 vanish.
 
+Two further roles describe the plate rather than light passing through it.
+``vectrex-front`` marks the surface print - the artwork a viewer sees in ambient
+light.  Unlike the two roles above it is **not** consumed: it still draws as
+ordinary artwork, and the tag only adds it to the shadow the plate casts on the
+tube face.  ``vectrex-hole`` marks where the plate was cut away, which is not a
+printed layer at all: wherever that element is opaque there is no plate, so it is
+subtracted from the rear white ink, the coloured resin and the shadow caster
+alike.  It is consumed, and what a viewer sees at a hole is whatever the surface
+print puts there.  Without it, a cut-out drawn as black ink on the surface print
+is a plate that blocks room light, and its shadow falls on the tube beside the
+hole.  For example::
+
+    <element ref="overlay_front" optical-role="vectrex-front" blend="alpha">
+        <bounds x="0" y="0" width="1" height="1" />
+    </element>
+    <element ref="overlay_holes" optical-role="vectrex-hole" blend="multiply">
+        <bounds x="0" y="0" width="1" height="1" />
+    </element>
+
+Only the alpha channel of a hole element is read.  Leaving its colour white makes
+``multiply`` an identity factor, so the portable fallback draws nothing where the
+optical path would have punched a hole.
+
 The layout coordinate envelope should normally follow the physical overlay,
 not the emulated screen.  This allows the screen to be inset while bezel and
 printed regions remain inside the overlay.  For example, a 1613 by 2060

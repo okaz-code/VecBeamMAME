@@ -258,7 +258,8 @@ enum class layout_optical_role : u8
 	NONE = 0,
 	VECTREX_WHITE,
 	VECTREX_COLOR,
-	VECTREX_FRONT
+	VECTREX_FRONT,
+	VECTREX_HOLE
 };
 
 

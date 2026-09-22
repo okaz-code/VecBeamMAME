@@ -1927,6 +1927,8 @@ int renderer_bgfx::create()
 		m_hdr_gui_effect[BLENDMODE_RGB_MULTIPLY] = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_multiply");
 		m_hdr_gui_effect[BLENDMODE_ADD]          = m_effects->get_or_load_effect(m_module().options(), "vector/hdr_gui_add");
 		m_vectrex_overlay_mask_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_mask");
+		// Same fragment shader as the mask, an erasing blend instead of an over: dst *= 1 - src.a.
+		m_vectrex_overlay_punch_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_punch");
 		m_vectrex_overlay_blur_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_blur");
 		m_vectrex_overlay_downsample_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_downsample");
 		m_vectrex_overlay_composite_effect = m_effects->get_or_load_effect(m_module().options(), "vector/vectrex_overlay_composite");
@@ -3309,10 +3311,13 @@ static bool vector_primitive_is_point(render_primitive const &prim, float thresh
 // Render one optical-role layout element into an off-screen ink mask.  The complete layout
 // element has already been rasterised by layout_element::state_texture(), so rect/disk/text/image
 // components all follow this same path without Vectrex-specific component handling.
-void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index)
+void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index,
+		bgfx_effect *effect)
 {
+	if (effect == nullptr)
+		effect = m_vectrex_overlay_mask_effect;
 	if (prim == nullptr || prim->type != render_primitive::QUAD || prim->texture.base == nullptr
-		|| m_vectrex_overlay_mask_effect == nullptr
+		|| effect == nullptr
 		|| bgfx::getAvailTransientVertexBuffer(6, ScreenVertex::ms_decl) != 6)
 		return;
 
@@ -3340,18 +3345,18 @@ void renderer_bgfx::render_vectrex_overlay_quad(render_primitive* prim, uint16_t
 		uint16_t(prim->texture.height), prim->texture.rowpixels, prim->texture.palette,
 		prim->texture.base, prim->texture.seqid, texture_flags, prim->texture.unique_id, prim->texture.old_id);
 	bgfx::TextureHandle const source = bgfx::isValid(texture) ? texture : m_chains->textures().dummy_handle();
-	bgfx_uniform *const sampler = m_vectrex_overlay_mask_effect->uniform("s_tex");
+	bgfx_uniform *const sampler = effect->uniform("s_tex");
 	if (sampler == nullptr)
 		return;
 	bgfx::setVertexBuffer(0, &buffer);
 	bgfx::setTexture(0, sampler->handle(), source, texture_flags);
-	if (bgfx_uniform *const inv = m_vectrex_overlay_mask_effect->uniform("u_inv_view_dims"))
+	if (bgfx_uniform *const inv = effect->uniform("u_inv_view_dims"))
 	{
 		float values[4] = { -1.0f / float(s_width[window_index]), 1.0f / float(s_height[window_index]), 0.0f, 0.0f };
 		inv->set(values, sizeof(values));
 		inv->upload();
 	}
-	m_vectrex_overlay_mask_effect->submit(view);
+	effect->submit(view);
 }
 
 // Taps per unit of penumbra. The nine-tap kernel's weights are a Gaussian with a sigma of 2.5
@@ -3531,12 +3536,17 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 		have_white = have_white || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE;
 		have_color = have_color || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR;
 		if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
-			|| role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+			|| role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT || role == PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE)
 		{
 			// Do not activate the special path unless every marked item can be represented in its
 			// mask.  The ordinary artwork fallback must remain available as an all-or-nothing path.
 			if (prim->type != render_primitive::QUAD || prim->texture.base == nullptr)
 				return bail("a marked overlay item arrived without a texture quad");
+			// A hole that cannot be punched would leave the plate whole in every mask while the
+			// layout says it is not - worse than falling back, because the fallback at least draws
+			// what the artwork describes.
+			if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE && m_vectrex_overlay_punch_effect == nullptr)
+				return bail("the overlay carries a hole but the punch effect is unavailable");
 			++role_quads;
 		}
 	}
@@ -3595,7 +3605,7 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	{
 		uint32_t const role = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
 		if (role != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE && role != PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
-			&& role != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+			&& role != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT && role != PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE)
 			continue;
 		auto const mix = [&mask_key] (uint64_t v) { mask_key = (mask_key * 1099511628211ull) ^ v; };
 		auto const mixf = [&mix] (float v) { mix(uint64_t(int64_t(std::lround(double(v) * 4096.0)))); };
@@ -3652,6 +3662,18 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 				render_vectrex_overlay_quad(prim, color_view, window_index);
 			else if (role == PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
 				render_vectrex_overlay_quad(prim, caster_view, window_index);
+		}
+		// Holes go in afterwards, in a pass of their own. They erase - dst *= 1 - src.a - so they
+		// have to follow everything they are meant to remove, and a view is only ordered because it
+		// is Sequential, which orders SUBMISSION. Folding this into the loop above would make the
+		// result depend on where the hole item sits in the layout file.
+		for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
+		{
+			if (PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) != PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE)
+				continue;
+			render_vectrex_overlay_quad(prim, white_view, window_index, m_vectrex_overlay_punch_effect);
+			render_vectrex_overlay_quad(prim, color_view, window_index, m_vectrex_overlay_punch_effect);
+			render_vectrex_overlay_quad(prim, caster_view, window_index, m_vectrex_overlay_punch_effect);
 		}
 		m_vx_mask_key = mask_key;
 		// One line per rebuild, not per frame - a stream of these means the key is picking up
@@ -3737,7 +3759,8 @@ bool renderer_bgfx::prepare_vectrex_overlay_masks(int window_index)
 	for (render_primitive *prim = window().m_primlist->first(); prim != nullptr; prim = prim->next())
 	{
 		const uint32_t r = PRIMFLAG_GET_OPTICAL_ROLE(prim->flags);
-		if (r != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE && r != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT)
+		if (r != PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE && r != PRIMFLAG_OPTICAL_ROLE_VECTREX_FRONT
+			&& r != PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE)
 			continue;
 		key = key * 1099511628211ull
 			^ uint64_t(reinterpret_cast<uintptr_t>(prim->texture.base))
@@ -9459,7 +9482,8 @@ renderer_bgfx::buffer_status renderer_bgfx::buffer_primitives(bool atlas_valid, 
 				// in ambient light, and the tag only adds it to the plate's shadow caster.
 				if (m_vectrex_overlay_active
 					&& (PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE
-						|| PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR))
+						|| PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
+						|| PRIMFLAG_GET_OPTICAL_ROLE((*prim)->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE))
 					break;
 				// Skip the VECTORBUF background quad (the black background drawn by vector.cpp):
 				// it would overwrite the vec blit, which has already filled the backbuffer.
@@ -9711,7 +9735,8 @@ void renderer_bgfx::allocate_buffer(render_primitive *prim, uint32_t blend, bgfx
 				// consumed, so both have to keep it.
 				if (m_vectrex_overlay_active
 					&& (PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_WHITE
-						|| PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR))
+						|| PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_COLOR
+						|| PRIMFLAG_GET_OPTICAL_ROLE(prim->flags) == PRIMFLAG_OPTICAL_ROLE_VECTREX_HOLE))
 					break;
 				// Symmetric with the skip in buffer_primitives
 				if (m_vectors_in_fbo && PRIMFLAG_GET_VECTORBUF(prim->flags))

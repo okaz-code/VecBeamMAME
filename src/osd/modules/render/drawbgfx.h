@@ -113,7 +113,8 @@ private:
 	bool hdr_composite() const { return m_vec_hdr_chain || m_hdr_sdr_composite; }
 	void set_hdr_gui_scale(bgfx_effect *effect, uint32_t blend, render_primitive const *prim);
 	void set_hdr_screen_scale(bgfx_effect *effect, uint32_t blend);
-	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index);
+	void render_vectrex_overlay_quad(render_primitive* prim, uint16_t view, int window_index,
+			bgfx_effect *effect = nullptr);
 	bool blur_overlay_shadow(float radius_px, uint16_t scale, uint16_t w, uint16_t h, const float *projection);
 	bool decimate_overlay_caster(uint16_t scale, const float *projection);
 	bool prepare_vectrex_overlay_masks(int window_index);
@@ -746,6 +747,7 @@ private:
 	bgfx_target *m_vectrex_overlay_blur[2] = { nullptr, nullptr };
 	bgfx_effect *m_vectrex_overlay_mask_effect = nullptr;
 	bgfx_effect *m_vectrex_overlay_blur_effect = nullptr;
+	bgfx_effect *m_vectrex_overlay_punch_effect = nullptr;
 	bgfx_effect *m_vectrex_overlay_downsample_effect = nullptr;
 	bgfx_effect *m_vectrex_overlay_composite_effect = nullptr;
 	// Optional HDR luminance diagnostic. A read-back texture receives hdr_work once per sampling
