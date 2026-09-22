@@ -180,6 +180,14 @@ eye.  The index pulse is now re-armed to the real rotation frequency, phase
 preserved, and the eye switch and colour segments are derived from it.  **The
 same code is still in 0.289's source.**
 
+### Major Havoc hardware behaviour
+
+**Colour** — the red gun's two middle levels did not match the divider the circuit actually
+builds, so two colours that should separate did not.
+
+**Speed** — the screen update rate did not match the real machine.  The alpha's clocking now
+follows the schematic.
+
 ## Which chain is used?
 
 Four chains ship, and **colour, monochrome and Vectrex machines each select the
@@ -203,7 +211,7 @@ The Liquid Retina XDR display built into a MacBook Pro (M5), with a TCL 32R84
 
 ## What monitor do you recommend?
 
-**DisplayHDR 1000 or better.**  OLED panels are untested, so no opinion there.
+**DisplayHDR 600 or better.**  OLED panels are untested, so no opinion there.
 
 ## The screen is dark
 
@@ -240,6 +248,9 @@ turn it off.
 
 Vector scan is an extreme image, lines or dots on black, and automatic
 brightness correction handles it badly.
+
+**On some monitors the bloom reads as too strong.**  Turn it down with
+`[M] Bloom Strength` (1.0 by default, 0 to 3), which moves all three glow stages together.
 
 ## Why does distorting the CRT not distort the vector image with it?
 
@@ -314,18 +325,18 @@ Only the compositing side scales this way.  Building the vectors, and the
 auxiliary passes behind glow and the rest, happen per source frame and do not
 follow the refresh rate.
 
-## Why is there no Mac binary?
+## Why is there no Mac or Linux binary?
 
 There are various reasons.  The official MAME project does not distribute Mac
-binaries either.  Compiling is not difficult
+or Linux binaries either.  Compiling is not difficult
 ([How to compile? in README.md](../../README.md#how-to-compile)).
 
 ## Does it work on Linux?
 
-**It should, but it is untested.**  These do not work at present:
+**Yes.**  It has not been verified on the author's own machine, though.
 
-- **HDR / EDR output** — implemented for Windows and macOS only (excluded at
-  compile time).
-- **Monitor refresh rate detection** — Windows and macOS only, so
-  `-vector_present_rate auto` **stays at 60 Hz**.  On a high-refresh panel,
-  specify it explicitly: `-vector_present_rate 144`.
+HDR10 output (through the Vulkan swapchain colorspace) and monitor refresh rate detection
+(`-vector_present_rate auto`) both arrived as a pull request.  The contributor verified HDR10
+reaching an LG C2 on Linux / Wayland / NVIDIA.
+
+Thanks to **klaus wolf** for the pull request.
