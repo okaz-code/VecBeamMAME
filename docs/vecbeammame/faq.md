@@ -204,6 +204,17 @@ To choose one yourself: `-video bgfx -bgfx_screen_chains <chain-name>`.
 The former `*-balanced` names are migrated to the standard ones on load, so
 **existing configuration files keep working.**
 
+## Why is MINE STORM the only Vectrex overlay?
+
+**They are a lot of work to make.**  One overlay is a surface colour print, a rear white
+print, the tint of the resin plate and the shape the plate was cut away at, each prepared
+separately and then assembled.
+
+MINE STORM's is the most elaborate of the Vectrex overlays, which is part of why it was the
+first one.
+
+The rest will follow when there is room for it.
+
 ## What monitor is used as the reference?
 
 The Liquid Retina XDR display built into a MacBook Pro (M5), with a TCL 32R84
