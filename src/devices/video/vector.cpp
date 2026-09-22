@@ -1620,9 +1620,19 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	float stats_offscreen_energy[render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_monitor_glow_coverage[render_vector_stats::MONITOR_GLOW_ANGLE_BINS][render_vector_stats::OFFSCREEN_DEPTH_BINS] = {};
 	float stats_edge_energy[4][render_vector_stats::EDGE_GLOW_BINS] = {};
-	// Sweep extent of this list (see render_vector_stats::sweep_t0). Blanked moves count: the beam
-	// is physically travelling during them, so they are part of the pass's sweep time.
+	// Sweep extent of this list (see render_vector_stats::sweep_t0). Blanked moves INSIDE the
+	// picture count: the beam is physically travelling during them, so they are part of the pass's
+	// sweep time. Blanked moves after the last lit event do not, and they have to be excluded
+	// explicitly: a list does not end at its last lit point. Major Havoc's alpha issues a
+	// clip-window GO on every IRQ (2.4576 ms), and avgdvg_device_base::go_w appends those short
+	// lists to the list already in progress instead of starting a new one, so a pass collects
+	// beam-park moves for up to 16.7 ms after its picture is finished. Carrying them stretched the
+	// span from 14.8 to 20.1 ms - 41% - which the beam window divides by the presentation time to
+	// get its walk rate, so the picture was laid down in ~70% of its interval and the window then
+	// swept empty time. It is the same contamination that makes "GO to halt" the wrong way to
+	// measure a sweep (see VecBeamMAME-docs/bugs/mhavoc-service-mode-flicker.md section 6).
 	double stats_sweep_t0 = -1.0, stats_sweep_t1 = -1.0;
+	double stats_sweep_t1_lit = -1.0;
 
 	for (int i = 0; i < m_vector_index; i++)
 	{
@@ -1637,6 +1647,8 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				stats_sweep_t0 = prim_t0;
 			if (prim_t1 > stats_sweep_t1)
 				stats_sweep_t1 = prim_t1;
+			if (curpoint->intensity != 0 && prim_t1 > stats_sweep_t1_lit)
+				stats_sweep_t1_lit = prim_t1;
 		}
 
 		float intensity = (float)curpoint->intensity / 255.0f;
@@ -1787,6 +1799,11 @@ uint32_t vector_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	stats.list_generation = m_list_generation;
 	stats.list_stale = stale_now;
 	stats.timed = frame_timed;
+	// End the sweep at the last lit event. A pass with no lit event at all - a pure beam-park list -
+	// keeps the blanked extent, so the window still has a span to work with instead of being
+	// switched off for that pass.
+	if (stats_sweep_t1_lit > 0.0)
+		stats_sweep_t1 = stats_sweep_t1_lit;
 	stats.sweep_t0 = stats_sweep_t0;
 	stats.sweep_t1 = stats_sweep_t1;
 	stats.total_energy = stats_total_energy;
