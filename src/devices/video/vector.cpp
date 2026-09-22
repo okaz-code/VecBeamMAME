@@ -500,10 +500,24 @@ public:
 		// Out-of-band ones between here and there are normally consumed by the presentation timer
 		// first; any left over belong to presents that did not happen (no present loop, or one too
 		// slow to keep up) and are stepped over rather than shifting the frame clock onto them.
+		// How many of them were stepped over. Stepping over is NOT a seek - the comment above says
+		// so, and the frame clock is deliberately left where it was - but the test below compares
+		// target against position + 1 and cannot tell the two apart on its own. Counting them keeps
+		// a routine step-over sequential. It used to raise a discontinuity, which resynchronised the
+		// audio and reset the renderer's temporal state on almost every frame whenever a stream
+		// recorded at a high presentation rate was played back at a lower one: the audio cursor was
+		// yanked by up to 24 ms at a time, dozens of times a second, and every yank is a splice in
+		// the sample stream. Measured on a Star Wars stream recorded at 160 Hz with 27% of its
+		// frames out of band: 0 cursor jumps replaying at 160 Hz, 22 at 60 Hz, 53 with the
+		// presentation timer off.
+		u64 stepped_over = 0;
 		if (sequential && !present_refresh && !m_tool_paused)
 		{
 			while (target < m_frame_index.size() && m_frame_index[target].out_of_band)
+			{
 				++target;
+				++stepped_over;
+			}
 		}
 		if (target >= m_frame_index.size())
 		{
@@ -530,7 +544,8 @@ public:
 
 		if (m_play_position < 0 || target != u64(m_play_position))
 		{
-			const bool discontinuity = m_play_position >= 0 && target != u64(m_play_position) + 1U;
+			const bool discontinuity = m_play_position >= 0
+					&& target != u64(m_play_position) + 1U + stepped_over;
 			read_indexed_frame(target, stale, timed, generation, visarea);
 			m_play_position = s64(target);
 			m_playback_advanced = true;
@@ -1234,7 +1249,11 @@ private:
 	int m_decay_left = 0;
 	bool m_decay_running = false;
 	bool m_playback_advanced = false;
-	bool m_audio_sync_valid = true;
+	// False until the first sync_playback_audio(), so that one always carries the position. The
+	// first frame cannot raise a discontinuity of its own - the test needs a previous position and
+	// there is none - so -vector_playback_start used to leave the companion audio at the start of
+	// the WAV while the picture began wherever it was told to.
+	bool m_audio_sync_valid = false;
 	bool m_audio_paused = false;
 	u32 m_audio_reset = 0;
 	bool m_tool_announced = false;

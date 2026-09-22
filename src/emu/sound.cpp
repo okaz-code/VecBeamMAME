@@ -71,7 +71,23 @@ struct sound_manager::vector_wave_state
 	std::atomic<bool> paused{ false };
 	u32 applied_generation = 0;
 	std::vector<u8> bytes;
+	// Splice state. A seek cuts the sample stream, so the first few milliseconds after one are
+	// crossfaded out of the level the stream was sitting at rather than starting on whatever sample
+	// the new position happens to hold. The levels are per output channel.
+	u32 fade_left = 0;
+	std::vector<sound_manager::sample_t> fade_from;
 };
+
+// How far the companion audio may sit from the position the picture reports before it is worth a
+// seek. The two share one timeline but not one clock - measured at about 0.04% apart, which is
+// 0.4 ms per second - so chasing the picture exactly meant splicing the sample stream every time
+// the reported position moved, and a splice is a click. Well under the threshold at which a
+// listener hears audio and picture as separate events (about 80 ms for sound lagging picture), and
+// far enough above the per-frame wander that an ordinary playback never crosses it.
+static constexpr double VECTOR_AUDIO_SYNC_SLACK_MS = 50.0;
+// Length of the crossfade applied when a seek does happen. Long enough that the step at the splice
+// is inaudible, short enough that a real seek still lands on the frame it was asked for.
+static constexpr double VECTOR_AUDIO_SPLICE_MS = 5.0;
 #define LOG_OSD_INFO    (1U << 1)
 #define LOG_MAPPING     (1U << 2)
 #define LOG_OSD_STREAMS (1U << 3)
@@ -1385,11 +1401,22 @@ void sound_manager::inject_vector_audio()
 	const u32 generation = wave.request_generation.load(std::memory_order_acquire);
 	if (generation != wave.applied_generation)
 	{
-		wave.cursor = wave.requested_frame.load(std::memory_order_relaxed);
-		wave.input.clear();
-		wave.input.seekg(std::streamoff(wave.data_offset + wave.cursor * wave.channels * sizeof(s16)));
+		const u64 want = wave.requested_frame.load(std::memory_order_relaxed);
+		const u64 slack = u64(double(wave.sample_rate) * VECTOR_AUDIO_SYNC_SLACK_MS / 1000.0);
+		// Only a correction bigger than the slack is worth the splice it costs.
+		if ((want > wave.cursor + slack) || (wave.cursor > want + slack))
+		{
+			wave.cursor = want;
+			wave.input.clear();
+			wave.input.seekg(std::streamoff(wave.data_offset + wave.cursor * wave.channels * sizeof(s16)));
+			// Fade in from wherever the stream was sitting. fade_from holds the last sample of the
+			// previous buffer, per channel; at the very first seek it is zero, which is also where
+			// an unwritten output starts, so the opening of a playback needs no special case.
+			wave.fade_left = u32(double(wave.sample_rate) * VECTOR_AUDIO_SPLICE_MS / 1000.0);
+		}
 		wave.applied_generation = generation;
 	}
+	wave.fade_from.resize(m_outputs_count, 0.0f);
 
 	const u32 samples = m_speakers.front().m_effects_buffer.available_samples();
 	const bool silent = wave.paused.load(std::memory_order_acquire)
@@ -1406,6 +1433,8 @@ void sound_manager::inject_vector_audio()
 		wave.cursor += got;
 	}
 
+	const u32 fade_len = wave.fade_left;
+	u32 fade_used = 0;
 	for (speaker_info &speaker : m_speakers)
 	{
 		auto &dest = speaker.m_effects_buffer;
@@ -1414,19 +1443,35 @@ void sound_manager::inject_vector_audio()
 		{
 			sample_t *output = const_cast<sample_t *>(dest.ptrs(channel, 0));
 			const u32 source_channel = speaker.m_first_output + channel;
+			const sample_t from = wave.fade_from[source_channel];
+			u32 fade = fade_len;
 			for (u32 sample = 0; sample != count; ++sample)
 			{
+				sample_t value;
 				if (silent)
-					output[sample] = 0.0f;
+				{
+					value = 0.0f;
+				}
 				else
 				{
 					const size_t offset = (size_t(sample) * wave.channels + source_channel) * sizeof(s16);
-					const u16 value = u16(wave.bytes[offset]) | (u16(wave.bytes[offset + 1]) << 8);
-					output[sample] = float(s16(value)) / 32768.0f;
+					const u16 raw = u16(wave.bytes[offset]) | (u16(wave.bytes[offset + 1]) << 8);
+					value = float(s16(raw)) / 32768.0f;
+					if (fade)
+					{
+						// Linear over the splice: the ear hears the step, not the curve.
+						value += (from - value) * (float(fade) / float(fade_len));
+						--fade;
+					}
 				}
+				output[sample] = value;
 			}
+			if (count)
+				wave.fade_from[source_channel] = output[count - 1];
+			fade_used = std::max(fade_used, fade_len - fade);
 		}
 	}
+	wave.fade_left = (fade_len > fade_used) ? (fade_len - fade_used) : 0U;
 }
 //-------------------------------------------------
 //  mute - mute sound output
