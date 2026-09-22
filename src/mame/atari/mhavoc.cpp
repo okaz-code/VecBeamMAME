@@ -273,6 +273,7 @@ public:
 	mhavoc_state(const machine_config &mconfig, device_type type, const char *tag) :
 		alphaone_state(mconfig, type, tag),
 		m_gamma(*this, "gamma"),
+		m_avg(*this, "avg"),
 		m_coin(*this, "COIN"),
 		m_service(*this, "SERVICE")
 	{ }
@@ -290,6 +291,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	required_device<cpu_device> m_gamma;
+	required_device<avg_mhavoc_device> m_avg;
 
 	void gamma_map(address_map &map) ATTR_COLD;
 
@@ -310,6 +312,9 @@ private:
 	// Alpha clock stretch: cycles a vector-RAM access costs, and the fractional carry between them.
 	double m_clock_stretch = 0.0;
 	double m_stretch_acc = 0.0;
+	// The other side of the same access: 2.5M periods the vector generator loses to it.
+	double m_vg_stall = 0.0;
+	double m_vg_stall_acc = 0.0;
 
 	void gamma_irq_ack_w(uint8_t data);
 	void gamma_w(uint8_t data);
@@ -420,8 +425,21 @@ void mhavoc_state::machine_start()
 	// held high for one 2.5M period and the access costs the alpha one extra cycle - the same either
 	// way round the 2.5M / 2.5MD5M phase falls. The generator's state is not an input anywhere on
 	// that sheet, so this applies whether or not the AVG is running.
+	//
+	// STRETCHa does not only stretch the alpha. On the Microprocessor Timing Chain it clocks 3F
+	// LS74 (CK /2.5M, C /BF2a) whose /Q is VMEMEN, and VMEMEN goes two places: the four LS157 on the
+	// Vector Generator Memory sheet (5L/5H/5F/6E), which swing the memory's address - and 5L also
+	// /WRITEa and /BUFFEN - from the generator over to the alpha, and 5C LS27 pin 11 on sheet 6B,
+	// which sits in the chain that gates SACLK, the generator's state-machine clock. So the board
+	// arbitrates the shared memory by taking the cycle away from the GENERATOR: the alpha always
+	// pays one period and no more, while the generator's sweep is lengthened by however much the
+	// alpha touches vector RAM during it. The generator's state is an input to neither half, which
+	// is why the alpha can never be made to wait on the AVG. MAME's AVG runs at a constant rate, so
+	// without the second half a sweep finishes early and DONE - which the alpha polls through
+	// 5R LS244 - comes up sooner than on the board.
 	m_clock_stretch = machine().options().vector_clock_stretch();
-	if (m_clock_stretch > 0.0)
+	m_vg_stall = machine().options().vector_vg_stall();
+	if (m_clock_stretch > 0.0 || m_vg_stall > 0.0)
 	{
 		// The AVG fetches its list through this same space (set_memory below), and those accesses
 		// are the generator's own; /VMEM is the alpha's address decode.
@@ -429,17 +447,31 @@ void mhavoc_state::machine_start()
 		auto tap = [this](offs_t, u8 &, u8) {
 			if (!m_alpha->executing())
 				return;
+			// F0a stretched: what the access costs the alpha.
 			m_stretch_acc += m_clock_stretch;
 			while (m_stretch_acc >= 1.0)
 			{
 				m_alpha->eat_cycles(1);
 				m_stretch_acc -= 1.0;
 			}
+			// VMEMEN asserted: what the same access costs the generator. Measured in the alpha's own
+			// cycles because the 2.5M those flip-flops run on is the alpha's clock; the AVG's
+			// 12.096MHz is unrelated, so the debt crosses as a duration.
+			m_vg_stall_acc += m_vg_stall;
+			int periods = 0;
+			while (m_vg_stall_acc >= 1.0)
+			{
+				periods++;
+				m_vg_stall_acc -= 1.0;
+			}
+			if (periods)
+				m_avg->stall(m_alpha->cycles_to_attotime(periods));
 		};
 		sp.install_read_tap(0x4000, 0x4fff, "vmem_r", tap);
 		sp.install_write_tap(0x4000, 0x4fff, "vmem_w", tap);
 	}
 	save_item(NAME(m_stretch_acc));
+	save_item(NAME(m_vg_stall_acc));
 
 	save_item(NAME(m_alpha_data));
 	save_item(NAME(m_alpha_rcvd));

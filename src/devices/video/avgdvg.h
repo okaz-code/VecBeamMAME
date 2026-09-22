@@ -33,6 +33,17 @@ public:
 	void set_flip_x(bool flip) { m_flip_x = flip; }
 	void set_flip_y(bool flip) { m_flip_y = flip; }
 
+	// The generator and the CPU share the vector memory through a multiplexer, and on the boards
+	// that arbitrate it the CPU's access is the one that wins: the select also inhibits the
+	// generator's state-machine clock for that period, so the sweep is lengthened by the CPU's
+	// traffic. Major Havoc's Alpha addressing vector RAM raises STRETCHa, which both stretches F0a
+	// (the CPU's own cost, see OPTION_VECTOR_CLOCK_STRETCH) and drives VMEMEN into the state
+	// machine's clock gate (SP-252 sheet 6B, 5C LS27 pin 11). A driver calls this from the same
+	// access with the time the generator loses, in its OWN clock's terms - the two clocks are
+	// unrelated, so a duration is the only unit that carries across. Ignored while the generator is
+	// halted: there is no clock to inhibit then.
+	void stall(const attotime &dur);
+
 protected:
 	static constexpr unsigned MAXVECT = 10000;
 
@@ -140,6 +151,10 @@ private:
 
 	required_region_ptr<u8> m_prom;
 	emu_timer *m_vg_run_timer, *m_vg_halt_timer;
+
+	// Time owed to stall() but not yet paid out. Settled when the state machine re-arms its timer,
+	// so the sweep gets the whole delay while a slice stays indivisible.
+	attotime m_stall_pending;
 
 	bool m_flip_x, m_flip_y;
 

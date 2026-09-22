@@ -1719,7 +1719,11 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 		cycles += 8;
 	}
 
-	m_vg_run_timer->adjust(attotime::from_hz(MASTER_CLOCK) * cycles);
+	// Pay the arbitration debt here rather than mid-slice: a slice is indivisible, but the sweep's
+	// total length is what the stall changes, and that comes out right either way. The next slice's
+	// t0/t1 stamps key off machine().time() when it runs, so the events move with the delay.
+	m_vg_run_timer->adjust(attotime::from_hz(MASTER_CLOCK) * cycles + m_stall_pending);
+	m_stall_pending = attotime::zero;
 }
 
 
@@ -1732,6 +1736,17 @@ TIMER_CALLBACK_MEMBER(avgdvg_device_base::run_state_machine)
 int avgdvg_device_base::done_r()
 {
 	return m_sync_halt ? 1 : 0;
+}
+
+void avgdvg_device_base::stall(const attotime &dur)
+{
+	// Nothing to inhibit once the generator has reached HALT: the state machine is parked and the
+	// board's clock gate has no edges to swallow. Paying the debt anyway would push the NEXT list's
+	// start out by the CPU traffic of the gap before it, which the hardware does not do.
+	if (m_halt || dur.is_zero())
+		return;
+
+	m_stall_pending += dur;
 }
 
 void avgdvg_device_base::go_w(u8 data)
@@ -1832,6 +1847,8 @@ void avgdvg_device_base::device_start()
 
 	save_item(NAME(m_flip_x));
 	save_item(NAME(m_flip_y));
+
+	save_item(NAME(m_stall_pending));
 }
 
 void dvg_device::device_start()
@@ -1953,7 +1970,8 @@ avgdvg_device_base::avgdvg_device_base(const machine_config &mconfig, device_typ
 	m_ypos(0),
 	m_prom(*this, "prom"),
 	m_vg_run_timer(nullptr),
-	m_vg_halt_timer(nullptr)
+	m_vg_halt_timer(nullptr),
+	m_stall_pending(attotime::zero)
 {
 }
 

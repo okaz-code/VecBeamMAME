@@ -125,6 +125,7 @@
 #define OPTION_VECTOR_BLANK_LEAK    "vector_blank_leak"
 #define OPTION_VECTOR_COLOR_BLEED   "vector_color_bleed"
 #define OPTION_VECTOR_CLOCK_STRETCH "vector_clock_stretch"
+#define OPTION_VECTOR_VG_STALL      "vector_vg_stall"
 #define OPTION_VECTOR_CCPU_DWELL    "vector_ccpu_dwell"
 #define OPTION_VECTOR_CCPU_RATE     "vector_ccpu_rate"
 #define OPTION_VECTOR_BEAM_WINDOW   "vector_beam_window"
@@ -438,6 +439,7 @@ public:
 	float vector_blank_leak() const { return float_value(OPTION_VECTOR_BLANK_LEAK); }
 	bool vector_color_bleed() const { return bool_value(OPTION_VECTOR_COLOR_BLEED); }
 	float vector_clock_stretch() const { return float_value(OPTION_VECTOR_CLOCK_STRETCH); }
+	float vector_vg_stall() const { return float_value(OPTION_VECTOR_VG_STALL); }
 	float vector_ccpu_dwell() const { return float_value(OPTION_VECTOR_CCPU_DWELL); }
 	float vector_ccpu_rate() const { return float_value(OPTION_VECTOR_CCPU_RATE); }
 	bool vector_beam_window() const { return bool_value(OPTION_VECTOR_BEAM_WINDOW); }
