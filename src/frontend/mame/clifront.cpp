@@ -274,6 +274,24 @@ void cli_frontend::start_execution(mame_machine_manager *manager, const std::vec
 	if (system == nullptr && *(m_options.system_name()) != 0)
 		throw emu_fatalerror(EMU_ERR_NO_SUCH_SYSTEM, "Unknown system '%s'", m_options.system_name());
 
+	// An MVEC stream belongs to one machine's run - it carries the machine's name, and the companion
+	// WAV is opened by whichever machine is running when the option is seen.  With no system on the
+	// command line that machine is the launcher: it has no vector device, so the stream itself is
+	// never written, but it does have a sound manager, so it takes the companion WAV and leaves an
+	// empty one behind.  The option would then be half-applied to a machine it was never meant for.
+	// Ask for the system instead of guessing which one the menu is about to pick.
+	if (system == nullptr)
+	{
+		char const *const record = m_options.vector_record();
+		char const *const playback = m_options.vector_playback();
+		char const *const given = (record && *record) ? OPTION_VECTOR_RECORD
+				: ((playback && *playback) ? OPTION_VECTOR_PLAYBACK : nullptr);
+		if (given)
+			throw emu_fatalerror(EMU_ERR_INVALID_CONFIG,
+					"-%s needs a system named on the command line; it cannot be started from the system selection menu",
+					given);
+	}
+
 	// otherwise just run the game
 	m_result = manager->execute();
 }
