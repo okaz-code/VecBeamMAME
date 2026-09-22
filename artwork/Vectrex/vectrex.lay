@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <mamelayout version="2">
 
-    <!-- 裏面白印刷マスク -->
+    <!-- Rear white-ink print -->
     <element name="overlay_white_print">
         <image file="mine_back.png">
             <bounds x="0" y="0" width="1" height="1"/>
@@ -9,56 +9,62 @@
         </image>
     </element>
 
-    <!-- 透明樹脂板の着色 -->
+    <!-- Tint of the transparent resin plate -->
     <element name="overlay_resin_color">
         <rect>
             <bounds x="0" y="0" width="1" height="1"/>
 
             <!--
-                樹脂の「単位光学濃度での片道透過率」。#00D5FD = RGB(0, 213, 253)。
-                MAMEの色指定範囲は0～1なので 255 で割る。
+                The resin's ONE-WAY transmission at unit optical density. #00D5FD = RGB(0, 213, 253).
+                MAME takes colours in 0..1, so the figures below are the byte values over 255.
 
-                実測（IMG_3121.jpeg / 2026-09-11）。発光ディスプレイに
-                リニア 100/75/50/25/0% の階調バーを出し、その横に実物プレートを
-                並べて撮影して求めた。CRT光と同じ「樹脂を1回通る」経路なので、
-                得られるのは片道透過率 T そのもの。白紙反射の T^2 ではない。
+                Measured from IMG_3121.jpeg (2026-09-11). A linear 100/75/50/25/0% step wedge was
+                displayed on an emissive panel with the real plate laid beside it and the pair
+                photographed together. That is the same path the CRT light takes - once through the
+                resin - so what comes out is the one-way transmission T itself, not the T^2 of a
+                reflective measurement off white paper.
 
-                読み取りはカメラの応答曲線を仮定しない段一致法。プレート越しの
-                コード値が素の画面のどの段のコード値に一致するかを探し、その段比を
-                透過率とする。カメラのトーンカーブとディスプレイのガンマが両方
-                打ち消えるので、露出やHDR処理に依存しない。プレート位置での素の
-                画面の値は、視野角による左右勾配をバンドごとの一次式で補正して
-                外挿した。透過率 T とオフセット項の直線あてはめは R^2 = 0.98 で、
-                単純な乗算フィルタというモデル自体が成立している。
+                The reading is a step-matching method that assumes nothing about the camera's
+                response curve: find which step of the bare screen has the same code value as the
+                plate-covered patch, and take the ratio of those steps as the transmission. Both the
+                camera's tone curve and the display's gamma cancel, so the result does not depend on
+                exposure or on HDR processing. The bare-screen value at the plate's own position was
+                extrapolated by correcting the left-to-right viewing-angle gradient with a linear fit
+                per band. Fitting transmission T plus an offset term gave R^2 = 0.98, so the model of
+                a plain multiplicative filter holds up in the first place.
 
-                  リニア透過率  R < 0.02   G 0.674   B 0.983
-                  sRGB符号値    0.0000     0.8358    0.9922
+                  linear transmission   R < 0.02   G 0.674   B 0.983
+                  sRGB code value       0.0000     0.8358    0.9922
 
-                赤は事実上ゼロ。素の黒バンド（符号値10〜17）より暗く、測定下限を
-                下回る。実物の色は sRGB 色域外のシアンなので（元のDisplay P3から
-                sRGBへ変換すると赤が負値になる）、sRGB では red=0 が最良近似。
+                Red is effectively zero: darker than the bare black band (code values 10 to 17), so
+                below the floor of the measurement. The real colour is a cyan outside the sRGB gamut
+                - converting the original Display P3 reading to sRGB drives red negative - so red=0
+                is the best approximation sRGB has.
 
-                緑と青は従来値 0.8510 / 0.9216 とほぼ一致していた。従来の赤 0.3530
-                だけが外れていたのは、元の往復測定値 #20b9d9 の赤成分 32/255 が
-                すでに測定下限付近で、そこに平方根を掛けて誤差を 0.125 → 0.353 と
-                増幅してしまったため。赤が過剰なので density を上げて相殺すると
-                今度は青が潰れる。どの density でも一致しないのはこのため。
+                Green and blue came out close to the previous 0.8510 / 0.9216. It was only the
+                previous red of 0.3530 that was wrong: the red component of the old round-trip
+                reading #20b9d9, 32/255, was already near the measurement floor, and taking its
+                square root amplified the error from 0.125 to 0.353. With red that far over, raising
+                the density to compensate crushes blue instead - which is why no density ever
+                matched.
 
-                alpha は「その画素が樹脂で覆われている割合」。板全面なので 1.0。
-                alpha=1 だとマスクのプレマルチプライ量子化が起きず色が厳密に通り、
-                Overlay Color Optical Density がそのまま実効濃度（板の厚み倍率、
-                1.0 = 実測プレート1枚分）になる。ここの色は実測値そのものなので
-                density = 1.0 が「実測プレート1枚分」にあたる。
+                Alpha is the FRACTION OF THE PIXEL COVERED BY RESIN, and the plate covers all of it,
+                so 1.0. At alpha=1 the mask's premultiplication does not quantise, the colour passes
+                through exactly, and Overlay Color Optical Density becomes the effective density
+                directly (a multiple of the plate's thickness, 1.0 = one measured plate). The colour
+                here is the measurement itself, so density = 1.0 is one real plate.
 
-                ただし既定は 2.5。実機と並べて見比べると、緑はこの実測値より弱い方が
-                近い。上の測定はLCDの緑原色（狭帯域）を光源にしているのに対し、実機は
-                CRT蛍光体のスペクトルで光る。分光フィルタの透過率は光源のスペクトルが
-                違えば一致しないので、TVの緑原色で測った 0.674 を Vectrex の緑にその
-                まま持ち込めない。実機との突き合わせの方がこの用途では上位の根拠になる。
+                The shipped default is nonetheless 2.5. Held up against the real machine, green wants
+                to be weaker than the measurement says. The measurement above used an LCD's green
+                primary - a narrow band - as its source, while the real machine glows with the
+                spectrum of CRT phosphor. A spectral filter's transmission does not carry across a
+                change of source spectrum, so 0.674 measured against a TV's green cannot be taken
+                over to the Vectrex's green unaltered. For this purpose the comparison against the
+                real machine is the higher authority.
 
-                赤が0・青が0.98 なので、この色では density は事実上「緑の強さ」だけを
-                動かすつまみになっている（d=1→3.2 で青は 0.983→0.947 しか動かず、赤は
-                常に0）。d=2.5 の実効透過率は R=0.000 G=0.373 B=0.958。
+                With red at 0 and blue at 0.98, density is in practice a knob for green alone: from
+                d=1 to 3.2 blue only moves 0.983 to 0.947 and red never leaves 0. At d=2.5 the
+                effective transmission is R=0.000 G=0.373 B=0.958.
             -->
             <color red="0.0000"
                    green="0.8358"
@@ -68,13 +74,15 @@
     </element>
 
     <!--
-        板の切り欠き。印刷ではなく「そこに板が無い」形状。
-        mine_holes.png は mine_front.png から機械的に作った: 「不透明 (alpha>=250) かつ
-        ほぼ黒 (RGB<=16) で、画像の縁につながっている」画素を塗りつぶし判定で拾ったもの。
-        連結成分はちょうど5つ (上部中央の半丸 x693..922/y0..108 と四隅の角丸) で 23,344 画素。
+        The plate's cut-outs: not something printed on it, but the shape it was cut away at.
+        mine_holes.png was derived mechanically from mine_front.png - a flood fill picking up every
+        pixel that is opaque (alpha>=250), near-black (RGB<=16) and connected to the image border.
+        That comes to exactly five components (the top-centre half-disc at x693..922/y0..108 and the
+        four rounded corners) and 23,344 pixels.
 
-        RGB は全面白にしてある。alpha だけが穴を表すので、光学パスが使えず通常アートワークとして
-        multiply で描かれた場合に dst*1 = 無変化になり、フォールバックを壊さない。
+        Its RGB is white everywhere; only alpha describes the holes. That way, if the optical path is
+        unavailable and the item is drawn as ordinary artwork, multiply resolves to dst*1 and the
+        fallback is left intact.
     -->
     <element name="overlay_holes">
         <image file="mine_holes.png">
@@ -83,7 +91,7 @@
         </image>
     </element>
 
-    <!-- 表面カラー印刷。外周ベゼルもこの1枚に含む -->
+    <!-- Surface colour print. The outer bezel is part of this one image. -->
     <element name="overlay_front_print">
         <image file="mine_front.png">
             <bounds x="0" y="0" width="1" height="1"/>
@@ -94,30 +102,32 @@
     <view name="Vectrex Two-sided Overlay">
 
         <!--
-            View全体は実物オーバーレイの1613:2060を基準にする。
-            画面アスペクトはドライバに従って3:4固定（400x300 を ROT270 表示）。
+            The whole view is laid out on the real overlay's 1613:2060. The screen aspect follows the
+            driver and stays at 3:4 (400x300 shown ROT270).
 
-            サイズは「オーバーレイ高の何%」ではなく表面印刷の窓幅から決める。高さ基準で
-            決めると窓幅より細くなり、左右のベゼル枠の内側に光の来ない黒い帯が残る。
-            mine_front.png を実測すると窓は x 54..1559（幅1506、行ごとの最小値は52）。
+            Its size comes from the WINDOW IN THE SURFACE PRINT, not from a percentage of the
+            overlay's height. Sizing by height makes the screen narrower than the window and leaves a
+            black band with no light in it inside the left and right bezel frames. Measured on
+            mine_front.png, the window is x 54..1559 (1506 wide; the per-row minimum is 52).
 
-              screen width  = 1512                      窓幅+左右2pxの余裕
-              screen height = 1512 * 4/3 = 2016         3:4を維持
+              screen width  = 1512                      window width plus 2px of slack each side
+              screen height = 1512 * 4/3 = 2016         keeps 3:4
               screen x      = (1613 - 1512) / 2 = 50.5
               screen y      = (2060 - 2016) / 2 = 22
 
-            上下は窓より約29px/123px はみ出すが、そこは表面印刷が不透明なので隠れる。
-            この矩形で「プレート内側かつ表面印刷が透明かつスクリーン外」の画素は0
-            （従来の 1483.2x1977.6 では42440画素あり、それが黒帯として見えていた）。
+            Top and bottom overshoot the window by about 29px and 123px, but the surface print is
+            opaque there and hides it. With this rectangle there are no pixels that are inside the
+            plate, transparent in the surface print and outside the screen - the previous
+            1483.2x1977.6 left 42,440 of them, and they were the black band.
         -->
         <screen index="0">
             <bounds x="50.5" y="22" width="1512" height="2016"/>
         </screen>
 
         <!--
-            裏面白印刷。blendは上と同様フォールバック専用。
-            白インクは multiply にすると係数が dst*(1+0) = 1.0 になり完全に消えるため、
-            ここは alpha を維持する。
+            Rear white-ink print. As below, blend is for the fallback only. White ink under multiply
+            resolves to a factor of dst*(1+0) = 1.0 and disappears completely, so this one stays on
+            alpha.
         -->
         <element ref="overlay_white_print"
                  optical-role="vectrex-white"
@@ -126,13 +136,14 @@
         </element>
 
         <!--
-            樹脂板の青着色。
-            BGFX Vectrex光学パスが有効なとき、この要素は通常アートワーク描画から除外され
-            blendは一切参照されない（drawbgfx.cpp の optical-role スキップ）。RGBと
-            alphaはインクマスクとして読まれ、alphaは Overlay Color Optical Density
-            (overlay_color_density) と掛けて光学濃度になる。
-            blendは光学パスが使えない場合のフォールバック専用。透明樹脂板は受動フィルタで
-            光を足せないので multiply が正しい。alphaでは黒地を青く持ち上げてしまう。
+            Blue tint of the resin plate.
+            While the BGFX Vectrex optical path is active this item is excluded from ordinary artwork
+            drawing and its blend is never consulted (the optical-role skip in drawbgfx.cpp). Its RGB
+            and alpha are read as an ink mask, and the alpha is multiplied by Overlay Color Optical
+            Density (overlay_color_density) to give the optical density.
+            The blend is for the case where the optical path is unavailable. A transparent resin plate
+            is a passive filter and cannot add light, so multiply is the correct one; alpha would lift
+            black areas toward blue.
         -->
         <element ref="overlay_resin_color"
                  optical-role="vectrex-color"
@@ -141,10 +152,12 @@
         </element>
 
         <!--
-            表面カラー印刷。光源がなくても見える通常アートワーク。
-            外周の黄枠・PLAYER表示・下部バーもこの1枚に含まれるので別のベゼル要素は不要。
-            mine_bezel.png は mine_front.png の真部分集合（bezelのみの不透明画素は0個）で、
-            重ねてもアンチエイリアス縁が二重合成されて硬くなるだけだった。
+            Surface colour print. Ordinary artwork, visible with no light source behind it.
+            The outer yellow frame, the PLAYER panels and the bottom bar are all part of this one
+            image, so no separate bezel element is needed. A bezel-only image was tried and dropped:
+            it was a proper subset of mine_front.png - zero opaque pixels the front print did not
+            already have - and layering it only composited the antialiased edges twice and hardened
+            them.
         -->
         <element ref="overlay_front_print"
                  optical-role="vectrex-front"
@@ -153,18 +166,21 @@
         </element>
 
         <!--
-            切り欠き。裏面白インク・樹脂・影のキャスタの3枚すべてから引き算される。
-            順序は問わない (レンダラが専用のパスで最後にまとめて抜く)。
+            The cut-outs, subtracted from all three masks: rear white ink, resin, and the shadow
+            caster. Position in the file does not matter - the renderer punches them all at the end,
+            in a pass of its own.
 
-            これが無いと、表面印刷が切り欠きを不透明な黒で描いているせいで、そこが
-            「室内光を遮る板」として影のキャスタに入ってしまう。影は板と管面の隙間ぶん
-            ずれて落ちるので (既定で管面幅の2%×リム倍率1.7 ≒ 51px)、上部半丸のすぐ下から
-            始まる可視域に 230x51 程度の暗い半月が出る。裏面白印刷も半丸の内側に白が
-            残っているが、これも同じキャスタに入るので一緒に抜ける。
+            Without this, the surface print draws the cut-outs as opaque black, so they enter the
+            shadow caster as a plate that blocks room light. The shadow is displaced by the gap
+            between plate and tube face (by default 2% of the face width times a rim scale of 1.7,
+            about 51px), and the visible area begins 2px below the top half-disc, so a dark half-moon
+            of roughly 230x51 lands inside the picture. The rear white print also has ink left inside
+            the half-disc; it feeds the same caster and goes with it.
 
-            要素自体は光学パスに消費されて通常描画されない。切り欠きが黒く見えるのは
-            表面印刷がそう描いているからで、この要素は見た目には関与しない。
-            blend は光学パスが使えないときのフォールバック専用 (全面白なので multiply は無変化)。
+            The item itself is consumed by the optical path and never drawn normally. The cut-outs
+            look black because the surface print draws them that way; this element takes no part in
+            the appearance.
+            Its blend is for the fallback only (the image is white throughout, so multiply is a no-op).
         -->
         <element ref="overlay_holes"
                  optical-role="vectrex-hole"
