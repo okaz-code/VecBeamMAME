@@ -6,6 +6,12 @@
 
 English: [README.md](README.md)
 
+> **ダウンロード:** バイナリ配布は **Windows 64bit 版のみ** です —
+> **[最新リリース](https://github.com/okaz-code/VecBeamMAME/releases/latest)**。
+> Linux / macOS ではソースからビルドしてください（[How to compile?](README.md#how-to-compile)）。
+> これらのプラットフォームは公式サポート外です。
+> 現在のリリースのベースは **MAME 0.289** で、ROM セットもそのバージョンのものを使います。
+
 **VecBeamMAME** は、ベクタースキャン式アーケードゲームおよび Vectrex 系表示の**視覚再現を強化**する
 ことを目的とした、MAME の非公式・実験的派生版です。実行ファイルは `vbmame`、読み込む設定ファイルは
 `vbmame.ini` で、素の MAME とは別物として同じフォルダに共存できます。

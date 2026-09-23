@@ -17,8 +17,8 @@ body:
   attributes:
     label: Build
     description: |
-      A release tag, or the branch and commit you built. `mame -version` gives the MAME version it is based on.
-    placeholder: "v0.289-vb3, or vertex-dwell-energy @ 65c921b"
+      A release tag, or the branch and commit you built. `vbmame -version` prints both: the MAME version it is based on, then the VecBeamMAME tag and commit in parentheses.
+    placeholder: "v0.1.0, or main @ 65c921b"
   validations:
     required: true
 
