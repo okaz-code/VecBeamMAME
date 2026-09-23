@@ -1,0 +1,52 @@
+name: "Feature request"
+description: Propose a concrete change to VecBeamMAME's vector rendering, chains or vector drivers.
+labels: ["enhancement"]
+body:
+- type: markdown
+  attributes:
+    value: |
+      ## Before you file
+
+      VecBeamMAME only changes vector rendering and a few vector drivers. Requests for MAME
+      itself (new drivers, UI, input, sound) belong to [mamedev/mame](https://github.com/mamedev/mame).
+      If the idea is still open-ended, [Discussions (Ideas)](https://github.com/okaz-code/VecBeamMAME/discussions/categories/ideas)
+      is a better place to start.
+
+      English or Japanese are both fine. / 日本語でも英語でも構いません。
+
+- type: textarea
+  attributes:
+    label: What you want to see
+    description: |
+      The visible result you are after, as specifically as you can. "More realistic" is not
+      enough to act on — say what a real display does that this one does not.
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: Reference
+    description: |
+      What the real hardware does, and how you know: a photo or video of a real machine (say what
+      it was shot on and at what frame rate), a schematic, a service manual, a measurement.
+      This is what turns a preference into something that can be modelled.
+
+- type: input
+  attributes:
+    label: Emulated system
+    description: |
+      The driver short name(s) it applies to, or "all vector games".
+    placeholder: "tempest, or all vector games"
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: How it might work
+    description: |
+      Optional. A new slider, a changed default, a new chain, a core option — if you have a view.
+      A `-vector_record` capture (`.mvec`) of the scene where the difference shows is very useful.
+
+- type: textarea
+  attributes:
+    label: Anything else

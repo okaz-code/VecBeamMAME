@@ -1,5 +1,6 @@
 name: "Bug report"
 description: Report incorrect or unexpected behaviour in VecBeamMAME.
+labels: ["bug"]
 body:
 - type: markdown
   attributes:
@@ -12,6 +13,9 @@ body:
       [mamedev/mame](https://github.com/mamedev/mame/issues) instead. Checking that first is the
       single most useful thing you can do, because it separates an emulation problem from a
       rendering one before anyone has to guess.
+
+      Setup questions go to [Discussions (Q&A)](https://github.com/okaz-code/VecBeamMAME/discussions/categories/q-a).
+      English or Japanese are both fine. / 日本語でも英語でも構いません。
 
 - type: input
   attributes:

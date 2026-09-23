@@ -1,5 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
+  - name: Questions and setup help
+    url: https://github.com/okaz-code/VecBeamMAME/discussions/categories/q-a
+    about: How to set something up, what a slider does, whether a result is expected. Ask in Discussions (Q&A) — English or Japanese.
+  - name: Ideas and open-ended proposals
+    url: https://github.com/okaz-code/VecBeamMAME/discussions/categories/ideas
+    about: Not sure it is a concrete feature yet? Start in Discussions (Ideas); it can become an issue later.
   - name: MAME (upstream)
     url: https://github.com/mamedev/mame/issues
     about: If the same thing happens in a stock MAME build, report it there instead — VecBeamMAME only changes vector rendering and a handful of vector drivers.
