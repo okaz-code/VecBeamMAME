@@ -75,10 +75,16 @@
 
     <!--
         The plate's cut-outs: not something printed on it, but the shape it was cut away at.
-        mine_holes.png was derived mechanically from mine_front.png - a flood fill picking up every
-        pixel that is opaque (alpha>=250), near-black (RGB<=16) and connected to the image border.
-        That comes to exactly five components (the top-centre half-disc at x693..922/y0..108 and the
-        four rounded corners) and 23,344 pixels.
+        Exactly five components - the top-centre half-disc at x693..922/y0..108 and the four rounded
+        corners - covering 23,344 pixels.
+
+        **mine_holes.png is where that shape lives.** It is the source the other layers are cut
+        from, not a by-product of them: the surface print is transparent wherever this file is
+        opaque, and the rear white print carries no ink there either. Deriving it the other way
+        round - reading the cut-outs back out of the surface print - is what the first version did,
+        and it stopped reproducing the moment the print's cut-outs went from opaque black to
+        transparent. Draw the mask first and subtract it from the prints; a new overlay should be
+        built in that order.
 
         Its RGB is white everywhere; only alpha describes the holes. That way, if the optical path is
         unavailable and the item is drawn as ordinary artwork, multiply resolves to dst*1 and the
@@ -91,7 +97,19 @@
         </image>
     </element>
 
-    <!-- Surface colour print. The outer bezel is part of this one image. -->
+    <!--
+        Surface colour print. The outer bezel is part of this one image, and the cut-outs are
+        transparent in it - see overlay_holes above for the shape. What shows through them is the
+        BARE TUBE FACE: the resin and the rear white ink are punched out of the masks there, so the
+        ambient term reaches the eye with nothing in front of it, which is what a viewer sees
+        through a hole in the real plate. Raise the ambient level and the cut-outs come up with it
+        while the plate around them stays filtered.
+
+        Not the picture, though. The usable image is the window in this print and the cut-outs sit
+        outside it, so no beam is drawn behind them - measured on Mine Storm, zero of 236,161 lit
+        vectors over 600 frames reach the region. They are a window onto an unlit tube, not onto
+        the game.
+    -->
     <element name="overlay_front_print">
         <image file="mine_front.png">
             <bounds x="0" y="0" width="1" height="1"/>
