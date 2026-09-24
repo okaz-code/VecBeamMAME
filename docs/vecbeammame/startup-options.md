@@ -354,9 +354,10 @@ Re-presents the finished output at the given rate **without changing emulation
 timing**.  The source frame period - the rate the game draws at - is unaffected.
 
 `auto` reads the actual desktop refresh rate on Windows (to fractional
-precision) and `NSScreen`'s maximum frame rate on macOS, then uses the nearest
-integer Hz.  **There is no detection path on Linux**, so it lands on 60 Hz;
-specify a value explicitly if you need something else.
+precision), `NSScreen`'s maximum frame rate on macOS, and the SDL display mode
+on Linux (whole Hz under SDL2, exact under `OSD=sdl3`; see the HDR settings
+page).  The timer runs at that rate as detected, fraction included, so a
+119.879 Hz panel is not driven at 120.  Until a rate is detected it runs at 60.
 
 Its purposes are to make phosphor decay look smooth on a high-refresh monitor,
 and to act as the foundation for `vector_beam_window`.

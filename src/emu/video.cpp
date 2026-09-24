@@ -101,6 +101,7 @@ video_manager::video_manager(running_machine &machine)
 	, m_screenless_frame_timer(nullptr)
 	, m_vector_present_timer(nullptr)
 	, m_vector_present_rate(0)
+	, m_vector_present_hz(0.0)
 	, m_vector_present_auto(false)
 	, m_vector_presenting(false)
 	, m_vector_list_sync(false)
@@ -243,6 +244,7 @@ video_manager::video_manager(running_machine &machine)
 		m_vector_list_sync = machine.options().vector_list_sync();
 		m_vector_present_auto = configured_present_rate < 0;
 		m_vector_present_rate = m_vector_present_auto ? 60U : u32(std::clamp(configured_present_rate, 0, 360));
+		m_vector_present_hz = double(m_vector_present_rate);
 		bool have_vector_screen = false;
 		for (screen_device &screen : screen_device_enumerator(machine.root_device()))
 			have_vector_screen = have_vector_screen || (screen.screen_type() == SCREEN_TYPE_VECTOR);
@@ -659,12 +661,15 @@ void video_manager::update_vector_present_rate()
 	if (monitor_rate <= 1.0f)
 		return;
 
-	const u32 resolved = u32(std::clamp(int(std::lround(monitor_rate)), 1, 360));
-	if (resolved != m_vector_present_rate)
+	// The timer runs at the exact refresh: a panel at 119.879 Hz fed a 120 Hz timer drifts by one
+	// present every eight seconds. The whole-Hz value is only for the rate comparisons elsewhere.
+	const double resolved = std::clamp(double(monitor_rate), 1.0, 360.0);
+	if (resolved != m_vector_present_hz)
 	{
-		osd_printf_info("Vector presentation rate auto-detected at %.3f Hz; using %u Hz (%.3f ms)\n",
-			monitor_rate, resolved, 1000.0 / double(resolved));
-		m_vector_present_rate = resolved;
+		osd_printf_info("Vector presentation rate auto-detected at %.3f Hz (%.3f ms)\n",
+			resolved, 1000.0 / resolved);
+		m_vector_present_hz = resolved;
+		m_vector_present_rate = u32(std::clamp(int(std::lround(resolved)), 1, 360));
 	}
 }
 
@@ -784,7 +789,7 @@ attotime video_manager::vector_present_period() const
 	// update_throttle maps emulated time through m_speed. Scheduling this
 	// amount of emulated time therefore retains a constant real presentation
 	// rate for slow-motion and other non-default speed settings.
-	double const emulated_hz = (double(m_vector_present_rate) * 1000.0) / double(std::max<u32>(m_speed, 1));
+	double const emulated_hz = (m_vector_present_hz * 1000.0) / double(std::max<u32>(m_speed, 1));
 	return attotime::from_hz(emulated_hz);
 }
 

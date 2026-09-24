@@ -130,7 +130,8 @@ private:
 	// screenless systems
 	emu_timer *         m_screenless_frame_timer;   // timer to signal VBLANK start
 	emu_timer *         m_vector_present_timer;     // optional host-rate vector presentation timer
-	u32                 m_vector_present_rate;      // requested presentation rate in Hz (0 = disabled)
+	u32                 m_vector_present_rate;      // requested presentation rate in whole Hz (0 = disabled)
+	double              m_vector_present_hz;        // exact presentation rate the timer runs at
 	bool                m_vector_present_auto;      // resolve presentation rate from the active monitor
 	bool                m_vector_presenting;        // current OSD update is a presentation-only vector refresh
 	bool                m_vector_list_sync;         // publish a new vector beam list at the presentation rate
