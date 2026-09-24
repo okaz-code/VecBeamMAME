@@ -5,6 +5,8 @@
 #include "vectrex.h"
 #include "cpu/m6809/m6809.h"
 
+#include "emuopts.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -134,6 +136,31 @@ TIMER_CALLBACK_MEMBER(vectrex_base_state::refresh)
 	// same pass being re-presented, not a new one.
 	if (m_display_start != prev_start || m_display_end != prev_end)
 		m_vector->mark_list_pending();
+
+	// The real console has no screen refresh of its own: a frame is whatever the game draws between
+	// two T2 expiries, about 50 Hz under the BIOS Wait_Recal. The stock fixed 60 Hz screen shows 50
+	// passes in 60 updates, so one pass in five is held for two and motion steps ten times a second,
+	// at any presentation rate that is not a multiple of 50 and with VRR, which can only follow the
+	// 60. Starting VBLANK here instead gives exactly one screen update per pass, published the moment
+	// it completes. The frame period is set a little longer than the pass so the screen's own VBLANK
+	// timer never gets in first - it only fires if refresh() stops, and then at the last pass rate.
+	// Periods outside 5..50 ms are T2 in use as a delay rather than a frame, and are not followed.
+	const attotime period = m_refresh->period();
+	const bool follow = m_screen_follow_allowed && m_io_scrsync.read_safe(0)
+			&& period >= attotime::from_msec(5) && period <= attotime::from_msec(50);
+	if (follow)
+	{
+		const attotime screen_period = period + period / 64;
+		if (screen_period != m_screen->frame_period())
+			m_screen->configure(m_screen->width(), m_screen->height(), m_screen->visible_area(), screen_period.as_attoseconds());
+		m_screen->reset_origin(0, 0);   // no VBLANK lines: (0,0) is VBLANK start, so this updates now
+		m_screen_follows_refresh = true;
+	}
+	else if (m_screen_follows_refresh)
+	{
+		m_screen->configure(m_screen->width(), m_screen->height(), m_screen->visible_area(), HZ_TO_ATTOSECONDS(60));
+		m_screen_follows_refresh = false;
+	}
 }
 
 
@@ -564,6 +591,13 @@ void vectrex_base_state::video_start()
 	m_zero_integrators_timer = timer_alloc(FUNC(vectrex_base_state::zero_integrators), this);
 	m_update_blank_timer = timer_alloc(FUNC(vectrex_base_state::update_blank), this);
 	m_update_mux_enable_timer = timer_alloc(FUNC(vectrex_base_state::update_mux_enable), this);
+
+	// MVEC paces recording and playback from the screen's frame period, so a period that follows the
+	// game would change what a recording means. Keep the stock 60 Hz whenever a stream is involved.
+	const char *const mvec_record = machine().options().vector_record();
+	const char *const mvec_playback = machine().options().vector_playback();
+	m_screen_follow_allowed = !(mvec_record && *mvec_record) && !(mvec_playback && *mvec_playback);
+	m_screen_follows_refresh = false;
 
 	m_display_start = 0;
 	m_display_end = 0;

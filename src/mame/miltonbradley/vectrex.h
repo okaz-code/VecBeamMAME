@@ -52,6 +52,7 @@ protected:
 		m_io_spotkill(*this, "SPOTKILL"),
 		m_io_spotkill_ms(*this, "SPOTKMS"),
 		m_io_spotkill_range(*this, "SPOTKRNG"),
+		m_io_scrsync(*this, "SCRSYNC"),
 		m_io_obj_knee(*this, "OBJKNEE"),
 		m_io_obj_sharp(*this, "OBJSHARP"),
 		m_io_obj_max(*this, "OBJMAX"),
@@ -163,6 +164,8 @@ private:
 	int m_pen_x = 0;
 	int m_pen_y = 0;
 	emu_timer *m_refresh = nullptr;
+	bool m_screen_follows_refresh = false;   // screen frame period / VBLANK currently driven by refresh()
+	bool m_screen_follow_allowed = false;    // off while MVEC records or plays back (see video_start)
 	emu_timer *m_zero_integrators_timer = nullptr;
 	emu_timer *m_update_blank_timer = nullptr;
 	emu_timer *m_update_mux_enable_timer = nullptr;
@@ -274,6 +277,7 @@ private:
 	optional_ioport m_io_spotkill;       // spot killer: cut the beam when deflection stops (CRT burn protection)
 	optional_ioport m_io_spotkill_ms;    // spot killer time constant (no-deflection time before the beam is cut)
 	optional_ioport m_io_spotkill_range; // spot killer travel threshold (% of the draw width per window)
+	optional_ioport m_io_scrsync;        // screen refresh: follow the game's VIA T2 frame, or the stock fixed 60 Hz
 	optional_ioport m_io_obj_knee;       // object lift: intensity (Z) where the brightness/width lift begins
 	optional_ioport m_io_obj_sharp;      // object lift: curve sharpness past the knee
 	optional_ioport m_io_obj_max;        // object lift: max multiplier at full intensity (1.0 = off)
