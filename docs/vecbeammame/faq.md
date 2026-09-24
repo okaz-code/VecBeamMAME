@@ -222,7 +222,9 @@ The Liquid Retina XDR display built into a MacBook Pro (M5), with a TCL 32R84
 
 ## What monitor do you recommend?
 
-**DisplayHDR 600 or better.**  OLED panels are untested, so no opinion there.
+**DisplayHDR 600 or better.**  OLED panels are untested on the author's side,
+but there is a report of it working well on an LG C2 (Linux, 4K 120 Hz, HDR10,
+VRR; see [Does it work on Linux?](#does-it-work-on-linux)).
 
 ## The screen is dark
 
@@ -262,6 +264,7 @@ brightness correction handles it badly.
 
 **On some monitors the bloom reads as too strong.**  Turn it down with
 `[M] Bloom Strength` (1.0 by default, 0 to 3), which moves all three glow stages together.
+On an LG C2 (OLED), 0.55 on the colour chain was reported to look right.
 
 ## Why does distorting the CRT not distort the vector image with it?
 
@@ -349,5 +352,10 @@ or Linux binaries either.  Compiling is not difficult
 HDR10 output (through the Vulkan swapchain colorspace) and monitor refresh rate detection
 (`-vector_present_rate auto`) both arrived as a pull request.  The contributor verified HDR10
 reaching an LG C2 on Linux / Wayland / NVIDIA.
+
+A later report (Hyprland, RTX 4080 SUPER, LG C2 over HDMI at 3840x2160 @ 120 Hz)
+confirmed 10-bit HDR10 and VRR at the display, from the TV's own info panel.  With
+`-vector_present_rate 0` the panel followed the game rate, and Asteroids, Tempest
+and Major Havoc moved smoothly.
 
 Thanks to **klaus wolf** for the pull request.

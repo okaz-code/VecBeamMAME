@@ -196,7 +196,9 @@ MacBook Pro (M5) 内蔵の Liquid Retina XDR ディスプレイです。
 
 ## 推奨するモニタは？
 
-**DisplayHDR 600 以上**のモニタです。OLED パネルについては試していないので不明です。
+**DisplayHDR 600 以上**のモニタです。OLED パネルは作者の手元では試していませんが、
+LG C2 で問題なく動いたという報告をいただいています（Linux、4K 120 Hz、HDR10、VRR。
+[Linux で動きますか？](#linux-で動きますか)を参照）。
 
 ## 画面が暗い
 
@@ -228,6 +230,7 @@ MacBook Pro (M5) 内蔵の Liquid Retina XDR ディスプレイです。
 
 **モニタによってはブルームが効きすぎて見えることがあります。** その場合は
 `[M] Bloom Strength`（既定 1.0、0〜3）で下げてください。グロー 3 系統をまとめて動かします。
+OLED の LG C2 では、color チェインで 0.55 がちょうどよかったという報告があります。
 
 ## CRT を歪ませてもベクター画像が連動して歪まないのはなぜ？
 
@@ -307,6 +310,11 @@ STAR WARS（41 Hz）の 1.5 倍のフレーム数を要求するので、同じ�
 HDR10 出力（Vulkan の swapchain colorspace 経由）と、モニタのリフレッシュレート自動取得
 （`-vector_present_rate auto`）は、どちらも PR で対応していただきました。Linux / Wayland /
 NVIDIA で LG C2 に HDR10 が届くところまでは、PR の作者が確認しています。
+
+その後の報告（Hyprland、RTX 4080 SUPER、LG C2 を HDMI 接続、3840×2160 @ 120 Hz）では、
+TV 側の情報表示で 10 bit の HDR10 と VRR が有効になっていることが確かめられています。
+`-vector_present_rate 0` ではパネルがゲームのレートに追従し、Asteroids・Tempest・
+Major Havoc が滑らかに動いたそうです。
 
 PR を送ってくださった **klaus wolf** 氏に感謝します。
 
