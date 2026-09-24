@@ -796,9 +796,8 @@ private:
 	int64_t m_atlas_report_hpc = 0;
 
 	std::unique_ptr<util::xml::file> m_config;
-	// The stored configuration, kept verbatim when the running chain selection came from an
-	// explicitly specified chain so save_config can write the stored one back untouched. Null
-	// otherwise, including when there was no stored configuration to keep.
+	// The stored configuration, kept verbatim under -bgfx_cfg_readonly so save_config can write it
+	// back untouched. Null otherwise, including when there was no stored configuration to keep.
 	std::unique_ptr<util::xml::file> m_config_stored;
 	const util::notifier_subscription m_load_sub;
 	const util::notifier_subscription m_save_sub;

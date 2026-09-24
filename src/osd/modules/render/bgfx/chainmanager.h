@@ -132,7 +132,7 @@ public:
 
 	// True when -bgfx_screen_chains was set at source.ini priority or above, i.e. per-source,
 	// per-game or on the command line rather than as a global preference in mame.ini. The stored
-	// selection is neither read nor written in that case; see load_config and save_config.
+	// selection is not read in that case (see load_config); it is still written, as in stock MAME.
 	// Static because the renderer has to ask before the chain manager exists.
 	static bool chains_explicitly_specified(const osd_options &options);
 

@@ -173,6 +173,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_SHADOW_MASK,                "slot-mask.png",   core_options::option_type::STRING,   "shadow mask texture name" },
 	{ OSDOPTION_BGFX_LUT,                        "lut-default.png", core_options::option_type::STRING,   "LUT texture name" },
 	{ OSDOPTION_BGFX_AVI_NAME,                   OSDOPTVAL_AUTO,    core_options::option_type::PATH,     "filename for BGFX output logging" },
+	{ OSDOPTION_BGFX_CFG_READONLY,               "0",               core_options::option_type::BOOLEAN,  "read the BGFX chain selection and sliders from cfg but never write them back" },
 
 	// End of list
 	{ nullptr }

@@ -97,9 +97,11 @@ Since `ini/presets` is on `inipath`, creating `ini/vector.ini` overrides them.
 ### 1-3. Watch the priority 105 boundary
 
 `bgfx_screen_chains` **counts as "explicitly specified" at priority 105
-(`source/*.ini`) and above**: the chain selection saved in cfg is then neither
-read nor written back.  Written in `vbmame.ini` (101) it is treated as an
-ordinary default, and the cfg selection wins.
+(`source/*.ini`) and above**: the chain selection saved in cfg is then not
+read.  At exit the running chain and its slider values are saved to cfg, as in
+stock MAME.  Written in `vbmame.ini` (101) it is treated as an ordinary
+default, and the cfg selection wins.  To try something without changing the
+cfg, add `-bgfx_cfg_readonly`.
 
 So:
 
@@ -758,6 +760,22 @@ See the [HDR settings guide](hdr-settings.md) for the full picture.
 macOS only.  Logs the `CAMetalLayer` state and the raw EDR headroom once a
 second.  For working out why HDR is not coming out as expected.
 
+### `bgfx_cfg_readonly`
+
+| | |
+|---|---|
+| Type / default | bool / `0` |
+
+Reads the chain selection and slider values from `cfg/<game>.cfg` as usual,
+but **never writes them back**.  Sliders moved from the menu, a chain picked
+there, and a chain given with `-bgfx_screen_chains` all last only until the
+machine exits; the cfg keeps what it had.  Without a cfg to begin with,
+none is written.
+
+For runs that must not change your settings: a quick test with a different
+chain, or a script or AI agent driving the menus.  Only the BGFX part of the
+cfg is held back; inputs, DIP switches and the rest are saved as normal.
+
 ---
 
 ## 5. Worked examples
@@ -854,9 +872,10 @@ vector_window_bias        -0.2
 Not an option VecBeam adds, but its behaviour has changed.
 
 **Specified at priority 105 (`source/*.ini`) or above, the chain selection in
-cfg is neither read nor written back.**  Stock MAME 0.289 wrote it without
-reading it, so specifying a chain once for a test rewrote that machine's saved
-settings (fixed here).
+cfg is not read.**  Saving is as in stock MAME 0.289: at exit the running chain
+and its slider values are written to cfg, so tuning from the menu sticks on a
+game whose chain comes from a `source/*.ini`.  To keep a one-off test from
+rewriting the saved settings, use `-bgfx_cfg_readonly`.
 
 Chain names are **the filename part only**: for
 `bgfx/chains/vector/vector-color.json` that is `vector-color`, not

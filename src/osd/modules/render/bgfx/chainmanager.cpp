@@ -1645,19 +1645,10 @@ void chain_manager::save_config(util::xml::data_node &parentnode)
 	if (!needs_sliders())
 		return;
 
-	// Do not write a selection that load_config would refuse to read. An explicitly specified chain
-	// is a command-line or per-game override of the stored one, and persisting it turns a one-off
-	// into the machine's new startup state - running once with -bgfx_screen_chains left starwars
-	// on the monochrome chain from then on. The renderer writes the stored selection back verbatim
-	// when there was one, so reaching here means there was none to keep.
-	if (chains_explicitly_specified(m_options))
-	{
-		osd_printf_verbose(
-				"BGFX: Not saving the chain selection for window %d - it was explicitly specified\n",
-				m_window_index);
-		return;
-	}
-
+	// An explicitly specified chain is saved like any other, as stock MAME does: skipping it also threw
+	// away every slider tuned on a chain picked in a source.ini, silently, at exit. A run that must not
+	// touch the stored settings - a test, a tool driving the menus - says so with -bgfx_cfg_readonly,
+	// which the renderer handles before this is reached.
 	util::xml::data_node *const windownode = parentnode.add_child("window", nullptr);
 	windownode->set_attribute_int("index", m_window_index);
 

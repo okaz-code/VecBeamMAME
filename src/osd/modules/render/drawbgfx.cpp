@@ -9814,17 +9814,14 @@ void renderer_bgfx::load_config(util::xml::data_node const &parentnode)
 			m_config->get_first_child()->delete_node();
 		windownode->copy_into(*m_config);
 		m_config->get_first_child()->set_attribute("persist", "0");
-		// An explicitly specified chain overrides the stored selection, and chain_manager refuses to
-		// read the stored one because of it. Keep a clean copy - taken before the internal persist
-		// marker is set, so the marker does not leak into the file - for save_config to write back,
-		// or the override is persisted over a selection the user never changed.
-		if (chain_manager::chains_explicitly_specified(m_module().options()))
+		// -bgfx_cfg_readonly: keep a clean copy - taken before the internal persist marker is set, so
+		// the marker does not leak into the file - for save_config to write back in place of whatever
+		// the session changed.
+		if (m_module().options().bgfx_cfg_readonly())
 		{
 			m_config_stored = util::xml::file::create();
 			windownode->copy_into(*m_config_stored);
-			osd_printf_verbose(
-					"BGFX: Keeping the stored chain selection for window %d - the running selection was"
-					" explicitly specified\n",
+			osd_printf_verbose("BGFX: Keeping the stored configuration for window %d - bgfx_cfg_readonly\n",
 					window().index());
 		}
 		osd_printf_verbose("BGFX: Found configuration for window %d\n", window().index());
@@ -9836,8 +9833,15 @@ void renderer_bgfx::save_config(util::xml::data_node &parentnode)
 {
 	if (m_config)
 		m_config->get_first_child()->copy_into(parentnode);
-	else if (m_config_stored)
-		m_config_stored->get_first_child()->copy_into(parentnode);
+	else if (m_module().options().bgfx_cfg_readonly())
+	{
+		// Nothing the session did reaches the file: sliders moved from the menu, a chain picked there,
+		// or one specified on the command line. MAME rewrites the cfg wholesale, so writing nothing
+		// would delete the stored settings rather than keep them - write the loaded copy back instead.
+		// With no stored configuration there is nothing to keep, and nothing is written.
+		if (m_config_stored)
+			m_config_stored->get_first_child()->copy_into(parentnode);
+	}
 	else
 		m_chains->save_config(parentnode);
 	// All sliders are saved by chain_manager's standard <screen> persistence.
